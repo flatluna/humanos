@@ -1,44 +1,62 @@
+using Azure.Identity;
 using HumanOS.Data;
 using HumanOS.Services;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-var builder = FunctionsApplication.CreateBuilder(args);
+var host = new HostBuilder()
+    .ConfigureFunctionsWorkerDefaults()
+    .ConfigureServices(services =>
+    {
+        services.AddApplicationInsightsTelemetryWorkerService();
 
-builder.ConfigureFunctionsWebApplication();
+        var connectionString =
+            Environment.GetEnvironmentVariable("HumanOSDatabase")
+            ?? throw new InvalidOperationException(
+                "Connection string 'HumanOSDatabase' was not found.");
 
-var connectionString =
-    builder.Configuration.GetConnectionString("HumanOSDatabase")
-    ?? throw new InvalidOperationException(
-        "Connection string 'HumanOSDatabase' was not found.");
-
-builder.Services.AddDbContext<HumanOsDbContext>(options =>
-    options.UseSqlServer(
-        connectionString,
-        sqlOptions =>
+        services.AddDbContext<HumanOsDbContext>(options =>
         {
-            sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 5,
-                maxRetryDelay: TimeSpan.FromSeconds(10),
-                errorNumbersToAdd: null);
-        }));
+            var connection = new SqlConnection(connectionString);
+            
+            // Get access token from Managed Identity (works in Azure automatically)
+            var tokenProvider = new DefaultAzureCredential();
+            var token = tokenProvider.GetToken(
+                new Azure.Core.TokenRequestContext(
+                    new[] { "https://database.windows.net/.default" }));
+            
+            connection.AccessToken = token.Token;
+            
+            options.UseSqlServer(
+                connection,
+                sqlOptions =>
+                {
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(10),
+                        errorNumbersToAdd: null);
+                });
+        });
 
-// Add Application Insights
-builder.Services.AddApplicationInsightsTelemetry();
+        // Add Services
+        services.AddScoped<PersonService>();
+        services.AddScoped<HumanProfileService>();
+        services.AddScoped<CapabilityService>();
+        services.AddScoped<PersonCapabilityService>();
+        services.AddScoped<PracticeService>();
+        services.AddScoped<RecallService>();
+        services.AddScoped<GoalService>();
+        services.AddScoped<ProjectService>();
+        services.AddScoped<EvidenceService>();
+        services.AddScoped<AssessmentService>();
+        services.AddScoped<TranslationService>();
 
-// Add Services
-builder.Services.AddScoped<PersonService>();
-builder.Services.AddScoped<HumanProfileService>();
-builder.Services.AddScoped<CapabilityService>();
-builder.Services.AddScoped<PersonCapabilityService>();
-builder.Services.AddScoped<PracticeService>();
-builder.Services.AddScoped<RecallService>();
-builder.Services.AddScoped<GoalService>();
-builder.Services.AddScoped<ProjectService>();
-builder.Services.AddScoped<EvidenceService>();
-builder.Services.AddScoped<AssessmentService>();
-builder.Services.AddScoped<TranslationService>();
+        // Add HTTP client factory
+        services.AddHttpClient();
+    })
+    .Build();
 
-// Add HTTP client factory
-builder.Services.AddHttpClient();
-
-builder.Build().Run();
+host.Run();
