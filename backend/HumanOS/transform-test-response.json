@@ -1,0 +1,192 @@
+﻿{
+    "RunId":  "f7913527-ab77-4ab1-81c3-c4e74515515c",
+    "Stage":  0,
+    "PendingSubjectId":  "e71fae98-7249-40f0-b591-f27822e07ece",
+    "Payload":  {
+                    "CapabilityName":  "Arquitecto de Software — De cero a experto",
+                    "Goal":  "Formar a alguien desde cero hasta convertirse en un arquitecto de software experto, capaz de disenar sistemas complejos, liderar equipos tecnicos, tomar decisiones de arquitectura bajo ambiguedad, y mentorar a otros arquitectos junior en la organizacion.",
+                    "ScopeDeclaration":  "Scope: Foundation, Exploration, Mastery, Professional, Frontier, Creator x Knowledge, Recall, Application, Confidence, Independence, Retention, Fluency. Reason: el objetivo es transformar a un principiante en un líder-experto y mentor; se requieren los seis niveles y todas las métricas para cubrir desde la construcción de esquemas conceptuales hasta la capacidad de tomar decisiones bajo ambigüedad y enseñar a otros.",
+                    "Levels":  [
+                                   {
+                                       "Layer":  "Foundation",
+                                       "Title":  "Bases sólidas de arquitectura",
+                                       "HumanTransformation":  "El aprendiz deja de estar perdido y adquiere un esquema mental claro de qué es la arquitectura de software, sus patrones y trade-offs básicos, pudiendo razonar sobre decisiones sencillas con apoyo.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Conceptos esenciales de arquitectura",
+                                                           "Description":  "Lectura compacta sobre definición de arquitectura, separación de responsabilidades, acoplamiento y cohesión; introducción al rol del arquitecto y al teorema CAP.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Panorama de patrones: monolito, microservicios, hexagonal y event-driven",
+                                                           "Description":  "Video comparativo que presenta intuiciones, ventajas y limitaciones de cada patrón, con ejemplos simples y señales (cues) para reconocer cuándo aplicar cada uno.",
+                                                           "Type":  "Video",
+                                                           "TargetMetric":  "Recall"
+                                                       },
+                                                       {
+                                                           "Title":  "Ejercicio guiado: decidir entre monolito y microservicios",
+                                                           "Description":  "Práctica guiada paso a paso: se entrega un pequeño conjunto de requisitos y se evalúan criterios (complejidad, escalado, operatividad) para tomar y justificar una decisión arquitectónica simple.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Escribe tu primer ADR (Architecture Decision Record)",
+                                                           "Description":  "Ejercicio guiado para redactar un ADR sencillo: problema, opciones, trade-offs y decisión; incluye una versión modelo para comparar y calibrar el juicio del aprendiz.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Exploration",
+                                       "Title":  "Explorar trade-offs y sistemas distribuidos",
+                                       "HumanTransformation":  "El aprendiz amplía su comprensión y empieza a aplicar patrones y técnicas en varios contextos, explorando límites de decisiones y practicando comunicación de trade-offs.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Sistemas distribuidos: sharding, replicación y colas",
+                                                           "Description":  "Lectura que expone particionamiento (sharding), estrategias de replicación, colas para desacoplar y cuándo la complejidad distribuida está justificada frente a un monolito.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Resiliencia operativa: circuit breakers, retries y bulkheads",
+                                                           "Description":  "Video que ilustra patrones de resiliencia y estrategias de tolerancia a fallos con ejemplos de uso y señales para su aplicación.",
+                                                           "Type":  "Video",
+                                                           "TargetMetric":  "Recall"
+                                                       },
+                                                       {
+                                                           "Title":  "Diseños en 2-3 contextos: aplicar trade-offs",
+                                                           "Description":  "Práctica donde el aprendiz aplica patrones y decisiones a 2–3 mini-casos (p. ej. servicio de baja latencia, sistema fuertemente consistente, pipeline de eventos) y justifica las elecciones.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Simulación IA: comunicar trade-offs a stakeholders",
+                                                           "Description":  "Simulador IA que recrea conversaciones con product managers y ops para practicar explicar riesgos, costos y beneficios de decisiones arquitectónicas, recibiendo feedback para explorar límites de la argumentación.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Mastery",
+                                       "Title":  "Conectar esquemas y diseñar sistemas complejos",
+                                       "HumanTransformation":  "El aprendiz integra conocimientos y ejecuta diseños complejos con autonomía moderada, utilizando patrones distribuidos, ADRs y mecanismos de resiliencia de forma coherente.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Profundización: event-driven y arquitectura hexagonal",
+                                                           "Description":  "Lectura detallada que conecta conceptos (p. ej. separación de capas, puertos y adaptadores) con arquitecturas orientadas a eventos y cómo influyen en cohesión y acoplamiento.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Práctica intermedia: diseñar una arquitectura distribuida completa",
+                                                           "Description":  "Ejercicio aplicado para diseñar un sistema distribuido que incluye particionamiento, replicación, colas y patrones de resiliencia; el entregable es un diagrama, ADRs y justificación de trade-offs.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Fitness functions y gestión deliberada de deuda técnica",
+                                                           "Description":  "Práctica para definir fitness functions concretas (p. ej. métricas de latencia, acoplamiento) y un plan de control de deuda técnica que permita validar evolución arquitectónica.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Retention"
+                                                       },
+                                                       {
+                                                           "Title":  "Simulación IA: tomar decisiones arquitectónicas bajo incertidumbre",
+                                                           "Description":  "Simulador que presenta requisitos ambiguos y cambios en tiempo real; el aprendiz practica priorizar, justificar ADRs y elegir evoluciones con feedback sobre consecuencias.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Professional",
+                                       "Title":  "Aplicar arquitectura en contextos reales y bajo presión",
+                                       "HumanTransformation":  "El aprendiz pasa a ejecutar trabajos de arquitectura en entornos reales, asumiendo responsabilidad por entregables arquitectónicos y tomando decisiones con menor supervisión, incluso bajo presión.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Evaluación real: plan de migración de un monolito",
+                                                           "Description":  "Práctica aplicada para elaborar un plan de migración (fases, criterios de corte, mitigaciones) y justificar cuándo dividir en servicios o mantener un monolito bien diseñado.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Simulación IA: revisión de arquitectura en entorno crítico",
+                                                           "Description":  "Simulador que recrea una revisión ejecutiva con limitaciones de tiempo y datos incompletos; el aprendiz defiende decisiones, responde preguntas difíciles y actúa con autonomía creciente.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Independence"
+                                                       },
+                                                       {
+                                                           "Title":  "Liderazgo técnico: ADRs, comunicación y negociación",
+                                                           "Description":  "Lectura sobre mejores prácticas en documentación de decisiones (ADRs), presentar trade-offs a stakeholders no técnicos y técnicas para negociar prioridades técnicas.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Taller práctico: métricas y controles para evolución continua",
+                                                           "Description":  "Video-taller que muestra cómo instrumentar fitness functions en procesos de entrega y cómo usar esos indicadores para decisiones tácticas de evolución.",
+                                                           "Type":  "Video",
+                                                           "TargetMetric":  "Retention"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Frontier",
+                                       "Title":  "Tomar decisiones en la frontera: ambigüedad y gobernanza",
+                                       "HumanTransformation":  "El aprendiz confía en su juicio en entornos altamente ambiguos, diseña políticas organizacionales de arquitectura y comienza a formar a otros arquitectos con mínima supervisión.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Diseñar gobernanza arquitectónica y políticas de evolución",
+                                                           "Description":  "Práctica avanzada para definir roles, procesos de revisión, criterios de adopción de tecnologías y políticas de deuda técnica a nivel de equipo y producto.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Independence"
+                                                       },
+                                                       {
+                                                           "Title":  "Lectura avanzada: consenso, Raft/Paxos y cuándo aplicarlos",
+                                                           "Description":  "Lectura que profundiza en mecanismos de consenso y las compensaciones prácticas para su adopción en sistemas reales, incluida la interacción con replicación y disponibilidad.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Simulación IA: decisiones ante tecnologías emergentes",
+                                                           "Description":  "Simulador que presenta escenarios con opciones de tecnologías emergentes y alto riesgo; el aprendiz practica evaluación rápida, experimentación controlada y planes de mitigación.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence"
+                                                       },
+                                                       {
+                                                           "Title":  "Mentoría: liderar un taller de juicio arquitectónico",
+                                                           "Description":  "Sesión de mentoría guiada donde el aprendiz facilita un taller para ingenieros, enseña a evaluar trade-offs y promueve la autonomía de juicio en otros.",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Fluency"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Creator",
+                                       "Title":  "Crear cultura arquitectónica y mentorizar a la organización",
+                                       "HumanTransformation":  "El arquitecto diseña y dirige la estrategia arquitectónica organizacional, produce nuevas prácticas, y forma a otros arquitectos; la responsabilidad y la enseñanza son enteramente suyas.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Mentoría avanzada: diseñar un programa de mentoría para arquitectos",
+                                                           "Description":  "Mentoría para crear y ejecutar un programa de desarrollo de arquitectos (estructura, contenidos, métricas de progreso y prácticas de revisión), con énfasis en transferir juicio arquitectónico.",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Fluency"
+                                                       },
+                                                       {
+                                                           "Title":  "Mentoría: establecer la cultura de ADRs y gobernanza técnica",
+                                                           "Description":  "Mentoría para implantar prácticas de documentación y comunicación (ADRs, revisiones periódicas, estándares) y liderar su adopción en múltiples equipos.",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Fluency"
+                                                       },
+                                                       {
+                                                           "Title":  "Capstone práctico: liderar un programa multi-equipo de arquitectura",
+                                                           "Description":  "Proyecto integrador donde el aprendiz diseña y dirige una iniciativa multi-equipo (estrategia, métricas/fitness functions, gobernanza, plan de deuda técnica) y produce entregables reales para la organización.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Fluency"
+                                                       }
+                                                   ]
+                                   }
+                               ]
+                }
+}

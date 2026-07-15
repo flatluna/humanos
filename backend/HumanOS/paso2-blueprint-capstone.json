@@ -1,0 +1,142 @@
+﻿{
+    "RunId":  "6306f94b-4b9a-4685-ad83-5fa6c7ed6817",
+    "Stage":  "PendingGate",
+    "PendingSubjectId":  "f60a7d88-059d-43b6-9ff1-cad9da099772",
+    "Payload":  {
+                    "CapabilityName":  "Facilitar reuniones de trabajo efectivas",
+                    "Goal":  "Aprender a facilitar reuniones de trabajo efectivas, siendo capaz de crear y ejecutar agendas accionables por mi cuenta",
+                    "ScopeDeclaration":  "Scope: Foundation, Exploration, Mastery x Application, Confidence, Independence, Recall. Reason: el objetivo requiere que el aprendiz pase de conocer los criterios básicos a ejecutar reuniones solo (autonomía), por eso activo Foundation→Exploration→Mastery; el control de recuerdo global se hace una sola vez al final (Recall capstone).",
+                    "Levels":  [
+                                   {
+                                       "Layer":  "Foundation",
+                                       "Title":  "Fundamentos de la reunión accionable",
+                                       "HumanTransformation":  "El aprendiz deja de aceptar \u0027discutir\u0027 como propósito y empieza a formular propósitos claros y a crear agendas mínimas que incluyen tiempo, responsable y resultado esperado.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Núcleo: ¿Qué convierte una reunión en efectiva?",
+                                                           "Description":  "Presenta los criterios esenciales: propósito con decisión/entrega, y por cada tema tiempo, responsable y resultado; expone por qué las agendas sin esto se alargan sin decisiones.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Antes de leer, escribe de memoria (sin consultar nada) cuáles crees que son los 3 componentes que hacen efectiva a una reunión.",
+                                                           "LearnerProduction":  "Un texto breve (3–5 frases) que define el propósito de una reunión real o hipotética y un primer borrador de agenda con al menos un ítem mostrando tiempo, responsable y resultado esperado.",
+                                                           "SuccessCriteria":  [
+                                                                                   "El propósito expresa una decisión o entregable concreto (no solo \u0027discutir\u0027).",
+                                                                                   "El ítem de agenda incluye claramente un tiempo asignado, un responsable y un resultado esperado.",
+                                                                                   "No aparecen errores comunes: no hay ítems sin tiempo ni sin responsable."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Plantilla mínima de agenda accionable",
+                                                           "Description":  "Guía práctica para completar una plantilla mínima que garantiza propósito y requisitos por tema.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Antes de usar la plantilla, anota de memoria los elementos que, según lo aprendido, debe tener cada tema de la agenda.",
+                                                           "LearnerProduction":  "Una agenda completada en la plantilla mínima para una reunión real o planificada (mínimo 3 ítems) que incluye propósito, tiempo total y por ítem, responsables y resultados esperados.",
+                                                           "SuccessCriteria":  [
+                                                                                   "La agenda comienza con un propósito que termina en una decisión o entrega concreta.",
+                                                                                   "Cada ítem tiene un tiempo, un responsable y un resultado esperado.",
+                                                                                   "La suma de los tiempos no supera la duración planificada de la reunión y la secuencia apoya el resultado final."
+                                                                               ]
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Exploration",
+                                       "Title":  "Aplicar y anticipar fricciones en reuniones",
+                                       "HumanTransformation":  "El aprendiz aplica las reglas a casos reales, prioriza temas para lograr resultados y comienza a prever fricciones y respuestas, ganando práctica y juicio calibrado.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Priorizar y ordenar para llegar al resultado",
+                                                           "Description":  "Ejercicio para ordenar temas de agenda de modo que la secuencia dirija al resultado esperado, evitando pérdidas de tiempo.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Antes de ordenar, recuerda de memoria los criterios por tema (tiempo/responsable/resultado) y la idea de ordenar para conducir al resultado final.",
+                                                           "LearnerProduction":  "Una lista reordenada de temas (propia o propuesta) con una breve justificación de por qué ese orden lleva al resultado final.",
+                                                           "SuccessCriteria":  [
+                                                                                   "Cada tema reordenado muestra tiempo, responsable y resultado esperado.",
+                                                                                   "La justificación conecta la secuencia de temas con el logro del propósito/recurso final.",
+                                                                                   "Se evitan colocaciones que generen redundancia o tiempo perdido (p. ej. hablar de decisiones antes de reunir datos necesarios)."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Preparación del facilitador: prever fricciones y respuestas",
+                                                           "Description":  "Plan práctico para identificar fricciones previsibles (desacuerdos, falta de datos, ausencias) y preparar respuestas concretas que mantengan la reunión en curso.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence",
+                                                           "RecallRequirement":  "Antes de preparar, recuerda sin mirar cuáles son las fricciones comunes y piensa en al menos una respuesta posible para cada una.",
+                                                           "LearnerProduction":  "Un plan que lista al menos 3 fricciones previsibles para una reunión concreta y una respuesta concreta y accionable para cada una (qué dirás/harás y cuándo).",
+                                                           "SuccessCriteria":  [
+                                                                                   "Identifica al menos dos fricciones que coinciden con las descritas en el corpus (desacuerdo, falta de datos, ausencia de participante).",
+                                                                                   "Para cada fricción propone una respuesta concreta y accionable (no vaga).",
+                                                                                   "La respuesta está diseñada para preservar el flujo hacia la decisión/entrega (p. ej. posponer un ítem con criterio claro, delegar recolección de datos)."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Ejecutar una reunión corta con agenda accionable (práctica real o role‑play)",
+                                                           "Description":  "Poner en práctica una agenda mínima: dirigir la reunión, controlar tiempos y registrar la decisión/entregable final.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Antes de ejecutar, escribe de memoria la lista de verificación mínima: propósito con decisión, por cada tema tiempo/responsable/resultado y al menos una respuesta preparada a una fricción probable.",
+                                                           "LearnerProduction":  "Acta breve de la reunión realizada (real o role‑play) que incluye la agenda empleada, tiempos reales, decisiones/entregables alcanzados y responsables asignados.",
+                                                           "SuccessCriteria":  [
+                                                                                   "El acta registra una decisión o entregable concreto resultante de la reunión.",
+                                                                                   "Cada ítem tratado en la reunión tenía tiempo, responsable y resultado esperado en la agenda usada.",
+                                                                                   "Si surgió al menos una fricción prevista, el acta documenta la respuesta aplicada y su efecto para mantener el progreso."
+                                                                               ]
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Mastery",
+                                       "Title":  "Ejecutar y guiar reuniones sin asistencia",
+                                       "HumanTransformation":  "El aprendiz pasa a ejecutar reuniones autónomamente sin ayuda externa, iterar su formato y dar feedback experto a otros, demostrando independencia y juicio calibrado.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Facilitación autónoma: diseñar y ejecutar sin asistencia",
+                                                           "Description":  "Diseñar y facilitar una reunión real de la que seas responsable, sin consultar materiales ni usar asistencia AI en la preparación final, y entregar documentación completa.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Independence",
+                                                           "RecallRequirement":  "Sin consultar materiales ni notas, escribe de memoria la lista completa de criterios que usarás para diseñar la agenda (propósito/por‑tema: tiempo, responsable, resultado; y preparación para fricciones).",
+                                                           "LearnerProduction":  "Agenda final y reporte posterior a la reunión (incluye propósito, agenda con tiempos/responsables/resultados, registro de la decisión/entregable, lista de acciones y responsables, y nota sobre fricciones enfrentadas y respuestas aplicadas).",
+                                                           "SuccessCriteria":  [
+                                                                                   "La agenda cumple todos los requisitos por tema (tiempo, responsable, resultado) y comienza con un propósito que lleva a una decisión o entrega.",
+                                                                                   "El reporte muestra que la reunión produjo una decisión o entregable y asignó responsables de seguimiento.",
+                                                                                   "El diseñador declara y demuestra que no se usó asistencia AI ni consulta de materiales en la etapa final de diseño (autodeclaración y consistencia interna).",
+                                                                                   "Se documenta al menos una fricción prevista y la respuesta aplicada."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Mentoría: revisar y dar feedback práctico en agendas ajenas",
+                                                           "Description":  "Actuar como revisor/mentor: evaluar agendas de otros y proponer mejoras concretas (tiempos, responsables, orden, respuestas a fricciones).",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Confidence",
+                                                           "RecallRequirement":  "Antes de revisar, anota de memoria la lista de criterios clave para una agenda accionable que usarás como marco de evaluación.",
+                                                           "LearnerProduction":  "Dos evaluaciones escritas de agendas ajenas (reales o simuladas) que identifiquen problemas y propongan correcciones concretas y justificadas.",
+                                                           "SuccessCriteria":  [
+                                                                                   "Cada evaluación identifica al menos un incumplimiento de los requisitos por tema (tiempo/responsable/resultado) cuando exista.",
+                                                                                   "Proporciona correcciones concretas (p. ej. reasignar tiempos, añadir responsable, reordenar ítems) justificadas por cómo mejoran el resultado.",
+                                                                                   "Incluye al menos una recomendación para mitigar una fricción prevista y explica su efecto en el flujo hacia la decisión."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Desafío de Recuerdo de Facilitación (capstone)",
+                                                           "Description":  "Recuperar de memoria, sin consultar nada, los criterios, estructuras y conexiones vistos en toda la capacidad para demostrar que el conocimiento está interiorizado.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Recall",
+                                                           "RecallRequirement":  "Sin consultar materiales, notas ni ayuda externa, escribe de memoria los criterios y marcos clave presentados a lo largo de la capacidad.",
+                                                           "LearnerProduction":  "Un texto de recuerdo completo que enumera los conceptos centrales (propósito que conduce a decisión/entrega; requisitos por tema; anticipación de fricciones y respuestas; cómo ordenar temas para conducir al resultado) y explica al menos una conexión entre ellos.",
+                                                           "SuccessCriteria":  [
+                                                                                   "Recuerda correctamente el criterio de propósito que debe terminar en una decisión o entrega.",
+                                                                                   "Recuerda y enumera los requisitos por tema (tiempo, responsable, resultado) tal como se enseñó.",
+                                                                                   "Describe al menos una estrategia para anticipar y responder a fricciones previstas.",
+                                                                                   "Explica al menos una conexión entre conceptos de diferentes niveles (por ejemplo, cómo la preparación de fricciones afecta el orden de los temas).",
+                                                                                   "La producción fue realizada sin consultar notas, materiales o asistencia AI (autodeclaración)."
+                                                                               ]
+                                                       }
+                                                   ]
+                                   }
+                               ]
+                },
+    "Progress":  null,
+    "ErrorMessage":  null
+}

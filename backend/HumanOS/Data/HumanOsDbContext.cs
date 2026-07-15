@@ -1,7 +1,10 @@
+using HumanOS.Models.Agents;
 using HumanOS.Models.Assessments;
 using HumanOS.Models.Capabilities;
 using HumanOS.Models.Evidence;
 using HumanOS.Models.Goals;
+using HumanOS.Models.GrowthActions;
+using HumanOS.Models.JobDescriptions;
 using HumanOS.Models.Localization;
 using HumanOS.Models.People;
 using HumanOS.Models.Practice;
@@ -27,6 +30,14 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
 
     public DbSet<HumanProfile> HumanProfiles => Set<HumanProfile>();
+
+    public DbSet<HumanState> HumanStates => Set<HumanState>();
+
+    public DbSet<GrowthAction> GrowthActions => Set<GrowthAction>();
+
+    public DbSet<Agent> Agents => Set<Agent>();
+
+    public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
 
     public DbSet<Language> Languages => Set<Language>();
 
@@ -78,6 +89,27 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<AssessmentAttempt> AssessmentAttempts =>
         Set<AssessmentAttempt>();
+
+    public DbSet<JobDescriptionRecord> JobDescriptions =>
+        Set<JobDescriptionRecord>();
+
+    public DbSet<CapabilityLevel> CapabilityLevels =>
+        Set<CapabilityLevel>();
+
+    public DbSet<CapabilityModule> CapabilityModules =>
+        Set<CapabilityModule>();
+
+    public DbSet<CapabilityModuleMetric> CapabilityModuleMetrics =>
+        Set<CapabilityModuleMetric>();
+
+    public DbSet<CapabilityModuleVerification> CapabilityModuleVerifications =>
+        Set<CapabilityModuleVerification>();
+
+    public DbSet<CapabilityModuleSuccessCriterionResult> CapabilityModuleSuccessCriterionResults =>
+        Set<CapabilityModuleSuccessCriterionResult>();
+
+    public DbSet<CapabilityKnowledgeChunk> CapabilityKnowledgeChunks =>
+        Set<CapabilityKnowledgeChunk>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

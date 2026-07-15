@@ -1,0 +1,129 @@
+﻿{
+    "RunId":  "b6b0eac8-8ba3-4b01-9e67-409dc6435f7f",
+    "Stage":  "PendingGate",
+    "PendingSubjectId":  "968ca28b-aa28-44d2-b2fd-e0166fc073aa",
+    "Payload":  {
+                    "CapabilityName":  "Facilitar reuniones de trabajo efectivas",
+                    "Goal":  "Aprender a facilitar reuniones de trabajo efectivas, siendo capaz de crear y ejecutar agendas accionables por mi cuenta",
+                    "ScopeDeclaration":  "Scope: Foundation, Exploration, Mastery x Recall, Application, Confidence, Independence. Reason: el objetivo exige desde construir el esquema mental (Recall) hasta aplicar y ejecutar agendas en contextos reales (Application) y, finalmente, demostrar autonomía completa al facilitar reuniones sin ayuda (Independence); Confidence se incluye como métrica complementaria en Exploration para calibrar juicio del facilitador.",
+                    "Levels":  [
+                                   {
+                                       "Layer":  "Foundation",
+                                       "Title":  "Bases para agendas accionables",
+                                       "HumanTransformation":  "El alumno pasa de no identificar los elementos esenciales a reconocer y recordar los componentes que hacen una agenda accionable y los errores comunes.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Componentes esenciales de una agenda efectiva",
+                                                           "Description":  "Introduce el núcleo: propósito que termina en decisión/entrega, y los tres requisitos por tema (tiempo, responsable, resultado esperado).",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Recall",
+                                                           "RecallRequirement":  "Antes de leer, el/la alumno/a escribe de memoria qué elementos cree que son necesarios para que una agenda sea efectiva (sin consultar materiales).",
+                                                           "LearnerProduction":  "Una lista explícita de componentes que debe tener una agenda efectiva aplicada a un caso breve provisto por el instructor.",
+                                                           "SuccessCriteria":  [
+                                                                                   "La lista incluye un propósito que culmina en una decisión o entrega concreta.",
+                                                                                   "La lista menciona que cada tema requiere tiempo asignado, un responsable y un resultado esperado.",
+                                                                                   "La lista identifica que el facilitador debe anticipar fricciones."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Mini-práctica guiada: convertir un objetivo en una agenda con tiempos y responsables",
+                                                           "Description":  "Ejercicio guiado donde, paso a paso, el/la alumno/a transforma un objetivo de reunión en una agenda con timeboxes, responsables y resultados esperados.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Antes de empezar, el/la alumno/a enumera de memoria los criterios clave que deberá aplicar (propósito, tiempo, responsable, resultado esperado); puede recibir ayudas sólo después de esa primera respuesta.",
+                                                           "LearnerProduction":  "Una agenda corta (3–5 ítems) para el objetivo provisto que incluye propósito claro, timebox para cada ítem, responsable y resultado esperado por ítem.",
+                                                           "SuccessCriteria":  [
+                                                                                   "La agenda declara un propósito que lleva a una decisión o entrega concreta.",
+                                                                                   "Cada ítem tiene un timebox asignado.",
+                                                                                   "Cada ítem tiene un responsable nombrado y un resultado esperado."
+                                                                               ]
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Exploration",
+                                       "Title":  "Aplicar y evaluar agendas en variantes reales",
+                                       "HumanTransformation":  "El alumno pasa de aplicar un patrón guiado a crear y evaluar agendas en variantes, detectando fallos y calibrando su confianza al juzgar si una agenda será efectiva.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Diagnóstico: identificar fallos y consecuencias en agendas reales",
+                                                           "Description":  "Evaluación de agendas breves para detectar errores comunes (sin tiempo, sin objetivo por tema, sin responsable, sin espacio para fricciones) y relacionarlos con consecuencias.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Recall",
+                                                           "RecallRequirement":  "Antes de evaluar cada ejemplo, el/la alumno/a enumera de memoria los criterios que usará para juzgar la agenda (propósito claro; tiempo, responsable, resultado por ítem; prever fricciones).",
+                                                           "LearnerProduction":  "Anotaciones sobre cada agenda ejemplo señalando elementos faltantes y la consecuencia probable para la reunión.",
+                                                           "SuccessCriteria":  [
+                                                                                   "Para al menos 3 ejemplos, identifica correctamente la ausencia de timebox, responsable o resultado esperado cuando corresponde.",
+                                                                                   "Para agendas con propósito ambiguo, marca que el propósito no conduce a decisión/entrega.",
+                                                                                   "Relaciona al menos una ausencia detectada con la consecuencia prevista (p. ej. alargamiento o falta de decisión)."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Convertir variantes en agendas accionables",
+                                                           "Description":  "Crear agendas accionables para variantes de reuniones (p. ej. reunión orientada a decisión o entrega) aplicando los criterios sin guía paso a paso.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Antes de redactar la agenda, el/la alumno/a lista sin ayudas los criterios que deberá cumplir (propósito=decisión/entrega; por ítem: tiempo, responsable, resultado esperado; plan para fricciones).",
+                                                           "LearnerProduction":  "Una agenda accionable para la variante asignada que ordena ítems para conducir al resultado esperado y que prevé al menos una respuesta ante una fricción plausible.",
+                                                           "SuccessCriteria":  [
+                                                                                   "El propósito de la agenda está formulado como decisión o entrega concreta.",
+                                                                                   "Cada ítem incluye tiempo, responsable y resultado esperado.",
+                                                                                   "El orden de los ítems conduce lógicamente al resultado final esperado.",
+                                                                                   "Incluye al menos una respuesta preparada para una fricción prevista (desacuerdo, falta de datos o participante ausente)."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Calibrar confianza: juzgar si una agenda es suficiente",
+                                                           "Description":  "Práctica de juicio donde el/la alumno/a evalúa agendas reales, asigna un nivel de confianza a su suficiencia y justifica la decisión con criterios concretos; luego compara con feedback del simulador.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence",
+                                                           "RecallRequirement":  "Antes de emitir cada juicio de suficiencia, el/la alumno/a recuerda y anota los criterios clave que usará para valorar la agenda.",
+                                                           "LearnerProduction":  "Para cada agenda: una valoración de confianza (escala breve) y una justificación que cite criterios específicos usados para la decisión; tras feedback, una breve reflexión de calibración.",
+                                                           "SuccessCriteria":  [
+                                                                                   "La justificación cita al menos dos criterios relevantes (p. ej. ausencia de timebox y falta de responsable) por agenda evaluada.",
+                                                                                   "La reflexión posterior muestra ajuste de confianza cuando el feedback corrige una valoración errónea (p. ej. reduce confianza si el feedback revela fallos no identificados).",
+                                                                                   "Al menos el 80% de las valoraciones altas corresponden a agendas que cumplen los criterios esenciales según el feedback del simulador."
+                                                                               ]
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Mastery",
+                                       "Title":  "Facilitar reuniones autónomamente y gestionar fricciones",
+                                       "HumanTransformation":  "El alumno pasa de aplicar agendas en ejercicios a planear y facilitar reuniones reales sin ayuda, garantizando decisiones/entregables y manejando fricciones previstas.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Simulación completa: planificar, facilitar y cerrar una reunión simulada",
+                                                           "Description":  "Simulación interactiva con participantes que presenta fricciones (desacuerdo, falta de datos, ausencias). El/la alumno/a planifica agenda, facilita la reunión y obtiene la decisión/entrega dentro de los timeboxes.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Application",
+                                                           "RecallRequirement":  "Sin consultar materiales, el/la alumno/a escribe de memoria la lista de criterios y la estrategia de anticipación de fricciones que implementará antes de diseñar la agenda y conducir la simulación.",
+                                                           "LearnerProduction":  "Una agenda completa y un guion de facilitación aplicado en la simulación, más un resumen de cierre que muestre la decisión o entregable alcanzado y cómo se gestionaron las fricciones.",
+                                                           "SuccessCriteria":  [
+                                                                                   "La simulación concluye con una decisión o entregable concreto registrado en el resumen de cierre.",
+                                                                                   "Cada ítem de la agenda usado en la simulación tuvo timebox, responsable y resultado esperado.",
+                                                                                   "Al menos dos fricciones previsibles ocurrieron y fueron gestionadas con la respuesta preparada por el/la alumno/a.",
+                                                                                   "El desarrollo de la reunión se mantuvo dentro de los timeboxes clave (desviación razonable máxima aplicada según la simulación)."
+                                                                               ]
+                                                       },
+                                                       {
+                                                           "Title":  "Capstone autónomo: facilitar una reunión real sin ayudas externas",
+                                                           "Description":  "Ejercicio real donde el/la alumno/a prepara, facilita y documenta una reunión de su entorno laboral o equipo, sin usar asistencia de IA ni guías durante la ejecución.",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Independence",
+                                                           "RecallRequirement":  "Antes de la reunión, el/la alumno/a redacta de memoria la lista de criterios y su plan para fricciones sin consultar materiales o pedir ayuda.",
+                                                           "LearnerProduction":  "Documento final que incluye la agenda usada, notas de facilitación, evidencia de la reunión (minutas o acta) y el resultado final (decisión o entregable y responsables asignados).",
+                                                           "SuccessCriteria":  [
+                                                                                   "La acta o minutas muestran una decisión concreta o entregable resultado de la reunión.",
+                                                                                   "Cada ítem de la agenda incluida en el documento final tiene timebox, responsable y resultado esperado.",
+                                                                                   "Al menos una fricción prevista ocurrió y la respuesta planeada se implementó de forma documentada.",
+                                                                                   "El alumno demuestra que no recurrió a asistencia de IA durante la preparación ni la ejecución (declaración y/o evidencia según el mentor)."
+                                                                               ]
+                                                       }
+                                                   ]
+                                   }
+                               ]
+                },
+    "Progress":  null,
+    "ErrorMessage":  null
+}

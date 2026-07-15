@@ -1,0 +1,191 @@
+﻿{
+    "RunId":  "789e36df-da00-47a7-9b0a-7489cdaff3c2",
+    "Stage":  0,
+    "PendingSubjectId":  "aedd5c93-5c32-4bb8-bd4f-46448a842aaa",
+    "Payload":  {
+                    "CapabilityName":  "Conseguir mi primer trabajo",
+                    "Goal":  "Conseguir mi primer trabajo",
+                    "Levels":  [
+                                   {
+                                       "Layer":  "Foundation",
+                                       "Title":  "Entender qué buscan y preparar un CV inicial",
+                                       "HumanTransformation":  "El/la aprendiz deja de no saber qué importa para los reclutadores y pasa a tener un esquema claro de lo que hay que mostrar en un CV para un primer empleo (palabras clave, logros cuantificables y proyectos relevantes).",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Qué ven los reclutadores en 30 segundos",
+                                                           "Description":  "Lectura breve que explica las prioridades del reclutador (palabras clave, logros medibles y señales de progresión) y por qué el primer vistazo es decisivo.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Formato probado para cada línea del CV",
+                                                           "Description":  "Video que enseña el patrón \u0027verbo de acción + qué hiciste + resultado medible\u0027 con ejemplos aplicados a proyectos académicos y prácticas.",
+                                                           "Type":  "Video",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Escribe 3 líneas de tu CV usando el formato",
+                                                           "Description":  "Práctica guiada: con plantillas y preguntas guía (cues), el/la alumno/a transforma tareas en logros cuantificables para tres experiencias o proyectos.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Recall"
+                                                       },
+                                                       {
+                                                           "Title":  "Chequeo rápido: ¿mi CV pasa un filtro ATS básico?",
+                                                           "Description":  "SimuladorIA que analiza un CV inicial y devuelve las principales palabras clave que faltan y cambios recomendados (explicados paso a paso).",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Exploration",
+                                       "Title":  "Experimentar adaptando CV, LinkedIn y respuestas conductuales",
+                                       "HumanTransformation":  "El/la aprendiz deja de aplicar una versión única del CV y empieza a probar variantes alineadas a ofertas concretas; además comienza a estructurar respuestas conductuales con STAR.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Cómo funciona el proceso de selección y el filtro ATS",
+                                                           "Description":  "Lectura que detalla las cuatro etapas típicas de selección y por qué adaptar el CV por oferta evita ser descartado en el ATS.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Alinea tu LinkedIn con tu CV",
+                                                           "Description":  "Video práctico con checklist para que el perfil (foto, titular, resumen) cuente la misma historia que el CV y muestre claramente el rol buscado.",
+                                                           "Type":  "Video",
+                                                           "TargetMetric":  "Recall"
+                                                       },
+                                                       {
+                                                           "Title":  "Adapta tu CV a 2 ofertas distintas",
+                                                           "Description":  "Práctica: el/la alumno/a toma dos descripciones de puesto y adapta su CV para cada una, enfocándose en palabras clave y logros medibles.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Practica STAR: grábate respondiendo 3 preguntas conductuales",
+                                                           "Description":  "SimuladorIA que propone preguntas conductuales, permite grabar respuestas y ofrece feedback sobre estructura STAR y muletillas.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Retention"
+                                                       },
+                                                       {
+                                                           "Title":  "Explora tus límites: qué incluir cuando tienes poca experiencia",
+                                                           "Description":  "Lectura breve con estrategias para priorizar proyectos personales, prácticas y logros académicos en el CV de primer empleo.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Mastery",
+                                       "Title":  "Pulir y aplicar con fluidez en entrevistas y ATS",
+                                       "HumanTransformation":  "El/la aprendiz pasa de practicar por separado a integrar CV, LinkedIn y respuestas; responde STAR con fluidez y produce variantes de CV que superan filtros iniciales.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Interleaving: practica entrevistas telefónicas, técnicas y finales",
+                                                           "Description":  "Práctica estructurada que alterna simulaciones de screening telefónico, preguntas técnicas básicas y entrevistas finales para construir transferibilidad.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Optimización avanzada para ATS: prueba múltiples variantes",
+                                                           "Description":  "SimuladorIA que compara variantes del CV frente a una descripción de puesto y muestra qué versión obtiene mejor \u0027matches\u0027 de palabras clave y por qué.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Recall"
+                                                       },
+                                                       {
+                                                           "Title":  "Preparación para la negociación y la etapa final",
+                                                           "Description":  "Lectura y checklist que reúne cómo investigar rangos de mercado, preparar preguntas para la empresa y tácticas básicas de negociación (no dar el primer número).",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Revisión crítica de tus grabaciones",
+                                                           "Description":  "Práctica de auto-feedback: revisar las grabaciones STAR y anotar mejoras concretas; objetivo: confiar en tu propia valoración y pulir lenguaje.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Professional",
+                                       "Title":  "Aplicar en condiciones reales y recoger evidencia de progreso",
+                                       "HumanTransformation":  "El/la aprendiz deja la práctica simulada y actúa en el mundo real: envía candidaturas adaptadas, pasa screenings y procesa rechazos/entrevistas como datos para mejorar.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Enviar y rastrear candidaturas reales",
+                                                           "Description":  "Práctica guiada para postular a ofertas prioritarias, registrar resultados por variante de CV y aprender a iterar según feedback del proceso.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Simulación bajo presión: screening telefónico en tiempo real",
+                                                           "Description":  "SimuladorIA que recrea un screening con tiempo limitado y preguntas inesperadas; ideal para practicar respuestas concisas y control de ansiedad.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence"
+                                                       },
+                                                       {
+                                                           "Title":  "Role-play de negociación salarial",
+                                                           "Description":  "Práctica con guion para ensayar respuestas, evitar dar el primer número y presentar rangos basados en investigación de mercado.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Independence"
+                                                       },
+                                                       {
+                                                           "Title":  "Checklist de pre-entrevista final (investigar empresa y preparar 3 preguntas)",
+                                                           "Description":  "Lectura-plantilla para la preparación final antes de entrevistas decisivas, con guía para formular preguntas propias relevantes.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Retention"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Frontier",
+                                       "Title":  "Adaptar ante lo inesperado y empezar a guiar a otros",
+                                       "HumanTransformation":  "El/la aprendiz deja de depender de instrucciones y maneja entrevistas y ofertas en contextos inciertos; además empieza a mentorizar a pares, consolidando su dominio.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Resolver preguntas imprevistas y entrevistas en dominios distintos",
+                                                           "Description":  "Práctica avanzada para transferir respuestas STAR y adaptar tu CV/argumento a roles o industrias nuevas.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Application"
+                                                       },
+                                                       {
+                                                           "Title":  "Mentor: guiar a un compañero en la revisión de su CV",
+                                                           "Description":  "Mentoría dirigida: el/la aprendiz acompaña a otro candidato revisando CV y simulando preguntas, aplicando criterios de reclutador y dando feedback accionable.",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Mastery"
+                                                       },
+                                                       {
+                                                           "Title":  "Negociación en escenarios complejos",
+                                                           "Description":  "SimuladorIA que recrea ofertas con beneficios no salariales (fechas de inicio, formación, horario) para practicar trade-offs y prioridad de intereses.",
+                                                           "Type":  "SimuladorIA",
+                                                           "TargetMetric":  "Confidence"
+                                                       }
+                                                   ]
+                                   },
+                                   {
+                                       "Layer":  "Creator",
+                                       "Title":  "Enseñar, crear recursos y sostener tu marca profesional",
+                                       "HumanTransformation":  "El/la aprendiz deja de ser consumidor y se convierte en creador: diseña su propio esquema de marca profesional, publica evidencias de su trabajo y enseña a otros, demostrando dominio total.",
+                                       "Modules":  [
+                                                       {
+                                                           "Title":  "Diseña tu propia guía \u0027Cómo conseguir mi primer trabajo\u0027",
+                                                           "Description":  "Lectura/plantilla para sintetizar lo aprendido en una guía personalizable: proceso, plantillas de CV/LinkedIn y scripts STAR para situaciones clave.",
+                                                           "Type":  "Lectura",
+                                                           "TargetMetric":  "Knowledge"
+                                                       },
+                                                       {
+                                                           "Title":  "Publica tu portafolio y casos de éxito",
+                                                           "Description":  "Práctica para crear y publicar un portafolio/landing con proyectos, métricas e historias STAR que respalden tu CV; objetivo: independencia total en la presentación profesional.",
+                                                           "Type":  "Practica",
+                                                           "TargetMetric":  "Independence"
+                                                       },
+                                                       {
+                                                           "Title":  "Taller de mentoría: enseñar CV y entrevistas a nuevos candidatos",
+                                                           "Description":  "Mentoría donde el/la creador/a facilita un taller, entrega feedback y evalúa progreso: demuestra capacidad para enseñar y adaptar el contenido a distintos perfiles.",
+                                                           "Type":  "Mentoria",
+                                                           "TargetMetric":  "Mastery"
+                                                       }
+                                                   ]
+                                   }
+                               ]
+                }
+}

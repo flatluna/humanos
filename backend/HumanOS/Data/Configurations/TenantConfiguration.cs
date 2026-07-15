@@ -30,6 +30,15 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(x => x.Description)
             .HasMaxLength(1000);
 
+        builder.Property(x => x.Address)
+            .HasMaxLength(500);
+
+        builder.Property(x => x.Email)
+            .HasMaxLength(255);
+
+        builder.Property(x => x.Phone)
+            .HasMaxLength(50);
+
         builder.Property(x => x.CultureCode)
             .HasMaxLength(10)
             .HasDefaultValue("en-US")

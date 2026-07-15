@@ -1,3 +1,4 @@
+using HumanOS.Models.JobDescriptions;
 using HumanOS.Models.People;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -58,6 +59,8 @@ public sealed class PersonProfileConfiguration
         builder.Property(x => x.Biography)
             .HasMaxLength(4000);
 
+        builder.Property(x => x.CurrentJobDescriptionId);
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")
@@ -80,6 +83,12 @@ public sealed class PersonProfileConfiguration
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName(
                 "FK_PersonProfile_PreferredLanguage");
+
+        builder.HasOne(x => x.CurrentJobDescription)
+            .WithMany()
+            .HasForeignKey(x => x.CurrentJobDescriptionId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName("FK_PersonProfile_CurrentJobDescription");
 
         builder.HasIndex(x => x.PersonId)
             .IsUnique()

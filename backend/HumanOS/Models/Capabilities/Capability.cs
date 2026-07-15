@@ -23,4 +23,8 @@ public sealed class Capability
     public ICollection<CapabilityTranslation> Translations { get; set; } = [];
 
     public ICollection<PersonCapability> PersonCapabilities { get; set; } = [];
+
+    public ICollection<CapabilityLevel> Levels { get; set; } = [];
+
+    public ICollection<CapabilityKnowledgeChunk> KnowledgeChunks { get; set; } = [];
 }

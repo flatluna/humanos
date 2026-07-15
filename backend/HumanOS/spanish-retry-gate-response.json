@@ -1,0 +1,13 @@
+﻿{
+    "RunId":  "176de551-3f55-42bb-9d7a-d612f850ee3d",
+    "Stage":  "Running",
+    "PendingSubjectId":  null,
+    "Payload":  null,
+    "Progress":  {
+                     "TotalModules":  null,
+                     "CompletedModules":  null,
+                     "CurrentModuleTitle":  null,
+                     "PublishTasks":  null
+                 },
+    "ErrorMessage":  null
+}

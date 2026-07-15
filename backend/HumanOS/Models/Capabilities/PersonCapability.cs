@@ -28,6 +28,15 @@ public sealed class PersonCapability
 
     public decimal? ConfidenceScore { get; set; }
 
+    /// <summary>0-100. Factual/conceptual knowledge of the capability.</summary>
+    public int KnowledgeScore { get; set; }
+
+    /// <summary>0-100. Unassisted recall strength (anti AI-lookup paradox).</summary>
+    public int RecallScore { get; set; }
+
+    /// <summary>0-100. Ability to apply the capability in real situations.</summary>
+    public int ApplicationScore { get; set; }
+
     public DateTime? StartedDate { get; set; }
 
     public DateTime? LastActivityDate { get; set; }
@@ -36,6 +45,10 @@ public sealed class PersonCapability
 
     public DateTime UpdatedDate { get; set; }
 
+    /*
+     * Navigation properties
+     */
+
     public Person Person { get; set; } = null!;
 
     public Capability Capability { get; set; } = null!;
@@ -43,4 +56,6 @@ public sealed class PersonCapability
     public ICollection<CapabilityPractice> Practices { get; set; } = [];
 
     public ICollection<RecallAttempt> RecallAttempts { get; set; } = [];
+
+    public ICollection<CapabilityEvidence> CapabilityEvidence { get; set; } = [];
 }

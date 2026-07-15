@@ -6,11 +6,11 @@ using System.Net;
 
 namespace HumanOS.AzureFunctions.Api;
 
-public sealed class DatabaseHealthFunction
+public class DatabaseHealthFunction
 {
-    private readonly HumanOsDbContext _dbContext;
+    private readonly HumanOsDbContext? _dbContext;
 
-    public DatabaseHealthFunction(HumanOsDbContext dbContext)
+    public DatabaseHealthFunction(HumanOsDbContext? dbContext = null)
     {
         _dbContext = dbContext;
     }
@@ -21,25 +21,40 @@ public sealed class DatabaseHealthFunction
             AuthorizationLevel.Anonymous,
             "get",
             Route = "health/database")]
-        HttpRequestData request,
-        CancellationToken cancellationToken)
+        HttpRequestData request)
     {
-        var canConnect = await _dbContext.Database.CanConnectAsync(
-            cancellationToken);
+        HttpStatusCode statusCode = HttpStatusCode.ServiceUnavailable;
+        string status = "Unavailable";
+        string message = "Database context not configured";
 
-        var response = request.CreateResponse(
-            canConnect
-                ? HttpStatusCode.OK
-                : HttpStatusCode.ServiceUnavailable);
+        if (_dbContext != null)
+        {
+            try
+            {
+                await using var connection = _dbContext.Database.GetDbConnection();
+                await connection.OpenAsync();
+                statusCode = HttpStatusCode.OK;
+                status = "Healthy";
+                message = "";
+            }
+            catch (Exception ex)
+            {
+                statusCode = HttpStatusCode.ServiceUnavailable;
+                status = "Unhealthy";
+                message = ex.ToString();
+            }
+        }
+
+        var response = request.CreateResponse(statusCode);
 
         await response.WriteAsJsonAsync(
             new
             {
-                status = canConnect ? "Healthy" : "Unhealthy",
+                status,
                 database = "HumanOSDev",
+                message,
                 checkedAtUtc = DateTime.UtcNow
-            },
-            cancellationToken);
+            });
 
         return response;
     }

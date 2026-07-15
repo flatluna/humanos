@@ -57,6 +57,18 @@ public sealed class PersonCapabilityConfiguration
         builder.Property(x => x.ConfidenceScore)
             .HasPrecision(5, 2);
 
+        builder.Property(x => x.KnowledgeScore)
+            .HasDefaultValue(0)
+            .IsRequired();
+
+        builder.Property(x => x.RecallScore)
+            .HasDefaultValue(0)
+            .IsRequired();
+
+        builder.Property(x => x.ApplicationScore)
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.Property(x => x.StartedDate)
             .HasColumnType("datetime2");
 

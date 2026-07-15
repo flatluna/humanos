@@ -34,9 +34,15 @@ public sealed class Evidence
 
     public DateTime CreatedDate { get; set; }
 
+    /*
+     * Navigation properties
+     */
+
     public Person Person { get; set; } = null!;
 
     public Capability Capability { get; set; } = null!;
 
     public PersonProject? PersonProject { get; set; }
+
+    public ICollection<CapabilityEvidence> CapabilityEvidence { get; set; } = [];
 }

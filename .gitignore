@@ -1,0 +1,15 @@
+# Root-level safety net for this monorepo (backend/, frontend/*, humanstudio/
+# each already have their own more specific .gitignore).
+
+# Stray build/dependency caches that can appear at the repo root depending on
+# which folder a dev server was started from.
+.vite/
+node_modules/
+bin/
+obj/
+dist/
+dist-ssr/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db

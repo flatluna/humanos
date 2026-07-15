@@ -1,0 +1,488 @@
+﻿CURSO: Repaso rápido de acentuación en español
+================================================================================
+
+TUTOR KNOWLEDGE BASE (resumen consolidado):
+--------------------------------------------------------------------------------
+Resumen para el tutor (objetivo del capability): repasar rápidamente las reglas básicas de acentuación en español y mantenerlas en memoria mediante predicción, producción activa y repaso espaciado. Métricas que valoramos: Knowledge, Recall, Retention, Application e Independence.
+
+Reglas esenciales (el corpus):
+- Agudas: tilde si terminan en n, s o vocal. Ejemplos: canción, autobús, sofá.
+- Llanas / graves: tilde cuando NO terminan en n, s ni vocal. Ejemplos: árbol, fácil, azúcar.
+- Esdrújulas y sobresdrújulas: siempre llevan tilde. Ejemplos: música, teléfono, comuníqueselo.
+Regla general: la tilde depende del tipo de palabra (aguda/llana/esdrújula/sobresdrújula) y de su terminación; las esdrújulas y sobresdrújulas siempre se tildan.
+
+Procedimiento paso a paso que debe enseñar el tutor (método repetible):
+1) Identificar la sílaba tónica: contar desde la última sílaba (1 = última, 2 = penúltima, 3 = antepenúltima).
+2) Clasificar: 1 → aguda; 2 → llana/grave; 3+ → esdrújula/sobresdrújula.
+3) Aplicar la regla correspondiente:
+   - Aguda: tilde solo si termina en n, s o vocal.
+   - Llana: tilde solo si NO termina en n, s o vocal.
+   - Esdrújula/sobresdrújula: siempre tilde.
+4) Formar la respuesta: escribir la forma con tilde (si aplica) y dar la razón breve (tipo + condición de terminación o “siempre”).
+
+Nemotecnias y explicaciones visuales (usar cuando el alumno pide otra explicación):
+- NSV = Aguda (N,S,Vocal). Repite: si es aguda y termina en N/S/Vocal → tilde.
+- Imágenes: flecha hacia la última sílaba (agudas), balanza en la penúltima (llanas), lámpara sobre la antepenúltima (esdrújulas).
+- Técnica práctica: marca la sílaba tónica con MAYÚSCULAS o subrayado para visualizar.
+
+Modelos y ejemplos que el tutor debe usar (textos del corpus):
+- cancion → canción: aguda; sí porque termina en n.
+- autobus → autobús: aguda; sí porque termina en s.
+- sofa → sofá: aguda; sí porque termina en vocal.
+- arbol → árbol: llana; sí porque termina en l (no es n/s/vocal).
+- facil → fácil: llana; sí porque termina en l.
+- azucar → azúcar: llana; sí porque termina en r.
+- musica → música: esdrújula; sí siempre.
+- telefono → teléfono: esdrújula; sí siempre.
+- comuniqueselo → comuníqueselo: sobresdrújula; sí siempre.
+- Otros ejemplos del material: arroz, casa, lápiz (aparecen en ejercicios de práctica sin pistas).
+
+Estrategia pedagógica y guiones de interacción (qué pedir al alumno y cuándo):
+- Predicción antes de enseñar la regla: pedir al alumno que escriba una palabra aguda, una llana y una esdrújula que crea llevan tilde y por qué (activa la memoria previa).
+- Producción inmediata: corregir esas mismas palabras sin mirar la regla (forzar re-encoding).
+- Marcar la sílaba tónica: pedir que pongan MAYÚSCULAS o subrayado en la sílaba fuerte antes de decidir la tilde.
+- Práctica guiada con pistas: dar tipo y terminación (ej.: aguda, termina en "n") y pedir respuesta antes de mostrar explicación inmediata.
+- Práctica sin pistas (recuerdo real): lista de 12 ítems; alumno escribe la forma acentuada y una frase breve justificando (tipo + razón).
+
+Diseño de retroalimentación (cómo debe responder el tutor):
+- Retroalimentación inmediata por ítem: forma correcta, si la respuesta fue correcta, y una explicación breve usando las reglas del corpus (tipo + condición).
+- Cuando el alumno falla: señalar el patrón concreto que engañó (p. ej. terminación confusa o identificación errónea de la sílaba tónica) y pedir que rehaga la forma con una explicación en sus propias palabras.
+
+Repasos espaciados y automatizados (lo que el sistema ofrece y cómo integrarlo):
+- Mini-quiz automático a las 24 h: 8 palabras elegidas por el alumno; feedback inmediato por ítem (forma correcta + breve explicación).
+- Secuencia de repasos: Quiz Día 1 (tras predicción y lectura), y Quiz Día 3 (sin repasar reglas antes) con mezcla intercalada de palabras vistas y nuevas. Metas: Día 1 ≥70% correcto; Día 3 aspirar ≥90%.
+- Pedir al alumno que confirme compromiso («Confirmo que no repasaré estas palabras hasta mañana y quiero el quiz a las 24 h.») para activar el simulador.
+
+Actividades y formatos concretos que el tutor debe usar:
+- Escritura activa y obligación de predecir antes de ver respuestas (antioffloading).
+- Ejercicios con pistas (10 ítems modelo) y práctica sin pistas (12 ítems) para medir independencia.
+- Uso de la producción personal: pedir 1–6 palabras propias en las que duda el alumno y trabajarlas en los quizzes.
+
+Casos límite y variantes (qué mencionar pero sin ampliar fuera del corpus):
+- El material explora compuestos, sobresdrújulas, diptongos y ejemplos confusos para ampliar el esquema mental. El tutor debe invitar al alumno a aportar palabras personales donde duda y aplicar las reglas básicas; no introducir reglas nuevas no presentes en el corpus.
+
+Errores frecuentes y cómo corregirlos (orientación para el tutor):
+- Confusión por la terminación (creer que cierta consonante obliga o impide tilde). Solución: volver al paso 1–3 y aplicar la regla de terminaciones.
+- Identificar mal la sílaba tónica. Solución: pedir que marque la sílaba tónica contando desde la última y modelar con ejemplos.
+
+Si el alumno dice “no entendí”: formas alternativas de explicación (manteniéndose en corpus):
+- Reexplicar con el conteo: «Cuenta sílabas desde la última: si la tónica es 1 → aguda; 2 → llana; 3+ → esdrújula. Luego aplica la regla de terminación.»
+- Dar la nemotecnia NSV y mostrar un ejemplo paso a paso (p. ej. cancion → contar → aguda → termina en n → tilde).
+- Usar la imagen breve: flecha última/ balanza penúltima/ lámpara antepenúltima y volver a modelar una palabra.
+- Pedir que produzca una palabra propia y acompañarlo paso a paso aplicando el método.
+
+Registro y métricas que debe recoger y comunicar al alumno:
+- Conteo de aciertos por sesión, errores repetidos, mejora entre Día 1 y Día 3.
+- Indicar ítems fallados y pedir re-encoding inmediato (reescribir forma correcta + breve explicación propia).
+
+Tono y limitaciones del tutor:
+- Mantener explicaciones concisas, pedir siempre producción previa a la retroalimentación y fomentar el espaciado (no repasar inmediatamente cuando está programado dejar pasar 24–48 h). 
+- No añadir reglas o excepciones que no figuren en el corpus; usar solo los ejemplos y la formulación de las reglas proporcionadas.
+
+Fin del resumen: este conocimiento debe permitir al tutor guiar predicciones, modelar el conteo de sílabas, aplicar NSV, dar feedback itemizado y programar repasos espaciados (24 h y Día 3) para consolidar la memoria.
+
+================================================================================
+
+MODULO 1 : Lectura: Resumen rápido de las reglas básicas
+Tipo: Lectura  |  TargetMetric (asignado por Arquitecto): Knowledge
+Descripcion: Lectura concisa que explica: agudas → tilde si terminan en n, s o vocal; llanas/graves → tilde si NO terminan en n, s o vocal; esdrújulas/sobresdrújulas → siempre llevan tilde. Incluye ejemplos (canción, árbol, música).
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Objetivo: Aprender, en forma breve y práctica, cuándo llevan tilde las palabras agudas, llanas/graves y esdrújulas/sobresdrújulas.
+
+Conéctalo a lo que ya sabes (breve): piensa en la última vez que viste una tilde en una palabra. ¿Por qué te llamó la atención? Escríbelo en una línea. (Esto prepara tu memoria.)
+
+Antes de leer la regla: PREDICE y escribe (no leas más hasta que lo hagas)
+1) Escribe una palabra aguda que pienses que lleva tilde. ¿Por qué crees que la lleva? (1–2 frases)
+2) Escribe una palabra llana/grave que pienses que lleva tilde. ¿Por qué? (1–2 frases)
+3) Escribe una palabra esdrújula que pienses que lleva tilde. ¿Por qué?
+
+(Detente aquí y escribe tus tres respuestas.)
+
+Ahora las reglas concisas (lee solo después de escribir):
+- Agudas: llevan tilde cuando terminan en n, s o vocal. Ejemplos: canción, autobús, sofá.
+- Llanas/graves: llevan tilde cuando NO terminan en n, s o vocal. Ejemplos: árbol, fácil, azúcar.
+- Esdrújulas y sobresdrújulas: siempre llevan tilde. Ejemplos: música, teléfono, comuníqueselo.
+Resumen rápido: la tilde depende del tipo de palabra (aguda/llana/esdrújula) y de sus terminaciones; las esdrújulas/sobresdrújulas siempre se tildan.
+
+Aplica ahora (produce): sin mirar las reglas arriba, corrige las tres palabras que escribiste al principio. Para cada palabra escribe: a) tipo (aguda/llana/esdrújula), b) ¿lleva tilde? (sí/no), c) breve razón basada en la regla.
+
+Práctica guiada (hazlo antes de mirar las respuestas que siguen): clasifica y decide si llevan tilde estas palabras:
+- cancion
+- arbol
+- musica
+(Escribe tu respuesta: tipo y sí/no y por qué.)
+
+Respuestas modelo (comprueba después de escribir las tuyas):
+- canción — aguda; sí lleva tilde porque termina en «n». (Ej.: canción)
+- árbol — llana/grave; sí lleva tilde porque NO termina en n, s ni vocal (termina en «l»). (Ej.: árbol)
+- música — esdrújula; sí lleva tilde siempre. (Ej.: música)
+
+Ejercicio personal (producción real, P4 encoding specificity): escribe una palabra que uses a menudo (puede ser tu nombre, una calle, un objeto). Clasifícala (aguda/llana/esdrújula) y explica si necesita tilde y por qué. Si quieres, pega esa palabra aquí.
+
+Cierre y consolidación (espaciado): mañana te pediré que vuelvas a hacer: 1) clasificarás las mismas tres palabras de práctica (canción, árbol, música) sin pistas, y 2) corregirás la palabra personal que escogiste. No repases hoy; confía en la memoria y duerme — la diferencia mostrará el aprendizaje.
+
+Última comprobación rápida: antes de terminar, responde en una línea: ¿qué distingue a una aguda de una llana en cuanto a cuándo llevan tilde? (Esto ayuda a crear el esquema mental.)
+
+Buen trabajo — escribiste, aplicaste y programaste la revisión: tres pasos esenciales para aprender.
+
+METRICAS VERIFICADAS (Metrico): Knowledge, Recall, Retention, Application
+RATIONALE: The script meets the TargetMetric (Knowledge): it forces learners to PREDICT before rules are revealed, connects to prior experience, then provides concise rules with examples and asks learners to classify and justify — supporting clear conceptual understanding. It also uses retrieval practice (produce answers before checking model responses) and schedules a spaced review for the next day, so it genuinely supports Recall and Retention; asking learners to correct their own and personal words gives a small but real Application component as well.
+================================================================================
+
+MODULO 2 : Video: Nemotecnia visual y ejemplos guiados
+Tipo: Video  |  TargetMetric (asignado por Arquitecto): Recall
+Descripcion: Video de 3–4 minutos con reglas visuales y una nemotecnia (p. ej. 'nsv = aguda') y marcación guiada de palabras con pistas sobre la sílaba tónica.
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Inicio (0:00–0:20)
+- Antes de mirar las reglas, pausa el vídeo y escribe en 10–20 segundos: ¿qué crees que determina si una palabra lleva tilde? Escribe también una respuesta rápida: “Las agudas llevan tilde cuando _____”. (Predicción obligatoria.)
+
+Conexión rápida (0:20–0:40)
+- Piensa en la última palabra que escribiste hoy (en tu mensaje, nota o chat). Escribe esa palabra aquí y subraya mentalmente la sílaba que suena más fuerte. (Conectar a algo que ya conoces.)
+
+La regla visual y la nemotecnia (0:40–1:10)
+- Nemotecnia simple: NSV = Aguda. Eso significa: si una palabra termina en N, S o Vocal, y la sílaba tónica es la última, entonces ES aguda y lleva tilde.
+- Visual rápido: imagina una flecha hacia la última sílaba para las agudas; una flecha hacia la penúltima para las llanas; y una luz que ilumina la antepenúltima para las esdrújulas.
+
+Reglas claras (1:10–1:40)
+- Agudas: llevan tilde cuando terminan en n, s o vocal. (Ej.: cancion, autobus, sofa)
+- Llanas/Graves: llevan tilde cuando NO terminan en n, s o vocal. (Ej.: arbol, facil, azucar)
+- Esdrújulas y sobresdrújulas: siempre llevan tilde (son siempre tildadas). (Ej.: musica, telefono, comuniqueselo)
+
+Ejemplo guiado (modelado) (1:40–1:55)
+- Hazlo conmigo: toma “cancion”. Cuenta desde la última sílaba: 1=ción (última), 2=can (penúltima). La sílaba fuerte es la última ⇒ es aguda. Termina en N ⇒ según NSV, lleva tilde: canción. (Modelo breve para que veas el proceso.)
+
+Ejercicio de recuerdo guiado — tú produces (1:55–2:40)
+- Ahora tú: marca la sílaba tónica y decide si lleva tilde para cada palabra. Hazlo escribiendo la palabra y poniendo MAYÚSCULAS en la sílaba tónica o subrayando; añade la tilde si piensas que corresponde. Pausa el vídeo y escribe tus respuestas.
+  1) autobus
+  2) sofa
+  3) arbol
+  4) facil
+  5) azucar
+  6) musica
+  7) telefono
+  8) comuniqueselo
+  9) cancion
+- Pistas (usa estas si te atoras): cuenta sílabas desde la última (1=última, 2=penúltima, 3=antepenúltima). Si la tónica es 1 → aguda; 2 → llana; 3 o más → esdrújula/sobresdrújula.
+- Haz esto ahora SIN mirar la pantalla. Producción activa: tú marcas y escribes.
+
+Revisión rápida y reflexión (2:40–3:10)
+- Vuelve a la predicción que escribiste al principio. ¿Coincide con la regla NSV / las reglas que viste? Si no, esa diferencia es exacta donde el aprendizaje ocurre: anótala en una frase.
+- Consejo visual: para recordar las llanas piensa en una balanza en la penúltima sílaba; para las esdrújulas imagina una lámpara sobre la antepenúltima (pero recuerda: las esdrújulas y sobresdrújulas siempre llevan tilde).
+
+Aplica a tus propias palabras (3:10–3:30)
+- Toma la palabra que escribiste al inicio (la de tu día). Marca la sílaba tónica y decide si lleva tilde. Escribe la respuesta.
+
+Cierre y espacio (3:30–3:50)
+- Mañana te pediré lo mismo sin pistas: volveré a mostrarte 5 palabras diferentes y tendrás que marcar tónica y tilde sin las pistas numéricas. No revises hoy: deja que el recuerdo se consolide.
+- Resumen en 1 línea para llevar: “NSV = aguda; llanas llevan tilde cuando no terminan en NSV; esdrújulas/sobresdrújulas siempre llevan tilde.”
+
+Recordatorio final (3:50–end)
+- Guarda lo que escribiste. En la siguiente sesión compararás tus marcas con las respuestas correctas y verás cuánto recuerdas. ¡Buen trabajo produciendo ahora — eso crea la memoria!
+
+METRICAS VERIFICADAS (Metrico): Recall, Knowledge, Retention
+RATIONALE: TargetMetric (Recall) is met: the script requires an initial prediction, uses repeated retrieval (9 guided practice items + applying the rule to the learner's own word), and provides appropriate beginner cues and modelling for Foundation learners. It also connects to prior knowledge, forces production (write/mark syllables), and schedules a next-day review to support consolidation — so recall practice and spaced review are present. As side benefits the module also teaches the explicit rule (Knowledge) and builds retention by instructing a delayed follow-up.
+================================================================================
+
+MODULO 3 : Práctica guiada: Coloca tildes con pistas
+Tipo: Practica  |  TargetMetric (asignado por Arquitecto): Recall
+Descripcion: Ejercicios cortos (10 ítems) donde se dan pistas sobre la sílaba tónica y el final de la palabra; el alumno decide si lleva tilde y recibe retroalimentación inmediata.
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Conexión rápida (P5): Piensa un momento en la última vez que escribiste una palabra con tilde. ¿Qué regla usaste sin pensar? Escribe 1 frase corta sobre eso antes de seguir.
+
+Instrucción clave (P1 + P7): Para cada ítem abajo — 1) antes de mirar la respuesta, escribe si CREES que la palabra lleva tilde (Sí / No) y, si pones “Sí”, escribe también la forma con tilde; 2) luego mira la explicación inmediata. No mires las respuestas hasta haber escrito tu predicción.
+
+Ejercicios (10 ítems). Cada ítem da la pista: tipo de acento y letras finales.
+1) cancion — pista: aguda, termina en "n".
+   - Escribe: ¿tilde? (Sí/No) y la forma con tilde si respondes Sí.
+   - Respuesta y explicación: Sí. Regla: Las agudas llevan tilde cuando terminan en n, s o vocal. Correcto: canción.
+
+2) autobus — pista: aguda, termina en "s".
+   - Escribe tu predicción.
+   - Respuesta y explicación: Sí. (Aguda + termina en s → tilde). Correcto: autobús.
+
+3) sofa — pista: aguda, termina en vocal (a).
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. (Aguda + termina en vocal → tilde). Correcto: sofá.
+
+4) arbol — pista: llana (grave), termina en "l".
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. Regla: las llanas llevan tilde cuando NO terminan en n, s o vocal; aquí termina en "l" → lleva tilde. Correcto: árbol.
+
+5) facil — pista: llana, termina en "l".
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. (Llana + no termina en n, s o vocal → tilde). Correcto: fácil.
+
+6) azucar — pista: llana, termina en "r".
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. (Llana + termina en r → tilde). Correcto: azúcar.
+
+7) musica — pista: esdrújula.
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. Regla general: las esdrújulas (y sobresdrújulas) siempre llevan tilde. Correcto: música.
+
+8) telefono — pista: esdrújula.
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. (Esdrújula → siempre tilde). Correcto: teléfono.
+
+9) comuniqueselo — pista: sobresdrújula.
+   - Predice antes de mirar.
+   - Respuesta y explicación: Sí. (Sobresdrújula → siempre tilde). Nota: aquí confirmamos la regla: las sobresdrújulas siempre llevan tilde.
+
+10) Tu palabra (P4 + P2): Elige una palabra real que uses (pégala aquí). Indica su tipo de acento (aguda/llana/esdrújula/sobresdrújula) y con qué letra termina. Escribe si crees que lleva tilde (Sí/No) y, si Sí, escribe la forma con tilde.
+   - Luego compáralo con la regla: si es aguda → tilde solo si termina en n, s o vocal; si es llana → tilde si NO termina en n, s o vocal; si es esdrújula/sobresdrújula → siempre tilde.
+
+Retrieval inmediato (P3): Sin mirar las explicaciones anteriores, escribe en una línea cada una de estas tres respuestas de memoria:
+ A) ¿Cuándo llevan tilde las palabras agudas?
+ B) ¿Cuándo llevan tilde las palabras llanas/graves?
+ C) ¿Qué pasa con las esdrújulas y sobresdrújulas?
+(Escribe las 3 respuestas antes de mirar las reglas arriba.)
+
+Retroalimentación final y consolidación (P6):
+- Comprueba tus respuestas. ¿Cuántas acertaste? Anota 1-2 errores concretos.
+- Espaciado: mañana repite 8 ítems parecidos sin pistas (te sugeriré recordar solo el tipo y la terminación). No vuelvas a leer hoy las reglas: la dificultad ahora mejora la memoria mañana.
+
+Recordatorio de anti–offloading (P7): Siempre escribe tu predicción antes de mirar la explicación. Si te cuesta, vuelve a los ítems donde fallaste y explica en una frase por qué aplicó la regla.
+
+Listo. Empieza por el ítem 1: escribe tu respuesta antes de seguir.
+
+METRICAS VERIFICADAS (Metrico): Recall, Knowledge
+RATIONALE: The script clearly meets Recall: learners must PREDICT before viewing answers (P1), practice retrieval immediately (three-rule recall block) and are required to produce answers (P7) using real Spanish words and their own word (P4). It connects to prior knowledge (P5), doses productive friction appropriate for Foundation with guided cues (type + final letter), schedules spaced review for tomorrow (P6), and keeps high scaffolding. As a side benefit it also builds Knowledge because explicit accentuation rules and explanations are provided.
+================================================================================
+
+MODULO 4 : SimuladorIA: Mini-quiz programado 24h
+Tipo: SimuladorIA  |  TargetMetric (asignado por Arquitecto): Retention
+Descripcion: Pequeño quiz automático que se activa al día siguiente (1 día) con 8 palabras para reforzar la retención; feedback inmediato y explicación breve por ítem.
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Objetivo: retener las reglas de acentuación con un mini-quiz automático que se activará 24 h después. Duración ahora: 5–10 min. Antes de leer las reglas, haz algo: PREDICE (P1)
+
+1) Conexión rápida (P5)
+Escribe aquí, en una línea, la última palabra en la que pensaste si llevaba tilde o no (por ejemplo: "telefono", "facil"). Añade por qué creíste que sí o no (una frase corta). — Escribe tu respuesta ahora.
+
+2) Predicción general (P1)
+Antes de leer las reglas de abajo, responde en una frase: ¿qué crees que determina si una palabra en español lleva tilde? (no mires las reglas aún). — Escríbelo.
+
+--- Ahora lee estas reglas breves (solo lo que está en el corpus) ---
+- Agudas: llevan tilde cuando terminan en n, s o vocal. (ej.: cancion, autobus, sofa)
+- Llanas/Graves: llevan tilde cuando NO terminan en n, s o vocal. (ej.: arbol, facil, azucar)
+- Esdrújulas y sobresdrújulas: siempre llevan tilde. (ej.: musica, telefono, comuniqueselo)
+- Regla general: la tilde depende del tipo de palabra (aguda/llana/esdrújula/sobresdrújula) y de sus terminaciones; las esdrújulas y sobresdrújulas siempre se tildan.
+
+3) Elige 8 palabras (P4 + P7)
+Para la práctica con espacio, pega aquí 8 palabras que quieras reforzar mañana (de tus apuntes, mensajes, o las que acabas de ver). Si prefieres, copia esta lista sugerida del corpus: cancion, autobus, sofa, arbol, facil, azucar, musica, telefono, comuniqueselo (elige 8). — Pega o escribe tus 8 palabras ahora.
+
+4) Mini-quiz ahora (retrieval con pistas — Foundation, P2/P3)
+Hagamos 4 ejemplos rápidos (elige 4 de tus 8 o usa las primeras cuatro que pegaste). Para cada palabra escribe: (a) ¿Lleva tilde? (Sí / No) y (b) Breve razón: marca la regla (Aguda termina en n/s/vocal, Llana NO termina en n/s/vocal, Esdrújula/Sobresdrújula siempre). Ejemplo de respuesta: "cancion — Sí — Aguda, termina en n". — Responde las 4 ahora.
+
+5) Feedback inmediato (yo te daré la respuesta y una explicación breve por cada una — P2/P7)
+Tras tus 4 respuestas te devolveré, por cada palabra: (a) la forma correcta (con o sin tilde), (b) si tu respuesta fue correcta, y (c) una explicación en una frase usando las reglas del corpus. (Haz el esfuerzo de responder antes de mirar mi feedback.)
+
+6) Qué pasará mañana (espaciado 24 h — P6)
+Mañana, a las 24 h, recibirás el mini-quiz automático con las 8 palabras que pegaste: para cada palabra deberás responder "Sí" o "No" (lleva tilde) y escribir en una línea la regla breve que aplicaste (por ejemplo: "Aguda, termina en n"). Después de cada respuesta recibirás retroalimentación inmediata y una explicación corta (por ítem) basada en las reglas anteriores.
+
+Instrucciones importantes antes de terminar:
+- No revises activamente estas palabras hoy: deja que pase el día para beneficiarte del efecto espaciamiento. (Este descanso mejora la retención.)
+- Confirma aquí que quieres que el quiz automático use las 8 palabras que pegaste. Si quieres cambiarlas, pégalas ahora.
+
+7) Compromiso final (P7)
+Escribe una línea: "Confirmo que no repasaré estas palabras hasta mañana y quiero el quiz a las 24 h." — Escribe eso ahora para activar el simulador.
+
+Resumen rápido de la sesión: predijiste lo que determina la tilde, leíste las reglas, elegiste 8 palabras reales, practicaste 4 ahora con feedback inmediato y programaste el quiz automático para mañana (24 h). Mañana recibirás: 8 preguntas, respuesta + motivo corto, feedback y explicación breve por ítem.
+
+Cuando termines, pega tus entradas (pasos 1, 2, 3, 4 y la confirmación) y te devuelvo el feedback inmediato para las 4 palabras que contestaste.
+
+METRICAS VERIFICADAS (Metrico): Retention, Recall, Application
+RATIONALE: TargetMetric RETENTION is met: the learner predicts before seeing rules (P1), connects to prior knowledge (P5), produces answers (P7) and does retrieval practice now with a scheduled spaced review at 24 h (P6). The script uses real/personal words (P4), provides immediate feedback and scaffolded cues appropriate for Foundation (P3), so it will strengthen retention (and as a side effect also practices recall and application of the rules).
+================================================================================
+
+MODULO 5 : Lectura breve: Casos límite y variantes comunes
+Tipo: Lectura  |  TargetMetric (asignado por Arquitecto): Knowledge
+Descripcion: Lectura que explora variantes rápidas (palabras compuestas, sobresdrújulas, diptongos y ejemplos confusos) para ampliar el esquema mental y distinguir patrones frecuentes.
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Inicio breve (conectar con lo que ya sabes)
+- Piensa en la última vez que dudaste dónde poner una tilde. ¿Qué palabra fue y por qué dudaste? Escríbela en una frase antes de seguir. (P5)
+
+Predicción (P1 — escribe antes de leer las reglas)
+- A continuación tienes una lista de palabras sin tildes. Antes de leer más, anota en tu cuaderno cuáles CREES que llevan tilde y por qué (una frase corta para cada una). No sigas hasta haberlo escrito.
+  cancion
+  autobus
+  sofa
+  arbol
+  facil
+  azucar
+  musica
+  telefono
+  comuniqueselo
+
+Lectura mínima (reglas clave — solo lo esencial)
+- Regla general: la colocación de la tilde depende del tipo de palabra según el acento (aguda, llana/grave, esdrújula/sobresdrújula) y de sus terminaciones.
+- Agudas: llevan tilde cuando terminan en n, s o vocal. (Ej.: cancion)
+- Llanas/Graves: llevan tilde cuando NO terminan en n, s o vocal. (Ej.: arbol)
+- Esdrújulas y sobresdrújulas: siempre llevan tilde. (Ej.: musica, telefono, comuniqueselo)
+(Lee solo después de haber escrito tus predicciones.)
+
+Práctica dirigida (P2 + P3 — produce ahora sin mirar tus respuestas anteriores)
+- Ahora, SIN mirar tus respuestas previas, reescribe las mismas nueve palabras colocando la tilde correcta donde corresponda. Hazlo a mano o en tu teclado, pero sin copiar/pegar desde arriba.
+
+Feedback inmediato (aplica las reglas a los ejemplos)
+- Aplicando las reglas, estas formas llevan tilde:
+  cancion → canción (aguda, termina en n)
+  autobus → autobús (aguda, termina en s)
+  sofa → sofá (aguda, termina en vocal)
+  arbol → árbol (llana, no termina en n/s/vocal)
+  facil → fácil (llana, no termina en n/s/vocal)
+  azucar → azúcar (llana, no termina en n/s/vocal)
+  musica → música (esdrújula: siempre tildada)
+  telefono → teléfono (esdrújula: siempre tildada)
+  comuniqueselo → (sobresdrújula: siempre lleva tilde según la regla general)
+
+Reflexiona (P3 + P5)
+- ¿En cuáles de tus respuestas iniciales te equivocaste? Escribe 1–2 frases sobre por qué crees que te confundiste: ¿la terminación te engañó? ¿no identificaste la sílaba tónica? Conecta esto con una regla arriba.
+
+Actividad con tu propio material (P4 + P7 — imprescindible que produzcas)
+- Pega aquí 3–5 palabras en las que suelas dudar (pueden ser de tus mensajes, apuntes o un anuncio). Para cada palabra, haz dos cosas: 1) indica si la clasificarías como aguda/llana/esdrújula/sobresdrújula; 2) decide si, según las reglas, debe llevar tilde y por qué. Escribe tus decisiones antes de mirar otras correcciones.
+
+Cierre y programación de repaso (P6)
+- Guarda lo que escribiste. En 2 días vuelve a este ejercicio: sin mirar tus respuestas, reescribe las mismas 9 palabras del inicio y las 3–5 palabras tuyas, y comprueba si las tildes siguen saliendo igual. Esa repetición consolidará la regla.
+
+Consejo final rápido (síntesis del esquema)
+- Regla mnemotécnica breve: "Agudas: tilde si terminan en n/s/vocal; Llanas: tilde si NO terminan en n/s/vocal; Esdrújulas y sobresdrújulas: siempre tilde." Mantén esa frase como hoja de ruta cuando dudés.
+
+METRICAS VERIFICADAS (Metrico): Knowledge, Recall, Retention, Application
+RATIONALE: TargetMetric (Knowledge) is met: the script asks learners to predict before reading (P1), connects to a prior example (P5), gives a minimal rule summary, and requires learners to produce answers and apply the rules to examples and their own material (P7/P4). It also uses retrieval practice and a scheduled 2‑day review (supporting Recall and longer-term Retention) and includes direct application of rules to new words (Application).
+================================================================================
+
+MODULO 6 : Práctica sin pistas: Test de recuerdo real
+Tipo: Practica  |  TargetMetric (asignado por Arquitecto): Recall
+Descripcion: Ejercicio de 12 ítems donde no hay pistas; el alumno marca las tildes y explica brevemente por qué. Corrección automática para comprobar independencia del estímulo.
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Objetivo breve
+Practicar SIN PISTAS la colocación de la tilde. Vas a marcar (escribir) la forma acentuada de 12 palabras y explicar brevemente POR QUÉ, sin consultar reglas ni ejemplos. Esto es recuerdo real: el sistema corregirá automáticamente para comprobar independencia del estímulo.
+
+Antes de empezar (PREDICE y RECUPERA)
+1) Predicción rápida: antes de ver las palabras, escribe cuántas de las 12 crees que marcarás correctamente (0–12) y tu confianza en una escala 1–5. Hazlo ahora. Esto crea el error de predicción que facilita el aprendizaje.
+2) Recupera desde memoria (sin mirar notas): escribe en una frase cada una de las tres reglas principales que recuerdes sobre tildes (agudas, llanas/graves, esdrújulas/sobresdrújulas). No copies; escribe lo que recuerdas.
+
+Instrucciones para el ejercicio (sin pistas)
+- No mires reglas ni ejemplos externos. Hazlo en una sola sesión.
+- Para cada palabra abajo: 1) Escribe la palabra con la tilde si corresponde (escribe la forma acentuada completa). 2) Escribe UNA frase muy breve que explique por qué la tildaste o no: identifica el tipo (aguda/llana/esdrújula/sobresdrújula) y la condición (termina en n/s/vocal o no, o “siempre lleva tilde”).
+- Ejemplo de formato (haz lo mismo):
+  cancion -> canción. Porque es aguda y termina en n, lleva tilde.
+
+Las 12 palabras (no tienen tildes aquí):
+1. cancion
+2. autobus
+3. sofa
+4. arbol
+5. facil
+6. azucar
+7. musica
+8. telefono
+9. comuniqueselo
+10. arroz
+11. casa
+12. lapiz
+
+Lo que el sistema comprobará (corrección automática)
+- Comprobación 1: ¿es correcta la forma acentuada que escribiste? (p. ej. "canción").
+- Comprobación 2: ¿tu explicación identifica correctamente el tipo (aguda/llana/esdrújula/sobresdrújula) y la condición de terminación o la regla “siempre” correspondiente?
+- Para cada ítem recibirás: correcto/incorrecto + puntuación; si es incorrecto verás la forma correcta y una breve explicación (solo después de que envíes todo).
+
+Después de la corrección (producir otra vez)
+1) Anota los ítems que fallaste. Para cada uno, reescribe la forma correcta y vuelve a explicar la regla con tus propias palabras (máx. 2 frases por ítem). Esto fuerza re-encoding.
+2) Reflexión breve: ¿qué patrón te confundió más? Escribe una frase.
+
+Plan de repaso (ESPACIADO)
+- Vuelve a hacer el mismo ejercicio dentro de 2 días: mismo contenido pero los ítems estarán mezclados. No revises la corrección en detalle hasta el siguiente intento; confía en la separación para consolidar.
+
+Reglas permitidas como referencia aquí (solo para contexto del ejercicio)
+- Agudas: llevan tilde si terminan en n, s o vocal.
+- Llanas/Graves: llevan tilde cuando NO terminan en n, s o vocal.
+- Esdrújulas y sobresdrújulas: siempre llevan tilde.
+
+Última verificación personal (antes de enviar)
+- ¿Escribiste cada palabra en su forma final (con tilde si corresponde)?
+- ¿Cada explicación identifica tipo + por qué (terminación o “siempre”)?
+- ¿No usaste internet ni notas?
+
+Envía tus 12 respuestas en el formato pedido. El sistema corregirá automáticamente y te devolverá score y correcciones; después deberás rehacer y reflexionar según las instrucciones.
+
+METRICAS VERIFICADAS (Metrico): Recall, Retention, Independence
+RATIONALE: TargetMetric (Recall) is met: the script requires an initial prediction and forces retrieval (write remembered rules) before any answers are shown, and learners must produce the accented forms and brief explanations for 12 real words with automated correction and a re-encoding step — all core elements of effective recall practice. It also schedules a spaced review (2 days) and enforces independent production (no notes/internet, single session), which supports Retention and Independence as side benefits. One minor caveat: the provided “Reglas permitidas” text appears in the module content, so the instructions must ensure learners do not read it before the initial retrieval — otherwise it could partially cue answers; otherwise the scaffolding and productive friction are appropriate for an Exploration practical exercise.
+================================================================================
+
+MODULO 7 : SimuladorIA: Repasos espaciados (día 1 y día 3)
+Tipo: SimuladorIA  |  TargetMetric (asignado por Arquitecto): Retention
+Descripcion: Secuencia de quizzes programados para el día 1 y el día 3 con selección intercalada de palabras ya vistas y nuevas, con retroalimentación enfocada a consolidar memoria.
+--------------------------------------------------------------------------------
+GUION (Instructor):
+Objetivo breve (retención): consolidar la memoria de las reglas de la tilde usando dos repasos espaciados (Día 1 y Día 3) con selección intercalada de palabras vistas y nuevas. Nivel: Exploration — recibirás guía pero tú harás el trabajo. Reglas (lee sólo DESPUÉS de predecir):
+
+- [Agudas] Las palabras agudas llevan tilde cuando terminan en n, s o vocal (cancion, autobus, sofa).
+- [Llanas/Graves] Las palabras llanas o graves llevan tilde cuando NO terminan en n, s o vocal (arbol, facil, azucar).
+- [Esdrújulas y sobresdrújulas] Las palabras esdrujulas y sobresdrújulas siempre llevan tilde (musica, telefono, comuniqueselo).
+- [Regla general] La colocación de la tilde depende del tipo de palabra según el acento (aguda, llana/grave, esdrújula/sobresdrújula) y de sus terminaciones; las esdrújulas y sobresdrújulas son siempre tildadas.
+
+INSTRUCCIONES PASO A PASO (haz cada paso en orden; produce texto en cada respuesta):
+
+1) Predicción (P1 — escribe antes de leer las reglas)
+- Escribe en 1-2 frases: ¿qué crees que determina si una palabra lleva tilde? (No mires arriba).
+- Escribe 1 palabra en la que suelas dudar si lleva tilde o no (máx. 6 palabras si quieres practicar más). — RESPONDE AHORA.
+
+2) Lee las reglas (ya mostradas arriba). Conecta con tu predicción (P5)
+- Sin copiar palabra por palabra: escribe en 1 frase cuál fue la diferencia más clara entre tu predicción y las reglas reales.
+
+3) Preparar la lista para practicar (P4)
+- Si pegaste 1–6 palabras en el Paso 1, mantendremos esas palabras. Si no pegaste ninguna, pegaré por defecto 6 palabras del corpus: cancion, autobus, sofa, arbol, facil, azucar.
+- Aviso: en los quizzes intercalaremos tus palabras con palabras nuevas del corpus (musica, telefono, comuniqueselo). Tú producirás las respuestas.
+
+DÍA 1 — Quiz 1 (recuperación sin pistas)
+- Objetivo: escribir la forma CORRECTA (con tilde si corresponde) para cada palabra. No mires las reglas mientras respuestas.
+- Palabras (ejemplo de cómo se mezclan): [tus palabras...] + cancion, autobus, sofa, musica, telefono, comuniqueselo. (Se mezclarán de forma aleatoria.)
+- Tarea: para cada palabra mostrada, escribe EXACTAMENTE la forma que crees correcta (por ejemplo "canción" o "cancion"). Haz las respuestas en una lista numerada.
+- Después de que envíes tus respuestas, yo te daré retroalimentación inmediata por palabra: (a) la forma correcta; (b) cuál de las reglas del corpus explica por qué; (c) una nota breve de corrección si te equivocaste.
+
+Formato de retroalimentación (ejemplo, no lo mires hasta que respondas):
+- Tu respuesta: cancion
+- Correcto: canción
+- Regla aplicada: [Agudas] Las palabras agudas llevan tilde cuando terminan en n, s o vocal.
+- Nota: palabra aguda terminada en "n" → tilde.
+
+DÍA 1 — Reflexión breve (P3)
+- Después de recibir la retroalimentación, escribe 1–2 frases: ¿qué patrón te confundió más y por qué? (obliga a procesar el error).
+
+DÍA 3 — Quiz 2 (repaso espaciado, sin repasar reglas antes)
+- Instrucción previa al intento: NO revises tus notas ni las reglas otra vez antes de empezar.
+- Estructura: recibirás 9–12 palabras intercaladas (una mezcla de tus palabras del Paso 1, palabras del Día 1 y 3 palabras nuevas del corpus si procede). De nuevo, escribe la forma correcta con tilde o sin tilde para cada una.
+- Después de enviar, recibirás la misma retroalimentación por palabra (forma correcta + la regla del corpus que aplica).
+
+DÍA 3 — Medición de retención
+- Anota cuántas respuestas corregiste respecto al Día 1 (por ejemplo: Día1 8/12 correctas → Día3 11/12 correctas).
+- Escribe 2 frases: ¿qué recuerdas ahora automáticamente? ¿Qué todavía necesitas revisar?
+
+Pautas de corrección y qué te daré como feedback (P2/P7):
+- No te diré la respuesta antes de que la des. Sólo después de tu intento te daré: la forma correcta (si te equivocaste), la regla exacta del corpus que la justifica y una breve razón (1 frase) por la que te equivocaste si aplica.
+- Ejemplo de feedback correcto (tras tu intento):
+  - Tu respuesta: arbol
+  - Correcto: árbol
+  - Regla aplicada: [Llanas/Graves] Las palabras llanas o graves llevan tilde cuando NO terminan en n, s o vocal.
+  - Nota: "árbol" es llana y termina en consonante distinta de n o s → lleva tilde.
+
+Metas concretas (medición de retención):
+- Día 1: intenta obtener al menos 70% correcto.
+- Día 3: tu objetivo es mejorar respecto al Día 1; preferible ≥ 90%.
+
+Refuerzo y continuación (P6):
+- Guarda tus errores y revisa sólo esas palabras 24–48 horas después si deseas más práctica. Yo puedo crear un nuevo quiz en Día 7 si pides seguimiento.
+
+Recordatorio final (GOLDEN RULE / P7): tú RESPONDES siempre; yo solo doy retroalimentación basada en las reglas del corpus. Empieza ahora: responde los pasos 1 y 2 (predicción + palabra(s) que quieres practicar).
+
+METRICAS VERIFICADAS (Metrico): Retention, Recall
+RATIONALE: TargetMetric Retention is met. The script forces a prediction before rules (P1), connects the learner’s prediction to the rules (P5), requires active production (quizzes) with delayed feedback rather than showing answers (P7), uses retrieval practice without cues on Day 1 and a spaced review on Day 3 (P6), includes reflection to dose productive friction (P3), and uses real/learner-provided words mixed with corpus items (P4). As a side effect, the repeated no‑cue retrieval practice also strengthens Recall.
+================================================================================
+

@@ -1,3 +1,4 @@
+using HumanOS.Models.JobDescriptions;
 using HumanOS.Models.Localization;
 
 namespace HumanOS.Models.People;
@@ -24,13 +25,21 @@ public sealed class PersonProfile
 
     public string? ProfilePhotoUrl { get; set; }
 
-    public DateTime? DateOfBirth { get; set; }
+    public DateOnly? DateOfBirth { get; set; }
 
     public string? Occupation { get; set; }
 
     public string? Company { get; set; }
 
     public string? Biography { get; set; }
+
+    /// <summary>Pointer to the employee's current, employee-confirmed
+    /// <see cref="JobDescriptionRecord"/> (see
+    /// JobDescriptionRecord.ExtractionStatus == "Confirmed"). Null until
+    /// the employee has reviewed and confirmed an extracted Job
+    /// Description — never set automatically from a raw extraction.
+    /// </summary>
+    public Guid? CurrentJobDescriptionId { get; set; }
 
     public DateTime CreatedDate { get; set; }
 
@@ -43,4 +52,6 @@ public sealed class PersonProfile
     public Person Person { get; set; } = null!;
 
     public Language? PreferredLanguageData { get; set; }
+
+    public JobDescriptionRecord? CurrentJobDescription { get; set; }
 }
