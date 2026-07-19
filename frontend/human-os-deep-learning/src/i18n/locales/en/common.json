@@ -1,0 +1,28 @@
+{
+  "common": {
+    "appName": "Human OS — Deep Learning",
+    "language": "English"
+  },
+  "navigation": {
+    "home": "🏠 Home",
+    "capabilities": "🧬 Capabilities",
+    "sessions": "⚡ Sessions",
+    "evidence": "🏆 Evidence",
+    "settings": "⚙️ Settings",
+    "memory": "🧠 Memory",
+    "coach": "🤖 Coach"
+  },
+  "common_ui": {
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "continue": "Continue",
+    "save": "Save",
+    "expand": "Expand Guidance",
+    "collapse": "Collapse",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  }
+}

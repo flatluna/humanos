@@ -1,13 +1,18 @@
+using System.Text.Json;
 using Azure.Identity;
+using HumanOS.Agentic.Runtime;
 using HumanOS.Agentic.Studio;
 using HumanOS.Agents;
 using HumanOS.Agents.Studio;
 using HumanOS.Data;
 using HumanOS.Services;
 using HumanOS.Storage;
+using Microsoft.Agents.AI.Workflows;
+using Microsoft.Agents.AI.Workflows.Checkpointing;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -62,6 +67,16 @@ var host = new HostBuilder()
         services.AddScoped<HumanProfileService>();
         services.AddScoped<LanguageService>();
         services.AddScoped<CapabilityDomainService>();
+        services.AddScoped<CapabilityGraphPersistenceService>();
+        services.AddScoped<NodeExperienceBlueprintPersistenceService>();
+        services.AddScoped<BlueprintValidationPersistenceService>();
+        services.AddScoped<InstructorRuntimeOrchestrator>();
+        services.AddScoped<AssessmentEvaluator>();
+        services.AddScoped<AdaptiveAssessmentEngine>();
+        services.AddScoped<TutorService>();
+        services.AddScoped<ProductionEvaluationService>();
+        services.AddScoped<SessionRecoveryEngine>();
+        services.AddScoped<GraphProgressionEngine>();
         services.AddScoped<CapabilityService>();
         services.AddScoped<PersonCapabilityService>();
         services.AddScoped<GoalService>();
@@ -72,7 +87,9 @@ var host = new HostBuilder()
         services.AddScoped<AssessmentService>();
         services.AddScoped<TranslationService>();
         services.AddScoped<RoleDocumentStorageService>();
+        services.AddScoped<CapabilityMaterialStorageService>();
         services.AddScoped<JobDescriptionExtractionAgent>();
+        services.AddScoped<HumanOS.Storage.CapabilityGraphIllustrationStorageService>();
 
         // Human OS Studio — capability-creation pipeline agents (Microsoft
         // Agent Framework, ChatClientAgents with structured output; see
@@ -81,16 +98,93 @@ var host = new HostBuilder()
         // a singleton, since it keeps in-memory runs alive across HTTP calls)
         // depends on them directly.
         services.AddSingleton<CuradorAgent>();
+        services.AddSingleton<TocExtractionAgent>();
         services.AddSingleton<ArquitectoAgent>();
+        services.AddSingleton<GraphArchitectAgent>();
+        services.AddSingleton<GraphIllustrationImageService>();
+        services.AddSingleton<ExperienceDesignerAgent>();
+        services.AddSingleton<BlueprintValidatorAgent>();
         services.AddSingleton<InstructorAgent>();
         services.AddSingleton<MetricoAgent>();
         services.AddSingleton<ExperienciaAgent>();
         services.AddSingleton<CapabilityEmbeddingService>();
         services.AddSingleton<CapabilityCreationOrchestrator>();
 
+        // Interactive Learning Runtime — Tutor Agent (Paso 4, 2026-07-14,
+        // see /memories/repo/human-os-runtime-design.md). Singleton, same
+        // pattern as the Studio pipeline agents (no per-request state).
+        services.AddSingleton<HumanOS.Agents.Runtime.TutorAgent>();
+
+        // Instructor Runtime — Assessment Evaluator (Runtime Paso 3,
+        // 2026-07-17, see /memories/repo/runtime-v1-learning-session-model.md).
+        // Singleton, same pattern as the Studio pipeline agents (no
+        // per-request state).
+        services.AddSingleton<HumanOS.Agents.Runtime.AssessmentEvaluatorAgent>();
+
+        // Instructor Runtime — Adaptive Assessment Agent (2026-07-18): the
+        // new dynamic, one-question-at-a-time Assessment redesign. Simple
+        // ChatClientAgent pattern (user-confirmed choice, NOT the native
+        // Agent Framework Workflow mandate) — coexists with, and does NOT
+        // replace, AssessmentEvaluatorAgent above (that one stays wired to
+        // the OLD single-free-text evaluate endpoint, grandfathered).
+        // Singleton, same pattern as every other agent (no per-request state).
+        services.AddSingleton<HumanOS.Agents.Runtime.AdaptiveAssessmentAgent>();
+
+        // Instructor Runtime — Production Evaluator Agent (2026-07-18):
+        // formative (non-scoring) grading for the "Aplícalo" (Production)
+        // step — see ProductionEvaluationService.cs/ProductionEvaluationGate.
+        // Same simple ChatClientAgent pattern. Singleton, same pattern as
+        // every other agent (no per-request state).
+        services.AddSingleton<HumanOS.Agents.Runtime.ProductionEvaluatorAgent>();
+
+        // TutorAgent V2 — the first agent built under the frozen "Version 2"
+        // Agent Framework Workflow mandate (see
+        // /memories/repo/agent-framework-native-architecture-mandate.md).
+        // Distinct from the OLD HumanOS.Agents.Runtime.TutorAgent above
+        // (Runtime #1, still live) — do NOT touch that registration.
+        // Singleton, same pattern as every other agent (no per-request
+        // state); TutorService (scoped, above) builds a fresh Workflow via
+        // TutorWorkflowFactory per call.
+        services.AddSingleton<HumanOS.Agents.Runtime.TutorAgentV2>();
+
+        // Real neural Text-to-Speech via Azure AI Speech (fixed
+        // 2026-07-16 — explicit user requirement: direct call to the
+        // Azure Speech service's neural voices, no LLM/chatbot involved).
+        // Singleton: holds no per-request state, same rationale as
+        // TutorAgent above.
+        services.AddSingleton<AzureSpeechService>();
+
+        // Interactive Learning Runtime — Workflow checkpointing (Paso 3,
+        // 2026-07-14, see /memories/repo/human-os-runtime-design.md).
+        // SqlRuntimeCheckpointStore is Singleton-safe (only holds
+        // IDbContextFactory<HumanOsDbContext>, same pattern as
+        // CapabilityCreationOrchestrator). CheckpointManager wraps it with
+        // JSON serialization for use by InProcessExecution.RunStreamingAsync/
+        // ResumeStreamingAsync when a Runtime session is actually started
+        // (a later Paso — not wired to any endpoint yet).
+        services.AddSingleton<SqlRuntimeCheckpointStore>();
+        services.AddSingleton<ICheckpointStore<JsonElement>>(sp =>
+            sp.GetRequiredService<SqlRuntimeCheckpointStore>());
+        services.AddSingleton(sp => CheckpointManager.CreateJson(
+            sp.GetRequiredService<ICheckpointStore<JsonElement>>(),
+            new JsonSerializerOptions()));
+
         // Add HTTP client factory
         services.AddHttpClient();
     })
     .Build();
 
-host.Run();
+// Check if running a test (e.g., `dotnet run -- --run-test`)
+if (args.Contains("--run-test"))
+{
+    using (var scope = host.Services.CreateScope())
+    {
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var test = new HumanOS.Tests.TestCuradorGraphArchitectFlow(config);
+        await test.RunAsync();
+    }
+}
+else
+{
+    host.Run();
+}

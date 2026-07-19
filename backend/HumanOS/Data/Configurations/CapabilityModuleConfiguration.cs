@@ -44,6 +44,18 @@ public sealed class CapabilityModuleConfiguration
             .HasColumnType("nvarchar(max)")
             .IsRequired();
 
+        builder.Property(x => x.RecallRequirement)
+            .HasColumnType("nvarchar(max)")
+            .IsRequired();
+
+        builder.Property(x => x.LearnerProduction)
+            .HasColumnType("nvarchar(max)")
+            .IsRequired();
+
+        builder.Property(x => x.LearnerTask)
+            .HasColumnType("nvarchar(max)")
+            .IsRequired(false);
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")

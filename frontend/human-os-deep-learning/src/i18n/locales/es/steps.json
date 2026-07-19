@@ -1,0 +1,29 @@
+{
+  "recall": {
+    "title": "🧠 Recuerda",
+    "instruction": "¿Qué recuerdas de memoria sobre este tema?"
+  },
+  "initialAnswer": {
+    "title": "💭 Tu Hipótesis",
+    "instruction": "Haz tu predicción antes de ver la respuesta"
+  },
+  "instruction": {
+    "title": "📘 Guía",
+    "expandButton": "Expandir contexto completo"
+  },
+  "evidence": {
+    "title": "✍️ Crea Evidencia",
+    "instruction": "Ahora produce tu trabajo",
+    "placeholder": "Escribe tu respuesta aquí..."
+  },
+  "assessment": {
+    "title": "✅ Evaluación",
+    "instruction": "Aquí está cómo tu trabajo se alinea con los criterios de éxito"
+  },
+  "reflection": {
+    "title": "🤔 Reflexión",
+    "instruction": "¿Qué aprendiste? ¿Cómo cambia esto tu comprensión?"
+  },
+  "successCriteria": "Criterios de Éxito",
+  "checkYourWork": "Revisa tu propio trabajo:"
+}

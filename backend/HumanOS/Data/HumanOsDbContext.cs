@@ -1,10 +1,12 @@
 using HumanOS.Models.Agents;
 using HumanOS.Models.Assessments;
 using HumanOS.Models.Capabilities;
+using HumanOS.Models.Capabilities.Graph;
 using HumanOS.Models.Evidence;
 using HumanOS.Models.Goals;
 using HumanOS.Models.GrowthActions;
 using HumanOS.Models.JobDescriptions;
+using HumanOS.Models.Learning;
 using HumanOS.Models.Localization;
 using HumanOS.Models.People;
 using HumanOS.Models.Practice;
@@ -110,6 +112,74 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<CapabilityKnowledgeChunk> CapabilityKnowledgeChunks =>
         Set<CapabilityKnowledgeChunk>();
+
+    public DbSet<CapabilityModuleChapter> CapabilityModuleChapters =>
+        Set<CapabilityModuleChapter>();
+
+    public DbSet<CapabilityGraph> CapabilityGraphs =>
+        Set<CapabilityGraph>();
+
+    public DbSet<CapabilityGraphNode> CapabilityGraphNodes =>
+        Set<CapabilityGraphNode>();
+
+    public DbSet<CapabilityGraphEdge> CapabilityGraphEdges =>
+        Set<CapabilityGraphEdge>();
+
+    public DbSet<CapabilityGraphNodeIllustration> CapabilityGraphNodeIllustrations =>
+        Set<CapabilityGraphNodeIllustration>();
+
+    public DbSet<NodeExperienceBlueprint> NodeExperienceBlueprints =>
+        Set<NodeExperienceBlueprint>();
+
+    public DbSet<NodeExperienceBlueprintStep> NodeExperienceBlueprintSteps =>
+        Set<NodeExperienceBlueprintStep>();
+
+    public DbSet<BlueprintValidation> BlueprintValidations =>
+        Set<BlueprintValidation>();
+
+    public DbSet<BlueprintValidationIssue> BlueprintValidationIssues =>
+        Set<BlueprintValidationIssue>();
+
+    public DbSet<BlueprintValidationMetric> BlueprintValidationMetrics =>
+        Set<BlueprintValidationMetric>();
+
+    public DbSet<LearningSession> LearningSessions =>
+        Set<LearningSession>();
+
+    public DbSet<LearningSessionNode> LearningSessionNodes =>
+        Set<LearningSessionNode>();
+
+    public DbSet<LearningSessionStep> LearningSessionSteps =>
+        Set<LearningSessionStep>();
+
+    public DbSet<LearningEvidence> LearningEvidences =>
+        Set<LearningEvidence>();
+
+    public DbSet<LearningAssessmentResult> LearningAssessmentResults =>
+        Set<LearningAssessmentResult>();
+
+    /// <summary>Dynamic-assessment attempt cycles (5 questions, one at a
+    /// time, never a fixed bank) for a node's Assessment step — see
+    /// <see cref="Models.Learning.AssessmentRound"/>.</summary>
+    public DbSet<AssessmentRound> AssessmentRounds =>
+        Set<AssessmentRound>();
+
+    /// <summary>Individual dynamically-generated questions within an
+    /// <see cref="Models.Learning.AssessmentRound"/>.</summary>
+    public DbSet<AssessmentQuestion> AssessmentQuestions =>
+        Set<AssessmentQuestion>();
+
+    /// <summary>Technical infrastructure table for the Interactive Learning
+    /// Runtime's Workflow checkpointing — NOT a domain entity, see
+    /// <see cref="RuntimeWorkflowCheckpoint"/>'s doc comment.</summary>
+    public DbSet<RuntimeWorkflowCheckpoint> RuntimeWorkflowCheckpoints =>
+        Set<RuntimeWorkflowCheckpoint>();
+
+    /// <summary>Technical infrastructure table (fixed Paso 9, 2026-07-15) —
+    /// see <see cref="RuntimeSessionStatus"/>'s doc comment for the real
+    /// resume-hang bug this closes.</summary>
+    public DbSet<RuntimeSessionStatus> RuntimeSessionStatuses =>
+        Set<RuntimeSessionStatus>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

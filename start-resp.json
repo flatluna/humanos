@@ -1,0 +1,17 @@
+﻿{
+    "LearningSessionId":  "bd3e5d70-0019-44f0-b00e-e3f4b19cf221",
+    "LearningSessionNodeId":  "54ffec01-46c7-4821-8414-ecee6786eec0",
+    "CurrentStepType":  "Hypothesis",
+    "CurrentStep":  {
+                        "LearningSessionStepId":  "6d16d1ff-f6e1-4bab-af9a-2862b8fd116e",
+                        "StepType":  "Hypothesis",
+                        "Content":  "Mira la ilustración con dos grupos de manzanas (2 y 3). Antes de calcular, ¿cuántas manzanas crees que habrá si juntas ambos grupos?",
+                        "Illustrations":  [
+                                              {
+                                                  "IllustrationId":  "e64bd629-4e7e-4b6b-bb0a-e92eb78b0cb1",
+                                                  "StoragePath":  "647db3ac-4e23-4896-9ac6-ae8029b99353/9ae4c0c1-28e6-478a-8311-a2438c2b950c/19ebc866-432f-42e9-8f76-7e994a405659/image-01.png",
+                                                  "Caption":  null
+                                              }
+                                          ]
+                    }
+}

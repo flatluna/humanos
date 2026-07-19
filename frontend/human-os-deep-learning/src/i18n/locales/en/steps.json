@@ -1,0 +1,29 @@
+{
+  "recall": {
+    "title": "🧠 Remember",
+    "instruction": "What do you recall from memory about this topic?"
+  },
+  "initialAnswer": {
+    "title": "💭 Your Hypothesis",
+    "instruction": "Make your prediction before seeing the answer"
+  },
+  "instruction": {
+    "title": "📘 Guidance",
+    "expandButton": "Expand full context"
+  },
+  "evidence": {
+    "title": "✍️ Create Evidence",
+    "instruction": "Now produce your work",
+    "placeholder": "Write your response here..."
+  },
+  "assessment": {
+    "title": "✅ Evaluation",
+    "instruction": "Here's how your work aligns with the success criteria"
+  },
+  "reflection": {
+    "title": "🤔 Reflection",
+    "instruction": "What did you learn? How does this change your understanding?"
+  },
+  "successCriteria": "Success Criteria",
+  "checkYourWork": "Check your own answer:"
+}

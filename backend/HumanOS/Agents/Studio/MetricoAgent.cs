@@ -312,19 +312,30 @@ public sealed class MetricoAgent
         A metric CANNOT be Verified if any SuccessCriterionResult has
         IsSatisfied = false.
 
-        RECALL — VERIFY INDEPENDENTLY
+        RECALL — VERIFY INDEPENDENTLY (updated 2026-07-16 — see
+        REORDERING RATIONALE in RuntimeSessionWorkflowFactory.cs: the
+        Instructor now deliberately writes TEACHING CONTENT FIRST, then the
+        recall/retrieval moment right after it — teach step by step, then
+        ask what the learner retained. This is the CORRECT order; do NOT
+        flag it as a violation.)
         Do not just copy the Instructor's self-reported RecallActivity —
         re-check the actual script. Report:
         - Status: Missing (no retrieval moment actually present),
           WithCues, or WithoutCues.
         - Evidence + EvidenceLocation for whatever you find (or for why
           it's missing).
-        - OccursBeforeInstruction: true only if the retrieval attempt
-          happens BEFORE any explanation, example, hint, checklist,
-          source content, or AI assistance. If Status is WithCues or
-          WithoutCues but the retrieval happens AFTER instruction, set
-          OccursBeforeInstruction = false — this is invalid regardless of
-          which SupportLevel was used.
+        - OccursBeforeInstruction: despite its name (kept for backward
+          compatibility), this field now means "the retrieval attempt
+          happens right after the module's real teaching content, and
+          BEFORE the LearnerTask/application step or any FURTHER
+          scaffolding beyond that teaching content" — NOT "before the
+          teaching content itself". Set it to true when the script's
+          order is: (1) real teaching content, (2) the recall/retrieval
+          moment, (3) LearnerTask. Set it to FALSE only if the retrieval
+          moment is missing entirely, or if it appears AFTER the
+          LearnerTask/application step, or after additional scaffolding
+          (extra examples/hints/checklists/source material/AI assistance)
+          given beyond the initial teaching content.
         IMPORTANT: the existence of a Recall activity does NOT mean Recall
         is the TargetMetric — these are independent concepts. Report
         Recall the same way regardless of what the TargetMetric is.

@@ -1,0 +1,18 @@
+﻿{
+    "Grade":  {
+                  "Correctness":  "Correct",
+                  "Score":  95,
+                  "Feedback":  "Muy buena respuesta: das una definición clara y en tus propias palabras y ambos ejemplos son correctos y pertinentes (el de las manzanas y el numérico). Para mejorar aún más, podrías mencionar brevemente que la suma es una operación aritmética y que se puede juntar más de dos cantidades, y recuerda la tilde en “básica”."
+              },
+    "RoundComplete":  false,
+    "Passed":  null,
+    "FinalScore":  null,
+    "NextQuestion":  {
+                         "AssessmentQuestionId":  "fc1163f4-125e-4352-aea7-ec1667926e5e",
+                         "QuestionIndex":  2,
+                         "QuestionType":  "Comprehension",
+                         "QuestionText":  "En tus propias palabras, explica POR QUÉ la suma A + B nos da el total cuando juntamos dos grupos de objetos. Describe el proceso paso a paso que haces (qué cuentas o miras) para comprobarlo, y termina dando un ejemplo breve diferente a los que ya diste antes que muestre tu explicación."
+                     },
+    "NewRoundNumber":  null,
+    "NewAssessmentRoundId":  null
+}

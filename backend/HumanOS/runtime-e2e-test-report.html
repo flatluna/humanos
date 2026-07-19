@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Human OS — Prueba completa del Interactive Learning Runtime</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #2a2e38;
+    --text: #e6e8ec;
+    --muted: #9aa1ac;
+    --accent: #6ea8fe;
+    --green: #3ddc84;
+    --red: #ff6b6b;
+    --yellow: #ffd166;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 80px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .controls {
+    display: flex; gap: 12px; align-items: center;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 24px;
+    position: sticky; top: 12px; z-index: 10;
+  }
+  button {
+    background: var(--accent); color: #06121f; border: none;
+    padding: 10px 18px; border-radius: 8px; font-weight: 600;
+    cursor: pointer; font-size: 14px;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #status { font-size: 13px; color: var(--muted); }
+  .summary {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-left: auto;
+  }
+  .pill {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill.ok { color: var(--green); border-color: var(--green); }
+  .pill.bad { color: var(--red); border-color: var(--red); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(4px);} to {opacity:1; transform:none;} }
+  .card-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .badge {
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    padding: 3px 10px; border-radius: 999px; text-transform: uppercase;
+  }
+  .badge.stage { background: rgba(110,168,254,.15); color: var(--accent); }
+  .badge.verified { background: rgba(61,220,132,.15); color: var(--green); }
+  .badge.notverified { background: rgba(255,209,102,.15); color: var(--yellow); }
+  .badge.failed { background: rgba(255,107,107,.15); color: var(--red); }
+  .badge.error { background: rgba(255,107,107,.2); color: var(--red); }
+  .timing { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .tutor-msg {
+    white-space: pre-wrap; line-height: 1.55; font-size: 14px;
+    background: #10131a; border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; margin-top: 6px;
+  }
+  .submitted {
+    margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--accent);
+    background: rgba(110,168,254,.06); font-size: 13px; white-space: pre-wrap;
+  }
+  .submitted b { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing:.04em; display:block; margin-bottom:4px; }
+  .criteria { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .criterion {
+    font-size: 13px; padding: 8px 10px; border-radius: 8px;
+    background: #10131a; border: 1px solid var(--border);
+  }
+  .criterion .c-head { display:flex; gap:8px; align-items:center; font-weight:600; }
+  .criterion .c-evidence { color: var(--muted); margin-top: 4px; }
+  .ok-mark { color: var(--green); }
+  .bad-mark { color: var(--red); }
+  .explanation { margin-top: 10px; font-size: 13px; color: var(--muted); font-style: italic; }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite; display:inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Human OS — Interactive Learning Runtime</h1>
+  <div class="subtitle">Prueba end-to-end real contra la API HTTP (Azure OpenAI + Azure SQL en vivo) — no es un mock.</div>
+
+  <div class="controls">
+    <button id="runBtn" onclick="runFullTest()">▶ Ejecutar prueba completa</button>
+    <span id="status">Listo.</span>
+    <div class="summary" id="summary"></div>
+  </div>
+
+  <div id="timeline"></div>
+</div>
+
+<script>
+const API = "http://localhost:7071/api";
+const MODULE_ID = "036b163b-c498-4626-9d18-54ade37e1532"; // "Formular una receta reproducible" (Application, 3 criterios)
+
+const timeline = document.getElementById("timeline");
+const statusEl = document.getElementById("status");
+const summaryEl = document.getElementById("summary");
+const runBtn = document.getElementById("runBtn");
+
+function addCard({ badgeText, badgeClass, title, body, submittedLabel, submittedText, criteria, explanation, timingMs, pending }) {
+  const card = document.createElement("div");
+  card.className = "card";
+  const head = document.createElement("div");
+  head.className = "card-head";
+  const badge = document.createElement("span");
+  badge.className = "badge " + (badgeClass || "stage");
+  badge.textContent = badgeText;
+  head.appendChild(badge);
+  const titleEl = document.createElement("strong");
+  titleEl.textContent = title;
+  head.appendChild(titleEl);
+  const timing = document.createElement("span");
+  timing.className = "timing";
+  if (pending) {
+    timing.innerHTML = '<span class="spinner"></span> generando…';
+  } else if (timingMs != null) {
+    timing.textContent = (timingMs / 1000).toFixed(1) + "s";
+  }
+  head.appendChild(timing);
+  card.appendChild(head);
+
+  if (body) {
+    const msg = document.createElement("div");
+    msg.className = "tutor-msg";
+    msg.textContent = body;
+    card.appendChild(msg);
+  }
+
+  if (submittedText) {
+    const sub = document.createElement("div");
+    sub.className = "submitted";
+    sub.innerHTML = `<b>${submittedLabel || "Respuesta enviada"}</b>`;
+    sub.appendChild(document.createTextNode(submittedText));
+    card.appendChild(sub);
+  }
+
+  if (criteria && criteria.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "criteria";
+    for (const c of criteria) {
+      const div = document.createElement("div");
+      div.className = "criterion";
+      div.innerHTML = `<div class="c-head"><span class="${c.IsSatisfied ? 'ok-mark' : 'bad-mark'}">${c.IsSatisfied ? '✅' : '❌'}</span> ${c.Criterion}</div>` +
+                       `<div class="c-evidence">${c.Evidence || ""}</div>`;
+      wrap.appendChild(div);
+    }
+    card.appendChild(wrap);
+  }
+
+  if (explanation) {
+    const exp = document.createElement("div");
+    exp.className = "explanation";
+    exp.textContent = explanation;
+    card.appendChild(exp);
+  }
+
+  timeline.appendChild(card);
+  timeline.scrollTop = timeline.scrollHeight;
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  return card;
+}
+
+function updateTiming(card, ms) {
+  const t = card.querySelector(".timing");
+  t.innerHTML = "";
+  t.textContent = (ms / 1000).toFixed(1) + "s";
+}
+
+async function callApi(method, path, body) {
+  const start = performance.now();
+  const res = await fetch(API + path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  const elapsed = performance.now() - start;
+  const text = await res.text();
+  let json;
+  try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
+  if (!res.ok) {
+    const err = new Error(json?.message || json?.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.body = json;
+    err.elapsed = elapsed;
+    throw err;
+  }
+  return { data: json, elapsed };
+}
+
+function stageBadgeClass(stage) {
+  if (stage === "Completed") return "verified";
+  if (stage === "RequiresRevision") return "failed";
+  return "stage";
+}
+
+async function runFullTest() {
+  runBtn.disabled = true;
+  timeline.innerHTML = "";
+  summaryEl.innerHTML = "";
+  statusEl.textContent = "Ejecutando…";
+
+  const personId = crypto.randomUUID();
+  const stats = { steps: 0, retries: 0, verified: false };
+
+  try {
+    // 1) Start session
+    statusEl.textContent = "Iniciando sesión (llamando al Tutor real)…";
+    let pendingCard = addCard({ badgeText: "Start", title: "Iniciando sesión…", pending: true });
+    let { data: turn, elapsed } = await callApi("POST", `/people/${personId}/modules/${MODULE_ID}/sessions`, {});
+    pendingCard.remove();
+    addCard({
+      badgeText: turn.Stage, badgeClass: stageBadgeClass(turn.Stage),
+      title: "Sesión iniciada — " + turn.Stage, body: turn.Message, timingMs: elapsed
+    });
+    const sessionId = turn.RuntimeSessionId;
+    stats.steps++;
+
+    // 2) Recall
+    ({ data: turn, elapsed } = await submitEvidence(sessionId,
+      "Los pasos clave son: moler el café a un tamaño adecuado, calentar el agua a la temperatura correcta, "+
+      "usar una proporción de café y agua consistente, y controlar el tiempo de infusión. Estos son los criterios "+
+      "que uso para juzgar si una preparación fue exitosa. No consulté notas ni materiales externos."));
+    stats.steps++;
+
+    // 3) Prediction
+    ({ data: turn, elapsed } = await submitEvidence(sessionId,
+      "Predigo que la etapa que más afecta el resultado es el tiempo de infusión, porque pequeños cambios ahí "+
+      "cambian mucho el sabor. No consulté notas ni materiales externos."));
+    stats.steps++;
+
+    // 4) Instruction — real Tutor content + ack
+    if (turn.RequiresInstructionAcknowledgementOnly) {
+      statusEl.textContent = "Instruction: reconociendo contenido…";
+      let ackPending = addCard({ badgeText: "Instruction", title: "Confirmando lectura del contenido…", pending: true });
+      const res = await callApi("POST", `/sessions/${sessionId}/instruction-ack`, {});
+      ackPending.remove();
+      turn = res.data; elapsed = res.elapsed;
+      addCard({ badgeText: turn.Stage, badgeClass: stageBadgeClass(turn.Stage), title: turn.Stage, body: turn.Message, timingMs: elapsed });
+      stats.steps++;
+    }
+
+    // 5) LearnerProduction — DELIBERATELY WEAK first attempt (to trigger the retry loop)
+    ({ data: turn, elapsed } = await submitEvidence(sessionId,
+      "Receta: pones café, agua caliente, esperas un rato y listo.", "Producción (intento 1 — deliberadamente débil)"));
+    stats.steps++;
+
+    if (turn.Stage === "LearnerProduction") {
+      // Assessment said NotVerified/Failed and routed back for a retry — submit a STRONG attempt now.
+      stats.retries++;
+      statusEl.textContent = "Retroalimentación recibida — enviando una producción real y completa…";
+      ({ data: turn, elapsed } = await submitEvidence(sessionId,
+        "Receta — Prensa francesa clásica\n"+
+        "Objetivo de sabor: taza equilibrada, cuerpo medio, sin amargor excesivo.\n\n"+
+        "Materiales: prensa francesa 350ml, balanza digital, molino, termómetro, cronómetro.\n\n"+
+        "Ingredientes: 20g de café, 320ml de agua, ratio 1:16, temperatura del agua 94°C, molienda gruesa.\n\n"+
+        "Pasos:\n1. Pesar 20g de café y moler grueso.\n2. Calentar 320ml de agua a 94°C.\n"+
+        "3. Verter el agua sobre el café e iniciar el cronómetro.\n4. Remover suavemente a los 30s.\n"+
+        "5. Colocar el émbolo sin presionar y esperar hasta el minuto 4.\n6. Presionar lentamente y servir de inmediato.\n\n"+
+        "Notas de observación: aroma intenso en la preinfusión, cuerpo medio, ligera acidez agradable.\n\n"+
+        "Cómo ajustar para otra preferencia: si se quiere una taza más suave, reducir el tiempo de infusión a 3:30 min; "+
+        "para más cuerpo, usar molienda ligeramente más fina.",
+        "Producción (intento 2 — corregida según la retroalimentación)"));
+      stats.steps++;
+    }
+
+    // 6) Reflection
+    ({ data: turn, elapsed } = await submitEvidence(sessionId,
+      "Predije que el tiempo de infusión sería lo más determinante, y mi primer intento vago lo confirmó al fallar "+
+      "por falta de precisión. El patrón general que me llevo: definir cantidades y tiempos exactos primero, y "+
+      "documentar cómo ajustar la receta para variaciones de gusto."));
+    stats.steps++;
+
+    // Final card (Completed / RequiresRevision) with FinalAssessment detail
+    stats.verified = turn.Stage === "Completed";
+    addCard({
+      badgeText: turn.Stage, badgeClass: stageBadgeClass(turn.Stage),
+      title: turn.Stage === "Completed" ? "🎉 Módulo completado" : "Requiere revisión",
+      body: turn.Message,
+      criteria: turn.FinalAssessment?.SuccessCriteriaResults,
+      explanation: turn.FinalAssessment?.Explanation,
+      timingMs: elapsed
+    });
+
+    // Verify GET short-circuit (no hang) + duplicate-submit guard, for full confidence
+    statusEl.textContent = "Verificando que GET/POST tras Completed respondan instantáneo (sin colgarse)…";
+    const getStart = performance.now();
+    const getRes = await callApi("GET", `/sessions/${sessionId}`);
+    addCard({
+      badgeText: "GET", badgeClass: "verified",
+      title: "Repetir GET tras Completed → respuesta instantánea",
+      body: `Stage: ${getRes.data.Stage} · IsTerminal: ${getRes.data.IsTerminal}`,
+      timingMs: getRes.elapsed
+    });
+
+    statusEl.textContent = "✅ Prueba completa terminada.";
+    summaryEl.innerHTML = `
+      <span class="pill ${stats.verified ? 'ok' : 'bad'}">${stats.verified ? 'Verified' : 'RequiresRevision'}</span>
+      <span class="pill">${stats.steps} turnos</span>
+      <span class="pill ${stats.retries ? 'bad' : 'ok'}">${stats.retries} reintento(s)</span>
+    `;
+  } catch (err) {
+    addCard({
+      badgeText: "Error", badgeClass: "error",
+      title: "Falló la prueba",
+      body: (err.message || String(err)) + (err.body ? "\n\n" + JSON.stringify(err.body, null, 2) : ""),
+      timingMs: err.elapsed
+    });
+    statusEl.textContent = "❌ La prueba falló — ver detalle arriba.";
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+
+async function submitEvidence(sessionId, text, label) {
+  const pendingCard = addCard({ badgeText: "…", title: "Esperando respuesta del Tutor…", pending: true, submittedLabel: label, submittedText: text });
+  try {
+    const { data, elapsed } = await callApi("POST", `/sessions/${sessionId}/evidence`, {
+      Parts: [{ Kind: "Text", Text: text }],
+      AssistanceLevel: "Unaided",
+      CapturedBeforeAssistance: false
+    });
+    pendingCard.remove();
+    addCard({
+      badgeText: data.Stage, badgeClass: stageBadgeClass(data.Stage),
+      title: data.Stage,
+      body: data.Message,
+      submittedLabel: label,
+      submittedText: text,
+      timingMs: elapsed
+    });
+    return { data, elapsed };
+  } catch (err) {
+    pendingCard.remove();
+    throw err;
+  }
+}
+</script>
+</body>
+</html>

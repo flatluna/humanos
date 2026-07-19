@@ -186,6 +186,43 @@ public sealed class CapabilityService
     }
 
     /// <summary>
+    /// Read-only chapter list for a single module (added 2026-07-16) — lets
+    /// the Runtime frontend show a previously-seen chapter's raw teaching
+    /// content again ("review mode") without starting a new Runtime turn
+    /// or involving the Tutor Agent.
+    /// </summary>
+    public async Task<ModuleChapterSummaryResponse?> GetModuleChaptersAsync(
+        Guid capabilityModuleId,
+        CancellationToken cancellationToken = default)
+    {
+        var module = await _dbContext.CapabilityModules
+            .AsNoTracking()
+            .Include(m => m.Chapters)
+            .SingleOrDefaultAsync(m => m.CapabilityModuleId == capabilityModuleId, cancellationToken);
+
+        if (module is null)
+        {
+            return null;
+        }
+
+        return new ModuleChapterSummaryResponse
+        {
+            CapabilityModuleId = module.CapabilityModuleId,
+            ModuleTitle = module.Title,
+            Chapters = [.. module.Chapters
+                .OrderBy(c => c.SortOrder)
+                .Select(c => new ModuleChapterSummary
+                {
+                    CapabilityModuleChapterId = c.CapabilityModuleChapterId,
+                    SortOrder = c.SortOrder,
+                    Title = c.Title,
+                    TeachingContent = c.TeachingContent,
+                    IsPrimaryWeight = c.IsPrimaryWeight
+                })]
+        };
+    }
+
+    /// <summary>
     /// Permanently deletes a capability and all its content (levels,
     /// modules, metrics, knowledge chunks). CapabilityKnowledgeChunk's FKs
     /// are Restrict (not Cascade — see CapabilityKnowledgeChunkConfiguration,

@@ -1,0 +1,8 @@
+﻿{
+    "RuntimeSessionId":  "99bad2b2-3ae9-4770-ade5-86e48dca509d",
+    "Stage":  "RecallRequired",
+    "Message":  "Perfecto — ahora toca recordar sin ayudas. Por favor, escribe tu respuesta directamente aquí, sin consultar apuntes ni buscar información externa.\n\nTarea de recuerdo (hazlo de memoria):\n1. Enumera las principales etapas que viste en Foundation (escribe los nombres de las etapas tal como las recuerdas).\n2. Da al menos un ejemplo práctico que recuerdes para la etapa Exploration y al menos un ejemplo práctico para la etapa Mastery.\n3. Explica brevemente (1–3 frases) al menos una conexión o dependencia entre conceptos: por ejemplo, cómo una elección o resultado en la etapa X influye en lo que ocurre en la etapa Y.\n4. Confirma al final que esta respuesta la hiciste sin consultar notas, libros ni ayuda externa.\n\nFormato sugerido: puedes usar una lista breve para los puntos 1–2 y 1–2 frases para el punto 3. No des más información ni pidas explicaciones ahora — solo recupera lo que recuerdas.\n\nSi antes de intentar pides ayuda, te animaré a que intentes primero. Si ya hiciste un intento real pero te quedaste atascado, escribe tu intento y añade la palabra “Pista” al final; entonces te daré la pista mínima necesaria para seguir, sin revelar la respuesta completa.",
+    "RequiresInstructionAcknowledgementOnly":  false,
+    "IsTerminal":  false,
+    "FinalAssessment":  null
+}

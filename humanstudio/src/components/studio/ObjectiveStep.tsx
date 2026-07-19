@@ -8,8 +8,12 @@ import MaterialUploader from './MaterialUploader';
 import GenerateBlueprintButton from './GenerateBlueprintButton';
 import { Intensity, StudioMaterial, StudioObjectiveForm } from '../../types';
 import { getCapabilityDomains, BackendCapabilityDomain } from '../../lib/api/domainsApi';
-import { startCapabilityCreation, BackendRawMaterialItem } from '../../lib/api/studioApi';
-import { updateStudioRun } from '../../lib/studioRunStore';
+import {
+  startCapabilityCreation,
+  extractCapabilityMaterialPdfText,
+  BackendRawMaterialItem,
+} from '../../lib/api/studioApi';
+import { updateStudioRun, clearStudioRun } from '../../lib/studioRunStore';
 
 const initialForm: StudioObjectiveForm = {
   objective: '',
@@ -17,8 +21,24 @@ const initialForm: StudioObjectiveForm = {
   materials: [],
 };
 
-/** Text-like extensions we can read as plain text on the client (no PDF/DOCX extraction here yet). */
+/** Text-like extensions we can read as plain text on the client. PDFs are
+ * extracted server-side (see extractCapabilityMaterialPdfText) — DOCX
+ * extraction still isn't wired up. */
 const TEXT_EXTENSIONS = ['.txt', '.md'];
+
+/** Reads a File as a base64 string (no "data:...;base64," prefix), for
+ * sending to the PDF-extraction endpoint as JSON. */
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.substring(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 const ObjectiveStep: React.FC = () => {
   const navigate = useNavigate();
@@ -146,9 +166,9 @@ const ObjectiveStep: React.FC = () => {
     try {
       // The objective itself always counts as one raw material (the
       // backend requires at least one). Uploaded text-like files (.txt/.md)
-      // contribute their real content too; PDFs/DOCX aren't extracted on
-      // the client yet, so only their file name is passed as a label-only
-      // note (still useful context, just not full text).
+      // contribute their real content directly; PDFs are sent to the backend
+      // for real text extraction (PdfTextExtractor/UglyToad.PdfPig) — DOCX
+      // extraction still isn't wired up, so it falls back to a label-only note.
       const rawMaterials: BackendRawMaterialItem[] = [
         { type: 'UserNote', label: 'Objetivo', content: form.objective },
       ];
@@ -160,6 +180,10 @@ const ObjectiveStep: React.FC = () => {
         if (file && TEXT_EXTENSIONS.includes(material.fileType)) {
           const content = await file.text();
           rawMaterials.push({ type: 'UserNote', label: material.fileName, content });
+        } else if (file && material.fileType === '.pdf') {
+          const base64 = await readFileAsBase64(file);
+          const extracted = await extractCapabilityMaterialPdfText(material.fileName, base64);
+          rawMaterials.push({ type: 'Pdf', label: material.fileName, content: extracted.Text });
         } else {
           rawMaterials.push({
             type: 'UserNote',
@@ -175,6 +199,14 @@ const ObjectiveStep: React.FC = () => {
         rawMaterials,
       });
 
+      // Clear any stale blueprint/gate1SubjectId/capabilityPackage/gate2SubjectId
+      // left over from a PREVIOUS run before writing the new runId — without
+      // this, if a previous run's backend process was restarted (or its run
+      // was otherwise abandoned) mid-flight, BlueprintStep could read the OLD
+      // gate1SubjectId alongside the NEW runId and send a mismatched
+      // (runId, subjectId) pair to /respond, producing "No pending gate
+      // request with subject id '...' for run '...'".
+      clearStudioRun();
       updateStudioRun({ runId: status.RunId, capabilityDomainId: selectedDomainId });
       navigate('/studio/blueprint');
     } catch (err) {

@@ -35,6 +35,7 @@ namespace HumanOS.Agentic.Studio;
 public sealed class CapabilityCreationOrchestrator
 {
     private readonly CuradorAgent _curador;
+    private readonly TocExtractionAgent _tocExtraction;
     private readonly ArquitectoAgent _arquitecto;
     private readonly InstructorAgent _instructor;
     private readonly MetricoAgent _metrico;
@@ -45,6 +46,7 @@ public sealed class CapabilityCreationOrchestrator
 
     public CapabilityCreationOrchestrator(
         CuradorAgent curador,
+        TocExtractionAgent tocExtraction,
         ArquitectoAgent arquitecto,
         InstructorAgent instructor,
         MetricoAgent metrico,
@@ -53,6 +55,7 @@ public sealed class CapabilityCreationOrchestrator
         CapabilityEmbeddingService embeddingService)
     {
         _curador = curador;
+        _tocExtraction = tocExtraction;
         _arquitecto = arquitecto;
         _instructor = instructor;
         _metrico = metrico;
@@ -76,7 +79,7 @@ public sealed class CapabilityCreationOrchestrator
     {
         var runId = Guid.NewGuid();
         var workflow = CapabilityCreationWorkflowFactory.Build(
-            _curador, _arquitecto, _instructor, _metrico, _experiencia, _dbContextFactory, _embeddingService);
+            _curador, _tocExtraction, _arquitecto, _instructor, _metrico, _experiencia, _dbContextFactory, _embeddingService);
 
         var session = new RunSession();
         _runs[runId] = session;
@@ -210,6 +213,7 @@ public sealed class CapabilityCreationOrchestrator
             if (evt is ModuleScriptStartedEvent scriptStarted)
             {
                 session.SetCurrentModule(scriptStarted.ModuleTitle);
+                session.MarkModuleActive(scriptStarted.ModuleTitle);
                 session.UpdateStatus(CapabilityCreationRunStatus.Running(runId, session.CurrentProgress()));
                 continue;
             }
@@ -229,9 +233,10 @@ public sealed class CapabilityCreationOrchestrator
                 continue;
             }
 
-            if (evt is ModuleFinalizedEvent)
+            if (evt is ModuleFinalizedEvent moduleFinalized)
             {
                 session.IncrementCompletedModules();
+                session.MarkModuleFinalized(moduleFinalized.ModuleTitle);
                 session.UpdateStatus(CapabilityCreationRunStatus.Running(runId, session.CurrentProgress()));
                 continue;
             }
@@ -290,6 +295,8 @@ public sealed class CapabilityCreationOrchestrator
         private int? _totalModules;
         private int _completedModules;
         private string? _currentModuleTitle;
+        private readonly HashSet<string> _activeModuleTitles = [];
+        private readonly HashSet<string> _completedModuleTitles = [];
         private readonly Dictionary<string, string> _publishTaskStatuses = new();
 
         public StreamingRun? Run { get; set; }
@@ -322,6 +329,33 @@ public sealed class CapabilityCreationOrchestrator
             }
         }
 
+        /// <summary>Marks a module as currently in flight (Instructor/Métrico
+        /// running for it right now) — added 2026-07-16 alongside
+        /// <see cref="SetCurrentModule"/> so the Studio UI can show EVERY
+        /// concurrently-active module, not just the most recently started
+        /// one (see ParallelModuleGenerationExecutor).</summary>
+        public void MarkModuleActive(string title)
+        {
+            lock (_lock)
+            {
+                _activeModuleTitles.Add(title);
+            }
+        }
+
+        /// <summary>Removes a module from the active set once its outcome
+        /// is final (Verified, or retries exhausted) — mirrors
+        /// <see cref="IncrementCompletedModules"/>'s "exactly once, on
+        /// ModuleFinalizedEvent" timing. Also records the title in the
+        /// authoritative completed-titles set (see CurrentProgress).</summary>
+        public void MarkModuleFinalized(string title)
+        {
+            lock (_lock)
+            {
+                _activeModuleTitles.Remove(title);
+                _completedModuleTitles.Add(title);
+            }
+        }
+
         public void IncrementCompletedModules()
         {
             lock (_lock)
@@ -347,6 +381,8 @@ public sealed class CapabilityCreationOrchestrator
                     TotalModules = _totalModules,
                     CompletedModules = _totalModules is null ? null : _completedModules,
                     CurrentModuleTitle = _currentModuleTitle,
+                    ActiveModuleTitles = _activeModuleTitles.Count == 0 ? null : [.. _activeModuleTitles],
+                    CompletedModuleTitles = _completedModuleTitles.Count == 0 ? null : [.. _completedModuleTitles],
                     PublishTasks = _publishTaskStatuses.Count == 0
                         ? null
                         : [.. _publishTaskStatuses.Select(kv => new PublishTaskStatus { TaskKey = kv.Key, Status = kv.Value })]

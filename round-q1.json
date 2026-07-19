@@ -1,0 +1,13 @@
+﻿{
+    "AssessmentRoundId":  "39b327ca-e981-422a-942c-d8f71a8d79e0",
+    "RoundNumber":  1,
+    "TotalQuestions":  5,
+    "Status":  "InProgress",
+    "FinalScore":  null,
+    "CurrentQuestion":  {
+                            "AssessmentQuestionId":  "76467d11-1708-4c67-9a83-5095fe82c41c",
+                            "QuestionIndex":  1,
+                            "QuestionType":  "ActiveRecall",
+                            "QuestionText":  "Sin mirar notas, escribe con tus propias palabras qué es la suma básica (una o dos frases). Después, da dos ejemplos distintos: uno describiendo la suma al juntar objetos (por ejemplo, manzanas) y otro usando solamente números. Responde en tus propias palabras."
+                        }
+}

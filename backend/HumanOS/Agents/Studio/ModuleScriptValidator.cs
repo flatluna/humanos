@@ -45,8 +45,8 @@ public static class ModuleScriptValidator
         if (!output.RecallActivity.OccursBeforeInstruction)
         {
             throw new InvalidOperationException(
-                $"Module '{approvedModule.Title}': Recall must occur before instruction, examples, " +
-                "hints, or AI assistance.");
+                $"Module '{approvedModule.Title}': Recall must occur right after the teaching content and " +
+                "before the LearnerTask/application step or any further scaffolding.");
         }
 
         if (string.IsNullOrWhiteSpace(output.LearnerTask))
@@ -66,6 +66,57 @@ public static class ModuleScriptValidator
         {
             throw new InvalidOperationException(
                 $"Module '{approvedModule.Title}': Mastery requires Recall without cues.");
+        }
+
+        // Chapters (fixed 2026-07-16, expanded for the phase-based
+        // restructuring): a structural, difficulty-ordered breakdown of
+        // the same teaching content, prepared for a future turn-based/
+        // voice Runtime presentation — see ModuleScript.Chapters.
+        if (output.Chapters is null || output.Chapters.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}' does not contain any Chapters.");
+        }
+
+        if (output.Chapters.Any(c => string.IsNullOrWhiteSpace(c.TeachingContent)))
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}': every Chapter requires real TeachingContent.");
+        }
+
+        if (output.Chapters.Any(c => string.IsNullOrWhiteSpace(c.RecallPrompt)))
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}': every Chapter requires its own RecallPrompt.");
+        }
+
+        var primaryWeightChapterCount = output.Chapters.Count(c => c.IsPrimaryWeight);
+        if (primaryWeightChapterCount != 1)
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}': exactly one Chapter must have IsPrimaryWeight " +
+                $"= true (found {primaryWeightChapterCount}).");
+        }
+
+        var predictionChapterCount = output.Chapters.Count(c => !string.IsNullOrWhiteSpace(c.PredictionPrompt));
+        if (predictionChapterCount != 1)
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}': exactly one Chapter must have a non-empty " +
+                $"PredictionPrompt (found {predictionChapterCount}).");
+        }
+
+        if (output.Chapters.Any(c => c.IsPrimaryWeight != !string.IsNullOrWhiteSpace(c.PredictionPrompt)))
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}': the Chapter with IsPrimaryWeight = true must be the " +
+                "SAME Chapter that carries the PredictionPrompt.");
+        }
+
+        if (string.IsNullOrWhiteSpace(output.ReflectionPrompt))
+        {
+            throw new InvalidOperationException(
+                $"Module '{approvedModule.Title}' does not contain a closing ReflectionPrompt.");
         }
     }
 }

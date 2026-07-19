@@ -38,6 +38,32 @@ public sealed class CapabilityCreationRunProgress
 
     public string? CurrentModuleTitle { get; init; }
 
+    /// <summary>
+    /// Titles of every module CURRENTLY being processed (Instructor/Métrico
+    /// in flight for that module right now) — plural, added 2026-07-16 when
+    /// module generation became bounded-concurrency parallel (see
+    /// ParallelModuleGenerationExecutor). <see cref="CurrentModuleTitle"/>
+    /// alone can only ever show the single MOST RECENTLY started module,
+    /// which made the Studio UI look sequential (only ever highlighting one
+    /// module as "Generando guion...") even though several run concurrently
+    /// — this field lets the frontend mark ALL of them as in-progress at
+    /// once. Kept alongside (not replacing) CurrentModuleTitle for
+    /// backward compatibility.
+    /// </summary>
+    public IReadOnlyList<string>? ActiveModuleTitles { get; init; }
+
+    /// <summary>
+    /// Titles of every module whose outcome is FINAL (Verified, or retries
+    /// exhausted) — added 2026-07-16 alongside ActiveModuleTitles. With
+    /// parallel module generation, modules can finish in a DIFFERENT order
+    /// than the blueprint's own module order (e.g. module #5 can finish
+    /// before module #1) — so "the first CompletedModules modules in
+    /// blueprint order are done" is no longer a safe assumption for the
+    /// frontend to make from the count alone. This is the authoritative
+    /// set of which SPECIFIC modules are done.
+    /// </summary>
+    public IReadOnlyList<string>? CompletedModuleTitles { get; init; }
+
     // --- Publish phase ---
     public IReadOnlyList<PublishTaskStatus>? PublishTasks { get; init; }
 }

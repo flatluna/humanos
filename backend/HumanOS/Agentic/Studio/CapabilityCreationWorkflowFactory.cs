@@ -9,26 +9,24 @@ namespace HumanOS.Agentic.Studio;
 /// Builds the Human OS Studio capability-creation Workflow graph:
 ///
 ///   Curador -&gt; Arquitecto -&gt; [GATE 1] -&gt; Gate1Decision
-///     -&gt; (conditional) -&gt; ModuleQueueInitializer -&gt; (conditional) -&gt; Instructor
-///     -&gt; Metrico -&gt; ModuleCompletionRouter -&gt; (conditional, loops back to
-///     Instructor for the NEXT module, or the SAME module on a bounded
-///     revision retry — see ModuleCompletionRouterExecutor.MaxRetries,
-///     Paso 7 2026-07-14) -&gt; [&gt;=85% Verified?] -&gt; Experiencia -&gt; [GATE 2]
-///     -&gt; Gate2Decision -&gt; (conditional) -&gt; Publish
+///     -&gt; (conditional) -&gt; ParallelModuleGeneration -&gt; [&gt;=85% Verified?]
+///     -&gt; Experiencia -&gt; [GATE 2] -&gt; Gate2Decision -&gt; (conditional) -&gt; Publish
 ///   (Gate1Decision/Gate2Decision also conditionally route to
-///   Gate1RejectionExecutor/Gate2RejectionExecutor on rejection. ModuleQueueInitializer/
-///   ModuleCompletionRouter route to ModuleRevisionRequiredExecutor instead
-///   of Experiencia when generation is done but FEWER than
+///   Gate1RejectionExecutor/Gate2RejectionExecutor on rejection.
+///   ParallelModuleGeneration routes to ModuleRevisionRequiredExecutor
+///   instead of Experiencia when generation is done but FEWER than
 ///   ModuleCompletionGate.MinVerifiedRatio of modules are Verified — see
 ///   ModuleCompletionGate, Paso 5 2026-07-14 (threshold relaxed Paso 7):
 ///   "all modules generated" is NOT "capability ready to assemble", but
 ///   100% Verified is also not required to publish.)
 ///
-/// Instructor/Metrico run sequentially, one module at a time, through the
-/// two module-router executors and conditional edges (same pattern as the
-/// Agent Framework's conditional-edges sample) — prepared so the module
-/// loop can later become a real fan-out/fan-in (AddFanOutEdge/
-/// AddFanInBarrierEdge) without changing the agents.
+/// Module generation (2026-07-16, replacing the previous SEQUENTIAL
+/// one-at-a-time loop — see ParallelModuleGenerationExecutor's remarks for
+/// why the Agent Framework's AddFanOutEdge/AddFanInBarrierEdge primitives
+/// weren't used): every module in the approved blueprint is now processed
+/// concurrently (bounded, see ParallelModuleGenerationExecutor.MaxConcurrency)
+/// inside a SINGLE executor, instead of one at a time through four separate
+/// executors and conditional loop-back edges.
 ///
 /// A fresh graph (with fresh executor instances) must be built per
 /// capability-creation run.
@@ -37,6 +35,7 @@ internal static class CapabilityCreationWorkflowFactory
 {
     public static Workflow Build(
         CuradorAgent curador,
+        TocExtractionAgent tocExtraction,
         ArquitectoAgent arquitecto,
         InstructorAgent instructor,
         MetricoAgent metrico,
@@ -44,15 +43,12 @@ internal static class CapabilityCreationWorkflowFactory
         IDbContextFactory<HumanOsDbContext> dbContextFactory,
         CapabilityEmbeddingService embeddingService)
     {
-        var curadorExecutor = new CuradorExecutor(curador);
+        var curadorExecutor = new CuradorExecutor(curador, tocExtraction);
         var arquitectoExecutor = new ArquitectoExecutor(arquitecto);
         var gate1 = RequestPort.Create<CapabilityBlueprint, GateDecision>("Gate1-ArchitectReview");
         var gate1Decision = new Gate1DecisionExecutor();
         var gate1Rejection = new Gate1RejectionExecutor();
-        var moduleQueueInitializer = new ModuleQueueInitializerExecutor();
-        var instructorExecutor = new InstructorExecutor(instructor);
-        var metricoExecutor = new MetricoExecutor(metrico);
-        var moduleCompletionRouter = new ModuleCompletionRouterExecutor();
+        var parallelModuleGeneration = new ParallelModuleGenerationExecutor(instructor, metrico);
         var moduleRevisionRequired = new ModuleRevisionRequiredExecutor();
         var experienciaExecutor = new ExperienciaExecutor(experiencia);
         var gate2 = RequestPort.Create<CapabilityPackage, GateDecision>("Gate2-FinalReview");
@@ -65,16 +61,10 @@ internal static class CapabilityCreationWorkflowFactory
             .AddEdge(curadorExecutor, arquitectoExecutor)
             .AddEdge(arquitectoExecutor, gate1)
             .AddEdge(gate1, gate1Decision)
-            .AddEdge<Gate1Outcome>(gate1Decision, moduleQueueInitializer, condition: IsGate1Approved)
+            .AddEdge<Gate1Outcome>(gate1Decision, parallelModuleGeneration, condition: IsGate1Approved)
             .AddEdge<Gate1Outcome>(gate1Decision, gate1Rejection, condition: IsGate1Rejected)
-            .AddEdge<ModuleRouterOutput>(moduleQueueInitializer, instructorExecutor, condition: HasNextModule)
-            .AddEdge<ModuleRouterOutput>(moduleQueueInitializer, experienciaExecutor, condition: ModuleCompletionGate.MeetsPublishThreshold)
-            .AddEdge<ModuleRouterOutput>(moduleQueueInitializer, moduleRevisionRequired, condition: ModuleCompletionGate.RequiresRevision)
-            .AddEdge(instructorExecutor, metricoExecutor)
-            .AddEdge(metricoExecutor, moduleCompletionRouter)
-            .AddEdge<ModuleRouterOutput>(moduleCompletionRouter, instructorExecutor, condition: HasNextModule)
-            .AddEdge<ModuleRouterOutput>(moduleCompletionRouter, experienciaExecutor, condition: ModuleCompletionGate.MeetsPublishThreshold)
-            .AddEdge<ModuleRouterOutput>(moduleCompletionRouter, moduleRevisionRequired, condition: ModuleCompletionGate.RequiresRevision)
+            .AddEdge<ModuleRouterOutput>(parallelModuleGeneration, experienciaExecutor, condition: ModuleCompletionGate.MeetsPublishThreshold)
+            .AddEdge<ModuleRouterOutput>(parallelModuleGeneration, moduleRevisionRequired, condition: ModuleCompletionGate.RequiresRevision)
             .AddEdge(experienciaExecutor, gate2)
             .AddEdge(gate2, gate2Decision)
             .AddEdge<Gate2Outcome>(gate2Decision, publish, condition: IsGate2Approved)
@@ -83,8 +73,6 @@ internal static class CapabilityCreationWorkflowFactory
 
         return builder.Build();
     }
-
-    private static bool HasNextModule(ModuleRouterOutput? message) => message?.NextModule is not null;
 
     private static bool IsGate1Approved(Gate1Outcome? message) => message?.ApprovedBlueprint is not null;
 

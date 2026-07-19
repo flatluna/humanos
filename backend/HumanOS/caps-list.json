@@ -1,0 +1,93 @@
+﻿{
+    "value":  [
+                  {
+                      "CapabilityId":  "2c386804-4524-445f-aaf3-affebef46281",
+                      "CapabilityDomainId":  "e7f85204-d03c-4a11-a9c0-c4b65c4718c2",
+                      "DomainCode":  "FUTURE",
+                      "Code":  "crear-un-curso-a-partir-de-un-pdf-de-álgebra-básico-660a955c",
+                      "Name":  "Crear un curso a partir de un PDF de álgebra (básico)",
+                      "Description":  "Crea un curso del pdf ",
+                      "IsActive":  true,
+                      "LevelCount":  3,
+                      "ModuleCount":  9,
+                      "Levels":  [
+                                     "Foundation",
+                                     "Exploration",
+                                     "Mastery"
+                                 ],
+                      "CreatedDate":  "2026-07-16T22:40:29.6196625",
+                      "UpdatedDate":  "2026-07-16T22:40:29.6196625"
+                  },
+                  {
+                      "CapabilityId":  "326c0680-42c6-4dee-a4b5-ebf42c309a78",
+                      "CapabilityDomainId":  "e7f85204-d03c-4a11-a9c0-c4b65c4718c2",
+                      "DomainCode":  "FUTURE",
+                      "Code":  "resolver-y-analizar-ecuaciones-cuadráticas-1249366d",
+                      "Name":  "Resolver y analizar ecuaciones cuadráticas",
+                      "Description":  "apacidad para resolver y analizar ecuaciones cuadráticas, aplicando métodos algebraicos básicos como factorización, fórmula general y completación del cuadrado, para determinar las raíces y comprender el comportamiento de funciones polinómicas de segundo grado.",
+                      "IsActive":  true,
+                      "LevelCount":  3,
+                      "ModuleCount":  9,
+                      "Levels":  [
+                                     "Foundation",
+                                     "Exploration",
+                                     "Mastery"
+                                 ],
+                      "CreatedDate":  "2026-07-15T00:42:02.8621577",
+                      "UpdatedDate":  "2026-07-15T00:42:02.8621577"
+                  },
+                  {
+                      "CapabilityId":  "ff02c627-585c-49f5-a1bc-1bad4a2abdcc",
+                      "CapabilityDomainId":  "5a75e51d-f803-460d-ba08-6ebba78ef004",
+                      "DomainCode":  "HOME",
+                      "Code":  "preparar-café-en-prensa-francesa-correctamente-0b26cddd",
+                      "Name":  "Preparar café en prensa francesa correctamente",
+                      "Description":  "Aprender a preparar cafe en prensa francesa correctamente por mi cuenta",
+                      "IsActive":  true,
+                      "LevelCount":  3,
+                      "ModuleCount":  9,
+                      "Levels":  [
+                                     "Foundation",
+                                     "Exploration",
+                                     "Mastery"
+                                 ],
+                      "CreatedDate":  "2026-07-15T00:23:15.0676884",
+                      "UpdatedDate":  "2026-07-15T00:23:15.0676884"
+                  },
+                  {
+                      "CapabilityId":  "cc530905-19c9-4dba-9c15-2ba47c44194f",
+                      "CapabilityDomainId":  "9cc8511e-14f8-4dbf-bc89-3a014b61cf9e",
+                      "DomainCode":  "MIND",
+                      "Code":  "CRITICAL_THINKING",
+                      "Name":  "Critical Thinking",
+                      "Description":  "The capability to analyze information, examine assumptions, evaluate evidence, reason carefully, and form well-supported conclusions.",
+                      "IsActive":  true,
+                      "LevelCount":  0,
+                      "ModuleCount":  0,
+                      "Levels":  [
+
+                                 ],
+                      "CreatedDate":  "2026-07-11T18:25:25.1277362",
+                      "UpdatedDate":  "2026-07-11T18:25:25.1277362"
+                  },
+                  {
+                      "CapabilityId":  "e011a708-b8c0-4bca-9dc8-d0dd6f90230e",
+                      "CapabilityDomainId":  "9cc8511e-14f8-4dbf-bc89-3a014b61cf9e",
+                      "DomainCode":  "MIND",
+                      "Code":  "facilitación-de-reuniones-efectivas-y-resolución-interna-de-conflictos-37f32a4b",
+                      "Name":  "Facilitación de reuniones efectivas y resolución interna de conflictos",
+                      "Description":  "Quiero aprender a facilitar reuniones de equipo efectivas y resolver conflictos sin depender de un mediador externo.",
+                      "IsActive":  true,
+                      "LevelCount":  3,
+                      "ModuleCount":  9,
+                      "Levels":  [
+                                     "Foundation",
+                                     "Exploration",
+                                     "Mastery"
+                                 ],
+                      "CreatedDate":  "2026-07-14T13:37:24.8073983",
+                      "UpdatedDate":  "2026-07-14T13:37:24.8073983"
+                  }
+              ],
+    "Count":  5
+}

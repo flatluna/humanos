@@ -1,5 +1,7 @@
 namespace HumanOS.Models.Capabilities;
 
+using HumanOS.Models.Capabilities.Graph;
+
 public sealed class Capability
 {
     public Guid CapabilityId { get; set; }
@@ -27,4 +29,10 @@ public sealed class Capability
     public ICollection<CapabilityLevel> Levels { get; set; } = [];
 
     public ICollection<CapabilityKnowledgeChunk> KnowledgeChunks { get; set; } = [];
+
+    /// <summary>
+    /// Capability Graph para esta Capability (relación 1:1, opcional en PASO 1).
+    /// En PASO 2, GraphArchitectAgent poblará estos grafos automáticamente.
+    /// </summary>
+    public CapabilityGraph? CapabilityGraph { get; set; }
 }

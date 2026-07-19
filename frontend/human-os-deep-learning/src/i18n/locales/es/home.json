@@ -1,0 +1,14 @@
+{
+  "title": "Buenos Días",
+  "subtitle": "Aquí está lo que estás desarrollando",
+  "sections": {
+    "capabilitiesInProgress": "Capacidades en Progreso",
+    "continueSession": "Continuar Sesión",
+    "recentActivity": "Actividad Reciente",
+    "nextSteps": "Pasos Recomendados"
+  },
+  "actions": {
+    "resumeSession": "Reanudar",
+    "startNew": "Empezar Nueva"
+  }
+}

@@ -10,6 +10,12 @@ obj/
 dist/
 dist-ssr/
 
+# Local Azure Storage emulator runtime state (not source)
+.azurite/
+
+# Stray log files from local dev runs
+*.log
+
 # OS / editor junk
 .DS_Store
 Thumbs.db

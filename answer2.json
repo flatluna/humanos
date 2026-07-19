@@ -1,0 +1,18 @@
+﻿{
+    "Grade":  {
+                  "Correctness":  "Correct",
+                  "Score":  95,
+                  "Feedback":  "Muy bien explicado: dices con tus palabras por qué A + B representa el total (porque combinas los elementos y los cuentas) y describes un proceso claro y verificable (contar A, contar B, luego contar todo sin repetir u omitir). El ejemplo concreto (4 lápices + 2 lápices) ilustra bien la idea. Para mejorar aún más, podrías mencionar una forma práctica de contar sin volver a empezar (por ejemplo, contar los 4 primero y luego seguir 5, 6 al añadir los 2) o explicar brevemente la idea de correspondencia uno a uno entre elementos y números para justificar por qué la suma preserva el conteo. Pero tu respuesta cumple la consigna y está correcta."
+              },
+    "RoundComplete":  false,
+    "Passed":  null,
+    "FinalScore":  null,
+    "NextQuestion":  {
+                         "AssessmentQuestionId":  "594ec260-fd36-4314-9243-597c63e1b4bf",
+                         "QuestionIndex":  3,
+                         "QuestionType":  "Application",
+                         "QuestionText":  "En un torneo de fútbol participan 13 jugadores en el equipo A, 8 jugadores en el equipo B y 6 jugadores en el equipo C. Si juntamos a todos los jugadores para contar cuántos hay en total, escribe la operación de suma que representa esta situación y da el resultado. Finalmente, explica en una frase qué significa ese número en el contexto del torneo."
+                     },
+    "NewRoundNumber":  null,
+    "NewAssessmentRoundId":  null
+}

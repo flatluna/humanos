@@ -138,7 +138,11 @@ internal sealed class PublishExecutor : Executor<Gate2Outcome, CapabilityPackage
                 Description = completed.Module.Description,
                 Type = completed.Module.Type,
                 Script = completed.Script.Script,
-                MetricRationale = completed.Metrics.Rationale
+                ReflectionPrompt = completed.Script.ReflectionPrompt,
+                MetricRationale = completed.Metrics.Rationale,
+                RecallRequirement = completed.Module.RecallRequirement,
+                LearnerProduction = completed.Module.LearnerProduction,
+                LearnerTask = completed.Script.LearnerTask
             };
             level.Modules.Add(capabilityModule);
 
@@ -186,6 +190,28 @@ internal sealed class PublishExecutor : Executor<Gate2Outcome, CapabilityPackage
             }
 
             capabilityModule.Verifications.Add(verificationRow);
+
+            // Fixed 2026-07-16: persist the Instructor's phase-based
+            // Chapters breakdown of the same teaching content — not yet
+            // consumed by the Runtime, prepared for a future turn-based/
+            // voice presentation (see CapabilityModuleChapter's doc comment).
+            for (var chapterIndex = 0; chapterIndex < completed.Script.Chapters.Count; chapterIndex++)
+            {
+                var chapter = completed.Script.Chapters[chapterIndex];
+                capabilityModule.Chapters.Add(new CapabilityModuleChapter
+                {
+                    CapabilityModuleChapterId = Guid.NewGuid(),
+                    CapabilityModuleId = capabilityModule.CapabilityModuleId,
+                    SortOrder = chapterIndex,
+                    Title = chapter.Title,
+                    TeachingContent = chapter.TeachingContent,
+                    IsPrimaryWeight = chapter.IsPrimaryWeight,
+                    RecallPrompt = chapter.RecallPrompt,
+                    IsCumulativeRecall = chapter.IsCumulativeRecall,
+                    PredictionPrompt = chapter.PredictionPrompt,
+                    MiniPracticePrompt = chapter.MiniPracticePrompt
+                });
+            }
 
             var moduleChunks = TextChunker.Chunk(completed.Script.Script);
             for (var chunkIndex = 0; chunkIndex < moduleChunks.Count; chunkIndex++)

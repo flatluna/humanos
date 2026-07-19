@@ -263,6 +263,65 @@ export function StudioFinalReviewPage() {
               </button>
             </div>
             <p className="text-gray-600 mb-4">{selectedModule.Module.Description}</p>
+            {selectedModule.Script.Chapters?.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-gray-900 mb-2">
+                  Capítulos ({selectedModule.Script.Chapters.length}) — ciclo de fases preparado para presentación futura por turnos/voz
+                </h3>
+                <div className="space-y-2">
+                  {selectedModule.Script.Chapters.map((chapter, index) => (
+                    <div
+                      key={`${chapter.Title}-${index}`}
+                      className={`border rounded-lg p-3 ${
+                        chapter.IsPrimaryWeight
+                          ? 'border-purple-300 bg-purple-50'
+                          : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-sm font-semibold text-gray-900">
+                          {index + 1}. {chapter.Title}
+                        </span>
+                        {chapter.IsPrimaryWeight && (
+                          <span className="px-2 py-0.5 bg-purple-200 text-purple-900 text-xs font-medium rounded-full whitespace-nowrap">
+                            ⭐ Peso principal
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{chapter.TeachingContent}</p>
+
+                      <div className="text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded-md p-2 mb-1">
+                        <span className="font-semibold">
+                          {chapter.IsCumulativeRecall ? '🔁 Recordar acumulativo: ' : '🧠 Recordar rápido: '}
+                        </span>
+                        {chapter.RecallPrompt}
+                      </div>
+
+                      {chapter.PredictionPrompt && (
+                        <div className="text-xs text-purple-900 bg-purple-100 border border-purple-300 rounded-md p-2 mb-1">
+                          <span className="font-semibold">🔮 Predicción: </span>
+                          {chapter.PredictionPrompt}
+                        </div>
+                      )}
+
+                      {chapter.MiniPracticePrompt && (
+                        <div className="text-xs text-green-900 bg-green-50 border border-green-200 rounded-md p-2">
+                          <span className="font-semibold">✏️ Mini-práctica: </span>
+                          {chapter.MiniPracticePrompt}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {selectedModule.Script.ReflectionPrompt && (
+                  <div className="text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded-md p-3 mt-3">
+                    <span className="font-semibold">🏁 Reflexión final: </span>
+                    {selectedModule.Script.ReflectionPrompt}
+                  </div>
+                )}
+              </div>
+            )}
             <h3 className="text-sm font-bold text-gray-900 mb-2">Guion del Instructor</h3>
             <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-4">
               {selectedModule.Script.Script}

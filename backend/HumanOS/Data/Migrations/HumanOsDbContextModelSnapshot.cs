@@ -23,6 +23,70 @@ namespace HumanOS.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("HumanOS.Data.RuntimeSessionStatus", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("FinalStage")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsTerminal")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("SessionId")
+                        .HasName("PK_RuntimeSessionStatus");
+
+                    b.ToTable("RuntimeSessionStatus", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Data.RuntimeWorkflowCheckpoint", b =>
+                {
+                    b.Property<Guid>("RuntimeWorkflowCheckpointId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("CheckpointId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("ParentCheckpointId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SessionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("RuntimeWorkflowCheckpointId")
+                        .HasName("PK_RuntimeWorkflowCheckpoint");
+
+                    b.HasIndex("SessionId", "CheckpointId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RuntimeWorkflowCheckpoint_SessionId_CheckpointId");
+
+                    b.ToTable("RuntimeWorkflowCheckpoint", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Agents.Agent", b =>
                 {
                     b.Property<Guid>("AgentId")
@@ -511,7 +575,22 @@ namespace HumanOS.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<string>("LearnerProduction")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("LearnerTask")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("MetricRationale")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecallRequirement")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReflectionPrompt")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -539,6 +618,58 @@ namespace HumanOS.Data.Migrations
                         .HasDatabaseName("IX_CapabilityModule_CapabilityLevelId");
 
                     b.ToTable("CapabilityModule", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityModuleChapter", b =>
+                {
+                    b.Property<Guid>("CapabilityModuleChapterId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("CapabilityModuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<bool>("IsCumulativeRecall")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPrimaryWeight")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MiniPracticePrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PredictionPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecallPrompt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TeachingContent")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.HasKey("CapabilityModuleChapterId")
+                        .HasName("PK_CapabilityModuleChapter");
+
+                    b.HasIndex("CapabilityModuleId")
+                        .HasDatabaseName("IX_CapabilityModuleChapter_CapabilityModuleId");
+
+                    b.ToTable("CapabilityModuleChapter", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityModuleMetric", b =>
@@ -685,6 +816,336 @@ namespace HumanOS.Data.Migrations
                     b.HasIndex("LanguageCode");
 
                     b.ToTable("CapabilityTranslation", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidation", b =>
+                {
+                    b.Property<Guid>("BlueprintValidationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("NodeExperienceBlueprintId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalTokens")
+                        .HasColumnType("int");
+
+                    b.HasKey("BlueprintValidationId");
+
+                    b.HasIndex("NodeExperienceBlueprintId");
+
+                    b.ToTable("BlueprintValidations");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidationIssue", b =>
+                {
+                    b.Property<Guid>("BlueprintValidationIssueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Area")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("BlueprintValidationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("int");
+
+                    b.HasKey("BlueprintValidationIssueId");
+
+                    b.HasIndex("BlueprintValidationId");
+
+                    b.ToTable("BlueprintValidationIssues");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidationMetric", b =>
+                {
+                    b.Property<Guid>("BlueprintValidationMetricId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BlueprintValidationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MetricName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("MetricValue")
+                        .HasColumnType("int");
+
+                    b.HasKey("BlueprintValidationMetricId");
+
+                    b.HasIndex("BlueprintValidationId");
+
+                    b.ToTable("BlueprintValidationMetrics");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraph", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("CapabilityGraphId");
+
+                    b.HasIndex("CapabilityId")
+                        .IsUnique();
+
+                    b.ToTable("CapabilityGraphs");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphEdge", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphEdgeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("RelationshipType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SourceNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TargetNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("CapabilityGraphEdgeId");
+
+                    b.HasIndex("CapabilityGraphId");
+
+                    b.HasIndex("TargetNodeId");
+
+                    b.HasIndex("SourceNodeId", "TargetNodeId");
+
+                    b.ToTable("CapabilityGraphEdges");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AcademicDefinition")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ApplicationsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CapabilityGraphId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ExamplesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Interpretation")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("NodeType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReferencesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.HasKey("CapabilityGraphNodeId");
+
+                    b.HasIndex("CapabilityGraphId", "Name")
+                        .IsUnique();
+
+                    b.HasIndex("CapabilityGraphId", "SortOrder");
+
+                    b.ToTable("CapabilityGraphNodes");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeIllustration", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphNodeIllustrationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImageModel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("CapabilityGraphNodeIllustrationId");
+
+                    b.HasIndex("CapabilityGraphNodeId");
+
+                    b.ToTable("CapabilityGraphNodeIllustrations");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", b =>
+                {
+                    b.Property<Guid>("NodeExperienceBlueprintId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("NodeExperienceBlueprintId");
+
+                    b.HasIndex("CapabilityGraphNodeId");
+
+                    b.HasIndex("CapabilityGraphNodeId", "Name", "Version")
+                        .IsUnique();
+
+                    b.ToTable("NodeExperienceBlueprints");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprintStep", b =>
+                {
+                    b.Property<Guid>("NodeExperienceBlueprintStepId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("NodeExperienceBlueprintId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReferencedIllustrationIdsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StepType")
+                        .HasColumnType("int");
+
+                    b.HasKey("NodeExperienceBlueprintStepId");
+
+                    b.HasIndex("NodeExperienceBlueprintId", "SortOrder");
+
+                    b.HasIndex("NodeExperienceBlueprintId", "StepType")
+                        .IsUnique();
+
+                    b.ToTable("NodeExperienceBlueprintSteps");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.PersonCapability", b =>
@@ -1228,6 +1689,262 @@ namespace HumanOS.Data.Migrations
                         .HasDatabaseName("IX_JobDescription_TenantId");
 
                     b.ToTable("JobDescription", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.AssessmentQuestion", b =>
+                {
+                    b.Property<Guid>("AssessmentQuestionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AnsweredDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("AssessmentRoundId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Correctness")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Feedback")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ObservedError")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("QuestionIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("QuestionType")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ScoreContribution")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StudentAnswer")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("AssessmentQuestionId");
+
+                    b.HasIndex("AssessmentRoundId", "QuestionIndex")
+                        .IsUnique();
+
+                    b.ToTable("AssessmentQuestions");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.AssessmentRound", b =>
+                {
+                    b.Property<Guid>("AssessmentRoundId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int?>("FinalScore")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("LearningSessionNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RoundNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("AssessmentRoundId");
+
+                    b.HasIndex("LearningSessionNodeId", "RoundNumber")
+                        .IsUnique();
+
+                    b.ToTable("AssessmentRounds");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningAssessmentResult", b =>
+                {
+                    b.Property<Guid>("LearningAssessmentResultId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Feedback")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("LearningSessionNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Passed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.HasKey("LearningAssessmentResultId");
+
+                    b.HasIndex("LearningSessionNodeId");
+
+                    b.ToTable("LearningAssessmentResults");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningEvidence", b =>
+                {
+                    b.Property<Guid>("LearningEvidenceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("LearningSessionStepId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StudentResponse")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TutorPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("TutorScore")
+                        .HasColumnType("int");
+
+                    b.HasKey("LearningEvidenceId");
+
+                    b.HasIndex("LearningSessionStepId");
+
+                    b.ToTable("LearningEvidences");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSession", b =>
+                {
+                    b.Property<Guid>("LearningSessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("StartedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("LearningSessionId");
+
+                    b.HasIndex("CapabilityId");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("PersonId", "CapabilityId");
+
+                    b.ToTable("LearningSessions");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionNode", b =>
+                {
+                    b.Property<Guid>("LearningSessionNodeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("LearningSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("NodeExperienceBlueprintId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("StartedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("LearningSessionNodeId");
+
+                    b.HasIndex("CapabilityGraphNodeId");
+
+                    b.HasIndex("LearningSessionId");
+
+                    b.HasIndex("NodeExperienceBlueprintId");
+
+                    b.ToTable("LearningSessionNodes");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionStep", b =>
+                {
+                    b.Property<Guid>("LearningSessionStepId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("LearningSessionNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("StartedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StepType")
+                        .HasColumnType("int");
+
+                    b.HasKey("LearningSessionStepId");
+
+                    b.HasIndex("LearningSessionNodeId", "StepType")
+                        .IsUnique();
+
+                    b.ToTable("LearningSessionSteps");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Localization.Language", b =>
@@ -2049,6 +2766,18 @@ namespace HumanOS.Data.Migrations
                     b.Navigation("CapabilityLevel");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityModuleChapter", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.CapabilityModule", "CapabilityModule")
+                        .WithMany("Chapters")
+                        .HasForeignKey("CapabilityModuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_CapabilityModuleChapter_CapabilityModule");
+
+                    b.Navigation("CapabilityModule");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityModuleMetric", b =>
                 {
                     b.HasOne("HumanOS.Models.Capabilities.CapabilityModule", "CapabilityModule")
@@ -2104,6 +2833,121 @@ namespace HumanOS.Data.Migrations
                     b.Navigation("Capability");
 
                     b.Navigation("Language");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidation", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", "NodeExperienceBlueprint")
+                        .WithMany("Validations")
+                        .HasForeignKey("NodeExperienceBlueprintId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NodeExperienceBlueprint");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidationIssue", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.BlueprintValidation", "BlueprintValidation")
+                        .WithMany("Issues")
+                        .HasForeignKey("BlueprintValidationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BlueprintValidation");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidationMetric", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.BlueprintValidation", "BlueprintValidation")
+                        .WithMany("Metrics")
+                        .HasForeignKey("BlueprintValidationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BlueprintValidation");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraph", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Capability", "Capability")
+                        .WithOne("CapabilityGraph")
+                        .HasForeignKey("HumanOS.Models.Capabilities.Graph.CapabilityGraph", "CapabilityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Capability");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphEdge", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraph", "CapabilityGraph")
+                        .WithMany("Edges")
+                        .HasForeignKey("CapabilityGraphId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "SourceNode")
+                        .WithMany("OutgoingEdges")
+                        .HasForeignKey("SourceNodeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "TargetNode")
+                        .WithMany("IncomingEdges")
+                        .HasForeignKey("TargetNodeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("CapabilityGraph");
+
+                    b.Navigation("SourceNode");
+
+                    b.Navigation("TargetNode");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraph", "CapabilityGraph")
+                        .WithMany("Nodes")
+                        .HasForeignKey("CapabilityGraphId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CapabilityGraph");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeIllustration", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "CapabilityGraphNode")
+                        .WithMany("Illustrations")
+                        .HasForeignKey("CapabilityGraphNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CapabilityGraphNode");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "CapabilityGraphNode")
+                        .WithMany("ExperienceBlueprints")
+                        .HasForeignKey("CapabilityGraphNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CapabilityGraphNode");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprintStep", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", "NodeExperienceBlueprint")
+                        .WithMany("Steps")
+                        .HasForeignKey("NodeExperienceBlueprintId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NodeExperienceBlueprint");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.PersonCapability", b =>
@@ -2285,6 +3129,107 @@ namespace HumanOS.Data.Migrations
                     b.Navigation("Person");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Learning.AssessmentQuestion", b =>
+                {
+                    b.HasOne("HumanOS.Models.Learning.AssessmentRound", "AssessmentRound")
+                        .WithMany("Questions")
+                        .HasForeignKey("AssessmentRoundId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AssessmentRound");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.AssessmentRound", b =>
+                {
+                    b.HasOne("HumanOS.Models.Learning.LearningSessionNode", "LearningSessionNode")
+                        .WithMany()
+                        .HasForeignKey("LearningSessionNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LearningSessionNode");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningAssessmentResult", b =>
+                {
+                    b.HasOne("HumanOS.Models.Learning.LearningSessionNode", "LearningSessionNode")
+                        .WithMany("AssessmentResults")
+                        .HasForeignKey("LearningSessionNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LearningSessionNode");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningEvidence", b =>
+                {
+                    b.HasOne("HumanOS.Models.Learning.LearningSessionStep", "LearningSessionStep")
+                        .WithMany("Evidence")
+                        .HasForeignKey("LearningSessionStepId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LearningSessionStep");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSession", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Capability", "Capability")
+                        .WithMany()
+                        .HasForeignKey("CapabilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Capability");
+
+                    b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionNode", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "CapabilityGraphNode")
+                        .WithMany()
+                        .HasForeignKey("CapabilityGraphNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Learning.LearningSession", "LearningSession")
+                        .WithMany("Nodes")
+                        .HasForeignKey("LearningSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", "NodeExperienceBlueprint")
+                        .WithMany()
+                        .HasForeignKey("NodeExperienceBlueprintId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CapabilityGraphNode");
+
+                    b.Navigation("LearningSession");
+
+                    b.Navigation("NodeExperienceBlueprint");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionStep", b =>
+                {
+                    b.HasOne("HumanOS.Models.Learning.LearningSessionNode", "LearningSessionNode")
+                        .WithMany("Steps")
+                        .HasForeignKey("LearningSessionNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LearningSessionNode");
+                });
+
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
                 {
                     b.HasOne("HumanOS.Models.People.Person", "Person")
@@ -2462,6 +3407,8 @@ namespace HumanOS.Data.Migrations
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Capability", b =>
                 {
+                    b.Navigation("CapabilityGraph");
+
                     b.Navigation("KnowledgeChunks");
 
                     b.Navigation("Levels");
@@ -2485,6 +3432,8 @@ namespace HumanOS.Data.Migrations
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityModule", b =>
                 {
+                    b.Navigation("Chapters");
+
                     b.Navigation("KnowledgeChunks");
 
                     b.Navigation("Metrics");
@@ -2495,6 +3444,38 @@ namespace HumanOS.Data.Migrations
             modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityModuleVerification", b =>
                 {
                     b.Navigation("SuccessCriteriaResults");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.BlueprintValidation", b =>
+                {
+                    b.Navigation("Issues");
+
+                    b.Navigation("Metrics");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraph", b =>
+                {
+                    b.Navigation("Edges");
+
+                    b.Navigation("Nodes");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", b =>
+                {
+                    b.Navigation("ExperienceBlueprints");
+
+                    b.Navigation("Illustrations");
+
+                    b.Navigation("IncomingEdges");
+
+                    b.Navigation("OutgoingEdges");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", b =>
+                {
+                    b.Navigation("Steps");
+
+                    b.Navigation("Validations");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.PersonCapability", b =>
@@ -2518,6 +3499,28 @@ namespace HumanOS.Data.Migrations
                     b.Navigation("PersonGoals");
 
                     b.Navigation("Translations");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.AssessmentRound", b =>
+                {
+                    b.Navigation("Questions");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSession", b =>
+                {
+                    b.Navigation("Nodes");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionNode", b =>
+                {
+                    b.Navigation("AssessmentResults");
+
+                    b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionStep", b =>
+                {
+                    b.Navigation("Evidence");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Localization.Language", b =>

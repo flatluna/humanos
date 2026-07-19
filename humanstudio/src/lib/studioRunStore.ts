@@ -1,19 +1,22 @@
 import { BackendCapabilityBlueprint, BackendCapabilityPackage } from './api/studioApi';
 
 /**
- * Singleton in-memory store for the CURRENT real Studio capability-creation
- * run (module-level, same "shared mutable singleton" pattern already used
- * by the mock*Api.ts files elsewhere in this app). Bridges data between
- * pages without prop-drilling through the router:
+ * Singleton store for the CURRENT real Studio capability-creation run.
+ * Bridges data between pages without prop-drilling through the router:
  *   ObjectiveStep (writes runId/domainId)
  *   -> BlueprintStep (writes/reads blueprint + gate1SubjectId)
  *   -> StudioGenerationPage (reads blueprint, writes capabilityPackage + gate2SubjectId)
  *   -> StudioFinalReviewPage (reads/writes capabilityPackage)
  *   -> StudioPublicationPage (writes publishedResult)
  *
- * KNOWN LIMITATION (matches the backend's own prototype scope): this is
- * pure client-side memory, lost on a hard page refresh — same limitation
- * already accepted for the mock singletons in Pasos 9-11.
+ * PERSISTED TO sessionStorage (fixed 2026-07-16 — a pure in-memory JS
+ * module-level singleton was silently wiped by a Vite HMR reload of this
+ * module (triggered by unrelated edits elsewhere in the app) mid-generation,
+ * losing the user's only way to find their still-alive backend run —
+ * StudioGenerationPage/StudioFinalReviewPage have NO fallback fetch by
+ * runId, they only ever read this store). sessionStorage survives HMR and
+ * hard refreshes within the same tab (still lost if the tab is closed —
+ * matches the backend's own prototype-scoped in-memory-only run storage).
  */
 export interface StudioRunState {
   runId: string | null;
@@ -25,7 +28,9 @@ export interface StudioRunState {
   publishedResult: BackendCapabilityPackage | null;
 }
 
-let state: StudioRunState = {
+const STORAGE_KEY = 'humanstudio.studioRun';
+
+const emptyState: StudioRunState = {
   runId: null,
   capabilityDomainId: null,
   blueprint: null,
@@ -35,25 +40,42 @@ let state: StudioRunState = {
   publishedResult: null,
 };
 
+function loadInitialState(): StudioRunState {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...emptyState };
+    return { ...emptyState, ...(JSON.parse(raw) as Partial<StudioRunState>) };
+  } catch {
+    // Corrupt/inaccessible sessionStorage (e.g. private browsing edge
+    // cases) — fall back to a fresh empty state rather than crashing.
+    return { ...emptyState };
+  }
+}
+
+function persist(next: StudioRunState): void {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Storage full/unavailable — state still works in-memory for the
+    // rest of this page's lifetime, it just won't survive a reload.
+  }
+}
+
+let state: StudioRunState = loadInitialState();
+
 export function getStudioRun(): StudioRunState {
   return state;
 }
 
 export function updateStudioRun(patch: Partial<StudioRunState>): void {
   state = { ...state, ...patch };
+  persist(state);
 }
 
 /** Used by "Crear otra capability" to reset all temporary flow state. */
 export function clearStudioRun(): void {
-  state = {
-    runId: null,
-    capabilityDomainId: null,
-    blueprint: null,
-    gate1SubjectId: null,
-    capabilityPackage: null,
-    gate2SubjectId: null,
-    publishedResult: null,
-  };
+  state = { ...emptyState };
+  persist(state);
 }
 
 /**

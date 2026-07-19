@@ -1,0 +1,8 @@
+﻿{
+    "RuntimeSessionId":  "99bad2b2-3ae9-4770-ade5-86e48dca509d",
+    "Stage":  "PredictionRequired",
+    "Message":  "Antes de ver la respuesta o cualquier material, comprométete con una predicción escrita. Hazlo ahora, sin consultar notas ni ayuda externa. Más abajo te digo exactamente qué incluir; después compararemos tu predicción con la realidad en la etapa de Reflexión.\n\nEscribe tu predicción/respuesta en tres partes:\n\n1) Recuerdo de las etapas principales (Foundation): enumera las etapas principales que viste en Foundation. Para cada etapa, indica un ejemplo práctico que recuerdes haber visto en Exploration y un ejemplo práctico asociado en Mastery. (Basta con 1–2 frases por etapa/ejemplo.)\n\n2) Conexión entre conceptos: explica al menos una dependencia o conexión concreta entre etapas (por ejemplo: cómo una decisión en la etapa X afecta lo que se hace en la etapa Y). Una o dos frases claras.\n\n3) Declaración de honestidad: añade una línea que confirme que lo escribiste sin consultar notas, materiales ni ayuda externa (por ejemplo: “No consulté notas ni materiales.”).\n\nConsejos: sé breve y directo; escribe lo que realmente recuerdas ahora — no intentes adivinar lo “correcto” ni buscar información. Cuando termines, envía tu predicción. No recibirás corrección todavía; la comparación vendrá en la etapa de Reflexión. Buen trabajo — confío en tu memoria.",
+    "RequiresInstructionAcknowledgementOnly":  false,
+    "IsTerminal":  false,
+    "FinalAssessment":  null
+}

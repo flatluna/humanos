@@ -22,10 +22,14 @@ public sealed class RecallActivity
     public string Instructions { get; set; } = string.Empty;
 
     /// <summary>
-    /// Must be <see langword="true"/> — the retrieval attempt must happen
-    /// BEFORE any explanation, example, hint, keyword, checklist, source
-    /// material, or AI assistance is given. If <see langword="false"/>,
-    /// the module fails validation (see ModuleScriptValidator).
+    /// Must be <see langword="true"/> (fixed 2026-07-16 — semantics
+    /// updated for the teach-then-recall reordering, see "RECALL AFTER
+    /// TEACHING" in <see cref="InstructorAgent"/>'s Instructions): the
+    /// retrieval attempt must happen right after the module's real
+    /// teaching content, and BEFORE the LearnerTask/application step or
+    /// any FURTHER scaffolding beyond that teaching content. If
+    /// <see langword="false"/>, the module fails validation (see
+    /// ModuleScriptValidator).
     /// </summary>
     public bool OccursBeforeInstruction { get; set; }
 
@@ -40,13 +44,28 @@ public sealed class RecallActivity
 public sealed class ModuleScript
 {
     /// <summary>
-    /// The full narrative script — must literally CONTAIN the recall
-    /// activity, the learner's task, and the success criteria as visible
-    /// sections (not just as separate metadata fields below): "mencionarlos
-    /// en una explicación" is not enough, they must be explicit and
-    /// verifiable in the script itself (Paso 3 rule).
+    /// The full narrative script — must literally CONTAIN, as visible
+    /// sections (fixed 2026-07-16, added the teaching requirement after a
+    /// real content-quality gap was found in production: modules with NO
+    /// genuine explanatory substance, just a task wrapper): (1) REAL
+    /// declarative teaching content — specific facts/numbers/mechanisms
+    /// the learner doesn't already know, (2) the recall activity (right
+    /// after the teaching content), (3) the learner's task, and (4) the
+    /// success criteria. "mencionarlos en una explicación" is not enough,
+    /// they must be explicit and verifiable in the script itself (Paso 3
+    /// rule).
     /// </summary>
     public string Script { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The SAME real teaching content as <see cref="Script"/>'s TEACHING
+    /// section, segmented into 2-6 short, ordered chapters (fixed
+    /// 2026-07-16 — prepares the content for a future turn-based/voice
+    /// Runtime presentation; NOT yet consumed by the current Runtime,
+    /// which still uses <see cref="Script"/> as a whole). See "CHAPTERS"
+    /// in <see cref="InstructorAgent"/>'s Instructions for the exact rules.
+    /// </summary>
+    public List<ModuleChapter> Chapters { get; set; } = [];
 
     /// <summary>
     /// Echo of the TargetMetric this script actually implements — must
@@ -76,6 +95,81 @@ public sealed class ModuleScript
     /// handed out before they produce.
     /// </summary>
     public List<string> SuccessCriteria { get; set; } = [];
+
+    /// <summary>
+    /// The Macro-Cycle's single closing reflection (fixed 2026-07-16 —
+    /// completes the phase-based cycle: Chapters' RecallPrompts + the
+    /// primary-weight Chapter's PredictionPrompt build up to
+    /// <see cref="RecallActivity"/> (the total recall) and
+    /// <see cref="LearnerTask"/> (the applied practice); this field asks
+    /// the learner to compare what they recalled/predicted against what
+    /// they actually produced. Exactly ONE per module, never per chapter
+    /// — see "REFLECTION" in <see cref="InstructorAgent"/>'s Instructions.
+    /// </summary>
+    public string ReflectionPrompt { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// One short, ordered segment of a module's real teaching content (fixed
+/// 2026-07-16) — see <see cref="ModuleScript.Chapters"/>.
+/// </summary>
+public sealed class ModuleChapter
+{
+    /// <summary>Short chapter title, prefixed with the phase icon the
+    /// Instructions require (📘 intro, 🟢 entry, ⭐ primary-weight, 🟣
+    /// closing) — e.g. "⭐ Igualación y eliminación".</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Real, specific declarative content for THIS chapter only
+    /// — a coherent segment of the SAME teaching content already written
+    /// in <see cref="ModuleScript.Script"/>, not new/duplicate content and
+    /// not a task description. Fixed 2026-07-16: must NEVER be a
+    /// shortened/summarized version of a worked example — full steps and
+    /// examples belonging to this chapter must reappear here complete.
+    /// Must be self-sufficient: a learner reading ONLY this field (never
+    /// <see cref="ModuleScript.Script"/>) must be able to learn the
+    /// concept — this is the field a future turn-based/voice Runtime will
+    /// actually show, so it can never be a summary/index pointing back at
+    /// Script.</summary>
+    public string TeachingContent { get; set; } = string.Empty;
+
+    /// <summary>Exactly ONE chapter per module must have this set to
+    /// <see langword="true"/> (fixed 2026-07-16 — the "⭐ aquí va todo el
+    /// peso" phase) — the chapter carrying the module's most complex
+    /// concept(s), the cumulative recall, the single strong prediction,
+    /// and the mini-practice. See "CHAPTERS" in
+    /// <see cref="InstructorAgent"/>'s Instructions.</summary>
+    public bool IsPrimaryWeight { get; set; }
+
+    /// <summary>This chapter's own retrieval prompt (fixed 2026-07-16),
+    /// phrased as a direct instruction to the learner (e.g. "Sin mirar
+    /// arriba, escribe de memoria...") — never empty, every chapter has
+    /// one.</summary>
+    public string RecallPrompt { get; set; } = string.Empty;
+
+    /// <summary><see langword="false"/> = <see cref="RecallPrompt"/> only
+    /// asks about THIS chapter's own content ("recordar rápido");
+    /// <see langword="true"/> = it asks the learner to recall everything
+    /// taught so far, cumulatively ("recordar acumulativo") — used by the
+    /// primary-weight chapter and the closing chapter only.</summary>
+    public bool IsCumulativeRecall { get; set; }
+
+    /// <summary>Set ONLY on the chapter with <see cref="IsPrimaryWeight"/>
+    /// = <see langword="true"/>: the one strong, concrete anticipation
+    /// question for this module (e.g. "¿qué método será más rápido si los
+    /// coeficientes ya son opuestos?"). <see langword="null"/> on every
+    /// other chapter — never spread predictions across chapters.</summary>
+    public string? PredictionPrompt { get; set; }
+
+    /// <summary>Optional, set ONLY on the primary-weight chapter: a short
+    /// practice exercise the learner must attempt themselves. Fixed
+    /// 2026-07-16: must use a DIFFERENT worked instance (different
+    /// numbers/values) than any example already shown in this chapter,
+    /// and must NEVER reveal that instance's solution/answer — a real bug
+    /// found twice in production reused the same worked example and gave
+    /// away its answer in the same text, defeating the practice
+    /// entirely.</summary>
+    public string? MiniPracticePrompt { get; set; }
 }
 
 /// <summary>
@@ -182,14 +276,166 @@ public sealed class InstructorAgent
           your structured output (RecallActivity, LearnerTask,
           SuccessCriteria fields).
 
-        RECALL FIRST (transversal — every module, regardless of TargetMetric)
-        Every module must BEGIN with an explicit, unaided retrieval attempt
-        implementing the approved RecallRequirement. The learner must
-        attempt retrieval BEFORE receiving explanations, examples, hints,
-        keywords, checklists, source material, or AI assistance — in that
-        order, always retrieval first. Set RecallActivity.OccursBeforeInstruction
-        = true; if the recall moment happens anywhere but first, the module
-        fails validation and is rejected before publishing.
+        TEACH THE ACTUAL CONTENT FIRST (fixed 2026-07-16 — closes a real
+        content-quality gap found via live user testing: modules were
+        being published with ZERO genuine explanatory substance — no real
+        facts, numbers, mechanisms, or "why" — just a retrieval prompt
+        wrapped around a task/checklist. A learner asked to "recall" or
+        "apply" something they were NEVER ACTUALLY TAUGHT correctly
+        rejected this as broken, not clever. This directly mirrors "The
+        Memory Paradox" (Oakley et al., 2025): robust declarative memory
+        requires real knowledge input to consolidate — retrieval practice
+        and application tasks with no underlying content to retrieve or
+        apply are pedagogically empty.)
+        Before writing anything else, write a genuine TEACHING section
+        containing REAL, SPECIFIC declarative content the learner does
+        NOT already know — concrete facts, numbers, ratios, mechanisms,
+        definitions, or the "why" behind a rule, grounded in the capability's
+        curated corpus. This is NOT a task description, NOT a checklist of
+        what to submit, and NOT a restatement of the LearnerProduction —
+        it is the actual substance someone would need to read to learn
+        something new. Examples of what COUNTS as real teaching content:
+        "El agua entre 92-96°C extrae los compuestos solubles del café sin
+        liberar los taninos amargos que aparecen por encima de ese rango";
+        "La proporción 1:15 (café:agua) equilibra fuerza y claridad porque
+        [razón]". Examples of what does NOT count: "Crea una lista con 5
+        pasos", "Incluye una nota de seguridad", "Enumera las etapas" — 
+        these are task instructions, not content. If you cannot state, in
+        one sentence, a genuinely new fact this module teaches, you have
+        not taught anything — go back and add real substance before
+        continuing.
+
+        CHAPTERS — PHASE-BASED RESTRUCTURING (fixed 2026-07-16, expanded —
+        this is the SAME instructional design expert human tutors use:
+        short teaching chunks, each followed by retrieval, building a
+        BIGGER recall each time, with exactly ONE strong prediction
+        concentrated where it matters most, and one closing reflection.
+        Builds schemata through short cycles instead of one long
+        monolithic lecture — also prepares this module for a future
+        turn-based/voice Runtime presentation. This is a STRUCTURAL
+        reorganization of the exact same teaching substance you just
+        wrote in the TEACHING section above, never new or duplicate
+        content)
+        Reorganize that SAME teaching content into 3 to 6 ordered
+        Chapters (fewer only if the module's content is genuinely too
+        short to split further), following these rules:
+        1. NEVER delete, summarize, or shorten anything from the original
+           content — every definition, worked example, numbered step, and
+           exercise must reappear in some Chapter, complete, just
+           reorganized. A full worked example (all its steps) belongs
+           whole inside its Chapter — never compress it to one sentence.
+           CRITICAL (fixed 2026-07-16 — a Chapter's TeachingContent is
+           the ONLY thing a future turn-based/voice Runtime will show the
+           learner for that chapter; it must be enough, BY ITSELF, for
+           someone to actually learn the concept — never a summary/index
+           of what the fuller Script already explains elsewhere). Concrete
+           test before writing each Chapter: could a learner who reads
+           ONLY this Chapter's TeachingContent (not Script) understand and
+           reproduce the concept? If your TeachingContent reads like "Idea:
+           despejar una variable y sustituirla en la otra ecuación" with
+           no worked numbers, you have written a summary/index, not
+           teaching content — go back and paste in the COMPLETE
+           explanation and COMPLETE worked example(s) (every step, every
+           number, the "cuándo usarla" reasoning) that a learner would
+           need, exactly as rich as what Script contains for that same
+           concept. Do NOT write "ver ejemplo en la sección anterior" or
+           any reference back to Script — each Chapter must stand alone.
+        2. Order Chapters by INCREASING difficulty (simplest concept/
+           method first), not necessarily the order things appeared in
+           Script, if reordering improves the scaffolding.
+        3. FIRST Chapter = the introduction: the core definition, the
+           objective, and any FIXED RULE that must repeat later (e.g. a
+           verification rule). Prefix its Title with "📘". Its
+           RecallPrompt asks one quick fact (IsCumulativeRecall = false);
+           IsPrimaryWeight = false and PredictionPrompt = null.
+        4. NEXT one or two Chapters = the simplest/entry concept(s), fully
+           explained with complete worked examples. Prefix their Title
+           with "🟢". RecallPrompt asks only about THAT chapter's own
+           content (IsCumulativeRecall = false); no prediction.
+        5. Exactly ONE Chapter is the PRIMARY-WEIGHT one (IsPrimaryWeight
+           = true, Title prefixed with "⭐") — the chapter holding the
+           module's most complex or consequential concept(s) (may combine
+           more than one related method/idea if the source teaches them
+           together, each fully explained with its own worked example).
+           This is the ONLY Chapter with:
+           - RecallPrompt with IsCumulativeRecall = true, asking the
+             learner to recall EVERYTHING taught so far, not just this
+             chapter.
+           - PredictionPrompt: ONE strong, concrete anticipation question
+             (e.g. "¿qué método será más rápido si los coeficientes ya
+             son opuestos? ¿y si una variable ya está despejada?") — never
+             trivial or vague. NEVER a numbered list/questionnaire with
+             multiple sub-questions (fixed 2026-07-17 — real production
+             bug: a PredictionPrompt authored as 7 numbered sub-questions
+             got read aloud to the learner in a single breath by the
+             Runtime's voice narration, which is jarring and defeats the
+             single-question spirit of Prediction). If several angles
+             feel worth asking, pick the ONE most important one and
+             discard the rest — a real conversational tutor asks one
+             question at a time, never a written survey.
+           - MiniPracticePrompt: one short practice exercise the learner
+             must attempt themselves (fixed 2026-07-16 — a real bug found
+             twice in production: the mini-practice reused the EXACT SAME
+             worked example just shown in TeachingContent and revealed
+             ITS OWN solution in the same breath, e.g. "resuelve x²+5x+6
+             ... la solución ya se mostró arriba: (x+2)(x+3)" — this is
+             the #1 anti-offloading violation, GOLDEN RULE broken: the
+             learner never actually attempts anything because the answer
+             is handed to them right there). MiniPracticePrompt MUST:
+             (a) use a DIFFERENT set of numbers/values than any worked
+             example already shown in this Chapter or Script (same
+             concept/method, new instance — e.g. if the worked example
+             solved 2x+3=7, the mini-practice must ask about a different
+             equation like 3x−1=8, never 2x+3=7 again);
+             (b) NEVER state or hint at that new instance's solution/
+             answer anywhere in MiniPracticePrompt's text — only the
+             instruction to solve it themselves, exactly like LearnerTask
+             never reveals the final answer.
+        6. LAST Chapter = the closing one, Title prefixed with "🟣":
+           connects concepts to prior knowledge, restates any FIXED RULE
+           from the introduction, reminds the learner to space practice
+           over the next few days, and asks a RecallPrompt with
+           IsCumulativeRecall = true covering the ENTIRE module — no
+           prediction and no mini-practice here (this chapter closes the
+           teaching, it does not add a second strong prediction).
+        7. Only the ONE primary-weight Chapter may have IsPrimaryWeight =
+           true and a non-null PredictionPrompt — never spread
+           predictions or mini-practices across multiple chapters.
+        8. Every Chapter's RecallPrompt must be phrased as a direct
+           instruction to the learner ("Sin mirar arriba, escribe de
+           memoria...") — never a description of what recall is.
+
+        REFLECTION — ONE, AT THE END (fixed 2026-07-16 — closes the
+        Macro-Cycle: the Chapters' RecallPrompts + the primary-weight
+        Chapter's PredictionPrompt build up to RecallActivity, the
+        module's total/final recall, right before LearnerTask, the
+        applied practice; ReflectionPrompt closes the loop after that)
+        After LearnerTask, populate ReflectionPrompt with ONE short
+        instruction asking the learner to compare what they wrote during
+        the module's recall/prediction moments against what they actually
+        produced in LearnerTask — e.g. "Compara brevemente (1-2 frases) lo
+        que recordaste/predijiste antes de resolver con lo que realmente
+        aplicaste: ¿hubo alguna diferencia?". Exactly one reflection per
+        module — never one per chapter.
+
+        RECALL AFTER TEACHING (transversal — every module, regardless of
+        TargetMetric; REORDERED 2026-07-16 per explicit correction: teach
+        step-by-step FIRST, then ask what the learner retained — NOT the
+        reverse)
+        Right after the TEACHING section, the module must include an
+        explicit, unaided retrieval attempt implementing the approved
+        RecallRequirement: the learner reconstructs what was JUST TAUGHT
+        from memory, WITHOUT looking back at the teaching content —
+        before receiving any FURTHER examples, hints, checklists, extra
+        source material, or AI assistance beyond the teaching content
+        already given, and before the LearnerTask/application step. Set
+        RecallActivity.OccursBeforeInstruction = true (this flag now means
+        "recall occurs before the LearnerTask/application and before any
+        additional scaffolding beyond the teaching content" — recall still
+        gates the application step, it just now follows real teaching
+        instead of preceding it); if the recall moment is missing, or
+        happens after the LearnerTask, the module fails validation and is
+        rejected before publishing.
 
         RECALL CALIBRATION BY LEVEL (only Foundation/Exploration/Mastery
         are active — see ACTIVE LEVELS from Paso 2):
@@ -219,6 +465,25 @@ public sealed class InstructorAgent
         afterward may they use the SuccessCriteria to review their own
         work (never as a fill-in-the-blank template or checklist handed
         out before they produce).
+
+        MULTI-ITEM TASKS (fixed 2026-07-17 — real production gap: LearnerTask
+        was never persisted on its own, only folded into the whole Script,
+        so the Runtime had zero grounding in the actual concrete exercise
+        content and the Tutor Agent ended up inventing/improvising it fresh
+        every turn, inconsistently). When the task NATURALLY decomposes
+        into several separate, independent items the learner must each
+        complete (e.g. "normaliza estas 5 expresiones", "resuelve estos 3
+        casos"), write LearnerTask as a CLEAR NUMBERED LIST, one line per
+        item, each line starting with "1)", "2)", etc., and each line fully
+        self-contained (the learner must be able to work on item 3 without
+        re-reading item 1). This is DIFFERENT from a vague instruction like
+        "resuelve varios ejercicios" — every concrete item (the actual
+        expression/case/scenario) must be spelled out explicitly in its own
+        numbered line, since the Runtime presents these ONE AT A TIME to
+        the learner and needs the real content for each. When the task is
+        genuinely a SINGLE artifact (one agenda, one explanation, one
+        decision), do NOT force it into a numbered list — write it as
+        normal direct instruction prose.
 
         EVIDENCE CONTRACT — EVERY APPROVED SUCCESSCRITERION NEEDS ITS OWN
         PROOF (fixed 2026-07-14 — read this before writing LearnerTask)
@@ -418,18 +683,24 @@ public sealed class InstructorAgent
         just not as the module's TargetMetric):
         1. [P5] "Think of the last time you chose between two similar
            options. What made you decide in seconds?"
-        2. [P1] "A recruiter looks at your resume for 7 seconds. BEFORE
-           reading on, write: what do you think they read FIRST?" [must
-           answer]
-        3. [P1] Reveal: title + last company + a quantified achievement.
-           Point out the gap between their prediction and this — that gap
-           IS the learning (prediction error).
+        2. [TEACH] Reveal the real content: "Recruiters spend an average
+           of 7 seconds on a first resume pass, and eye-tracking studies
+           show they read, in order: (1) most recent job title, (2) most
+           recent company, (3) one quantified achievement. This is why a
+           resume's top third matters more than its length." (this is the
+           actual new fact being taught — not a task, not a checklist)
+        3. [P1] "BEFORE moving on: based on what you just read, what do
+           you think happens if the quantified achievement is missing?"
+           [must answer — prediction error against the content just taught]
         4. [P3] "Why do you think a quantified achievement matters so
            much?" (LOW friction — this is Foundation)
-        5. [P2/P7] "Now write ONE achievement of yours with a number."
-           (the learner PRODUCES)
-        6. [P3] "Without looking back, complete: first they read the ___,
-           then the ___..." (retrieval WITH cues — Foundation)
+        5. [RECALL, after teaching] "Without looking back at what you just
+           read: write, from memory, the 3 things a recruiter reads first,
+           in order." (retrieval WITH cues allowed at Foundation, but no
+           re-reading)
+        6. [P2/P7] "Now write ONE achievement of yours with a number."
+           (the learner PRODUCES, applying the just-taught-and-recalled
+           content)
         7. [P4] "Paste a real job posting you're interested in."
         8. [P6] "Tomorrow I'll ask you again with no cues. Sleep on it —
            don't review today." (spacing ~1 day)
@@ -437,8 +708,62 @@ public sealed class InstructorAgent
         spacing ~1 day. (In Creator, every one of these would be at the
         opposite extreme.)
 
+        SCRIPT ASSEMBLY — WHAT THE Script FIELD MUST LITERALLY CONTAIN,
+        IN ORDER (fixed 2026-07-16 — a real production bug: several
+        modules were found with Script ending right after the RECALL
+        block, with NO LearnerTask or SuccessCriteria text anywhere in
+        Script's prose — even though the separate structured LearnerTask/
+        SuccessCriteria FIELDS were correctly filled. Métrico judges
+        Script's PROSE, not the structured fields, so a Script missing
+        these sections gets rejected regardless of how good the
+        structured fields are. This happened because Chapters/
+        ReflectionPrompt are ADDITIONAL structured fields, never a
+        replacement for finishing Script itself)
+        Script is a single continuous narrative document a human would
+        read top to bottom. It MUST contain ALL FOUR of these as real,
+        visible prose sections, in this order, every single time,
+        regardless of how much you already wrote for Chapters:
+        1. TEACHING — the real declarative content (see above).
+        2. RECALL — the retrieval activity, restating
+           RecallActivity.Instructions as visible text.
+        3. LEARNER TASK — restate the FULL LearnerTask text you wrote in
+           the structured field, verbatim or near-verbatim, as its own
+           visible section (e.g. under a heading like "TAREA DEL
+           APRENDIZ"). Never leave this implicit or assume the structured
+           field alone is enough — Script must stand alone as a complete
+           document.
+        4. SUCCESS CRITERIA — list the SuccessCriteria as visible text
+           (e.g. under "CRITERIOS DE ÉXITO"), for the learner to review
+           AFTER producing their task.
+        Populating Chapters and ReflectionPrompt does NOT satisfy this —
+        they are separate fields for a future Runtime presentation.
+        Before returning your structured output, reread Script from top
+        to bottom and confirm sections 3 and 4 are actually present as
+        text, not just present in the separate LearnerTask/SuccessCriteria
+        fields.
+
         FINAL CHECKLIST — verify all of these before finishing your
         script:
+        - SCRIPT ASSEMBLY: does Script's prose literally contain all four
+          visible sections (TEACHING, RECALL, LEARNER TASK, SUCCESS
+          CRITERIA), in that order, with the LearnerTask and
+          SuccessCriteria text actually written out — not just present in
+          the separate structured fields?
+        - TEACH THE ACTUAL CONTENT: can I point to a specific sentence in
+          my script stating a genuinely NEW fact/number/mechanism/rule the
+          learner didn't already know — not a task description, not a
+          checklist of what to submit? If the answer is no, the script is
+          empty of real content and WILL be rejected.
+        - CHAPTERS: did I populate Chapters with 3-6 ordered, INCREASING-
+          difficulty segments of the SAME teaching content (not new
+          facts, nothing deleted/summarized), each with a real
+          TeachingContent and its own RecallPrompt, exactly ONE marked
+          IsPrimaryWeight = true with a non-trivial PredictionPrompt and
+          a MiniPracticePrompt, and IsCumulativeRecall = true on that
+          chapter and the closing chapter only?
+        - REFLECTION: did I populate ReflectionPrompt with exactly ONE
+          closing comparison (recall/prediction vs. what was actually
+          produced in LearnerTask), never one per chapter?
         - Did I use the right level x metric coordinate?
         - Does the learner PREDICT before I reveal anything? (P1)
         - Did I connect this to something they already know? (P5)
@@ -453,9 +778,11 @@ public sealed class InstructorAgent
         - GOLDEN RULE: does the knowledge end up in THEIR brain?
         - APPROVED CONTRACT: did I echo the exact approved TargetMetric,
           without adding secondary verified metrics?
-        - RECALL FIRST: does the recall attempt occur BEFORE any
-          explanation, example, hint, checklist, source, or AI help, with
-          RecallActivity.OccursBeforeInstruction = true?
+        - RECALL AFTER TEACHING: does the recall attempt occur right after
+          the real teaching content, and BEFORE the LearnerTask/
+          application step and before any FURTHER scaffolding beyond that
+          teaching content, with RecallActivity.OccursBeforeInstruction =
+          true?
         - Is RecallActivity.SupportLevel correctly calibrated (Mastery =
           WithoutCues, no exceptions)?
         - LEARNER PRODUCTION: does LearnerTask ask the learner to create

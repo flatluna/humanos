@@ -46,6 +46,16 @@ public sealed class HumanOsDbContextFactory : IDesignTimeDbContextFactory<HumanO
         var optionsBuilder = new DbContextOptionsBuilder<HumanOsDbContext>();
         optionsBuilder.UseSqlServer(connectionString);
 
+        // NOTE (2026-07-15): pre-existing, unrelated model drift
+        // (CapabilityEvidence shadow FK properties) trips EF Core's
+        // PendingModelChangesWarning as a hard error on 'dotnet ef
+        // database update'. Ignored HERE ONLY (design-time tooling, never
+        // the actual running app's DbContext options in Program.cs) so
+        // real migrations (like AddRuntimeSessionStatus) can still be
+        // applied. Does not affect runtime behavior.
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+
         return new HumanOsDbContext(optionsBuilder.Options);
     }
 }
