@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X } from 'lucide-react';
+import DOMPurify from 'dompurify';
+import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { MOCK_USER } from '../components/layout/AppShell';
 import { API_BASE_URL } from '../lib/api/httpClient';
@@ -20,6 +21,7 @@ import {
   submitAssessmentAnswer,
   getStepReview,
   getNodeSummary,
+  expandNodeKnowledge,
   type ExperienceStepType,
   type BackendRuntimeStep,
   type BackendRuntimeSessionInfo,
@@ -31,7 +33,18 @@ import {
   type StepReviewDto,
   type NodeSummaryDto,
   type NodeAttemptSummaryDto,
+  type KnowledgeExpansionDto,
 } from '../lib/api/runtimeSessionApi';
+
+// Force every sanitized anchor (e.g. web-grounding citation links baked
+// into blueprint Content by ExperienceDesignerAgent) to open safely in a
+// new tab — set once at module load, not per-render.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
 
 /**
  * Node interior — Paso 6. Drives a node's 5-step Memory Paradox sequence
@@ -103,6 +116,15 @@ export default function NodeWorkflowPage() {
   const [step, setStep] = useState<NormalizedStep | null>(null);
   const [responseText, setResponseText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Guards handleContinue/handleProductionContinue against firing
+  // advanceStep twice in a row (e.g. a double-click before the `submitting`
+  // state re-render disables the button) — a second concurrent advance
+  // call fails with a real, harmless 409 "AlreadyOnAssessment"/
+  // "RecallRequiresGate" from the backend since the first call already
+  // moved the node to the next step, but it used to still overwrite the UI
+  // with a spurious error message. A ref is used (not state) because it
+  // must be checked synchronously, before any re-render can happen.
+  const advancingRef = useRef(false);
 
   const [tutorMessages, setTutorMessages] = useState<TutorChatMessage[]>([]);
   const [tutorInput, setTutorInput] = useState('');
@@ -137,6 +159,13 @@ export default function NodeWorkflowPage() {
   // together" moment a beat to land before moving on.
   const [pendingAdvance, setPendingAdvance] = useState<{ nextStep: BackendRuntimeStep; title: string } | null>(null);
 
+  // "Profundizar" (Knowledge Expansion, 2026-07-20) — learner-triggered
+  // only, shown in the Teaching step. Never fetched automatically.
+  const [knowledgeExpansion, setKnowledgeExpansion] = useState<KnowledgeExpansionDto | null>(null);
+  const [expansionLoading, setExpansionLoading] = useState(false);
+  const [expansionError, setExpansionError] = useState<string | null>(null);
+  const [expansionPanelOpen, setExpansionPanelOpen] = useState(true);
+
   const resetStepUiState = useCallback((next: NormalizedStep) => {
     setStep(next);
     setResponseText('');
@@ -151,6 +180,10 @@ export default function NodeWorkflowPage() {
     setAssessmentAnswerText('');
     setAssessmentLastResult(null);
     setPendingAdvance(null);
+    setKnowledgeExpansion(null);
+    setExpansionLoading(false);
+    setExpansionError(null);
+    setExpansionPanelOpen(true);
   }, []);
 
   useEffect(() => {
@@ -243,8 +276,10 @@ export default function NodeWorkflowPage() {
   }, [capabilityId, nodeId, resetStepUiState, t.nodeError]);
 
   const handleContinue = useCallback(async () => {
-    if (!step || !sessionNodeId) return;
+    if (!step || !sessionNodeId || advancingRef.current) return;
+    advancingRef.current = true;
     setSubmitting(true);
+    setErrorMessage(null);
     try {
       if (responseText.trim()) {
         await submitStepResponse(step.learningSessionStepId, responseText.trim());
@@ -255,6 +290,7 @@ export default function NodeWorkflowPage() {
       setErrorMessage(t.nodeError);
     } finally {
       setSubmitting(false);
+      advancingRef.current = false;
     }
   }, [step, sessionNodeId, responseText, resetStepUiState, t.nodeError]);
 
@@ -299,6 +335,7 @@ export default function NodeWorkflowPage() {
   const handleProductionSubmit = useCallback(async () => {
     if (!step || !responseText.trim()) return;
     setProductionSubmitting(true);
+    setErrorMessage(null);
     try {
       const outcome = await evaluateProduction(step.learningSessionStepId, responseText.trim());
       setProductionEvaluation(outcome);
@@ -315,8 +352,10 @@ export default function NodeWorkflowPage() {
   }, []);
 
   const handleProductionContinue = useCallback(async () => {
-    if (!sessionNodeId) return;
+    if (!sessionNodeId || advancingRef.current) return;
+    advancingRef.current = true;
     setSubmitting(true);
+    setErrorMessage(null);
     try {
       const nextStep = await advanceStep(sessionNodeId);
       resetStepUiState(normalizeStep(nextStep));
@@ -324,6 +363,7 @@ export default function NodeWorkflowPage() {
       setErrorMessage(t.nodeError);
     } finally {
       setSubmitting(false);
+      advancingRef.current = false;
     }
   }, [sessionNodeId, resetStepUiState, t.nodeError]);
 
@@ -344,9 +384,24 @@ export default function NodeWorkflowPage() {
     }
   }, [step, tutorInput, t.tutorError]);
 
+  const handleExpandKnowledge = useCallback(async () => {
+    if (!nodeId) return;
+    setExpansionLoading(true);
+    setExpansionError(null);
+    try {
+      const result = await expandNodeKnowledge(nodeId);
+      setKnowledgeExpansion(result);
+    } catch {
+      setExpansionError(t.expandKnowledgeError);
+    } finally {
+      setExpansionLoading(false);
+    }
+  }, [nodeId, t.expandKnowledgeError]);
+
   const handleRecallSubmit = useCallback(async () => {
     if (!step || !responseText.trim()) return;
     setSubmitting(true);
+    setErrorMessage(null);
     try {
       const outcome = await submitRecallAttempt(step.learningSessionStepId, responseText.trim(), recallLastPrompt);
       setResponseText('');
@@ -379,6 +434,7 @@ export default function NodeWorkflowPage() {
     let cancelled = false;
 
     (async () => {
+      setErrorMessage(null);
       try {
         const active = await getActiveAssessmentRound(sessionNodeId);
         const round = active ?? (await startAssessmentRound(sessionNodeId));
@@ -396,6 +452,7 @@ export default function NodeWorkflowPage() {
   const handleAssessmentSubmitAnswer = useCallback(async () => {
     if (!assessmentRound?.CurrentQuestion || !assessmentAnswerText.trim()) return;
     setAssessmentSubmitting(true);
+    setErrorMessage(null);
     try {
       const result = await submitAssessmentAnswer(assessmentRound.CurrentQuestion.AssessmentQuestionId, assessmentAnswerText.trim());
       setAssessmentLastResult(result);
@@ -428,6 +485,7 @@ export default function NodeWorkflowPage() {
   const handleCompleteNode = useCallback(async () => {
     if (!sessionNodeId) return;
     setCompleting(true);
+    setErrorMessage(null);
     try {
       const result = await completeNode(sessionNodeId);
       setNewlyUnlocked(result.newlyUnlockedNodes);
@@ -537,6 +595,8 @@ export default function NodeWorkflowPage() {
         <StepReviewModal review={stepReview} onClose={closeStepReview} t={t} language={language} />
       )}
 
+      {expansionLoading && <KnowledgeExpansionLoadingModal t={t} />}
+
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         {errorMessage && <p className="mb-4 text-sm text-red-600">{errorMessage}</p>}
 
@@ -545,11 +605,11 @@ export default function NodeWorkflowPage() {
             observables de dominio...") never meant for the student — the
             actual questions come from AssessmentPanel's round state. */}
         {step.stepType !== 'Recall' && step.stepType !== 'Assessment' && (
-          <p className="whitespace-pre-wrap text-slate-700">{step.content}</p>
+          <RichContent className="text-slate-700" html={step.content} />
         )}
 
         {step.illustrations.length > 0 && (
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="mt-4 flex flex-col gap-4">
             {step.illustrations.map((illustration) => (
               <figure
                 key={illustration.illustrationId}
@@ -558,7 +618,7 @@ export default function NodeWorkflowPage() {
                 <img
                   src={`${API_BASE_URL}/illustrations/${illustration.illustrationId}/image`}
                   alt={illustration.caption ?? ''}
-                  className="h-64 w-full object-contain sm:h-80"
+                  className="h-auto w-full object-contain"
                 />
                 {illustration.caption && (
                   <figcaption className="border-t border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500">
@@ -663,6 +723,52 @@ export default function NodeWorkflowPage() {
             forced to type a throwaway answer just to unlock the button. */}
         {step.stepType === 'Teaching' && (
           <div className="mt-6">
+            {/* "Profundizar" (Knowledge Expansion) — explicit, deliberate
+                learner action only, never auto-surfaced (see
+                /memories/repo/adaptive-learning-engine-design.md). Combines
+                the LLM's own knowledge with a live Bing Grounding search. */}
+            <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+              {!knowledgeExpansion && (
+                <button
+                  onClick={handleExpandKnowledge}
+                  disabled={expansionLoading}
+                  className="flex items-center gap-1.5 rounded-lg border border-purple-300 bg-white px-3.5 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {expansionLoading ? t.expandKnowledgeLoading : t.expandKnowledgeButton}
+                </button>
+              )}
+              {expansionError && <p className="mt-2 text-sm text-red-600">{expansionError}</p>}
+              {knowledgeExpansion && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setExpansionPanelOpen((open) => !open)}
+                    className="flex w-full items-center justify-between gap-1.5 text-xs font-medium uppercase tracking-wide text-purple-600"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" /> {t.expandKnowledgeTitle}
+                    </span>
+                    {expansionPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {expansionPanelOpen && (
+                    <div className="mt-2">
+                      <RichContent className="text-slate-700" html={knowledgeExpansion.Content} />
+                      {knowledgeExpansion.DiagramIllustrationId && (
+                        <figure className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          <img
+                            src={`${API_BASE_URL}/illustrations/${knowledgeExpansion.DiagramIllustrationId}/image`}
+                            alt=""
+                            className="h-auto w-full object-contain"
+                          />
+                        </figure>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <label className="mb-1 block text-sm font-medium text-slate-700">{t.teachingNotesLabel}</label>
             <textarea
               value={responseText}
@@ -699,7 +805,7 @@ export default function NodeWorkflowPage() {
                 {t.recallItemsMasteredLabel} {recallItemsMastered}/{RECALL_ITEMS_REQUIRED} ·{' '}
                 {t.recallAttemptLabel} {recallAttemptsUsed + 1} {t.assessmentOfLabel} {RECALL_MAX_ATTEMPTS}
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-slate-700">{recallLastPrompt ?? step.content}</p>
+              <RichContent className="mt-2 text-slate-700" html={recallLastPrompt ?? step.content} />
 
               <label className="mb-1 mt-4 block text-sm font-medium text-slate-700">{t.yourResponseLabel}</label>
               <textarea
@@ -708,13 +814,22 @@ export default function NodeWorkflowPage() {
                 rows={3}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
               />
-              <button
-                onClick={handleRecallSubmit}
-                disabled={submitting || !responseText.trim()}
-                className="mt-3 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {t.recallSubmit}
-              </button>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleRecallSubmit}
+                  disabled={submitting || !responseText.trim()}
+                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {t.recallSubmit}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStepIconClick('Teaching')}
+                  className="text-sm text-slate-500 underline decoration-dotted underline-offset-2 hover:text-slate-700"
+                >
+                  {t.recallReviewTeachingLink}
+                </button>
+              </div>
             </div>
           )
         )}
@@ -737,6 +852,36 @@ export default function NodeWorkflowPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Renders step/blueprint Content as sanitized HTML instead of a plain
+ * string. ExperienceDesignerAgent is instructed to use a small set of
+ * semantic tags (p/strong/em/ul/ol/li/a/...) to structure lesson content
+ * (bold key terms, bullet lists, citation links from web-grounded
+ * findings) — DOMPurify strips anything else (scripts, event handlers,
+ * javascript: URLs) before it ever reaches the DOM. Plain text with no
+ * HTML tags (e.g. still-plain-text Recall/Assessment prompts from other
+ * agents) renders identically to before, since 'white-space: pre-wrap'
+ * still preserves their newlines.
+ */
+function RichContent({ html, className }: { html: string; className?: string }) {
+  const sanitized = useMemo(
+    () =>
+      DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li', 'h3', 'h4', 'blockquote', 'code', 'a', 'span'],
+        ALLOWED_ATTR: ['href'],
+      }),
+    [html],
+  );
+
+  return (
+    <div
+      className={`${className ?? ''} [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5`}
+      style={{ whiteSpace: 'pre-wrap' }}
+      dangerouslySetInnerHTML={{ __html: sanitized }}
+    />
   );
 }
 
@@ -819,7 +964,7 @@ function StepperBar({
 function StepReviewBody({ data, t, language }: { data: StepReviewDto; t: Record<string, string>; language: string }) {
   return (
     <>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{data.Content}</p>
+      <RichContent className="text-sm leading-relaxed text-slate-700" html={data.Content} />
 
       {data.Evidence.length > 0 ? (
         <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
@@ -839,6 +984,78 @@ function StepReviewBody({ data, t, language }: { data: StepReviewDto; t: Record<
         <p className="mt-5 border-t border-slate-100 pt-4 text-sm text-slate-400">{t.stepReviewNoAnswers}</p>
       )}
     </>
+  );
+}
+
+/**
+ * Full-viewport overlay shown while the "Profundizar" (Knowledge
+ * Expansion) request is in flight. This call can take up to ~30-60s (live
+ * LLM call + Bing Grounding search + optional diagram generation), so a
+ * silent spinner would feel broken — this shows a small rotating list of
+ * "what's happening" steps to make the wait feel purposeful. Rendered via
+ * a portal to document.body, same pattern as StepReviewModal. Purely
+ * decorative/informational — has no onClose, it disappears automatically
+ * once expansionLoading flips back to false in the parent.
+ */
+function KnowledgeExpansionLoadingModal({ t }: { t: Record<string, string> }) {
+  const steps = useMemo(
+    () => [t.expandKnowledgeModalStep1, t.expandKnowledgeModalStep2, t.expandKnowledgeModalStep3, t.expandKnowledgeModalStep4],
+    [t]
+  );
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveStep((current) => (current + 1) % steps.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [steps.length]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-purple-100">
+          <Sparkles className="h-7 w-7 animate-pulse text-purple-600" />
+        </div>
+        <h2 className="text-lg font-semibold text-slate-900">{t.expandKnowledgeModalTitle}</h2>
+        <p className="mt-1.5 text-sm text-slate-500">{t.expandKnowledgeModalSubtitle}</p>
+
+        <ul className="mt-6 space-y-3 text-left">
+          {steps.map((label, index) => {
+            const isDone = index < activeStep;
+            const isActive = index === activeStep;
+            return (
+              <li key={label} className="flex items-center gap-3">
+                <span
+                  className={
+                    'flex h-6 w-6 flex-none items-center justify-center rounded-full transition-colors ' +
+                    (isDone
+                      ? 'bg-purple-600 text-white'
+                      : isActive
+                        ? 'border-2 border-purple-500'
+                        : 'border-2 border-slate-200')
+                  }
+                >
+                  {isDone ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : isActive ? (
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-purple-500" />
+                  ) : null}
+                </span>
+                <span className={'text-sm ' + (isActive ? 'font-medium text-slate-800' : isDone ? 'text-slate-400 line-through' : 'text-slate-400')}>
+                  {label}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full w-1/3 animate-loadingBar rounded-full bg-purple-500" />
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1281,7 +1498,16 @@ function AssessmentPanel({
         {t.assessmentRoundNumberLabel} {round.RoundNumber} · {t.assessmentQuestionLabel} {question.QuestionIndex} {t.assessmentOfLabel}{' '}
         {round.TotalQuestions}
       </p>
-      <p className="mt-2 whitespace-pre-wrap text-slate-800">{question.QuestionText}</p>
+      <RichContent className="mt-2 text-slate-800" html={question.QuestionText} />
+      {question.IllustrationId && (
+        <figure className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <img
+            src={`${API_BASE_URL}/illustrations/${question.IllustrationId}/image`}
+            alt=""
+            className="h-auto w-full object-contain"
+          />
+        </figure>
+      )}
       <label className="mb-1 mt-4 block text-sm font-medium text-slate-700">{t.yourResponseLabel}</label>
       <textarea
         value={answerText}

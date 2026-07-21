@@ -28,6 +28,24 @@ public class CapabilityGraph
     /// <summary>Descripción detallada de la estructura y propósito del grafo.</summary>
     public string? Description { get; set; }
 
+    /// <summary>Document-wide executive summary of the ENTIRE source
+    /// material this capability was built from (2026-07-20 — see
+    /// <see cref="HumanOS.Agents.Studio.DocumentContextAgent"/> and
+    /// /memories/repo/tutor-document-wide-context-gap.md), generated ONCE
+    /// per capability from the merged <see cref="Agents.Studio.CuratedCorpus"/>.
+    /// Fed to TutorAgentV2 (via TutorTurnRequest.DocumentSummary) ONLY when
+    /// the student actively asks the Tutor a free-form question
+    /// (Teaching/Production mode) — never during Recall grading or
+    /// automatic content presentation. Null when the extraction agent
+    /// isn't configured or the extraction call failed (best-effort).</summary>
+    public string? ExecutiveSummary { get; set; }
+
+    /// <summary>JSON array of key named entities (people, companies,
+    /// laws/regulations, roles, proper names, ...) explicitly grounded in
+    /// the source material — see <see cref="Agents.Studio.DocumentEntityDto"/>.
+    /// Same generation/usage rules as <see cref="ExecutiveSummary"/>.</summary>
+    public string? KeyEntitiesJson { get; set; }
+
     /// <summary>Fecha UTC de creación del grafo.</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

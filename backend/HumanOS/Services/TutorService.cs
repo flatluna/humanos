@@ -42,11 +42,13 @@ public sealed class TutorService
 {
     private readonly TutorAgentV2 _tutorAgent;
     private readonly InstructorRuntimeOrchestrator _orchestrator;
+    private readonly NodeKnowledgeIndexService _knowledgeIndexService;
 
-    public TutorService(TutorAgentV2 tutorAgent, InstructorRuntimeOrchestrator orchestrator)
+    public TutorService(TutorAgentV2 tutorAgent, InstructorRuntimeOrchestrator orchestrator, NodeKnowledgeIndexService knowledgeIndexService)
     {
         _tutorAgent = tutorAgent;
         _orchestrator = orchestrator;
+        _knowledgeIndexService = knowledgeIndexService;
     }
 
     public bool IsConfigured => _tutorAgent.IsConfigured;
@@ -180,26 +182,57 @@ public sealed class TutorService
             .Select(e => e.TutorScore!.Value)
             .ToList();
 
-        var request = await BuildRequestAsync(dbContext, step, TutorInteractionMode.Recall, studentResponse, rawAssessmentFeedback: null, cancellationToken);
+        // Self-healing fallback: if the caller (frontend) didn't pass the
+        // previously-shown question — e.g. it lost its in-memory state
+        // after a page reload mid-Recall — fall back to what THIS step
+        // itself last persisted as its current dynamic question, instead of
+        // silently proceeding with no context at all (the root cause of the
+        // TutorAgent giving confusing/unrelated follow-up questions).
+        var effectiveTutorPromptShown = string.IsNullOrWhiteSpace(tutorPromptShown)
+            ? step.CurrentRecallPrompt
+            : tutorPromptShown;
+
+        var request = await BuildRequestAsync(dbContext, step, TutorInteractionMode.Recall, studentResponse, rawAssessmentFeedback: null, cancellationToken, currentQuestionBeingAnswered: effectiveTutorPromptShown);
         var turn = await RunWorkflowAsync(request, cancellationToken);
 
+        // TutorAgentV2 is instructed to always score a Recall turn now that
+        // BuildRequestAsync guarantees CurrentQuestionBeingAnswered is never
+        // null/empty (see the fallback there) — but LLM structured output
+        // compliance is never 100% guaranteed. Rather than fail the whole
+        // request (and strand the student's already-typed answer) on the
+        // rare non-compliant turn, retry the SAME request once before
+        // giving up — cheap, and in practice resolves the vast majority of
+        // these transient omissions.
+        if (turn.Response.RecallScore is null)
+        {
+            turn = await RunWorkflowAsync(request, cancellationToken);
+        }
+
         var score = turn.Response.RecallScore
-            ?? throw new InvalidOperationException("TutorAgentV2 did not return a RecallScore for a Recall-mode turn.");
+            ?? throw new InvalidOperationException("TutorAgentV2 did not return a RecallScore for a Recall-mode turn (after retry).");
 
         var evidenceId = await _orchestrator.SubmitResponseAsync(
             dbContext,
             learningSessionStepId,
             studentResponse,
             cancellationToken,
-            tutorPrompt: tutorPromptShown,
+            tutorPrompt: effectiveTutorPromptShown,
             tutorScore: score);
+
+        // Persist the NEW question the TutorAgent just generated (what the
+        // student is about to answer next) directly on the step row itself
+        // — not just returned to the caller — so a page reload/resume
+        // between this attempt and the next one still shows/sends the
+        // correct current question instead of falling back to the static
+        // blueprint content (see LearningSessionStep.CurrentRecallPrompt).
+        step.CurrentRecallPrompt = turn.Response.Message;
 
         var verdict = RecallLoopGate.Evaluate(priorScoresThisActivation, score);
 
         InstructorRuntimeOrchestrator.CurrentStepResult? nextStep = null;
         if (verdict.StepComplete)
         {
-            nextStep = await _orchestrator.AdvanceToNextStepAsync(dbContext, step.LearningSessionNodeId, cancellationToken);
+            nextStep = await _orchestrator.AdvanceToNextStepAsync(dbContext, step.LearningSessionNodeId, cancellationToken, bypassRecallGuard: true);
         }
         else if (verdict.ItemFailed)
         {
@@ -243,16 +276,20 @@ public sealed class TutorService
         return step;
     }
 
-    private static async Task<TutorTurnRequest> BuildRequestAsync(
+    private async Task<TutorTurnRequest> BuildRequestAsync(
         HumanOsDbContext dbContext,
         LearningSessionStep step,
         TutorInteractionMode mode,
         string studentMessage,
         string? rawAssessmentFeedback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? currentQuestionBeingAnswered = null)
     {
         string stepContent = string.Empty;
         var illustrations = new List<TutorIllustrationRef>();
+        var retrievedKnowledge = new List<RetrievedKnowledgeSnippet>();
+        string? documentSummary = null;
+        var keyEntities = new List<string>();
         if (mode != TutorInteractionMode.AssessmentFeedback)
         {
             var nodeExperienceBlueprintId = step.LearningSessionNode!.NodeExperienceBlueprintId;
@@ -264,6 +301,26 @@ public sealed class TutorService
                     $"Blueprint {nodeExperienceBlueprintId} has no {step.StepType} content — data inconsistency.");
 
             stepContent = blueprintStep.Content;
+
+            // A Recall step's very first attempt (each activation) has no
+            // dynamic tutor-generated question yet — CurrentRecallPrompt is
+            // intentionally null until AFTER this first turn (see
+            // InstructorRuntimeOrchestrator.AdvanceToNextStepAsync/
+            // RegressToTeachingAsync) — but the student IS answering a real
+            // question: the blueprint's own static Recall content, which is
+            // what the frontend actually showed them. Without this
+            // fallback, CurrentQuestionBeingAnswered stays null and
+            // TutorAgentV2's own instructions tell it to treat that as "no
+            // question exists yet, ask the first one, leave RecallScore
+            // null" — which the model sometimes (nondeterministically)
+            // does even though the student already submitted a real
+            // answer, causing SubmitRecallAttemptAsync's "did not return a
+            // RecallScore" exception. Always giving the model SOME concrete
+            // question to grade against removes that ambiguity.
+            if (mode == TutorInteractionMode.Recall && string.IsNullOrWhiteSpace(currentQuestionBeingAnswered))
+            {
+                currentQuestionBeingAnswered = stepContent;
+            }
 
             // Same resolution as InstructorRuntimeOrchestrator.BuildCurrentStepResultAsync
             // (illustrations never live in the Blueprint itself, only references to
@@ -287,9 +344,70 @@ public sealed class TutorService
                         .ToListAsync(cancellationToken);
                 }
             }
+
+            // Best-effort cross-node RAG lookup + document-wide context
+            // (2026-07-20 — see
+            // /memories/repo/tutor-document-wide-context-gap.md): lets the
+            // Tutor answer a specific fact (a name, a number, a date, a
+            // policy/law reference, ...) that lives in a DIFFERENT node of
+            // the same CapabilityGraph than the one currently being taught,
+            // plus a document-wide executive summary + key-entity list,
+            // which StepContent alone can't hold since it's necessarily
+            // lossy. Gated to ONLY Teaching/Production — i.e. ONLY when the
+            // student is actively asking the Tutor a free-form question via
+            // the chat box (product decision, 2026-07-20) — never during
+            // Recall grading (SubmitRecallAttemptAsync), which is scoring
+            // an answer, not answering a question, and doesn't benefit from
+            // (and shouldn't pay the extra embedding/vector-search latency
+            // for) cross-node lookups. Never blocks the turn if it fails.
+            if ((mode == TutorInteractionMode.Teaching || mode == TutorInteractionMode.Production)
+                && _knowledgeIndexService.IsConfigured)
+            {
+                try
+                {
+                    var capabilityGraphNodeId = step.LearningSessionNode!.CapabilityGraphNodeId;
+                    var graphInfo = await dbContext.CapabilityGraphNodes
+                        .AsNoTracking()
+                        .Where(n => n.CapabilityGraphNodeId == capabilityGraphNodeId)
+                        .Select(n => new { n.CapabilityGraphId, n.CapabilityGraph!.ExecutiveSummary, n.CapabilityGraph!.KeyEntitiesJson })
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (graphInfo is not null && graphInfo.CapabilityGraphId != Guid.Empty)
+                    {
+                        retrievedKnowledge = await _knowledgeIndexService.SearchAsync(
+                            dbContext, graphInfo.CapabilityGraphId, capabilityGraphNodeId, studentMessage, topK: 5, cancellationToken: cancellationToken);
+
+                        documentSummary = graphInfo.ExecutiveSummary;
+
+                        if (!string.IsNullOrWhiteSpace(graphInfo.KeyEntitiesJson))
+                        {
+                            var entities = System.Text.Json.JsonSerializer.Deserialize<List<Agents.Studio.DocumentEntityDto>>(graphInfo.KeyEntitiesJson) ?? [];
+                            keyEntities = entities
+                                .Select(e => $"{e.Name} ({e.Type})" + (string.IsNullOrWhiteSpace(e.Note) ? string.Empty : $": {e.Note}"))
+                                .ToList();
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Best-effort — see comment above.
+                }
+            }
         }
 
+        // Same activation-scoped filter as priorScoresThisActivation in
+        // SubmitRecallAttemptAsync — a Recall step row is REUSED (never
+        // deleted/recreated) across a Teaching-regression cycle, so
+        // step.Evidence can contain stale Q&A pairs from a PRIOR, already
+        // regressed/exhausted attempt loop (a different invented equation
+        // the student never actually mastered). Without this filter, the
+        // LLM's CONVERSATION HISTORY would include that stale prior
+        // question, and it would (wrongly, but understandably) grade the
+        // student's brand-new answer against that old question's values
+        // instead of the current activation's actual question — causing
+        // correct answers to the CURRENT question to be marked wrong.
         var history = step.Evidence
+            .Where(e => step.StartedDate == null || e.CreatedDate >= step.StartedDate)
             .OrderBy(e => e.CreatedDate)
             .Select(e => new TutorTurnHistoryEntry
             {
@@ -304,6 +422,10 @@ public sealed class TutorService
             StepContent = stepContent,
             Illustrations = illustrations,
             History = history,
+            CurrentQuestionBeingAnswered = currentQuestionBeingAnswered,
+            RetrievedKnowledge = retrievedKnowledge,
+            DocumentSummary = documentSummary,
+            KeyEntities = keyEntities,
             StudentMessage = studentMessage,
             RawAssessmentFeedback = rawAssessmentFeedback
         };

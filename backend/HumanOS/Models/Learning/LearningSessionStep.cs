@@ -33,6 +33,21 @@ public class LearningSessionStep
     /// <summary>Fecha UTC de creación de la fila.</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// Solo para StepType=Recall: la pregunta/prompt dinámica que el
+    /// TutorAgent generó más recientemente para este step (lo que el
+    /// estudiante está viendo/respondiendo AHORA). Persistida server-side
+    /// (no solo en memoria del frontend) para que un reload/reingreso a la
+    /// página no pierda el contexto de "qué se está preguntando" — sin
+    /// esto, tras un refresh se volvía a mostrar el contenido genérico del
+    /// blueprint y el próximo intento se enviaba con tutorPromptShown=null,
+    /// dejando al TutorAgent sin saber a qué pregunta estaba respondiendo
+    /// el estudiante. Null antes del primer intento (se usa el contenido
+    /// del blueprint) y se resetea a null cuando el step de Recall se
+    /// reactiva tras un ciclo de regresión a Teaching.
+    /// </summary>
+    public string? CurrentRecallPrompt { get; set; }
+
     // === Navigation Properties ===
 
     /// <summary>Referencia al LearningSessionNode padre.</summary>

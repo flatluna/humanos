@@ -5,6 +5,7 @@ using HumanOS.Data;
 using HumanOS.Models.Capabilities.Graph;
 using HumanOS.Models.Learning;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace HumanOS.Services;
 
@@ -37,11 +38,29 @@ public sealed class AdaptiveAssessmentEngine
     private const int QuestionsPerRound = 5;
     private const int PassThreshold = 80;
 
-    private readonly AdaptiveAssessmentAgent _agent;
+    /// <summary>Base offset for per-question Assessment illustration blob
+    /// indexes (2026-07-20) — never collides with the Studio pipeline's low
+    /// sequential Hypothesis/Teaching indexes (1, 2, ...) or
+    /// KnowledgeExpansion's fixed index (99). The actual index adds the
+    /// node's current illustration count so repeated questions for the same
+    /// node never collide with each other either.</summary>
+    private const int AssessmentIllustrationBaseIndex = 100;
 
-    public AdaptiveAssessmentEngine(AdaptiveAssessmentAgent agent)
+    private readonly AdaptiveAssessmentAgent _agent;
+    private readonly HumanOS.Agents.Studio.GraphIllustrationImageService _imageService;
+    private readonly HumanOS.Storage.CapabilityGraphIllustrationStorageService _illustrationStorage;
+    private readonly Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> _logger;
+
+    public AdaptiveAssessmentEngine(
+        AdaptiveAssessmentAgent agent,
+        HumanOS.Agents.Studio.GraphIllustrationImageService imageService,
+        HumanOS.Storage.CapabilityGraphIllustrationStorageService illustrationStorage,
+        Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> logger)
     {
         _agent = agent;
+        _imageService = imageService;
+        _illustrationStorage = illustrationStorage;
+        _logger = logger;
     }
 
     public sealed class QuestionInfo
@@ -50,6 +69,12 @@ public sealed class AdaptiveAssessmentEngine
         public int QuestionIndex { get; set; }
         public AssessmentQuestionType QuestionType { get; set; }
         public string QuestionText { get; set; } = string.Empty;
+
+        /// <summary>Set only when AdaptiveAssessmentAgent decided this
+        /// specific question genuinely benefits from a visual scenario.
+        /// Servable via the existing GetIllustrationImageFunction endpoint
+        /// (same as any other CapabilityGraphNodeIllustration).</summary>
+        public Guid? IllustrationId { get; set; }
     }
 
     public sealed class RoundState
@@ -130,7 +155,7 @@ public sealed class AdaptiveAssessmentEngine
         dbContext.AssessmentRounds.Add(round);
 
         var question = await GenerateQuestionAsync(
-            context, roundNumber, questionIndex: 1, alreadyAskedThisRound: [], errorsObservedSoFar: priorRoundErrors,
+            dbContext, context, roundNumber, questionIndex: 1, alreadyAskedThisRound: [], errorsObservedSoFar: priorRoundErrors,
             multipleChoiceUsedThisRound: false, cancellationToken);
 
         var questionRow = new AssessmentQuestion
@@ -138,7 +163,8 @@ public sealed class AdaptiveAssessmentEngine
             AssessmentRoundId = round.AssessmentRoundId,
             QuestionIndex = 1,
             QuestionType = question.Type,
-            QuestionText = question.Text
+            QuestionText = question.Text,
+            IllustrationId = question.IllustrationId
         };
         dbContext.AssessmentQuestions.Add(questionRow);
 
@@ -155,7 +181,8 @@ public sealed class AdaptiveAssessmentEngine
                 AssessmentQuestionId = questionRow.AssessmentQuestionId,
                 QuestionIndex = 1,
                 QuestionType = questionRow.QuestionType,
-                QuestionText = questionRow.QuestionText
+                QuestionText = questionRow.QuestionText,
+                IllustrationId = questionRow.IllustrationId
             }
         };
     }
@@ -197,7 +224,8 @@ public sealed class AdaptiveAssessmentEngine
                 AssessmentQuestionId = currentQuestion.AssessmentQuestionId,
                 QuestionIndex = currentQuestion.QuestionIndex,
                 QuestionType = currentQuestion.QuestionType,
-                QuestionText = currentQuestion.QuestionText
+                QuestionText = currentQuestion.QuestionText,
+                IllustrationId = currentQuestion.IllustrationId
             }
         };
     }
@@ -271,14 +299,15 @@ public sealed class AdaptiveAssessmentEngine
             var mcUsed = round.Questions.Any(q => q.QuestionType == AssessmentQuestionType.MultipleChoice);
 
             var nextQuestion = await GenerateQuestionAsync(
-                context, round.RoundNumber, question.QuestionIndex + 1, alreadyAsked, errorsSoFar, mcUsed, cancellationToken);
+                dbContext, context, round.RoundNumber, question.QuestionIndex + 1, alreadyAsked, errorsSoFar, mcUsed, cancellationToken);
 
             var nextQuestionRow = new AssessmentQuestion
             {
                 AssessmentRoundId = round.AssessmentRoundId,
                 QuestionIndex = question.QuestionIndex + 1,
                 QuestionType = nextQuestion.Type,
-                QuestionText = nextQuestion.Text
+                QuestionText = nextQuestion.Text,
+                IllustrationId = nextQuestion.IllustrationId
             };
             dbContext.AssessmentQuestions.Add(nextQuestionRow);
 
@@ -288,7 +317,8 @@ public sealed class AdaptiveAssessmentEngine
                 AssessmentQuestionId = nextQuestionRow.AssessmentQuestionId,
                 QuestionIndex = nextQuestionRow.QuestionIndex,
                 QuestionType = nextQuestionRow.QuestionType,
-                QuestionText = nextQuestionRow.QuestionText
+                QuestionText = nextQuestionRow.QuestionText,
+                IllustrationId = nextQuestionRow.IllustrationId
             };
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -348,7 +378,7 @@ public sealed class AdaptiveAssessmentEngine
             .ToList();
 
         var firstQuestionOfNewRound = await GenerateQuestionAsync(
-            context, newRoundNumber, questionIndex: 1, alreadyAskedThisRound: [], errorsObservedSoFar: failedRoundErrors,
+            dbContext, context, newRoundNumber, questionIndex: 1, alreadyAskedThisRound: [], errorsObservedSoFar: failedRoundErrors,
             multipleChoiceUsedThisRound: false, cancellationToken);
 
         var newQuestionRow = new AssessmentQuestion
@@ -356,7 +386,8 @@ public sealed class AdaptiveAssessmentEngine
             AssessmentRoundId = newRound.AssessmentRoundId,
             QuestionIndex = 1,
             QuestionType = firstQuestionOfNewRound.Type,
-            QuestionText = firstQuestionOfNewRound.Text
+            QuestionText = firstQuestionOfNewRound.Text,
+            IllustrationId = firstQuestionOfNewRound.IllustrationId
         };
         dbContext.AssessmentQuestions.Add(newQuestionRow);
 
@@ -367,7 +398,8 @@ public sealed class AdaptiveAssessmentEngine
             AssessmentQuestionId = newQuestionRow.AssessmentQuestionId,
             QuestionIndex = 1,
             QuestionType = newQuestionRow.QuestionType,
-            QuestionText = newQuestionRow.QuestionText
+            QuestionText = newQuestionRow.QuestionText,
+            IllustrationId = newQuestionRow.IllustrationId
         };
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -423,8 +455,8 @@ public sealed class AdaptiveAssessmentEngine
         return TypeRotation[slot];
     }
 
-    private async Task<(AssessmentQuestionType Type, string Text)> GenerateQuestionAsync(
-        NodeContext context, int roundNumber, int questionIndex, IReadOnlyList<string> alreadyAskedThisRound,
+    private async Task<(AssessmentQuestionType Type, string Text, Guid? IllustrationId)> GenerateQuestionAsync(
+        HumanOsDbContext dbContext, NodeContext context, int roundNumber, int questionIndex, IReadOnlyList<string> alreadyAskedThisRound,
         IReadOnlyList<string> errorsObservedSoFar, bool multipleChoiceUsedThisRound, CancellationToken cancellationToken)
     {
         var requiredType = GetRequiredType(roundNumber, questionIndex);
@@ -439,15 +471,101 @@ public sealed class AdaptiveAssessmentEngine
         var prompt = BuildQuestionGenerationPrompt(context, questionIndex, alreadyAskedThisRound, errorsObservedSoFar, requiredType, allowMultipleChoiceSubstitute);
         var response = await _agent.GenerateQuestionAsync(prompt, cancellationToken);
 
+        var illustrationId = await TryGenerateQuestionIllustrationAsync(dbContext, context, response.DiagramPrompt, cancellationToken);
+
         if (allowMultipleChoiceSubstitute && ParseQuestionType(response.QuestionType) == AssessmentQuestionType.MultipleChoice)
         {
-            return (AssessmentQuestionType.MultipleChoice, response.QuestionText);
+            return (AssessmentQuestionType.MultipleChoice, response.QuestionText, illustrationId);
         }
 
         // The type itself is decided by CODE, not trusted from the LLM —
         // this guarantees genuine diversity across the round regardless of
         // what the model happens to label its own output as.
-        return (requiredType, response.QuestionText);
+        return (requiredType, response.QuestionText, illustrationId);
+    }
+
+    /// <summary>
+    /// Best-effort, on-demand illustration for ONE Assessment question
+    /// (2026-07-20) — mirrors KnowledgeExpansionService.TryGenerateDiagramAsync's
+    /// "never throws, never blocks question generation" contract. Only runs
+    /// when the agent actually proposed a DiagramPrompt (most questions get
+    /// none — this is deliberately the minority case). Derives the tenantId/
+    /// capabilityId needed for the blob path from one of the node's EXISTING
+    /// illustrations (uploaded with real values at capability-creation
+    /// time); skips silently if the node has none yet.
+    /// </summary>
+    private async Task<Guid?> TryGenerateQuestionIllustrationAsync(
+        HumanOsDbContext dbContext, NodeContext context, string? diagramPrompt, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(diagramPrompt))
+        {
+            _logger.LogInformation("AdaptiveAssessment illustration: skipped - agent returned no DiagramPrompt for node {NodeId}.", context.NodeId);
+            return null;
+        }
+
+        if (!_imageService.IsConfigured || !_illustrationStorage.IsConfigured)
+        {
+            _logger.LogWarning("AdaptiveAssessment illustration: skipped - imageService.IsConfigured={ImageConfigured}, illustrationStorage.IsConfigured={StorageConfigured}.", _imageService.IsConfigured, _illustrationStorage.IsConfigured);
+            return null;
+        }
+
+        if (context.IllustrationPathSeed is null)
+        {
+            _logger.LogWarning("AdaptiveAssessment illustration: skipped - node {NodeId} has no existing illustration to derive tenant/capability path from.", context.NodeId);
+            return null;
+        }
+
+        var segments = context.IllustrationPathSeed.Split('/');
+        if (segments.Length < 3 || !Guid.TryParse(segments[0], out var tenantId) || !Guid.TryParse(segments[1], out var capabilityId))
+        {
+            _logger.LogWarning("AdaptiveAssessment illustration: skipped - could not parse tenant/capability GUIDs from path seed '{PathSeed}'.", context.IllustrationPathSeed);
+            return null;
+        }
+
+        _logger.LogInformation("AdaptiveAssessment illustration: attempting generation for node {NodeId} with prompt '{Prompt}'.", context.NodeId, diagramPrompt);
+
+        try
+        {
+            var existingCount = await dbContext.CapabilityGraphNodeIllustrations
+                .CountAsync(i => i.CapabilityGraphNodeId == context.NodeId, cancellationToken);
+            var imageIndex = AssessmentIllustrationBaseIndex + existingCount;
+
+            var generated = await _imageService.GenerateAsync(diagramPrompt, cancellationToken);
+            using var imageStream = generated.ImageBytes.ToStream();
+
+            var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                tenantId, capabilityId, context.NodeId, imageIndex, imageStream, cancellationToken: cancellationToken);
+
+            var illustration = new CapabilityGraphNodeIllustration
+            {
+                CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
+                CapabilityGraphNodeId = context.NodeId,
+                StoragePath = storagePath,
+                Prompt = diagramPrompt,
+                Purpose = IllustrationPurpose.Assessment,
+                ImageModel = generated.ImageModel,
+                Width = generated.Width,
+                Height = generated.Height,
+                CreatedDate = DateTime.UtcNow
+            };
+
+            dbContext.CapabilityGraphNodeIllustrations.Add(illustration);
+            _logger.LogInformation("AdaptiveAssessment illustration: generated successfully, CapabilityGraphNodeIllustrationId={IllustrationId}.", illustration.CapabilityGraphNodeIllustrationId);
+            return illustration.CapabilityGraphNodeIllustrationId;
+        }
+        catch (Exception ex) when (ex.Message.Contains("moderation_blocked", StringComparison.OrdinalIgnoreCase))
+        {
+            // Expected/correct outcome, not a bug: Azure OpenAI's image
+            // safety system rejected this prompt. Logged at Warning (not
+            // Error) so it's not confused with an actual pipeline failure.
+            _logger.LogWarning("AdaptiveAssessment illustration: skipped - Azure OpenAI's safety system rejected the prompt (moderation_blocked) for node {NodeId}.", context.NodeId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AdaptiveAssessment illustration: generation FAILED for node {NodeId}.", context.NodeId);
+            return null;
+        }
     }
 
     private static AssessmentQuestionType ParseQuestionType(string raw) =>
@@ -455,6 +573,7 @@ public sealed class AdaptiveAssessmentEngine
 
     private sealed class NodeContext
     {
+        public Guid NodeId { get; set; }
         public string CapabilityName { get; set; } = string.Empty;
         public string NodeName { get; set; } = string.Empty;
         public string? AcademicDefinition { get; set; }
@@ -463,6 +582,13 @@ public sealed class AdaptiveAssessmentEngine
         public List<string> Applications { get; set; } = [];
         public List<string> IllustrationCaptions { get; set; } = [];
         public Dictionary<string, string> PriorStepEvidence { get; set; } = [];
+
+        /// <summary>StoragePath of one of the node's EXISTING illustrations
+        /// (Hypothesis/Teaching), reused only to derive the tenantId/
+        /// capabilityId path segments for a NEW Assessment illustration —
+        /// null if the node has no illustrations yet (Assessment images are
+        /// then skipped, same as KnowledgeExpansionService).</summary>
+        public string? IllustrationPathSeed { get; set; }
     }
 
     private static async Task<NodeContext> LoadNodeContextAsync(HumanOsDbContext dbContext, Guid learningSessionNodeId, CancellationToken cancellationToken)
@@ -494,6 +620,7 @@ public sealed class AdaptiveAssessmentEngine
 
         return new NodeContext
         {
+            NodeId = node.CapabilityGraphNodeId,
             CapabilityName = sessionNode.LearningSession?.Capability?.Name ?? string.Empty,
             NodeName = node.Name,
             AcademicDefinition = node.AcademicDefinition,
@@ -501,7 +628,8 @@ public sealed class AdaptiveAssessmentEngine
             Examples = DeserializeStringList(node.ExamplesJson),
             Applications = DeserializeStringList(node.ApplicationsJson),
             IllustrationCaptions = node.Illustrations.Where(i => !string.IsNullOrWhiteSpace(i.Caption)).Select(i => i.Caption!).ToList(),
-            PriorStepEvidence = priorStepEvidence
+            PriorStepEvidence = priorStepEvidence,
+            IllustrationPathSeed = node.Illustrations.FirstOrDefault()?.StoragePath
         };
     }
 

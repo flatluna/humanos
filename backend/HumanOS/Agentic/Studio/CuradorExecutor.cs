@@ -150,59 +150,12 @@ internal sealed class CuradorExecutor : Executor<RawMaterialBatch, CuratorOutput
     /// detected chapter, using ordinal string search for each chapter's
     /// StartMarker. Falls back to the whole PDF as a single item if fewer
     /// than two chapter boundaries can actually be located in the text
-    /// (e.g. the model hallucinated a marker that isn't a verbatim match).</summary>
-    private async Task<List<RawMaterialItem>> SplitPdfIntoChapterMaterialsAsync(
-        RawMaterialItem pdf, CancellationToken cancellationToken)
-    {
-        var toc = await _tocExtraction.ExtractAsync(pdf.Content, cancellationToken);
-
-        if (toc.Chapters.Count <= 1)
-        {
-            return [pdf];
-        }
-
-        var boundaries = new List<(string Title, int Index)>();
-        foreach (var chapter in toc.Chapters)
-        {
-            if (string.IsNullOrWhiteSpace(chapter.StartMarker))
-            {
-                continue;
-            }
-
-            var index = pdf.Content.IndexOf(chapter.StartMarker, StringComparison.Ordinal);
-            if (index >= 0)
-            {
-                boundaries.Add((chapter.Title, index));
-            }
-        }
-
-        if (boundaries.Count <= 1)
-        {
-            return [pdf];
-        }
-
-        boundaries = [.. boundaries.OrderBy(b => b.Index)];
-
-        var result = new List<RawMaterialItem>();
-        for (var i = 0; i < boundaries.Count; i++)
-        {
-            var start = boundaries[i].Index;
-            var end = i + 1 < boundaries.Count ? boundaries[i + 1].Index : pdf.Content.Length;
-            var chapterText = pdf.Content[start..end];
-
-            if (string.IsNullOrWhiteSpace(chapterText))
-            {
-                continue;
-            }
-
-            result.Add(new RawMaterialItem
-            {
-                Type = RawMaterialType.Pdf,
-                Label = $"{pdf.Label} — {boundaries[i].Title}",
-                Content = chapterText
-            });
-        }
-
-        return result.Count > 0 ? result : [pdf];
-    }
+    /// (e.g. the model hallucinated a marker that isn't a verbatim match).
+    /// Delegates the actual detect+slice mechanics to
+    /// <see cref="DocumentChapterSplitter"/> (shared with the V2
+    /// PDF→CapabilityGraph pipeline, extracted 2026-07-19) — this method
+    /// now only owns the Pdf-specific call site.</summary>
+    private Task<List<RawMaterialItem>> SplitPdfIntoChapterMaterialsAsync(
+        RawMaterialItem pdf, CancellationToken cancellationToken) =>
+        DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(pdf, _tocExtraction, cancellationToken);
 }

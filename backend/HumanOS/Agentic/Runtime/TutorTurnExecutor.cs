@@ -82,7 +82,22 @@ internal sealed class TutorTurnExecutor : Executor<TutorTurnRequest, TutorTurnRe
             if (request.Illustrations.Count > 0)
             {
                 promptBuilder.AppendLine();
-                promptBuilder.AppendLine("ILLUSTRATION(S) THE STUDENT CAN SEE ON SCREEN RIGHT NOW (reference them explicitly, e.g. \"como ves en la ilustracion...\" — do not ignore them):");
+                if (request.Mode is TutorInteractionMode.Recall)
+                {
+                    // Fixed 2026-07-20: during Recall the student is
+                    // deliberately NOT looking at the illustration anymore (that's
+                    // the whole point of this stage) — these captions are
+                    // background context for YOU to understand what was taught,
+                    // never material to quiz the student on. A real production
+                    // bug: the Tutor was asking things like "¿cuántas frases tenía
+                    // el resumen mostrado junto al documento?" — testing memory of
+                    // how an example was PRESENTED, not the underlying capability.
+                    promptBuilder.AppendLine("ILLUSTRATION(S) SHOWN EARLIER DURING TEACHING (background only — the student is NOT looking at these right now and must NOT be asked about their incidental presentation details: exact words/counts/labels/colors shown, how many items appeared, etc. Never say \"como ves en la ilustración\" here. Use these only to understand the concept being taught; your question must test the underlying capability, never trivia about the illustration itself):");
+                }
+                else
+                {
+                    promptBuilder.AppendLine("ILLUSTRATION(S) THE STUDENT CAN SEE ON SCREEN RIGHT NOW (reference them explicitly, e.g. \"como ves en la ilustracion...\" — do not ignore them):");
+                }
                 foreach (var illustration in request.Illustrations)
                 {
                     promptBuilder.AppendLine($"- {illustration.Caption}");
@@ -123,6 +138,52 @@ internal sealed class TutorTurnExecutor : Executor<TutorTurnRequest, TutorTurnRe
                 promptBuilder.AppendLine($"Student: {entry.StudentResponse}");
             }
 
+            promptBuilder.AppendLine();
+        }
+
+        if (request.Mode == TutorInteractionMode.Recall && !string.IsNullOrWhiteSpace(request.CurrentQuestionBeingAnswered))
+        {
+            promptBuilder.AppendLine("THE QUESTION THE STUDENT IS ANSWERING RIGHT NOW (you asked this last turn — verify against THIS question's exact values, not any other question above):");
+            promptBuilder.AppendLine(request.CurrentQuestionBeingAnswered);
+            promptBuilder.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.DocumentSummary) || request.KeyEntities.Count > 0)
+        {
+            // Fixed 2026-07-20: static document-wide complement to the RAG
+            // section below — see TutorTurnRequest.DocumentSummary/
+            // KeyEntities doc comments and
+            // /memories/repo/tutor-document-wide-context-gap.md. Framed as
+            // background/disambiguation only, never license to teach beyond
+            // this node's own scope.
+            promptBuilder.AppendLine("DOCUMENT-WIDE BACKGROUND (orientation to the whole source material — use ONLY to correctly understand/disambiguate a brief reference to something not covered by STEP CONTENT above; never to teach material outside this node's own scope):");
+            if (!string.IsNullOrWhiteSpace(request.DocumentSummary))
+            {
+                promptBuilder.AppendLine(request.DocumentSummary);
+            }
+            if (request.KeyEntities.Count > 0)
+            {
+                promptBuilder.AppendLine("Key entities mentioned in the source material:");
+                foreach (var entity in request.KeyEntities)
+                {
+                    promptBuilder.AppendLine($"- {entity}");
+                }
+            }
+            promptBuilder.AppendLine();
+        }
+
+        if (request.RetrievedKnowledge.Count > 0)
+        {
+            // Fixed 2026-07-20: supplementary cross-node RAG context — see
+            // TutorTurnRequest.RetrievedKnowledge's doc comment and
+            // /memories/repo/tutor-document-wide-context-gap.md. Framed
+            // explicitly as OPTIONAL/supplementary so the model doesn't
+            // treat it as license to teach beyond this node's own scope.
+            promptBuilder.AppendLine("RELATED INFORMATION FROM ELSEWHERE IN THE SOURCE MATERIAL (other nodes of the same learning graph — use this ONLY if the student's message asks for a specific fact, name, number, date, or reference that is NOT part of STEP CONTENT above; never use it to teach something outside this node's own scope; if you do use it, briefly attribute it, e.g. \"eso lo vimos en '<node>'...\"):");
+            foreach (var snippet in request.RetrievedKnowledge)
+            {
+                promptBuilder.AppendLine($"- [{snippet.NodeName}] {snippet.Content}");
+            }
             promptBuilder.AppendLine();
         }
 

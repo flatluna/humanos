@@ -40,12 +40,20 @@ public sealed class CapabilityGraphPersistenceService
     /// given Capability. Call <see cref="HumanOsDbContext.SaveChangesAsync(CancellationToken)"/>
     /// side-effect happens internally — this method commits the transaction itself.
     /// </summary>
+    /// <param name="executiveSummary">Optional document-wide executive
+    /// summary (2026-07-20 — see <see cref="Agents.Studio.DocumentContextAgent"/>),
+    /// null when the extraction agent isn't configured or the call failed.</param>
+    /// <param name="keyEntitiesJson">Optional JSON-serialized
+    /// <see cref="Agents.Studio.DocumentEntityDto"/> list, same conditions as
+    /// <paramref name="executiveSummary"/>.</param>
     public async Task<CapabilityGraph> PersistAsync(
         HumanOsDbContext dbContext,
         Guid capabilityId,
         CapabilityGraphResponse graph,
         IReadOnlyList<NodeIllustrationRecord>? illustrations,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? executiveSummary = null,
+        string? keyEntitiesJson = null)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(graph);
@@ -56,6 +64,8 @@ public sealed class CapabilityGraphPersistenceService
             CapabilityId = capabilityId,
             Name = graph.Name,
             Description = graph.Description,
+            ExecutiveSummary = executiveSummary,
+            KeyEntitiesJson = keyEntitiesJson,
             CreatedDate = DateTime.UtcNow
         };
 

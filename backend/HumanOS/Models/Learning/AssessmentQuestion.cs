@@ -52,6 +52,19 @@ public class AssessmentQuestion
     /// </summary>
     public string? ObservedError { get; set; }
 
+    /// <summary>
+    /// FK opcional: ilustración generada bajo demanda para ESTA pregunta
+    /// específica (CapabilityGraphNodeIllustration con
+    /// Purpose=Assessment), o null si AdaptiveAssessmentAgent decidió que
+    /// una imagen no aportaba valor a esta pregunta en particular
+    /// (2026-07-20 — "cuando sea conveniente", nunca obligatoria). A
+    /// diferencia de las ilustraciones de Hypothesis/Teaching/
+    /// KnowledgeExpansion (una por nodo, reutilizada), esta es una por
+    /// PREGUNTA — nunca se reutiliza, ya que cada pregunta es efímera y
+    /// generada dinámicamente.
+    /// </summary>
+    public Guid? IllustrationId { get; set; }
+
     /// <summary>Fecha UTC de creación de la fila (cuando se generó la pregunta).</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
@@ -62,4 +75,7 @@ public class AssessmentQuestion
 
     /// <summary>Referencia a la AssessmentRound padre.</summary>
     public virtual AssessmentRound? AssessmentRound { get; set; }
+
+    /// <summary>Referencia a la ilustración generada para esta pregunta, si existe.</summary>
+    public virtual Capabilities.Graph.CapabilityGraphNodeIllustration? Illustration { get; set; }
 }

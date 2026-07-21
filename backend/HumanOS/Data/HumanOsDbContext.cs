@@ -128,6 +128,17 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<CapabilityGraphNodeIllustration> CapabilityGraphNodeIllustrations =>
         Set<CapabilityGraphNodeIllustration>();
 
+    /// <summary>On-demand "Profundizar" knowledge expansion cache, one row
+    /// per node (2026-07-20) — see
+    /// <see cref="CapabilityGraphNodeKnowledgeExpansion"/>.</summary>
+    public DbSet<CapabilityGraphNodeKnowledgeExpansion> CapabilityGraphNodeKnowledgeExpansions =>
+        Set<CapabilityGraphNodeKnowledgeExpansion>();
+
+    /// <summary>Per-node embedded knowledge chunks used for cross-node RAG
+    /// (2026-07-20) — see <see cref="CapabilityGraphNodeKnowledgeChunk"/>.</summary>
+    public DbSet<CapabilityGraphNodeKnowledgeChunk> CapabilityGraphNodeKnowledgeChunks =>
+        Set<CapabilityGraphNodeKnowledgeChunk>();
+
     public DbSet<NodeExperienceBlueprint> NodeExperienceBlueprints =>
         Set<NodeExperienceBlueprint>();
 

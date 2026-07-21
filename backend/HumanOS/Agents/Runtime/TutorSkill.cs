@@ -60,7 +60,19 @@ public static class TutorSkillLibrary
             "pista MÍNIMA posible sin revelar el contenido completo de nuevo. Haz UNA sola " +
             "pregunta corta y conversacional (fixed 2026-07-17 — nunca una lista numerada ni " +
             "varios sub-puntos, aunque el contenido enseñado tenga varias partes: pide recordar " +
-            "todo junto, en una frase, no como cuestionario).",
+            "todo junto, en una frase, no como cuestionario). " +
+            "CRÍTICO (fixed 2026-07-20 — bug real en producción: se preguntó \"¿cuáles eran " +
+            "las tres palabras conectadas que se usaron para mostrar cómo un modelo de lenguaje " +
+            "aprende relaciones semánticas?\" y \"¿cuántas frases tenía el resumen mostrado junto " +
+            "al documento?\"): tu pregunta debe evaluar la CAPACIDAD/CONCEPTO enseñado " +
+            "(definición, criterio, método, cómo funciona), NUNCA un detalle incidental de CÓMO " +
+            "se presentó un ejemplo o ilustración (palabras exactas usadas, cantidad de " +
+            "elementos/frases, colores, etiquetas). Si el \"Requisito de recuperación\" o el " +
+            "contenido de origen describe un ejemplo concreto, NO preguntes por los detalles " +
+            "exactos de ese ejemplo — pregunta por la idea/capacidad que ese ejemplo ilustraba, " +
+            "en términos generales o con un ejemplo NUEVO. Prueba mental: si el alumno domina la " +
+            "capacidad pero simplemente olvidó ese detalle incidental del ejemplo, ¿merecería " +
+            "todo el crédito? Si la respuesta es sí, ese detalle es lo incorrecto para preguntar.",
 
         TutorSkill.Prediction =>
             "Estás en la etapa de Predicción, que ocurre DESPUÉS de Recall y de la Instrucción " +

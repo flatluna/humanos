@@ -4,6 +4,7 @@ using HumanOS.Data;
 using HumanOS.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 
 namespace HumanOS.AzureFunctions.Api;
 
@@ -21,11 +22,13 @@ public sealed class TutorSubmitRecallAttemptFunction
 {
     private readonly TutorService _tutorService;
     private readonly HumanOsDbContext _dbContext;
+    private readonly ILogger<TutorSubmitRecallAttemptFunction> _logger;
 
-    public TutorSubmitRecallAttemptFunction(TutorService tutorService, HumanOsDbContext dbContext)
+    public TutorSubmitRecallAttemptFunction(TutorService tutorService, HumanOsDbContext dbContext, ILogger<TutorSubmitRecallAttemptFunction> logger)
     {
         _tutorService = tutorService;
         _dbContext = dbContext;
+        _logger = logger;
     }
 
     [Function("TutorSubmitRecallAttempt")]
@@ -66,6 +69,7 @@ public sealed class TutorSubmitRecallAttemptFunction
         }
         catch (InvalidOperationException ex)
         {
+            _logger.LogError(ex, "TutorSubmitRecallAttempt: InvalidOperationException for LearningSessionStepId={LearningSessionStepId}: {Message}", body.LearningSessionStepId, ex.Message);
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.BadRequest, "InvalidRecallStep", ex.Message, cancellationToken);
         }

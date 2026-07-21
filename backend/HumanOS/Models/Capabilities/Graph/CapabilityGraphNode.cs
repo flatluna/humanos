@@ -78,4 +78,10 @@ public class CapabilityGraphNode
     /// Un nodo puede tener múltiples blueprints (Standard, Advanced, Visual Learning, ...).
     /// </summary>
     public virtual ICollection<NodeExperienceBlueprint> ExperienceBlueprints { get; set; } = new List<NodeExperienceBlueprint>();
+
+    /// <summary>Embedded knowledge chunks of this node's own content (2026-07-20),
+    /// used for cross-node semantic search (RAG) — see
+    /// <see cref="CapabilityGraphNodeKnowledgeChunk"/> and
+    /// <see cref="Services.NodeKnowledgeIndexService"/>.</summary>
+    public virtual ICollection<CapabilityGraphNodeKnowledgeChunk> KnowledgeChunks { get; set; } = new List<CapabilityGraphNodeKnowledgeChunk>();
 }

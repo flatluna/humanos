@@ -194,7 +194,7 @@ public sealed class TestGraphProgressionFlow
             .Select((i, idx) => new AvailableIllustrationDto { Index = idx + 1, Prompt = i.Prompt, Caption = i.Caption })
             .ToList();
 
-        var design = await _experienceDesigner.DesignBlueprintAsync(node, availableIllustrations, cancellationToken);
+        var design = await _experienceDesigner.DesignBlueprintAsync(node, availableIllustrations, cancellationToken: cancellationToken);
 
         var persisted = await _blueprintPersistenceService.PersistAsync(
             dbContext, node.CapabilityGraphNodeId, design.Blueprint, node.Illustrations.ToList(), cancellationToken);

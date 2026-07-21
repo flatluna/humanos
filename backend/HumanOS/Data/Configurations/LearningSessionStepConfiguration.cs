@@ -25,6 +25,9 @@ public class LearningSessionStepConfiguration : IEntityTypeConfiguration<Learnin
             .HasDefaultValueSql("GETUTCDATE()")
             .IsRequired();
 
+        builder.Property(s => s.CurrentRecallPrompt)
+            .HasMaxLength(4000);
+
         // FK a LearningSessionNode — ownership real.
         builder.HasOne(s => s.LearningSessionNode)
             .WithMany(n => n.Steps)

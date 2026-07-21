@@ -922,6 +922,12 @@ namespace HumanOS.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<string>("ExecutiveSummary")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("KeyEntitiesJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -1071,6 +1077,82 @@ namespace HumanOS.Data.Migrations
                     b.HasIndex("CapabilityGraphNodeId");
 
                     b.ToTable("CapabilityGraphNodeIllustrations");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeKnowledgeChunk", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphNodeKnowledgeChunkId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("CapabilityGraphId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<SqlVector<float>>("Embedding")
+                        .HasColumnType("vector(1536)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceField")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("CapabilityGraphNodeKnowledgeChunkId")
+                        .HasName("PK_CapabilityGraphNodeKnowledgeChunk");
+
+                    b.HasIndex("CapabilityGraphId")
+                        .HasDatabaseName("IX_CapabilityGraphNodeKnowledgeChunk_CapabilityGraphId");
+
+                    b.HasIndex("CapabilityGraphNodeId")
+                        .HasDatabaseName("IX_CapabilityGraphNodeKnowledgeChunk_CapabilityGraphNodeId");
+
+                    b.ToTable("CapabilityGraphNodeKnowledgeChunk", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeKnowledgeExpansion", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphNodeKnowledgeExpansionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid?>("DiagramIllustrationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("CapabilityGraphNodeKnowledgeExpansionId");
+
+                    b.HasIndex("CapabilityGraphNodeId")
+                        .IsUnique();
+
+                    b.HasIndex("DiagramIllustrationId");
+
+                    b.ToTable("CapabilityGraphNodeKnowledgeExpansions");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", b =>
@@ -1714,6 +1796,9 @@ namespace HumanOS.Data.Migrations
                     b.Property<string>("Feedback")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("IllustrationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ObservedError")
                         .HasColumnType("nvarchar(max)");
 
@@ -1734,6 +1819,8 @@ namespace HumanOS.Data.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("AssessmentQuestionId");
+
+                    b.HasIndex("IllustrationId");
 
                     b.HasIndex("AssessmentRoundId", "QuestionIndex")
                         .IsUnique();
@@ -1926,6 +2013,10 @@ namespace HumanOS.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("CurrentRecallPrompt")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<Guid>("LearningSessionNodeId")
                         .HasColumnType("uniqueidentifier");
@@ -2928,6 +3019,36 @@ namespace HumanOS.Data.Migrations
                     b.Navigation("CapabilityGraphNode");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeKnowledgeChunk", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "CapabilityGraphNode")
+                        .WithMany("KnowledgeChunks")
+                        .HasForeignKey("CapabilityGraphNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_CapabilityGraphNodeKnowledgeChunk_CapabilityGraphNode");
+
+                    b.Navigation("CapabilityGraphNode");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeKnowledgeExpansion", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "CapabilityGraphNode")
+                        .WithMany()
+                        .HasForeignKey("CapabilityGraphNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeIllustration", "DiagramIllustration")
+                        .WithMany()
+                        .HasForeignKey("DiagramIllustrationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CapabilityGraphNode");
+
+                    b.Navigation("DiagramIllustration");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.NodeExperienceBlueprint", b =>
                 {
                     b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", "CapabilityGraphNode")
@@ -3137,7 +3258,14 @@ namespace HumanOS.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraphNodeIllustration", "Illustration")
+                        .WithMany()
+                        .HasForeignKey("IllustrationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("AssessmentRound");
+
+                    b.Navigation("Illustration");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Learning.AssessmentRound", b =>
@@ -3467,6 +3595,8 @@ namespace HumanOS.Data.Migrations
                     b.Navigation("Illustrations");
 
                     b.Navigation("IncomingEdges");
+
+                    b.Navigation("KnowledgeChunks");
 
                     b.Navigation("OutgoingEdges");
                 });

@@ -34,6 +34,12 @@ public sealed class AssessmentQuestionDto
     public int QuestionIndex { get; set; }
     public string QuestionType { get; set; } = string.Empty;
     public string QuestionText { get; set; } = string.Empty;
+
+    /// <summary>Set only when the question genuinely benefits from a visual
+    /// scenario (2026-07-20) — servable via the existing
+    /// GetIllustrationImageFunction endpoint ("/illustrations/{id}/image"),
+    /// same as any other CapabilityGraphNodeIllustration.</summary>
+    public Guid? IllustrationId { get; set; }
 }
 
 /// <summary>Current state of a round — used both by start-round and the resume ("active") endpoint.</summary>
@@ -90,7 +96,8 @@ internal static class AdaptiveAssessmentApiMappers
             AssessmentQuestionId = question.AssessmentQuestionId,
             QuestionIndex = question.QuestionIndex,
             QuestionType = question.QuestionType.ToString(),
-            QuestionText = question.QuestionText
+            QuestionText = question.QuestionText,
+            IllustrationId = question.IllustrationId
         };
 
     public static AssessmentRoundStateDto ToRoundStateDto(AdaptiveAssessmentEngine.RoundState round) => new()

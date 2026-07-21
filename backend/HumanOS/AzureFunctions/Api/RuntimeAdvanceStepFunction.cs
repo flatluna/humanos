@@ -66,6 +66,11 @@ public sealed class RuntimeAdvanceStepFunction
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.Conflict, "AlreadyOnAssessment", ex.Message, cancellationToken);
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot advance away from Recall"))
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.Conflict, "RecallRequiresGate", ex.Message, cancellationToken);
+        }
         catch (InvalidOperationException ex)
         {
             return await FunctionResponseFactory.ErrorResponseAsync(

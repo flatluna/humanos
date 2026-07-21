@@ -20,6 +20,15 @@ public sealed class GeneratedAssessmentQuestionResponse
     /// match, rather than trusting an unparseable value).
     /// </summary>
     public string QuestionType { get; set; } = string.Empty;
+
+    /// <summary>A text prompt for generating ONE illustration that
+    /// genuinely helps this specific question (e.g. depicts the scenario a
+    /// Application/Transfer/ErrorDetection question describes), or null if
+    /// an image wouldn't add value (e.g. a plain ActiveRecall fact/
+    /// computation, or a Comprehension question with nothing spatial/
+    /// visual to draw). Same "leave null rather than invent one" rule as
+    /// KnowledgeExpansionAgent.DiagramPrompt.</summary>
+    public string? DiagramPrompt { get; set; }
 }
 
 /// <summary>Structured output: the grade for one answered Assessment question.</summary>
@@ -128,6 +137,79 @@ public sealed class AdaptiveAssessmentAgent
         - Adapt difficulty to the student's demonstrated level from the
           context given.
         - Write in the same language as the node's content.
+
+        DECIDIENDO SI VALE LA PENA UNA ILUSTRACIÓN (DiagramPrompt)
+        La mayoría de las preguntas NO necesitan ilustración — solo pide una
+        cuando el tipo de pregunta describe una ESCENA o ESCENARIO concreto
+        que ayuda genuinamente a visualizar lo que se pregunta (típicamente
+        Application, Transfer o ErrorDetection cuando plantean una situación
+        espacial/visual real). NUNCA pidas una ilustración para ActiveRecall
+        (es solo un dato/cálculo directo) ni para Comprehension (es una
+        explicación en palabras propias) — en esos casos deja DiagramPrompt
+        en null. Tampoco inventes una ilustración decorativa para un tema
+        puramente conceptual/de política sin nada espacial que dibujar (ej.
+        una definición legal, un procedimiento de denuncia) — si no hay nada
+        que genuinamente se beneficie de una imagen, deja DiagramPrompt en
+        null.
+
+        REGLA FUERTE (no opcional): si tu pregunta Application/Transfer/
+        ErrorDetection describe una ACCIÓN FÍSICA OBSERVABLE entre personas
+        en un lugar concreto — por ejemplo tomar del brazo, bloquear el
+        paso, invadir el espacio personal, tocar sin permiso, acorralar en
+        un pasillo/oficina — DEBES pedir una ilustración casi siempre. Ese
+        tipo de escena concreta es precisamente el caso que más se
+        beneficia de una imagen, así que NO la dejes en null salvo que la
+        pregunta sea puramente verbal/abstracta (una política, una
+        definición, una decisión sin acción física descrita).
+
+        ADVERTENCIA IMPORTANTE SOBRE CONTENIDO DE ACOSO/CONTACTO NO
+        CONSENTIDO: el modelo de generación de imágenes RECHAZA (moderation
+        blocked) cualquier prompt que describa explícitamente el ACTO de
+        contacto físico no deseado o de intimidación — por ejemplo "toma
+        del brazo", "rodea con los brazos", "bloquea el paso mientras
+        intenta abrazar", "acorrala", "invade el espacio personal". Para
+        estos casos NUNCA describas el acto en sí en el DiagramPrompt.
+        En su lugar, describe ÚNICAMENTE el ESCENARIO NEUTRO donde ocurre
+        la situación — el lugar (pasillo, oficina, sala de reuniones,
+        hospital), la hora/ambiente, y dos figuras profesionales genéricas
+        de pie en ese espacio, en una pose neutra y ordinaria (por ejemplo
+        "de pie, conversando", "una junto a la puerta, otra en el centro de
+        la sala") — SIN mencionar contacto físico, bloqueo, abrazo,
+        cercanía invasiva, incomodidad, ni cualquier gesto que implique
+        intimidación o falta de consentimiento. El objetivo es dar solo
+        contexto espacial (el lugar y las posiciones relativas de las
+        personas) para que el alumno pueda ubicar mentalmente la escena
+        que se describe en el TEXTO de la pregunta — la imagen NUNCA debe
+        intentar representar el acto de acoso mismo.
+        Ejemplo: si la pregunta describe "un médico bloquea el paso a una
+        residente e intenta abrazarla en una sala vacía", el DiagramPrompt
+        correcto sería algo como "Una sala de hospital vacía y neutra, con
+        dos figuras profesionales genéricas de pie a cierta distancia una
+        de otra, ambiente clínico ordinario, sin ninguna acción ni gesto
+        entre ellas" — NUNCA describir el bloqueo ni el abrazo.
+        Si aplicando esta regla sigues sin poder describir nada visual sin
+        mencionar el acto (la escena es inseparable del contacto
+        descrito), es preferible dejar DiagramPrompt en null antes que
+        arriesgarte a describir el acto explícitamente.
+
+        Ejemplo de cuándo SÍ pedirla: pregunta Application que describe "un
+        empleado toma del brazo a una compañera para impedir que salga de
+        la sala" → DiagramPrompt debe describir esa escena exacta (el
+        pasillo/sala, las dos personas, el gesto de sujetar el brazo),
+        SIN mostrar ningún texto ni indicio de cuál es la respuesta
+        correcta.
+        Ejemplo de cuándo NO pedirla: pregunta ActiveRecall "¿Cómo se llama
+        la ley que regula esto?" o Comprehension "Explica en tus propias
+        palabras por qué esto es acoso" → DiagramPrompt en null.
+
+        La ilustración NUNCA debe revelar la respuesta correcta — debe
+        mostrar solo el escenario/situación que el alumno debe analizar,
+        igual que el principio ya usado para Hypothesis.
+        Si SÍ pides una ilustración: los modelos de generación de imágenes
+        NO calculan — si tu prompt menciona cualquier número, cantidad o
+        valor visible en la escena, escribe el valor EXACTO en el prompt
+        (nunca lo dejes implícito), y todos los valores deben ser
+        internamente consistentes.
         """;
 
     private const string GradingInstructions = """

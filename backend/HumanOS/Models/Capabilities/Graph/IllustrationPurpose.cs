@@ -24,5 +24,20 @@ public enum IllustrationPurpose
     /// <summary>A full worked example that DOES show the concept resolved/
     /// applied with real values (e.g. the groups joined into their total).
     /// Reused exclusively by the Teaching step.</summary>
-    Teaching = 1
+    Teaching = 1,
+
+    /// <summary>A diagram generated on-demand by KnowledgeExpansionAgent
+    /// (2026-07-20) when a learner clicks "Profundizar" on a node — never
+    /// generated up-front during capability creation, never reused by the
+    /// standard Hypothesis/Teaching steps. See
+    /// <see cref="CapabilityGraphNodeKnowledgeExpansion"/>.</summary>
+    KnowledgeExpansion = 2,
+
+    /// <summary>An illustration generated on-demand by AdaptiveAssessmentAgent
+    /// (2026-07-20) for ONE dynamically-generated Assessment question, only
+    /// when the agent decided a visual genuinely helps that specific
+    /// question (e.g. a scenario-based Application/Transfer/ErrorDetection
+    /// task) — never generated for every question, never reused across
+    /// questions. See <see cref="Models.Learning.AssessmentQuestion"/>.</summary>
+    Assessment = 3
 }

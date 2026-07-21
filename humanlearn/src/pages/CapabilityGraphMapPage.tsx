@@ -40,17 +40,21 @@ const NODE_HEIGHT = 84;
 interface GraphNodeData extends Record<string, unknown> {
   label: string;
   state: CapabilityGraphNodeState;
+  reviewMode: boolean;
 }
 
 type GraphNode = Node<GraphNodeData>;
 
 /**
  * The backend's CapabilityGraphEdge set can legitimately include transitive
- * "Requires" edges (e.g. A requires C directly, even though A requires B
- * and B requires C already imply it). Drawing every one of those clutters
- * the map with redundant lines. This keeps only the transitive REDUCTION —
- * an edge (u -> v) is dropped if v is still reachable from u through some
- * other path in the same direct-edge set.
+ * edges of the SAME relationship type (e.g. A requires C directly, even
+ * though A requires B and B requires C already imply it). Drawing every
+ * one of those clutters the map with redundant lines. This keeps only the
+ * transitive REDUCTION — an edge (u -> v) is dropped if v is still
+ * reachable from u through some other path in the same direct-edge set.
+ * Callers run this separately per RelationshipType (Requires vs BuildsOn)
+ * so a BuildsOn edge is never treated as redundant just because a Requires
+ * edge happens to connect the same two nodes transitively, and vice versa.
  */
 function reduceToDirectEdges<T extends { source: string; target: string }>(edges: T[]): T[] {
   const adjacency = new Map<string, string[]>();
@@ -110,7 +114,7 @@ const STATE_STYLES: Record<
 function GraphNodeCard({ data }: NodeProps<GraphNode>) {
   const style = STATE_STYLES[data.state];
   const Icon = style.Icon;
-  const clickable = data.state !== 'Locked';
+  const clickable = data.state !== 'Locked' || data.reviewMode;
 
   return (
     <div
@@ -136,6 +140,12 @@ export default function CapabilityGraphMapPage() {
   const [graph, setGraph] = useState<BackendCapabilityGraph | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Review mode — dev/QA-only toggle that lets every node be opened
+  // regardless of its Locked/Available/Mastered state, purely on the
+  // client, to spot-check generated content. It never touches backend
+  // progression: the server doesn't enforce CanStartNodeAsync when
+  // starting a session, so this is safe and fully reversible.
+  const [reviewMode, setReviewMode] = useState(false);
 
   useEffect(() => {
     if (!capabilityId) return;
@@ -161,7 +171,7 @@ export default function CapabilityGraphMapPage() {
 
   const handleNodeClick = useCallback(
     (_event: MouseEvent, node: GraphNode) => {
-      if (node.data.state === 'Locked') return;
+      if (node.data.state === 'Locked' && !node.data.reviewMode) return;
       navigate(`/capabilities/${capabilityId}/nodes/${node.id}`);
     },
     [capabilityId, navigate]
@@ -176,31 +186,52 @@ export default function CapabilityGraphMapPage() {
       id: n.CapabilityGraphNodeId,
       type: 'graphNode',
       position: { x: 0, y: 0 },
-      data: { label: n.Name, state: n.State },
+      data: { label: n.Name, state: n.State, reviewMode },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
     }));
 
-    // Backend edges are "Source Requires Target" (Target = prerequisite).
-    // Drop redundant transitive Requires-edges first, then flip direction so
-    // arrows flow prerequisite -> dependent (learning order).
+    // Backend edges are "Source Requires/BuildsOn Target" (Target = the
+    // more foundational node in both cases — a hard prerequisite for
+    // Requires, or the base concept being extended for BuildsOn). Reduce
+    // each relationship type to its own transitive reduction, then flip
+    // direction so arrows flow foundation -> dependent (learning order).
+    // IMPORTANT: both types must be included here — dropping either one
+    // leaves nodes that are ONLY connected via the other type floating
+    // with no visible edge at all, even though the graph is fully
+    // connected server-side.
     const directRequiresEdges = reduceToDirectEdges(
       graph.Edges.filter((e) => e.RelationshipType === 0).map((e) => ({
         source: e.SourceNodeId,
         target: e.TargetNodeId,
       }))
     );
+    const directBuildsOnEdges = reduceToDirectEdges(
+      graph.Edges.filter((e) => e.RelationshipType === 1).map((e) => ({
+        source: e.SourceNodeId,
+        target: e.TargetNodeId,
+      }))
+    );
 
-    const rawEdges: Edge[] = directRequiresEdges.map((e) => ({
-      id: `${e.target}-${e.source}`,
-      source: e.target,
-      target: e.source,
-      style: { stroke: '#94a3b8', strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 18, height: 18 },
-    }));
+    const rawEdges: Edge[] = [
+      ...directRequiresEdges.map((e) => ({
+        id: `requires-${e.target}-${e.source}`,
+        source: e.target,
+        target: e.source,
+        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 18, height: 18 },
+      })),
+      ...directBuildsOnEdges.map((e) => ({
+        id: `buildson-${e.target}-${e.source}`,
+        source: e.target,
+        target: e.source,
+        style: { stroke: '#94a3b8', strokeWidth: 1.5, strokeDasharray: '5 4' },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 18, height: 18 },
+      })),
+    ];
 
     return { flowNodes: layoutNodes(rawNodes, rawEdges), flowEdges: rawEdges };
-  }, [graph]);
+  }, [graph, reviewMode]);
 
   return (
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-6xl flex-col p-4 sm:p-8">
@@ -222,10 +253,23 @@ export default function CapabilityGraphMapPage() {
 
       {!loading && !error && graph && (
         <>
-          <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-600">
-            <LegendDot colorClass="bg-slate-400" label={t.graphLegendLocked} />
-            <LegendDot colorClass="bg-blue-500" label={t.graphLegendAvailable} />
-            <LegendDot colorClass="bg-green-500" label={t.graphLegendMastered} />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap gap-4 text-xs text-slate-600">
+              <LegendDot colorClass="bg-slate-400" label={t.graphLegendLocked} />
+              <LegendDot colorClass="bg-blue-500" label={t.graphLegendAvailable} />
+              <LegendDot colorClass="bg-green-500" label={t.graphLegendMastered} />
+            </div>
+            <button
+              type="button"
+              onClick={() => setReviewMode((prev) => !prev)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                reviewMode
+                  ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {reviewMode ? '✓ Modo revisión activo — todos los nodos abiertos' : 'Modo revisión: ver todos los nodos'}
+            </button>
           </div>
 
           <div className="mt-4 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">

@@ -20,6 +20,12 @@ public class CapabilityGraphConfiguration : IEntityTypeConfiguration<CapabilityG
         builder.Property(g => g.Description)
             .HasMaxLength(2000);
 
+        builder.Property(g => g.ExecutiveSummary)
+            .HasColumnType("nvarchar(max)");
+
+        builder.Property(g => g.KeyEntitiesJson)
+            .HasColumnType("nvarchar(max)");
+
         builder.Property(g => g.CreatedDate)
             .HasDefaultValueSql("GETUTCDATE()")
             .IsRequired();

@@ -39,6 +39,16 @@ export default {
           "sans-serif",
         ],
       },
+      keyframes: {
+        loadingBar: {
+          "0%": { transform: "translateX(-100%)" },
+          "50%": { transform: "translateX(150%)" },
+          "100%": { transform: "translateX(-100%)" },
+        },
+      },
+      animation: {
+        loadingBar: "loadingBar 1.4s ease-in-out infinite",
+      },
     },
   },
   plugins: [

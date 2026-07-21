@@ -283,7 +283,8 @@ public sealed class InstructorRuntimeOrchestrator
     public async Task<CurrentStepResult> AdvanceToNextStepAsync(
         HumanOsDbContext dbContext,
         Guid learningSessionNodeId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool bypassRecallGuard = false)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -309,6 +310,27 @@ public sealed class InstructorRuntimeOrchestrator
                 "Already on the Assessment step — there is no next step. Call CompleteNodeAsync instead.");
         }
 
+        // Recall NEVER advances through the GENERIC public step-advance
+        // endpoint (RuntimeAdvanceStepFunction) — it can only move to
+        // Production via SubmitRecallAttemptAsync's own RecallLoopGate
+        // (which requires the student to actually demonstrate mastery on
+        // graded recall items first). Without this guard, calling this
+        // generic endpoint while Recall is Active would silently complete it
+        // with zero LearningEvidence rows, bypassing the recall check
+        // entirely — this is exactly what happened to stale test data found
+        // in the DB for one node (Recall step completed in 34s with 0
+        // evidence rows, immediately followed by Production).
+        // `bypassRecallGuard` is set ONLY by TutorService.SubmitRecallAttemptAsync,
+        // which calls this method itself once RecallLoopGate.Evaluate already
+        // confirmed StepComplete — without the bypass, that legitimate internal
+        // call would ALSO trip this guard (the step is still StepType=Recall
+        // at this exact point — it only becomes Completed inside this method).
+        if (activeStep.StepType == ExperienceStepType.Recall && !bypassRecallGuard)
+        {
+            throw new InvalidOperationException(
+                "Cannot advance away from Recall via the generic step-advance path — Recall only advances through SubmitRecallAttemptAsync once the recall mastery gate is satisfied.");
+        }
+
         var currentIndex = Array.IndexOf(CanonicalStepOrder, activeStep.StepType);
         var nextStepType = CanonicalStepOrder[currentIndex + 1];
 
@@ -331,6 +353,11 @@ public sealed class InstructorRuntimeOrchestrator
             existingNextStep.Status = LearningSessionStepStatus.Active;
             existingNextStep.StartedDate = now;
             existingNextStep.CompletedDate = null;
+            // Reset the stale dynamic Recall prompt from a PRIOR
+            // activation cycle — a fresh Recall pass starts from the
+            // blueprint's static content again, same as priorScoresThisActivation
+            // being scoped to StartedDate.
+            existingNextStep.CurrentRecallPrompt = null;
             nextStep = existingNextStep;
         }
         else
@@ -408,6 +435,7 @@ public sealed class InstructorRuntimeOrchestrator
         recallStep.Status = LearningSessionStepStatus.NotStarted;
         recallStep.StartedDate = null;
         recallStep.CompletedDate = null;
+        recallStep.CurrentRecallPrompt = null;
 
         teachingStep.Status = LearningSessionStepStatus.Active;
         teachingStep.StartedDate = now;
@@ -643,13 +671,23 @@ public sealed class InstructorRuntimeOrchestrator
             }
         }
 
+        // For Recall specifically, prefer the most recently generated
+        // dynamic question (persisted on the step itself) over the static
+        // blueprint text — otherwise a page reload/resume mid-Recall would
+        // show the ORIGINAL generic Recall prompt instead of the actual
+        // question the student was just asked, desyncing the UI from the
+        // conversation history the TutorAgent sees.
+        var stepContent = step.StepType == ExperienceStepType.Recall && !string.IsNullOrWhiteSpace(step.CurrentRecallPrompt)
+            ? step.CurrentRecallPrompt
+            : blueprintStep.Content;
+
         return new CurrentStepResult
         {
             LearningSessionId = sessionNode.LearningSessionId,
             LearningSessionNodeId = sessionNode.LearningSessionNodeId,
             LearningSessionStepId = step.LearningSessionStepId,
             StepType = step.StepType,
-            StepContent = blueprintStep.Content,
+            StepContent = stepContent,
             Illustrations = illustrations
         };
     }

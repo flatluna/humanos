@@ -74,12 +74,55 @@ public sealed class TutorTurnRequest
     /// from LearningEvidence, ordered by CreatedDate.</summary>
     public List<TutorTurnHistoryEntry> History { get; set; } = [];
 
+    /// <summary>Only for Mode = Recall: the exact question/prompt the Tutor
+    /// showed the student right before THIS attempt (i.e. what
+    /// StudentMessage is answering) — the previous turn's own
+    /// <see cref="Agents.Runtime.TutorTurnResponse.Message"/>, NOT yet
+    /// present in <see cref="History"/> (that list only contains ALREADY-
+    /// scored pairs, one turn behind). Without this, the Tutor has no
+    /// reliable way to know which concrete question it's grading THIS
+    /// attempt against and can latch onto an older question further back
+    /// in History instead. Null for the student's very first attempt on
+    /// this step (which responds to the blueprint's own Recall content).</summary>
+    public string? CurrentQuestionBeingAnswered { get; set; }
+
     /// <summary>What the student just said/submitted this turn.</summary>
     public string StudentMessage { get; set; } = string.Empty;
 
     /// <summary>Only for Mode = AssessmentFeedback: the raw
     /// AssessmentEvaluatorAgent feedback text to translate. Null otherwise.</summary>
     public string? RawAssessmentFeedback { get; set; }
+
+    /// <summary>Cross-node knowledge retrieved via semantic search (RAG,
+    /// 2026-07-20 — see <see cref="Services.NodeKnowledgeIndexService"/>)
+    /// from OTHER nodes in the same CapabilityGraph, embedded-matched
+    /// against StudentMessage. Supplementary ONLY — for specific facts
+    /// (a name, a number, a date, a policy/law reference, ...) that live
+    /// elsewhere in the source material and aren't part of THIS node's own
+    /// StepContent. Never a substitute for StepContent and never license
+    /// to teach beyond this node's own scope. Empty when RAG isn't
+    /// configured or no distinct match was found — see
+    /// /memories/repo/tutor-document-wide-context-gap.md.</summary>
+    public List<Services.RetrievedKnowledgeSnippet> RetrievedKnowledge { get; set; } = [];
+
+    /// <summary>Document-wide executive summary of the CapabilityGraph's
+    /// ENTIRE source material (2026-07-20 — see
+    /// <see cref="Agents.Studio.DocumentContextAgent"/> and
+    /// /memories/repo/tutor-document-wide-context-gap.md). Same
+    /// question-only gating as <see cref="RetrievedKnowledge"/>: only
+    /// populated when the student is actively asking the Tutor a free-form
+    /// question (Teaching/Production mode), never during Recall grading.
+    /// Null when unavailable (not yet generated, or extraction failed).</summary>
+    public string? DocumentSummary { get; set; }
+
+    /// <summary>Key named entities (people, companies, laws, roles, proper
+    /// names) explicitly grounded in the source material, formatted as
+    /// short "Name (Type): Note" lines — same gating as
+    /// <see cref="DocumentSummary"/>. Lets the Tutor correctly recognize/
+    /// disambiguate a briefly-mentioned entity even when no single node is
+    /// "about" it — complementary to, not a substitute for,
+    /// <see cref="RetrievedKnowledge"/> (which retrieves specific facts).</summary>
+    public List<string> KeyEntities { get; set; } = [];
 }
 
 /// <summary>

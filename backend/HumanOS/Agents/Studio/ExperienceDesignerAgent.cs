@@ -135,23 +135,48 @@ public sealed class ExperienceDesignerAgent
           concrete worked example matters most. NEVER reference an
           illustration with Purpose=Hypothesis here.
         - Recall: built from AcademicDefinition + Interpretation. Goal: force
-          ACTIVE RETRIEVAL of a SPECIFIC, CONCRETE fact or computation using
-          real values — NEVER an abstract "¿qué significa X?" definition-
-          recitation question, and never just re-state the Teaching content
-          in question form. Point back at the Hypothesis/Teaching situation
-          (the same groups/illustration/values already shown) and ask the
-          learner to retrieve or compute something SPECIFIC from memory
-          WITHOUT recounting or redoing the original task. Example for a
-          "Cantidad" node where two groups of 3 and 2 objects were shown
-          earlier: "Sin volver a contar los objetos, ¿cuántos hay en total
-          si juntas los dos grupos que viste?" — concrete numbers, one clear
-          ask. This is WRONG and must be avoided: "Sin volver a contar,
-          explica con tus propias palabras qué significa 'cantidad'" — that
-          is an abstract definition question in disguise, not active recall.
-          If the node is fundamentally about a numeric/quantitative skill,
-          the Recall question MUST involve concrete numbers/values, not a
-          request to define a term abstractly. Absolutely no new teaching
-          and no restating the definition inside the question itself.
+          ACTIVE RETRIEVAL of a SPECIFIC, CONCRETE fact or computation —
+          NEVER an abstract "¿qué significa X?" definition-recitation
+          question, and never just re-state the Teaching content in question
+          form. Absolutely no new teaching and no restating the definition
+          inside the question itself.
+          CRITICAL DISTINCTION (fixed 2026-07-20 — real production bug: a
+          "Language Models" node's Recall asked "¿cuáles eran las tres
+          palabras conectadas que se usaron para mostrar cómo un modelo de
+          lenguaje aprende relaciones semánticas?" and a "Resumir texto" node
+          asked "¿cuántas frases tenía el resumen mostrado junto al
+          documento?" — both test a trivial, INCIDENTAL detail of how the
+          Teaching illustration/example happened to be presented, not the
+          actual capability):
+            (a) If the node is a NUMERIC/QUANTITATIVE/PROCEDURAL skill (the
+                concrete numbers/values ARE the substance of what's being
+                learned, e.g. arithmetic, measurement, counting): point back
+                at the Hypothesis/Teaching situation (the same groups/
+                illustration/values already shown) and ask the learner to
+                retrieve or compute something SPECIFIC from memory WITHOUT
+                recounting or redoing the original task. Example for a
+                "Cantidad" node where two groups of 3 and 2 objects were
+                shown earlier: "Sin volver a contar los objetos, ¿cuántos hay
+                en total si juntas los dos grupos que viste?"
+            (b) If the node is a CONCEPTUAL/DEFINITIONAL skill (the
+                illustration merely used SOME arbitrary example — specific
+                words, a specific sentence count, specific labels — to
+                demonstrate a general idea/mechanism, and a DIFFERENT example
+                would have worked just as well): NEVER ask the learner to
+                recall the illustration's own incidental specifics (the
+                exact words/items/count/labels it happened to show). Instead
+                ask them to apply or identify the underlying mechanism/
+                criterion itself, e.g. with a NEW instance they must reason
+                about, or by asking what the general pattern/rule was. Litmus
+                test: if the learner mastered the CAPABILITY but simply forgot
+                this one incidental detail of the example, would they still
+                deserve full credit? If yes, that detail is the wrong thing
+                to ask about — write a different Recall question. This is
+                WRONG and must be avoided just as much as the abstract-
+                definition question above: "Sin volver a mirar la
+                ilustración, ¿cuáles eran las tres palabras que aparecían
+                conectadas?" — that is illustration-presentation trivia in
+                disguise, not active recall of the capability.
         - Production: built from Applications. Goal: an OPEN-ENDED authentic
           task, not a guided step-by-step exercise. Never write it as a
           numbered/sequential checklist of sub-instructions ("cuenta esto,
@@ -190,13 +215,66 @@ public sealed class ExperienceDesignerAgent
         AcademicDefinition/Interpretation/Examples/Applications — never
         introduce a different concept or invented fact.
 
+        PRESERVE VERBATIM IDENTIFIERS FROM THE SOURCE FIELDS
+        If AcademicDefinition or Examples names a specific, citable
+        identifier — a legal/regulatory article or section number (e.g.
+        "ARTÍCULO 44"), a named entity (company/organization/person), a
+        date, or a monetary amount — the Teaching step's Content MUST state
+        that identifier explicitly, not just paraphrase the general idea
+        around it. A learner reading Teaching should be able to see exactly
+        which article/entity is being explained, not only a generic
+        description of the rule. Never smooth away a specific citation
+        into vague prose ("this rule covers an exemption...") when the
+        source field already names precisely which article/entity it is.
+
+        CONTENT FORMAT — SIMPLE SEMANTIC HTML, NOT A PLAIN-TEXT WALL
+        Each step's Content is rendered directly as sanitized HTML to the
+        student (not as raw/plain text), so use a SMALL set of semantic
+        tags whenever it genuinely improves readability — never as
+        decoration for its own sake:
+        - <p>...</p> to separate distinct ideas/paragraphs.
+        - <strong>...</strong> to highlight key terms/definitions the
+          first time they appear.
+        - <ul><li>...</li></ul> or <ol><li>...</li></ol> for lists of
+          examples, steps, or assessment criteria (Assessment's 2-3
+          observable-behavior criteria are ALWAYS a <ul>, never a single
+          paragraph).
+        - <em>...</em> only for genuine emphasis, sparingly.
+        Only these tags are ever allowed: p, br, strong, em, ul, ol, li, a.
+        Never use headings, tables, images, scripts, inline styles, or any
+        other tag — the renderer strips anything else. If the node's own
+        material contains a source citation written as Markdown
+        "[Title](Url)" (e.g. from a Grounding-with-Bing-Search finding),
+        convert it into a real HTML link: <a href="Url">Title</a> — never
+        leave the raw "[Title](Url)" markdown syntax in the output HTML.
+
+        OPTIONAL "Current Web Findings" INPUT (Grounding-with-Bing-Search)
+        Some requests include an extra "Current Web Findings" section —
+        real-time web search results fetched specifically for this node
+        because it was flagged as covering something that evolves over
+        time. Treat it as a SUPPLEMENTARY, OPTIONAL source, never a
+        replacement for AcademicDefinition/Interpretation/Examples/
+        Applications:
+        - Use it ONLY where it genuinely adds current, relevant value to
+          Teaching (most common) or Interpretation-driven steps — e.g. a
+          concrete recent example, a current tool/version, an up-to-date
+          statistic. Never force it in if it doesn't clearly fit.
+        - Every fact you take from it MUST keep its inline "[Title](Url)"
+          citation, converted to a real HTML link as described above —
+          never state a fact from this section without its citation, and
+          never drop the citation while paraphrasing the surrounding
+          prose.
+        - If the findings don't say anything useful/relevant to this
+          specific node, ignore them entirely rather than padding content
+          with unrelated trivia.
+
         OUTPUT FORMAT
         Return a NodeExperienceBlueprintResponse JSON with:
         - Name: e.g. "{NodeName} - Standard Learning Blueprint"
         - Description: 1 sentence on this blueprint's pedagogical approach
         - Steps: EXACTLY 5 items, one per StepType (Hypothesis, Teaching,
-          Recall, Production, Assessment), each with Content and
-          IllustrationIndexes
+          Recall, Production, Assessment), each with Content (HTML, per the
+          format rules above) and IllustrationIndexes
 
         MEMORY PARADOX PRINCIPLE: the goal is knowledge ending up IN THE
         LEARNER'S BRAIN, not just displayed on a screen — Hypothesis primes
@@ -243,10 +321,17 @@ public sealed class ExperienceDesignerAgent
     /// </summary>
     /// <param name="node">The fully-enriched node to design a blueprint for.</param>
     /// <param name="availableIllustrations">Existing illustrations for this node (already in Data Lake/SQL) the agent may reference.</param>
+    /// <param name="webFindings">
+    /// Optional real-time Grounding-with-Bing-Search findings fetched
+    /// specifically for this node (only ever populated when the node was
+    /// flagged NeedsCurrentInfo=true by GraphArchitectAgent). Null/empty
+    /// when no web enrichment was performed for this node.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<DesignResult> DesignBlueprintAsync(
         CapabilityGraphNode node,
         IReadOnlyList<AvailableIllustrationDto> availableIllustrations,
+        string? webFindings = null,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -267,6 +352,10 @@ public sealed class ExperienceDesignerAgent
                 "\n",
                 availableIllustrations.Select(i => $"[{i.Index}] Purpose: {i.Purpose} | Prompt: {i.Prompt}" + (string.IsNullOrWhiteSpace(i.Caption) ? "" : $" | Caption: {i.Caption}")));
 
+        var webFindingsSection = string.IsNullOrWhiteSpace(webFindings)
+            ? string.Empty
+            : $"\n\nCurrent Web Findings (Bing Grounding — supplementary/optional, see Instructions):\n{webFindings}";
+
         var prompt =
             $"Node Name: {node.Name}\n" +
             $"NodeType: {node.NodeType}\n" +
@@ -275,7 +364,8 @@ public sealed class ExperienceDesignerAgent
             $"Interpretation:\n{node.Interpretation}\n\n" +
             $"Examples:\n{string.Join("\n", examples.Select(e => $"- {e}"))}\n\n" +
             $"Applications:\n{string.Join("\n", applications.Select(a => $"- {a}"))}\n\n" +
-            $"Available Illustrations (reference by number, never generate new ones):\n{illustrationsText}";
+            $"Available Illustrations (reference by number, never generate new ones):\n{illustrationsText}" +
+            webFindingsSection;
 
         var response = await _agent.RunAsync<NodeExperienceBlueprintResponse>(prompt, cancellationToken: cancellationToken);
 

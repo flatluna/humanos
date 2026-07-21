@@ -27,4 +27,30 @@ public static class PdfTextExtractor
 
         return builder.ToString();
     }
+
+    /// <summary>Result of extracting a PDF's full text together with its
+    /// page count, so callers can enforce a maximum-size policy (e.g. the
+    /// PDF-to-CapabilityGraph pipeline's configurable page limit) without a
+    /// second pass over the document.</summary>
+    public sealed class ExtractionResult
+    {
+        public string Text { get; set; } = string.Empty;
+
+        public int PageCount { get; set; }
+    }
+
+    public static ExtractionResult ExtractTextWithPageCount(Stream pdfContent)
+    {
+        using var document = PdfDocument.Open(pdfContent);
+        var builder = new StringBuilder();
+        var pageCount = 0;
+
+        foreach (var page in document.GetPages())
+        {
+            builder.AppendLine(page.Text);
+            pageCount++;
+        }
+
+        return new ExtractionResult { Text = builder.ToString(), PageCount = pageCount };
+    }
 }

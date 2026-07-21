@@ -101,14 +101,43 @@ var host = new HostBuilder()
         services.AddSingleton<TocExtractionAgent>();
         services.AddSingleton<ArquitectoAgent>();
         services.AddSingleton<GraphArchitectAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.DocumentContextAgent>();
         services.AddSingleton<GraphIllustrationImageService>();
         services.AddSingleton<ExperienceDesignerAgent>();
         services.AddSingleton<BlueprintValidatorAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.WebGroundingService>();
         services.AddSingleton<InstructorAgent>();
         services.AddSingleton<MetricoAgent>();
         services.AddSingleton<ExperienciaAgent>();
         services.AddSingleton<CapabilityEmbeddingService>();
         services.AddSingleton<CapabilityCreationOrchestrator>();
+
+        // Per-node RAG index for the V2 Graph/Blueprint pipeline (2026-07-20,
+        // see /memories/repo/tutor-document-wide-context-gap.md) — lets the
+        // Tutor answer cross-node factual questions at runtime. Singleton,
+        // same rationale as CapabilityEmbeddingService (no per-request
+        // state; reused by the PDF pipeline, KnowledgeExpansionService, and
+        // TutorService).
+        services.AddSingleton<NodeKnowledgeIndexService>();
+
+        // V2 "PDF → CapabilityGraph" pipeline (2026-07-19): uploads a real
+        // PDF directly and turns it into a fully persisted CapabilityGraph
+        // + per-node Memory Paradox blueprints, reusing the Studio agents
+        // above. Singleton, same rationale as CapabilityCreationOrchestrator
+        // (keeps in-memory runs alive across HTTP calls) — see
+        // /memories/repo/humanstudio-multiagent-vision.md.
+        services.AddSingleton<PdfCapabilityGraphPipelineService>();
+        services.AddSingleton<PdfCapabilityGraphOrchestrator>();
+
+        // On-demand "Profundizar" (Knowledge Expansion) feature (2026-07-20,
+        // see /memories/repo/... knowledge-expansion notes): learner-triggered
+        // deeper explanation combining the LLM's own knowledge with a live
+        // Bing Grounding search, plus an optional diagram. Singleton, same
+        // rationale as the other Studio/pipeline services (no per-request
+        // state; reuses the already-singleton WebGroundingService/
+        // GraphIllustrationImageService).
+        services.AddSingleton<HumanOS.Agents.Runtime.KnowledgeExpansionAgent>();
+        services.AddSingleton<KnowledgeExpansionService>();
 
         // Interactive Learning Runtime — Tutor Agent (Paso 4, 2026-07-14,
         // see /memories/repo/human-os-runtime-design.md). Singleton, same

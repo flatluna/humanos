@@ -1,0 +1,199 @@
+﻿{
+    "CapabilityGraphId":  "5d910481-81e6-4520-8b31-3b661d9fdd08",
+    "Name":  "Reglamento del IVA Mexicano",
+    "Description":  "Grafo de capacidades sobre reglas operativas, exenciones, acreditamiento y tratamiento fiscal del IVA conforme al Reglamento de la Ley del Impuesto al Valor Agregado en México.",
+    "Nodes":  [
+                  {
+                      "CapabilityGraphNodeId":  "0af88378-8095-406d-ac92-377025f07642",
+                      "Name":  "Actos Gravados IVA",
+                      "Description":  "Comprensión de los actos o actividades considerados gravados para efectos del IVA, incluyendo operaciones a tasa 0%.",
+                      "SortOrder":  1,
+                      "State":  "Available",
+                      "IllustrationId":  "016a9f7e-8a82-47bb-9960-36aa65479a73"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "2288c26e-fcf7-4153-aea1-794d4cbd393d",
+                      "Name":  "Bienes Tasa Cero",
+                      "Description":  "Clasificación de bienes y actividades que conservan tratamiento preferencial de IVA.",
+                      "SortOrder":  2,
+                      "State":  "Locked",
+                      "IllustrationId":  "62f3214f-1d0f-47a8-afe0-1e5c98adfebc"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "0177e8bb-91e8-4cc9-b3fe-393298103b8e",
+                      "Name":  "Acreditamiento IVA",
+                      "Description":  "Cálculo y aplicación del IVA acreditable en operaciones gravadas.",
+                      "SortOrder":  3,
+                      "State":  "Locked",
+                      "IllustrationId":  "927d743e-c4b2-4307-9085-063530b50642"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "8300681a-094e-4e64-aeec-ce84d7753e09",
+                      "Name":  "Pagos Provisionales IVA",
+                      "Description":  "Determinación del IVA provisional durante el ejercicio fiscal.",
+                      "SortOrder":  4,
+                      "State":  "Locked",
+                      "IllustrationId":  "50501605-cb48-4c80-8607-007b6a2f2e2c"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "4446de12-5164-424e-9093-f64fe0bb4190",
+                      "Name":  "Declaraciones Complementarias",
+                      "Description":  "Corrección y actualización de declaraciones de IVA.",
+                      "SortOrder":  5,
+                      "State":  "Locked",
+                      "IllustrationId":  "2e0c688a-1260-4f5a-b573-11cfcb7e6b08"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "6fe0c705-5b69-4ce7-89cb-c7221ce1d7b2",
+                      "Name":  "Devoluciones y Bonificaciones",
+                      "Description":  "Tratamiento fiscal de devoluciones, descuentos y bonificaciones.",
+                      "SortOrder":  6,
+                      "State":  "Available",
+                      "IllustrationId":  "617f188a-4d1c-4341-9a29-7b9511fc8499"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "8529331b-fa37-4f73-af85-3ab65a027a78",
+                      "Name":  "Exenciones en Enajenación",
+                      "Description":  "Identificación de operaciones de enajenación exentas o no sujetas a IVA.",
+                      "SortOrder":  7,
+                      "State":  "Locked",
+                      "IllustrationId":  "e13f9d6c-eafa-4e7e-9286-1863ff47b675"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "2afeae8e-56c9-458a-89c4-4e0463f6b632",
+                      "Name":  "IVA Vehículos Usados",
+                      "Description":  "Cálculo del IVA en venta de automóviles y camiones usados.",
+                      "SortOrder":  8,
+                      "State":  "Available",
+                      "IllustrationId":  "c93c765a-1a47-4387-a162-0c2b81204783"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "ec16e9db-8d3b-4481-a28f-3c9a84842ed8",
+                      "Name":  "Diferimiento IVA",
+                      "Description":  "Aplicación diferida del IVA en operaciones a plazo y arrendamiento financiero.",
+                      "SortOrder":  9,
+                      "State":  "Available",
+                      "IllustrationId":  "c9d8d64a-9e2f-42d9-b9a3-3960cb166483"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "f9961c6a-759f-4c8e-8616-9e765f94f057",
+                      "Name":  "IVA Servicios Independientes",
+                      "Description":  "Tratamiento del IVA en prestación de servicios y contratos.",
+                      "SortOrder":  10,
+                      "State":  "Locked",
+                      "IllustrationId":  "e7e31688-d047-4603-a2ed-3d6d837fa2c0"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "8a2d5997-48d1-41fe-b6ba-f5f218f45803",
+                      "Name":  "Exenciones Servicios Financieros",
+                      "Description":  "Comprensión de exenciones aplicables a seguros y financiamiento.",
+                      "SortOrder":  11,
+                      "State":  "Available",
+                      "IllustrationId":  "48e4d61d-83a4-4459-8041-4cb734400bab"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "9fc26aa8-6144-4215-a6a7-026ae6935317",
+                      "Name":  "Exenciones Servicios Médicos",
+                      "Description":  "Identificación de servicios médicos exentos de IVA.",
+                      "SortOrder":  12,
+                      "State":  "Available",
+                      "IllustrationId":  "0fe37bad-0de6-4b31-b3e1-a70d35ef89fe"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "951ac110-c3be-49d4-8c11-bd3b55f4e0dc",
+                      "Name":  "Arrendamiento Casa Habitación",
+                      "Description":  "Tratamiento del IVA en uso o goce temporal de inmuebles habitacionales.",
+                      "SortOrder":  13,
+                      "State":  "Available",
+                      "IllustrationId":  "511213c4-3494-4ac8-af25-2f6322d14534"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "6247ca80-f5f0-4817-8132-16d8ee23dd4c",
+                      "Name":  "IVA Importaciones",
+                      "Description":  "Tratamiento del IVA en importación de bienes y servicios.",
+                      "SortOrder":  14,
+                      "State":  "Available",
+                      "IllustrationId":  "46fd4fd1-0ca6-4269-aac8-9ba21fdf08f9"
+                  },
+                  {
+                      "CapabilityGraphNodeId":  "d480e99a-95ff-42d3-8c9c-641d19c7d0ab",
+                      "Name":  "IVA Exportaciones",
+                      "Description":  "Aplicación del IVA en exportación de bienes y servicios.",
+                      "SortOrder":  15,
+                      "State":  "Available",
+                      "IllustrationId":  "15675e07-ca9a-4ab2-81b8-405fdbbf8c94"
+                  }
+              ],
+    "Edges":  [
+                  {
+                      "SourceNodeId":  "8a2d5997-48d1-41fe-b6ba-f5f218f45803",
+                      "TargetNodeId":  "f9961c6a-759f-4c8e-8616-9e765f94f057",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "8300681a-094e-4e64-aeec-ce84d7753e09",
+                      "TargetNodeId":  "0177e8bb-91e8-4cc9-b3fe-393298103b8e",
+                      "RelationshipType":  0
+                  },
+                  {
+                      "SourceNodeId":  "f9961c6a-759f-4c8e-8616-9e765f94f057",
+                      "TargetNodeId":  "0af88378-8095-406d-ac92-377025f07642",
+                      "RelationshipType":  0
+                  },
+                  {
+                      "SourceNodeId":  "8529331b-fa37-4f73-af85-3ab65a027a78",
+                      "TargetNodeId":  "0af88378-8095-406d-ac92-377025f07642",
+                      "RelationshipType":  0
+                  },
+                  {
+                      "SourceNodeId":  "4446de12-5164-424e-9093-f64fe0bb4190",
+                      "TargetNodeId":  "8300681a-094e-4e64-aeec-ce84d7753e09",
+                      "RelationshipType":  0
+                  },
+                  {
+                      "SourceNodeId":  "2288c26e-fcf7-4153-aea1-794d4cbd393d",
+                      "TargetNodeId":  "0af88378-8095-406d-ac92-377025f07642",
+                      "RelationshipType":  0
+                  },
+                  {
+                      "SourceNodeId":  "2afeae8e-56c9-458a-89c4-4e0463f6b632",
+                      "TargetNodeId":  "8529331b-fa37-4f73-af85-3ab65a027a78",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "9fc26aa8-6144-4215-a6a7-026ae6935317",
+                      "TargetNodeId":  "f9961c6a-759f-4c8e-8616-9e765f94f057",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "d480e99a-95ff-42d3-8c9c-641d19c7d0ab",
+                      "TargetNodeId":  "0af88378-8095-406d-ac92-377025f07642",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "0177e8bb-91e8-4cc9-b3fe-393298103b8e",
+                      "TargetNodeId":  "0af88378-8095-406d-ac92-377025f07642",
+                      "RelationshipType":  0
+                  },
+                  {
+                      "SourceNodeId":  "ec16e9db-8d3b-4481-a28f-3c9a84842ed8",
+                      "TargetNodeId":  "8300681a-094e-4e64-aeec-ce84d7753e09",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "951ac110-c3be-49d4-8c11-bd3b55f4e0dc",
+                      "TargetNodeId":  "8529331b-fa37-4f73-af85-3ab65a027a78",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "6fe0c705-5b69-4ce7-89cb-c7221ce1d7b2",
+                      "TargetNodeId":  "0177e8bb-91e8-4cc9-b3fe-393298103b8e",
+                      "RelationshipType":  1
+                  },
+                  {
+                      "SourceNodeId":  "6247ca80-f5f0-4817-8132-16d8ee23dd4c",
+                      "TargetNodeId":  "0177e8bb-91e8-4cc9-b3fe-393298103b8e",
+                      "RelationshipType":  1
+                  }
+              ]
+}

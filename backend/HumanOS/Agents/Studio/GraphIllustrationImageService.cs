@@ -83,10 +83,20 @@ public sealed class GraphIllustrationImageService
         // parameter — it always returns base64-encoded image bytes, so
         // ResponseFormat/GeneratedImageFormat must NOT be set here or the
         // API rejects the request with "unknown_parameter: response_format".
+        //
+        // Quality explicitly pinned to Low (2026-07-19, user cost-control
+        // decision): leaving Quality unset defaults to "auto" (the model
+        // picks, usually resolving to a more expensive medium/high tier),
+        // which made per-run image cost unpredictable. Low is the cheapest
+        // gpt-image-1.5 tier and is enough for the Hypothesis/Teaching
+        // illustration prompts' simple diagrams.
+#pragma warning disable OPENAI001 // GeneratedImageQuality.LowQuality is an experimental SDK member (2.9.1) — explicitly opted into for cost control.
         var options = new ImageGenerationOptions
         {
             Size = GeneratedImageSize.W1024xH1024,
+            Quality = GeneratedImageQuality.LowQuality,
         };
+#pragma warning restore OPENAI001
 
         var response = await _client.GenerateImageAsync(prompt, options, cancellationToken);
         var image = response.Value;

@@ -147,6 +147,24 @@ export function getStepReview(
   );
 }
 
+/**
+ * "Profundizar" (Knowledge Expansion) — learner-triggered, never automatic
+ * (see /memories/repo/adaptive-learning-engine-design.md). First call for a
+ * node generates it (LLM knowledge + live Bing Grounding search + optional
+ * diagram); later calls (any learner) return the same cached result. The
+ * diagram, if present, is served via the existing
+ * `/illustrations/{id}/image` endpoint — same as any other node illustration.
+ */
+export interface KnowledgeExpansionDto {
+  CapabilityGraphNodeId: string;
+  Content: string;
+  DiagramIllustrationId?: string;
+}
+
+export function expandNodeKnowledge(capabilityGraphNodeId: string): Promise<KnowledgeExpansionDto> {
+  return apiPost<KnowledgeExpansionDto>(`/capability-graph-nodes/${capabilityGraphNodeId}/knowledge-expansion`, {});
+}
+
 /** One past completed attempt at a node — see NodeSummaryDto.PastAttempts. */
 export interface NodeAttemptSummaryDto {
   LearningSessionNodeId: string;
@@ -252,6 +270,10 @@ export interface AssessmentQuestionDto {
   QuestionIndex: number;
   QuestionType: AssessmentQuestionType;
   QuestionText: string;
+  /** Set only when the question genuinely benefits from a visual scenario —
+   * servable via the existing `/illustrations/{id}/image` endpoint, same as
+   * any other node illustration. */
+  IllustrationId?: string | null;
 }
 
 export interface AssessmentRoundStateDto {

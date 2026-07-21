@@ -339,7 +339,7 @@ public sealed class TestCuradorGraphArchitectFlow
                                         var designResult = await _experienceDesigner.DesignBlueprintAsync(
                                             firstNode,
                                             availableIllustrations,
-                                            CancellationToken.None);
+                                            cancellationToken: CancellationToken.None);
 
                                         sb.AppendLine($"✅ Blueprint diseñado para nodo: {firstNode.Name}\n");
                                         sb.AppendLine($"Name: {designResult.Blueprint.Name}");
@@ -816,7 +816,7 @@ public sealed class TestCuradorGraphArchitectFlow
             var designResult = await _experienceDesigner.DesignBlueprintAsync(
                 node,
                 availableIllustrations,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             sb.AppendLine($"✅ Blueprint diseñado para nodo: {node.Name}\n");
             sb.AppendLine($"Name: {designResult.Blueprint.Name}");

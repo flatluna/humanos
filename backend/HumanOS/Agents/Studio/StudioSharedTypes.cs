@@ -226,7 +226,20 @@ public enum RawMaterialType
     Pdf,
     VideoTranscript,
     WebLink,
-    UserNote
+    UserNote,
+
+    /// <summary>
+    /// Findings automatically retrieved via Grounding with Bing Search
+    /// (see <see cref="HumanOS.Agents.Studio.WebGroundingService"/>) to
+    /// supplement/update a topic already present in the user's own
+    /// material — never used to introduce topics the user's material
+    /// didn't already cover. Each item's Content already carries inline
+    /// source citations (title/URL/date) written by the grounding call
+    /// itself, and Curador is instructed to judge their credibility rather
+    /// than treat them as unconditionally true (see CuradorAgent
+    /// Instructions).
+    /// </summary>
+    WebSearch
 }
 
 /// <summary>One piece of raw material fed into the factory by the user.</summary>

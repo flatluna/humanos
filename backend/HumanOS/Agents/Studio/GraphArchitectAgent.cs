@@ -77,6 +77,20 @@ public sealed class GraphNodeDto
 
     /// <summary>Corpus chunk tags this node is traceable to (for audit/citation).</summary>
     public List<string> References { get; set; } = [];
+
+    /// <summary>
+    /// True when this node's content is about something that EVOLVES over
+    /// time — current tools, frameworks, industry practices, product
+    /// capabilities, ongoing research — and therefore genuinely benefits
+    /// from a supplementary Grounding-with-Bing-Search call to surface
+    /// up-to-date, citable facts. False for TIMELESS concepts/skills whose
+    /// truth doesn't change with the calendar (arithmetic, algebra, core
+    /// definitions, stable scientific/mathematical facts, foundational
+    /// grammar rules, etc.) — searching the web for those wastes a call
+    /// and adds no value. See Instructions for the full decision rule and
+    /// examples.
+    /// </summary>
+    public bool NeedsCurrentInfo { get; set; }
 }
 
 /// <summary>
@@ -264,6 +278,23 @@ public sealed class GraphArchitectAgent
         - Applications: real-world situations where this concept/skill gets
           used (grounded in the corpus's own stated applications where
           available).
+
+        VERBATIM IDENTIFIERS MUST SURVIVE INTO THIS NODE'S FIELDS
+        If the curated chunks this node draws from contain specific, citable
+        identifiers — legal/regulatory article or section numbers (e.g.
+        "ARTÍCULO 44", "Artículo 29 fracción V"), named entities (company,
+        organization, or person names), dates, monetary amounts, or
+        reference/policy numbers — you MUST carry those identifiers forward
+        VERBATIM into AcademicDefinition and/or Examples, never drop them
+        during paraphrasing. This is critical for legal/regulatory/technical
+        corpora: a learner (or the Tutor answering on their behalf) will
+        later ask about a specific article or entity by name, and if that
+        exact identifier only ever existed in the Curador's raw chunk and
+        never made it into this node's own content, the node can never
+        answer that question. When a chunk covers multiple articles/sections,
+        name each one explicitly next to the point it makes (e.g.
+        "ARTÍCULO 44 exempts X... ARTÍCULO 45 extends this to Y...") rather
+        than merging them into one unattributed paraphrase.
         - IllustrationPrompts: when this node benefits from an image, write
           EXACTLY TWO prompts (a sentence each), one per Purpose — never more,
           never fewer than two if any illustration is warranted at all;
@@ -292,8 +323,58 @@ public sealed class GraphArchitectAgent
           recognizes Teaching's illustration as "the answer to what
           Hypothesis just asked" — never introduce different numbers/objects
           between the two.
+
+          NO INVENTED/ILLOGICAL DATA: image-generation models cannot compute
+          — they only pattern-match pixels, so if a prompt leaves any number,
+          score, percentage, or bar/chart value unspecified, the image model
+          WILL hallucinate one, and it may be logically impossible (e.g. a
+          "105/100" score, a bar whose fill doesn't match its own label,
+          percentages that don't sum to 100). To prevent this, whenever a
+          prompt depicts ANY numeric data (scores, percentages, counts, bar
+          charts, gauges, progress bars), you MUST spell out the EXACT
+          numbers to draw directly in the prompt text itself — never leave
+          them for the image model to invent. Every stated number must be
+          internally consistent (a score can never exceed its own declared
+          maximum; a bar's fill must match the percentage/number next to it;
+          related values must add up correctly if a total is implied). If
+          the node's Examples don't provide real numbers to visualize,
+          invent simple, clearly-consistent round numbers yourself (e.g.
+          "90/100", "60/100", "20/100") and write them explicitly into the
+          prompt — do not describe a data visualization vaguely and hope the
+          image model fills in something sensible.
         - References: the corpus chunk Tag(s) (e.g. "Definición",
           "Aplicaciones cotidianas") that this node's content is grounded in.
+
+        DECIDING WHICH NODES NEED CURRENT WEB INFORMATION (NeedsCurrentInfo)
+        A separate, later pipeline stage can run a real-time Grounding-with-
+        Bing-Search lookup for a node, but ONLY for nodes you flag with
+        NeedsCurrentInfo = true — every Bing call costs time and money, so
+        you must be a strict, honest gatekeeper, not flag nodes "just in
+        case". Ask yourself: "Could the correct answer for this node's
+        content plausibly be DIFFERENT if asked again in one year, because
+        the world changed — not because a student needs more practice?"
+
+        NeedsCurrentInfo = TRUE (the underlying facts genuinely evolve):
+          current AI models/tools/frameworks and their capabilities, industry
+          adoption trends, best/recommended practices that shift as a field
+          matures, product features, pricing, benchmarks/leaderboards,
+          recent research findings, evolving regulations/standards.
+          Examples: "Agentes de IA", "Herramientas de Agente", "LLMs y SLMs",
+          "Automatización con Agentes".
+        NeedsCurrentInfo = FALSE (the underlying facts are timeless — this
+        is the DEFAULT; only flag true when you have a genuine reason):
+          arithmetic and algebra ("Suma", "Combinar Cantidades", "Resolver
+          Problemas con Suma", ecuaciones, fracciones), core/foundational
+          definitions of a stable concept, established scientific or
+          mathematical laws/theorems, basic grammar/language rules, any
+          concept whose correct answer today is the same correct answer it
+          was ten years ago and will be ten years from now. A web search
+          adds ZERO value here (there is nothing "current" to find) and
+          must NOT be requested.
+        When genuinely unsure, prefer FALSE — an unnecessary web search
+        wastes a call and risks polluting a timeless concept with
+        irrelevant "2026 trends" content; a missed opportunity for one
+        node's citation is a far smaller cost than that.
 
         A WRONG graph (document structure turned into fake capabilities):
           Definición de Suma → Interpretación de Suma → Aplicación de Suma
@@ -310,7 +391,7 @@ public sealed class GraphArchitectAgent
         - Nodes: list of GraphNodeDto with Name, Description, NodeType,
           SortOrder, AcademicDefinition, Interpretation, Examples,
           Applications, IllustrationPrompts (each with Purpose + Prompt),
-          References
+          References, NeedsCurrentInfo
         - Edges: list of GraphEdgeDto with SourceNodeName, TargetNodeName,
           RelationshipType, Rationale
 
@@ -368,11 +449,23 @@ public sealed class GraphArchitectAgent
     /// </summary>
     /// <param name="capabilityName">Name of the capability being analyzed.</param>
     /// <param name="curatedCorpus">The corpus produced by CuradorAgent.</param>
+    /// <param name="documentChapterOrder">
+    /// Optional: the source document's own chapter order (e.g. "1.
+    /// Introducción\n2. Suma\n3. Multiplicación"), when the corpus was
+    /// curated chapter-by-chapter from a real multi-chapter PDF (see the
+    /// V2 PDF→CapabilityGraph pipeline). Used as a STRONG SIGNAL (not a
+    /// rigid rule) for designing Requires/BuildsOn edges and SortOrder —
+    /// the graph's node granularity and structure are still entirely the
+    /// agent's own decision, never forced to mirror the document's
+    /// chapters 1:1. Null/empty when there is no real chapter structure to
+    /// signal (e.g. a short note, or a single-chapter document).
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>ExtractionResult with Graph + TokenUsage.</returns>
     public async Task<ExtractionResult> ExtractGraphAsync(
         string capabilityName,
         CuratedCorpus curatedCorpus,
+        string? documentChapterOrder = null,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -392,10 +485,20 @@ public sealed class GraphArchitectAgent
             "\n\n---\n\n",
             curatedCorpus.Chunks.Select(c => $"[{c.Tag}] {c.Content}"));
 
+        var chapterOrderSection = string.IsNullOrWhiteSpace(documentChapterOrder)
+            ? string.Empty
+            : $"\n\nSource document's own chapter order (for reference only — a STRONG " +
+              $"SIGNAL for prerequisite/SortOrder decisions, since an earlier chapter " +
+              $"usually introduces concepts that are prerequisite to later chapters, but " +
+              $"NOT a rigid rule — you still decide the real node structure and " +
+              $"dependencies from the actual content, and chapters never become nodes " +
+              $"themselves):\n{documentChapterOrder}";
+
         var prompt =
             $"Capability: {capabilityName}\n\n" +
             $"Curated Corpus Summary:\n{curatedCorpus.Summary}\n\n" +
-            $"Curated Corpus Chunks:\n{corpusText}";
+            $"Curated Corpus Chunks:\n{corpusText}" +
+            chapterOrderSection;
 
         // Run agent with structured output
         var response = await _agent.RunAsync<CapabilityGraphResponse>(prompt, cancellationToken: cancellationToken);
