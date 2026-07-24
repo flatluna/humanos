@@ -48,9 +48,12 @@ public sealed class PersonCapabilityService
         Guid personId,
         Guid capabilityId,
         int targetLevel = 5,
+        string? selfAssessedLevel = null,
         CancellationToken cancellationToken = default)
     {
         ValidateTargetLevel(targetLevel);
+
+        var initialScores = ResolveSelfAssessment(selfAssessedLevel);
 
         var personCapability = await _dbContext.PersonCapabilities
             .SingleOrDefaultAsync(
@@ -90,15 +93,15 @@ public sealed class PersonCapabilityService
             PersonCapabilityId = Guid.NewGuid(),
             PersonId = personId,
             CapabilityId = capabilityId,
-            CurrentLevel = 0,
+            CurrentLevel = initialScores.CurrentLevel,
             TargetLevel = targetLevel,
             ProgressPercentage = 0,
             MasteryScore = 0,
             Status = "Active",
             IndependenceLevel = 0,
             RetentionScore = null,
-            ConfidenceScore = null,
-            KnowledgeScore = 0,
+            ConfidenceScore = initialScores.ConfidenceScore,
+            KnowledgeScore = initialScores.KnowledgeScore,
             RecallScore = 0,
             ApplicationScore = 0,
             StartedDate = DateTime.UtcNow,
@@ -220,6 +223,33 @@ public sealed class PersonCapabilityService
                 nameof(targetLevel),
                 "Target level must be between 0 and 5.");
         }
+    }
+
+    /// <summary>
+    /// Translates the individual onboarding survey's self-reported starting
+    /// point ('Beginner' / 'Intermediate' / 'Advanced') into initial values
+    /// for the real <see cref="PersonCapability"/> tracking fields. A null
+    /// or unrecognized value falls back to the original "unknown" defaults
+    /// (current behavior for the employee/organization flow, which does not
+    /// go through the survey).
+    /// </summary>
+    private static (int CurrentLevel, decimal? ConfidenceScore, int KnowledgeScore) ResolveSelfAssessment(
+        string? selfAssessedLevel)
+    {
+        if (string.IsNullOrWhiteSpace(selfAssessedLevel))
+        {
+            return (0, null, 0);
+        }
+
+        return selfAssessedLevel.Trim().ToLowerInvariant() switch
+        {
+            "beginner" => (0, 20m, 10),
+            "intermediate" => (1, 50m, 40),
+            "advanced" => (2, 80m, 70),
+            _ => throw new ArgumentException(
+                "Self-assessed level must be one of 'Beginner', 'Intermediate', 'Advanced'.",
+                nameof(selfAssessedLevel))
+        };
     }
 
     private static PersonCapabilityResponse MapToResponse(PersonCapability pc)

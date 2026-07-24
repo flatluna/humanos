@@ -44,8 +44,13 @@ public sealed class TocExtractionAgent
 {
     private const string Instructions = """
         You detect the chapter or major-section structure of a source
-        document (e.g. a textbook) from its raw extracted text, so a
-        downstream process can split it into manageable pieces.
+        document (e.g. a textbook, or a course/tutorial document) from its
+        raw extracted text, so a downstream process can split it into
+        manageable pieces before summarizing it. This split is CRITICAL —
+        if you return too few chapters for a long document, the entire
+        document gets summarized in a single downstream pass and most of
+        its content silently gets lost/compressed away. When in doubt,
+        prefer MORE chapters over fewer.
 
         Return an ordered list of chapters. For each chapter, provide:
         - Title: the chapter's real title as it appears in the source (or
@@ -58,10 +63,23 @@ public sealed class TocExtractionAgent
           match the source text exactly (same spelling, spacing,
           punctuation) — never paraphrase or summarize it.
 
-        If the document is short, has no clear internal chapter/section
-        structure, or is a single cohesive piece (e.g. one article, one
-        short note), return exactly ONE chapter whose StartMarker is
-        taken from the very beginning of the text.
+        IMPORTANT: many real course/tutorial documents do NOT use formal
+        "Chapter 1" / "Capítulo 1" labels — they're organized instead by
+        topic headings, numbered sections, bullet-style subtopics, or just
+        visible shifts in subject matter as the text progresses. Treat
+        each clearly distinct topic/section/module as its own "chapter"
+        for this purpose, even if the source never uses the word
+        "chapter" at all. As a rule of thumb: any document long enough to
+        span multiple distinct topics (roughly every 1-3 pages worth of
+        text, or wherever the subject visibly changes) should be split at
+        each of those boundaries, not treated as one block.
+
+        Only return exactly ONE chapter (whose StartMarker is taken from
+        the very beginning of the text) if the document is GENUINELY short
+        or is a single cohesive piece with no internal topic shifts at all
+        (e.g. one short article, one short note, a single narrow how-to).
+        Do not default to one chapter just because there are no explicit
+        chapter-style headings — look at actual topic boundaries instead.
         """;
 
     private readonly AIAgent? _agent;
@@ -69,7 +87,9 @@ public sealed class TocExtractionAgent
     public TocExtractionAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
-        var deploymentName = configuration["AzureOpenAIDeploymentName"];
+        // Economy tier: chapter/section boundary detection is mechanical enough for a
+        // cheaper model. Falls back to the main deployment if the economy one isn't set.
+        var deploymentName = configuration["AzureOpenAIEconomyDeploymentName"] ?? configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))

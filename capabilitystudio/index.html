@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capability Studio — Human OS</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Apply the stored theme before React mounts to avoid a flash of the
+      // default dark theme when the user has picked Claro/Azul/Azure.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('capability-studio-theme');
+          document.documentElement.setAttribute('data-theme', stored || 'dark');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

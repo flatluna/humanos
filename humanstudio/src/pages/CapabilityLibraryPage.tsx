@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getCapabilities } from '../lib/api/capabilitiesApi';
+import { getCapabilities, deleteCapability } from '../lib/api/capabilitiesApi';
 import { CapabilityStatus, CapabilityLevelTag, CapabilitySummary } from '../types';
 import CapabilityCard from '../components/capabilities/CapabilityCard';
 import CapabilityFilters from '../components/capabilities/CapabilityFilters';
 import EmptyState from '../components/capabilities/EmptyState';
+import DeleteCapabilityModal from '../components/capabilities/DeleteCapabilityModal';
 
 /**
  * "Capability Library" — the DESIGNER's list of authored capabilities.
@@ -26,6 +27,8 @@ const CapabilityLibraryPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<CapabilityStatus | 'All'>('All');
   const [levelFilter, setLevelFilter] = useState<CapabilityLevelTag | 'All'>('All');
+
+  const [capabilityPendingDelete, setCapabilityPendingDelete] = useState<CapabilitySummary | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -63,6 +66,14 @@ const CapabilityLibraryPage: React.FC = () => {
     setSearchQuery('');
     setStatusFilter('All');
     setLevelFilter('All');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!capabilityPendingDelete) return;
+
+    await deleteCapability(capabilityPendingDelete.capabilityId);
+    setCapabilities((prev) => prev.filter((c) => c.capabilityId !== capabilityPendingDelete.capabilityId));
+    setCapabilityPendingDelete(null);
   };
 
   return (
@@ -127,9 +138,18 @@ const CapabilityLibraryPage: React.FC = () => {
               capability={capability}
               onOpenInStudio={handleOpenInStudio}
               onViewContent={() => navigate(`/capabilities/${capability.capabilityId}`)}
+              onDelete={() => setCapabilityPendingDelete(capability)}
             />
           ))}
         </div>
+      )}
+
+      {capabilityPendingDelete && (
+        <DeleteCapabilityModal
+          capability={capabilityPendingDelete}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setCapabilityPendingDelete(null)}
+        />
       )}
     </div>
   );

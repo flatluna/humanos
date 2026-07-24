@@ -1,16 +1,19 @@
 import { motion } from "framer-motion";
 import { BrainCircuit, Workflow, Radar, Users, Eye, TrendingUp, type LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-const benefits: { icon: LucideIcon; label: string }[] = [
-  { icon: BrainCircuit, label: "Capability intelligence" },
-  { icon: Workflow, label: "Workforce adaptability" },
-  { icon: Radar, label: "Future readiness" },
-  { icon: Users, label: "Human-centered AI adoption" },
-  { icon: Eye, label: "Skills visibility" },
-  { icon: TrendingUp, label: "Growth measurement" },
+const benefits: { icon: LucideIcon; key: string }[] = [
+  { icon: BrainCircuit, key: "capabilityIntelligence" },
+  { icon: Workflow, key: "workforceAdaptability" },
+  { icon: Radar, key: "futureReadiness" },
+  { icon: Users, key: "humanCenteredAiAdoption" },
+  { icon: Eye, key: "skillsVisibility" },
+  { icon: TrendingUp, key: "growthMeasurement" },
 ];
 
 export default function ForOrganizations() {
+  const { t } = useTranslation();
+
   return (
     <section className="relative py-28 sm:py-36 bg-[#05060a] text-white overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
@@ -19,9 +22,9 @@ export default function ForOrganizations() {
 
       <div className="relative max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-16 items-center">
         <div className="order-2 lg:order-1 grid sm:grid-cols-2 gap-4">
-          {benefits.map(({ icon: Icon, label }, i) => (
+          {benefits.map(({ icon: Icon, key }, i) => (
             <motion.div
-              key={label}
+              key={key}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.4 }}
@@ -31,7 +34,7 @@ export default function ForOrganizations() {
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 border border-white/10">
                 <Icon className="h-4.5 w-4.5 text-blue-300" />
               </div>
-              <span className="font-medium text-white/80">{label}</span>
+              <span className="font-medium text-white/80">{t(`landing.forOrganizations.benefits.${key}`)}</span>
             </motion.div>
           ))}
         </div>
@@ -44,15 +47,13 @@ export default function ForOrganizations() {
           className="order-1 lg:order-2"
         >
           <p className="text-sm font-medium uppercase tracking-widest text-blue-400">
-            For Organizations
+            {t("landing.forOrganizations.eyebrow")}
           </p>
           <h2 className="mt-3 text-4xl sm:text-5xl font-semibold tracking-tight">
-            Build a More Capable Workforce
+            {t("landing.forOrganizations.title")}
           </h2>
           <p className="mt-6 text-lg text-white/50 leading-relaxed max-w-lg">
-            Human OS gives organizations real visibility into the
-            capabilities of their people — enabling human-centered AI
-            adoption and a workforce built to keep adapting.
+            {t("landing.forOrganizations.description")}
           </p>
         </motion.div>
       </div>

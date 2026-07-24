@@ -2,12 +2,186 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply bg-white text-slate-950;
-  }
+/*
+ * Theme tokens (2026-07-21, ported verbatim from capabilitystudio for
+ * design parity): 4 selectable themes — Oscuro (dark, default), Claro,
+ * Azul, Azure — driven purely by CSS variables so every Tailwind utility
+ * class (bg-slate-950, text-white, border-white/10, bg-brand-500,
+ * from-brand-500 to-accent-500, ...) repaints automatically when
+ * ThemeSwitcher sets [data-theme] on <html>. See tailwind.config.js's
+ * `withOpacity()` for how these plug into Tailwind's color system. Values
+ * are "R G B" triplets (no commas) so Tailwind can compose them with an
+ * alpha channel via `rgb(var(--x) / a)`.
+ */
+:root,
+[data-theme='dark'] {
+  --color-ink: 255 255 255;
+  --color-slate-50: 248 250 252;
+  --color-slate-100: 241 245 249;
+  --color-slate-200: 226 232 240;
+  --color-slate-300: 203 213 225;
+  --color-slate-400: 148 163 184;
+  --color-slate-500: 100 116 139;
+  --color-slate-600: 71 85 105;
+  --color-slate-700: 51 65 85;
+  --color-slate-800: 30 41 59;
+  --color-slate-900: 15 23 42;
+  --color-slate-950: 2 6 23;
+  --color-brand-50: 238 244 255;
+  --color-brand-100: 224 235 255;
+  --color-brand-200: 199 217 255;
+  --color-brand-300: 164 191 255;
+  --color-brand-400: 122 155 255;
+  --color-brand-500: 90 117 255;
+  --color-brand-600: 65 82 242;
+  --color-brand-700: 53 64 214;
+  --color-brand-800: 44 54 172;
+  --color-brand-900: 41 52 137;
+  --color-brand-950: 23 26 77;
+  --color-accent-400: 244 114 182;
+  --color-accent-500: 236 72 153;
+}
 
-  * {
-    @apply border-slate-200;
-  }
+[data-theme='light'] {
+  --color-ink: 15 23 42;
+  --color-slate-50: 255 255 255;
+  --color-slate-100: 30 41 59;
+  --color-slate-200: 51 65 85;
+  --color-slate-300: 71 85 105;
+  --color-slate-400: 100 116 139;
+  --color-slate-500: 148 163 184;
+  --color-slate-600: 180 190 205;
+  --color-slate-700: 203 213 225;
+  --color-slate-800: 226 232 240;
+  --color-slate-900: 241 245 249;
+  --color-slate-950: 248 250 252;
+  --color-brand-50: 238 244 255;
+  --color-brand-100: 224 235 255;
+  --color-brand-200: 199 217 255;
+  --color-brand-300: 164 191 255;
+  --color-brand-400: 65 92 230;
+  --color-brand-500: 53 74 214;
+  --color-brand-600: 44 58 176;
+  --color-brand-700: 36 48 145;
+  --color-brand-800: 30 40 118;
+  --color-brand-900: 26 34 96;
+  --color-brand-950: 15 18 55;
+  --color-accent-400: 219 39 119;
+  --color-accent-500: 190 24 93;
+}
+
+[data-theme='blue'] {
+  --color-ink: 255 255 255;
+  --color-slate-50: 248 250 252;
+  --color-slate-100: 226 232 240;
+  --color-slate-200: 203 213 225;
+  --color-slate-300: 180 195 215;
+  --color-slate-400: 140 160 190;
+  --color-slate-500: 100 125 155;
+  --color-slate-600: 71 95 125;
+  --color-slate-700: 45 65 95;
+  --color-slate-800: 25 40 65;
+  --color-slate-900: 14 25 48;
+  --color-slate-950: 6 12 28;
+  --color-brand-50: 235 245 255;
+  --color-brand-100: 214 234 255;
+  --color-brand-200: 179 214 255;
+  --color-brand-300: 125 183 255;
+  --color-brand-400: 71 148 255;
+  --color-brand-500: 37 99 235;
+  --color-brand-600: 29 78 216;
+  --color-brand-700: 30 64 175;
+  --color-brand-800: 30 58 138;
+  --color-brand-900: 23 45 110;
+  --color-brand-950: 12 24 60;
+  --color-accent-400: 34 211 238;
+  --color-accent-500: 6 182 212;
+}
+
+[data-theme='azure'] {
+  --color-ink: 255 255 255;
+  --color-slate-50: 248 250 252;
+  --color-slate-100: 224 228 232;
+  --color-slate-200: 200 206 214;
+  --color-slate-300: 170 178 190;
+  --color-slate-400: 130 140 155;
+  --color-slate-500: 95 105 120;
+  --color-slate-600: 68 78 92;
+  --color-slate-700: 45 53 65;
+  --color-slate-800: 26 32 42;
+  --color-slate-900: 15 20 28;
+  --color-slate-950: 8 12 18;
+  --color-brand-50: 230 244 255;
+  --color-brand-100: 204 232 255;
+  --color-brand-200: 153 209 255;
+  --color-brand-300: 102 185 255;
+  --color-brand-400: 41 158 255;
+  --color-brand-500: 0 120 212;
+  --color-brand-600: 0 99 177;
+  --color-brand-700: 0 90 158;
+  --color-brand-800: 0 71 128;
+  --color-brand-900: 0 55 100;
+  --color-brand-950: 0 30 55;
+  --color-accent-400: 80 230 255;
+  --color-accent-500: 41 210 240;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased transition-colors duration-200;
+}
+
+::selection {
+  /* NOTE: opacity-modified custom colors (defined via the withOpacity()
+     function in tailwind.config.js) can't be resolved through @apply
+     unless the exact class string is also scanned from a .tsx/.html
+     content file — safelist does NOT fix this for @apply (tested
+     2026-07-21). Use the raw CSS variable directly instead. */
+  background-color: rgb(var(--color-brand-500) / 0.4);
+  color: rgb(var(--color-ink));
+}
+
+/* Thin, unobtrusive scrollbar matching the active theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: theme('colors.slate.700');
+  border-radius: 9999px;
+  border: 2px solid theme('colors.slate.950');
+}
+
+.glass-panel {
+  @apply bg-white/[0.04] backdrop-blur-xl border border-white/10;
+}
+
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--color-brand-300)) 0%,
+    rgb(var(--color-accent-500)) 50%,
+    rgb(var(--color-brand-300)) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+.input {
+  @apply w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none;
+}
+.input:focus {
+  border-color: rgb(var(--color-brand-400) / 0.5);
+  box-shadow: 0 0 0 2px rgb(var(--color-brand-500) / 0.3);
 }

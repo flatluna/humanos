@@ -46,6 +46,9 @@ public sealed class CapabilityGraphPersistenceService
     /// <param name="keyEntitiesJson">Optional JSON-serialized
     /// <see cref="Agents.Studio.DocumentEntityDto"/> list, same conditions as
     /// <paramref name="executiveSummary"/>.</param>
+    /// <param name="coverImageStoragePath">Optional blob StoragePath of the
+    /// course-level cover image (2026-07-21), null when generation wasn't
+    /// configured or failed (best-effort).</param>
     public async Task<CapabilityGraph> PersistAsync(
         HumanOsDbContext dbContext,
         Guid capabilityId,
@@ -53,7 +56,8 @@ public sealed class CapabilityGraphPersistenceService
         IReadOnlyList<NodeIllustrationRecord>? illustrations,
         CancellationToken cancellationToken = default,
         string? executiveSummary = null,
-        string? keyEntitiesJson = null)
+        string? keyEntitiesJson = null,
+        string? coverImageStoragePath = null)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(graph);
@@ -66,6 +70,7 @@ public sealed class CapabilityGraphPersistenceService
             Description = graph.Description,
             ExecutiveSummary = executiveSummary,
             KeyEntitiesJson = keyEntitiesJson,
+            CoverImageStoragePath = coverImageStoragePath,
             CreatedDate = DateTime.UtcNow
         };
 

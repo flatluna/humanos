@@ -22,12 +22,26 @@ export interface BackendCapabilityGraphEdge {
   RelationshipType: BackendRelationshipType;
 }
 
+/** One key named entity explicitly grounded in the source material —
+ * mirrors backend DocumentEntityDto (Agents/Studio/DocumentContextAgent.cs). */
+export interface BackendDocumentEntity {
+  Name: string;
+  Type: string;
+  Note?: string;
+}
+
 export interface BackendCapabilityGraph {
   CapabilityGraphId: string;
   Name: string;
   Description?: string;
   Nodes: BackendCapabilityGraphNode[];
   Edges: BackendCapabilityGraphEdge[];
+  /** Document-wide executive summary (DocumentContextAgent, 2026-07-20).
+   * Undefined/null for capabilities created before that agent existed. */
+  ExecutiveSummary?: string;
+  /** Named entities explicitly grounded in the source material. Empty
+   * array when none were found. */
+  KeyEntities?: BackendDocumentEntity[];
 }
 
 /**

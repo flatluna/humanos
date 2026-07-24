@@ -4,7 +4,7 @@ public sealed class PersonResponse
 {
     public Guid PersonId { get; set; }
 
-    public Guid TenantId { get; set; }
+    public Guid? TenantId { get; set; }
 
     public string? Email { get; set; }
 

@@ -8,6 +8,8 @@ public sealed class PersonGoalResponse
 
     public Guid GoalId { get; set; }
 
+    public string GoalCode { get; set; } = null!;
+
     public string GoalName { get; set; } = null!;
 
     public string? Category { get; set; }

@@ -1,6 +1,7 @@
 export interface Translations {
   common: {
     appName: string;
+    appNameFull: string;
     languageEnglish: string;
     languageSpanish: string;
     notifications: string;
@@ -12,6 +13,185 @@ export interface Translations {
     comingSoon: string;
     expandSidebar: string;
     collapseSidebar: string;
+  };
+  landing: {
+    topBar: {
+      goToApp: string;
+      continueOnboarding: string;
+      signOut: string;
+      signIn: string;
+    };
+    hero: {
+      badge: string;
+      titleLine1: string;
+      titleLine2: string;
+      subtitle: string;
+      ctaPrimary: string;
+      ctaSecondary: string;
+      flow: {
+        mind: string;
+        memory: string;
+        practice: string;
+        recall: string;
+        application: string;
+        capability: string;
+        mastery: string;
+        value: string;
+      };
+    };
+    problem: {
+      title: string;
+      informationEyebrow: string;
+      informationTitle: string;
+      informationItems: {
+        searchEngines: string;
+        aiTools: string;
+        videos: string;
+        courses: string;
+        content: string;
+      };
+      capabilityEyebrow: string;
+      capabilityTitle: string;
+      capabilityItems: {
+        memory: string;
+        thinking: string;
+        application: string;
+        problemSolving: string;
+        valueCreation: string;
+      };
+      footer: string;
+    };
+    memoryParadox: {
+      title: string;
+      subtitle: string;
+      traditionalTitle: string;
+      traditionalSteps: { question: string; answer: string; dependency: string };
+      traditionalDescription: string;
+      badge: string;
+      humanOsTitle: string;
+      humanOsSteps: {
+        question: string;
+        practice: string;
+        recall: string;
+        application: string;
+        evidence: string;
+        mastery: string;
+      };
+      humanOsDescription: string;
+      terms: {
+        retrievalPractice: string;
+        memoryConsolidation: string;
+        schemaFormation: string;
+        capabilityDevelopment: string;
+      };
+    };
+    graphLearning: {
+      eyebrow: string;
+      title: string;
+      subtitle: string;
+      traditionalTitle: string;
+      linearSteps: { chapter1: string; chapter2: string; chapter3: string; chapter4: string; chapter5: string };
+      traditionalDescription: string;
+      badge: string;
+      humanOsTitle: string;
+      nodes: {
+        foundations: string;
+        coreConcept: string;
+        relatedIdea: string;
+        appliedSkill: string;
+        advancedTopic: string;
+        specialization: string;
+        mastery: string;
+      };
+      legend: { mastered: string; inProgress: string; locked: string };
+      description: string;
+      footer: string;
+    };
+    capabilityGrowth: {
+      title: string;
+      subtitle: string;
+      items: {
+        criticalThinking: string;
+        aiAutomation: string;
+        communication: string;
+        problemSolving: string;
+        leadership: string;
+      };
+      footer: string;
+    };
+    growthLoop: {
+      title: string;
+      subtitle: string;
+      steps: {
+        discover: { label: string; description: string };
+        practice: { label: string; description: string };
+        recall: { label: string; description: string };
+        apply: { label: string; description: string };
+        evidence: { label: string; description: string };
+        mastery: { label: string; description: string };
+        value: { label: string; description: string };
+      };
+    };
+    layers: {
+      title: string;
+      items: {
+        foundation: { title: string; description: string };
+        exploration: { title: string; description: string };
+        mastery: { title: string; description: string };
+        professional: { title: string; description: string };
+        frontier: { title: string; description: string };
+        creator: { title: string; description: string };
+      };
+    };
+    forIndividuals: {
+      eyebrow: string;
+      title: string;
+      description: string;
+      benefits: {
+        discoverStrengths: string;
+        developExpertise: string;
+        improveMemory: string;
+        buildConfidence: string;
+        adaptContinuously: string;
+        createOpportunities: string;
+        developPurpose: string;
+      };
+    };
+    forOrganizations: {
+      eyebrow: string;
+      title: string;
+      description: string;
+      benefits: {
+        capabilityIntelligence: string;
+        workforceAdaptability: string;
+        futureReadiness: string;
+        humanCenteredAiAdoption: string;
+        skillsVisibility: string;
+        growthMeasurement: string;
+      };
+    };
+    vision: {
+      title: string;
+      titleHighlight: string;
+      description: string;
+      notLabel: string;
+      goalLabel: string;
+      notConvenience: string;
+      goalCapability: string;
+      notInformation: string;
+      goalTransformation: string;
+    };
+    cta: {
+      title: string;
+      description1: string;
+      description2: string;
+      button: string;
+    };
+    footer: {
+      tagline: string;
+      links: { vision: string; framework: string; capabilities: string; organizations: string; privacy: string; terms: string };
+      copyright: string;
+    };
   };
   nav: {
     today: string;
@@ -109,11 +289,12 @@ export interface Translations {
       lockedHint: string;
       backToGrowthPlan: string;
       steps: {
-        currentRole: { title: string; description: string; items: string[] };
+        currentSituation: { title: string; description: string; items: string[] };
+        futureDirection: { title: string; description: string; items: string[] };
         workAndExperience: { title: string; items: string[] };
         yourFuture: { title: string; items: string[] };
         growthContext: { title: string; items: string[] };
-        startingPoint: { title: string; items: string[] };
+        startingPoint: { title: string; description: string; items: string[] };
         agentProposedPlan: { title: string; items: string[] };
         humanReview: { title: string; items: string[] };
         planActivation: { title: string; items: string[] };
@@ -123,6 +304,110 @@ export interface Translations {
         heading: string;
         planName: string;
         flow: string[];
+      };
+    };
+    currentSituation: {
+      pageTitle: string;
+      stepLabel: string;
+      headline: string;
+      description: string;
+      areasHeading: string;
+      areasHint: string;
+      levelHeading: string;
+      levelHint: string;
+      levels: {
+        beginner: string;
+        intermediate: string;
+        advanced: string;
+      };
+      levelDescriptions: {
+        beginner: string;
+        intermediate: string;
+        advanced: string;
+      };
+      selectAreasEmptyHint: string;
+      continueAction: string;
+    };
+    futureDirection: {
+      pageTitle: string;
+      stepLabel: string;
+      headline: string;
+      description: string;
+      goalsHeading: string;
+      goalsHint: string;
+      goals: {
+        helpFamily: string;
+        extraIncome: string;
+        careerChange: string;
+        dailyIndependence: string;
+        loveOfLearning: string;
+        personalChallenge: string;
+        wellbeing: string;
+        ownProject: string;
+        reclaimFocus: string;
+      };
+      goalDescriptions: {
+        helpFamily: string;
+        extraIncome: string;
+        careerChange: string;
+        dailyIndependence: string;
+        loveOfLearning: string;
+        personalChallenge: string;
+        wellbeing: string;
+        ownProject: string;
+        reclaimFocus: string;
+      };
+      motivationsHeading: string;
+      motivationsHint: string;
+      motivations: {
+        growth: string;
+        helpingOthers: string;
+        independence: string;
+        curiosity: string;
+        security: string;
+        creativity: string;
+        pride: string;
+      };
+      selectGoalsEmptyHint: string;
+      continueAction: string;
+      savingAction: string;
+      saveError: string;
+    };
+    startingPoint: {
+      pageTitle: string;
+      stepLabel: string;
+      headline: string;
+      description: string;
+      emptySubject: string;
+      levels: {
+        beginner: string;
+        intermediate: string;
+        advanced: string;
+      };
+      gapHint: string;
+      gapPlaceholder: string;
+      gapAddAction: string;
+      gapRemoveAction: string;
+      noSubjectsHint: string;
+      continueAction: string;
+      savingAction: string;
+      saveError: string;
+      goalPlanner: {
+        heading: string;
+        description: string;
+        placeholder: string;
+        submitAction: string;
+        loading: string;
+        noMatch: string;
+        recommendedProgram: string;
+        recommendedCapabilities: string;
+        contextIntro: string;
+        levelQuestion: string;
+        levelNone: string;
+        entryPointHint: string;
+        acceptProgramAction: string;
+        chooseIndividualAction: string;
+        addedConfirmation: string;
       };
     };
     workContext: {

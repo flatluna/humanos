@@ -87,12 +87,18 @@ public sealed class DocumentContextAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _modelName;
 
     public DocumentContextAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
-        var deploymentName = configuration["AzureOpenAIDeploymentName"];
+        // Economy tier: entity/summary extraction is a straightforward extraction task,
+        // a good candidate for a cheaper model. Falls back to the main deployment if the
+        // economy one isn't set.
+        var deploymentName = configuration["AzureOpenAIEconomyDeploymentName"] ?? configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+
+        _modelName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -147,6 +153,7 @@ public sealed class DocumentContextAgent
         var tokenUsage = new AgentTokenUsage
         {
             AgentName = "DocumentContext",
+            ModelName = _modelName,
             InputTokens = (int)(usage?.InputTokenCount ?? 0),
             OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
             CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)

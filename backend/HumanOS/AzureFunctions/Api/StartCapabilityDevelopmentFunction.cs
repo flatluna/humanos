@@ -44,10 +44,12 @@ public sealed class StartCapabilityDevelopmentFunction
         }
 
         var targetLevel = body?.TargetLevel ?? 5;
+        var selfAssessedLevel = body?.SelfAssessedLevel;
 
         try
         {
-            var result = await _personCapabilityService.StartAsync(personId, capabilityId, targetLevel, cancellationToken);
+            var result = await _personCapabilityService.StartAsync(
+                personId, capabilityId, targetLevel, selfAssessedLevel, cancellationToken);
 
             return await FunctionResponseFactory.CreatedResponseAsync(request, result!, cancellationToken);
         }
@@ -65,6 +67,11 @@ public sealed class StartCapabilityDevelopmentFunction
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.BadRequest, "InvalidTargetLevel", ex.Message, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidSelfAssessedLevel", ex.Message, cancellationToken);
         }
     }
 }

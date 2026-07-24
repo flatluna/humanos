@@ -6,7 +6,10 @@ public sealed class Person
 {
     public Guid PersonId { get; set; }
 
-    public Guid TenantId { get; set; }
+    /// <summary>Null for an individual (no-company) account — see
+    /// CreateIndividualOnboardingFunction. Non-null only for people who
+    /// belong to an onboarded organization (CreateOnboardingFunction).</summary>
+    public Guid? TenantId { get; set; }
 
     public string AzureOid { get; set; } = null!;
 
@@ -26,5 +29,5 @@ public sealed class Person
      * Navigation property
      */
 
-    public Tenant Tenant { get; set; } = null!;
+    public Tenant? Tenant { get; set; }
 }

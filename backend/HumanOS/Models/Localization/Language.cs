@@ -24,6 +24,9 @@ public sealed class Language
     public ICollection<CapabilityDomainTranslation>
         CapabilityDomainTranslations { get; set; } = [];
 
+    public ICollection<SubjectTranslation>
+        SubjectTranslations { get; set; } = [];
+
     public ICollection<CapabilityTranslation>
         CapabilityTranslations { get; set; } = [];
 

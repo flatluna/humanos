@@ -72,6 +72,44 @@ public sealed class CapabilityGraphIllustrationStorageService
         return blobPath;
     }
 
+    /// <summary>
+    /// Uploads a single course-level cover image representing the WHOLE
+    /// capability (distinct from per-node illustrations) and returns its
+    /// blob StoragePath (to be saved on CapabilityGraph.CoverImageStoragePath).
+    /// Same "capability-graphs" container, path shape
+    /// "{tenantId}/{capabilityId}/cover.png" (no nodeId segment).
+    /// </summary>
+    public async Task<string> UploadCoverImageAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Stream imageContent,
+        string contentType = "image/png",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/cover.png";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            imageContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
     /// <summary>Downloads a previously-uploaded illustration image by its StoragePath.</summary>
     public async Task<Stream> DownloadIllustrationAsync(
         string storagePath,

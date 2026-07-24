@@ -78,3 +78,108 @@ export interface UploadRoleDocumentResponse {
   storagePath: string;
   uploadedDate: string;
 }
+
+/** Mirrors backend/HumanOS/Contracts/Goals/GoalResponse.cs */
+export interface GoalResponse {
+  goalId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  isActive: boolean;
+}
+
+/** Mirrors backend/HumanOS/Contracts/Goals/PersonGoalResponse.cs */
+export interface PersonGoalResponse {
+  personGoalId: string;
+  personId: string;
+  goalId: string;
+  goalCode: string;
+  goalName: string;
+  category: string | null;
+  status: 'Active' | 'Completed' | 'Abandoned' | 'Paused' | string;
+  progressPercentage: number;
+  targetDate: string | null;
+  startedDate: string;
+  completedDate: string | null;
+  createdDate: string;
+  updatedDate: string;
+}
+
+/** Mirrors backend/HumanOS/Contracts/Motivations/MotivationResponse.cs */
+export interface MotivationResponse {
+  motivationId: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+
+/** Mirrors backend/HumanOS/Contracts/Motivations/PersonMotivationResponse.cs */
+export interface PersonMotivationResponse {
+  personMotivationId: string;
+  personId: string;
+  motivationId: string;
+  motivationCode: string;
+  motivationName: string;
+  createdDate: string;
+}
+
+/** Mirrors backend/HumanOS/Contracts/Capabilities/PersonCapabilityResponse.cs */
+export interface PersonCapabilityResponse {
+  personCapabilityId: string;
+  personId: string;
+  capabilityId: string;
+  capabilityCode: string;
+  capabilityName: string;
+  currentLevel: number;
+  targetLevel: number;
+  progressPercentage: number;
+  masteryScore: number;
+  independenceLevel: number;
+  retentionScore: number | null;
+  confidenceScore: number | null;
+  knowledgeScore: number;
+  recallScore: number;
+  applicationScore: number;
+  status: 'NotStarted' | 'Active' | 'Paused' | 'Completed' | 'Abandoned' | string;
+  startedDate: string | null;
+  lastActivityDate: string | null;
+  createdDate: string;
+  updatedDate: string;
+}
+
+// ── Growth Plan — Step 3 goal recommendation (real agent) ─────────────────
+
+export interface RecommendGrowthPathSubjectOption {
+  code: string;
+  name: string;
+}
+
+/** Mirrors backend/HumanOS/Contracts/GrowthPlan/RecommendGrowthPathContracts.cs's RecommendGrowthPathRequest. */
+export interface RecommendGrowthPathRequest {
+  goalPrompt: string;
+  personName: string;
+  allowedSubjects: RecommendGrowthPathSubjectOption[];
+  statedGoals: string[];
+  catalogContext?: string;
+}
+
+export interface RecommendGrowthPathStepResponse {
+  name: string;
+  level: string;
+}
+
+/** Mirrors backend/HumanOS/Contracts/GrowthPlan/RecommendGrowthPathContracts.cs's RecommendGrowthPathResponse. */
+export interface RecommendGrowthPathResponse {
+  hasRecommendation: boolean;
+  recommendationType: string;
+  programName: string | null;
+  programDescription: string | null;
+  subjectCode: string | null;
+  steps: RecommendGrowthPathStepResponse[];
+  rationale: string | null;
+  /** Set when the agent matched a real, existing Program — pass this
+   * through as the accepted recommendation's programId when saving. */
+  matchedProgramId: string | null;
+}
+

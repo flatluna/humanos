@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export default function CTA() {
+  const { t } = useTranslation();
+
   return (
     <section className="relative py-28 sm:py-36 bg-[#05060a] text-white overflow-hidden">
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -16,7 +19,7 @@ export default function CTA() {
           transition={{ duration: 0.7 }}
           className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight"
         >
-          Become the Best Version of Yourself
+          {t("landing.cta.title")}
         </motion.h2>
 
         <motion.p
@@ -26,9 +29,9 @@ export default function CTA() {
           transition={{ duration: 0.7, delay: 0.1 }}
           className="mt-6 text-lg text-white/50 leading-relaxed"
         >
-          Strengthen memory. Develop capabilities. Create value.
+          {t("landing.cta.description1")}
           <br />
-          Build a meaningful future.
+          {t("landing.cta.description2")}
         </motion.p>
 
         <motion.div
@@ -38,7 +41,7 @@ export default function CTA() {
           transition={{ duration: 0.7, delay: 0.2 }}
         >
           <button className="group mt-10 inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 font-medium text-black transition hover:bg-white/90">
-            Start Your Journey
+            {t("landing.cta.button")}
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </button>
         </motion.div>

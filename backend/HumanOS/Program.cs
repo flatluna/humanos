@@ -16,8 +16,57 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+// Crash diagnostics (2026-07-23): the host process has been observed to die
+// silently — no exception ever printed, no WER/Application-Error event, no
+// Windows resource-exhaustion event — reliably during the illustration
+// image-generation stage (PdfCapabilityGraphPipelineService), even with the
+// per-image call already wrapped in try/catch there. If .NET itself sees an
+// unhandled exception on ANY thread (including a background/unobserved task
+// continuation the normal try/catch never touches), these two events fire
+// right before the runtime fail-fasts the process — logging them here is the
+// only way to capture what actually killed it next time it happens.
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    try
+    {
+        File.AppendAllText(
+            "fatal-crash.log",
+            $"[{DateTime.UtcNow:O}] AppDomain.UnhandledException IsTerminating={e.IsTerminating}{Environment.NewLine}{e.ExceptionObject}{Environment.NewLine}{Environment.NewLine}");
+    }
+    catch
+    {
+        // Never let crash logging itself throw.
+    }
+};
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    try
+    {
+        File.AppendAllText(
+            "fatal-crash.log",
+            $"[{DateTime.UtcNow:O}] TaskScheduler.UnobservedTaskException{Environment.NewLine}{e.Exception}{Environment.NewLine}{Environment.NewLine}");
+        e.SetObserved();
+    }
+    catch
+    {
+        // Never let crash logging itself throw.
+    }
+};
+
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
+    .ConfigureAppConfiguration((context, config) =>
+    {
+        // ConfigureFunctionsWorkerDefaults() alone does NOT load
+        // appsettings.json (isolated worker only auto-loads
+        // local.settings.json's "Values" + environment variables) — confirmed
+        // 2026-07-23 via a real bug: AgentPricing:Models:* rates in
+        // appsettings.json were silently never applied, TokenCostEstimator
+        // always fell back to its hardcoded defaults. Explicitly add it here.
+        config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
+        config.AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: false);
+        config.AddEnvironmentVariables();
+    })
     .ConfigureServices(services =>
     {
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING")) ||
@@ -64,22 +113,29 @@ var host = new HostBuilder()
         services.AddScoped<TenantService>();
         services.AddScoped<PersonService>();
         services.AddScoped<PersonProfileService>();
+        services.AddScoped<GrowthPlanService>();
         services.AddScoped<HumanProfileService>();
         services.AddScoped<LanguageService>();
         services.AddScoped<CapabilityDomainService>();
+        services.AddScoped<SubjectService>();
         services.AddScoped<CapabilityGraphPersistenceService>();
         services.AddScoped<NodeExperienceBlueprintPersistenceService>();
         services.AddScoped<BlueprintValidationPersistenceService>();
         services.AddScoped<InstructorRuntimeOrchestrator>();
         services.AddScoped<AssessmentEvaluator>();
         services.AddScoped<AdaptiveAssessmentEngine>();
+        services.AddScoped<BlueprintReviewService>();
         services.AddScoped<TutorService>();
         services.AddScoped<ProductionEvaluationService>();
         services.AddScoped<SessionRecoveryEngine>();
         services.AddScoped<GraphProgressionEngine>();
         services.AddScoped<CapabilityService>();
         services.AddScoped<PersonCapabilityService>();
+        services.AddScoped<ProgramService>();
+        services.AddScoped<CapabilityCostService>();
+        services.AddScoped<HumanOS.Storage.ProgramLogoStorageService>();
         services.AddScoped<GoalService>();
+        services.AddScoped<MotivationService>();
         services.AddScoped<ProjectService>();
         services.AddScoped<PracticeService>();
         services.AddScoped<RecallService>();
@@ -90,6 +146,13 @@ var host = new HostBuilder()
         services.AddScoped<CapabilityMaterialStorageService>();
         services.AddScoped<JobDescriptionExtractionAgent>();
         services.AddScoped<HumanOS.Storage.CapabilityGraphIllustrationStorageService>();
+
+        // Growth Plan Step 3 ("Planeemos Juntos tu Desarrollo", merged
+        // Steps 3+4, 2026-07-22): recommends a Program or individual
+        // Capabilities from a free-text goal, scoped to the person's
+        // Step 1 Subjects. Singleton, same rationale as the Studio
+        // pipeline agents below (no per-request state).
+        services.AddSingleton<GrowthPathRecommenderAgent>();
 
         // Human OS Studio — capability-creation pipeline agents (Microsoft
         // Agent Framework, ChatClientAgents with structured output; see
@@ -105,6 +168,7 @@ var host = new HostBuilder()
         services.AddSingleton<GraphIllustrationImageService>();
         services.AddSingleton<ExperienceDesignerAgent>();
         services.AddSingleton<BlueprintValidatorAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.BlueprintStepEditorAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.WebGroundingService>();
         services.AddSingleton<InstructorAgent>();
         services.AddSingleton<MetricoAgent>();
@@ -126,6 +190,12 @@ var host = new HostBuilder()
         // above. Singleton, same rationale as CapabilityCreationOrchestrator
         // (keeps in-memory runs alive across HTTP calls) — see
         // /memories/repo/humanstudio-multiagent-vision.md.
+        services.AddSingleton<HumanOS.Agents.Studio.IdeaToDocumentAgent>();
+        // Describes embedded page images (scanned pages, diagrams, photos)
+        // in detailed text so image-only/image-heavy PDF pages still reach
+        // Curador/GraphArchitect with real content (2026-07-23) — see
+        // /memories/repo/pdf-to-capability-graph-v2-pipeline.md.
+        services.AddSingleton<HumanOS.Agents.Studio.PdfImageDescriptionAgent>();
         services.AddSingleton<PdfCapabilityGraphPipelineService>();
         services.AddSingleton<PdfCapabilityGraphOrchestrator>();
 
@@ -183,6 +253,13 @@ var host = new HostBuilder()
         // TutorAgent above.
         services.AddSingleton<AzureSpeechService>();
 
+        // Voice Tutor — ephemeral Azure OpenAI Realtime (gpt-realtime-mini
+        // or similar) session minting (2026-07-21, see
+        // /memories/repo/human-os-runtime-design.md for the surrounding
+        // design discussion). Singleton: holds no per-request state, only
+        // wraps IConfiguration + IHttpClientFactory (registered below).
+        services.AddSingleton<RealtimeVoiceSessionService>();
+
         // Interactive Learning Runtime — Workflow checkpointing (Paso 3,
         // 2026-07-14, see /memories/repo/human-os-runtime-design.md).
         // SqlRuntimeCheckpointStore is Singleton-safe (only holds
@@ -211,6 +288,14 @@ if (args.Contains("--run-test"))
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var test = new HumanOS.Tests.TestCuradorGraphArchitectFlow(config);
         await test.RunAsync();
+    }
+}
+else if (args.Contains("--seed-catalog"))
+{
+    using (var scope = host.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<HumanOsDbContext>();
+        await HumanOS.Data.CatalogSeeder.SeedGoalsAndMotivationsAsync(dbContext);
     }
 }
 else

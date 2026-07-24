@@ -1,18 +1,22 @@
 import { Globe, Link2, AtSign } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-const links = ["Vision", "Framework", "Capabilities", "Organizations", "Privacy", "Terms"];
+const linkKeys = ["vision", "framework", "capabilities", "organizations", "privacy", "terms"] as const;
 
 export default function Footer() {
+  const { t } = useTranslation();
+  const links = linkKeys.map((key) => t(`landing.footer.links.${key}`));
+
   return (
     <footer className="bg-white py-16 border-t border-slate-200">
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-10">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">
-              Human Operative System
+              {t("common.appNameFull")}
             </h3>
             <p className="mt-2 text-slate-500 max-w-xs">
-              Strengthening Human Capability in the Age of AI
+              {t("landing.footer.tagline")}
             </p>
           </div>
 
@@ -42,7 +46,7 @@ export default function Footer() {
         </div>
 
         <p className="mt-12 text-xs text-slate-400">
-          © {new Date().getFullYear()} Human Operative System. All rights reserved.
+          {t("landing.footer.copyright", { year: new Date().getFullYear() })}
         </p>
       </div>
     </footer>

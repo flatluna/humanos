@@ -33,6 +33,16 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   /** true while MSAL is processing or the backend lookup is in flight. */
   isLoading: boolean;
+  /** true when the last '/api/me' lookup failed because the backend was
+   *  unreachable/erroring (network error, 5xx, non-404 failure) — distinct
+   *  from a genuine 404 ("this identity has no Person yet", i.e. really
+   *  not onboarded). A backend-down failure must NEVER be treated as
+   *  "not onboarded": that would silently show the onboarding form and,
+   *  if submitted, could create a duplicate/incorrect Person once the
+   *  backend comes back (2026-07-23 — found via a real bug report where a
+   *  wrong dev-proxy port made /today redirect to onboarding while the
+   *  real backend was actually healthy). */
+  backendError: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   /** Call after onboarding completes to reload the person/tenant. */
@@ -45,6 +55,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  backendError: false,
   login: async () => {},
   logout: async () => {},
   refreshUser: async () => {},
@@ -62,10 +73,10 @@ function extractTid(claims: Record<string, unknown> | undefined, homeAccountId: 
 }
 
 interface MeResponse {
-  personId: string;
-  tenantId: string;
-  tenantName: string;
-  email: string | null;
+  PersonId: string;
+  TenantId: string | null;
+  TenantName: string | null;
+  Email: string | null;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -75,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = useIsAuthenticated();
   const [user, setUser] = useState<HumanOsUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [backendError, setBackendError] = useState(false);
 
   async function login() {
     try {
@@ -124,27 +136,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (res.ok) {
         const data = (await res.json()) as MeResponse;
+        setBackendError(false);
         setUser({
           oid,
           tid,
           name,
-          email: data.email ?? email,
-          personId: data.personId,
-          tenantId: data.tenantId,
-          tenantName: data.tenantName,
+          email: data.Email ?? email,
+          personId: data.PersonId,
+          tenantId: data.TenantId,
+          tenantName: data.TenantName,
           onboarded: true,
           lastLogin,
         });
       } else if (res.status === 404) {
         // First time — needs to complete onboarding (create the company + admin).
+        setBackendError(false);
         setUser({ oid, tid, name, email, personId: null, tenantId: null, tenantName: null, onboarded: false, lastLogin });
       } else {
-        setUser({ oid, tid, name, email, personId: null, tenantId: null, tenantName: null, onboarded: false, lastLogin });
+        // Any other status (5xx, wrong-proxy 4xx, etc.) means we couldn't
+        // actually determine onboarding status — surface this as a backend
+        // error instead of guessing "not onboarded" (see backendError's doc
+        // comment on AuthContextValue for why this distinction matters).
+        setBackendError(true);
       }
     } catch {
-      // Backend unavailable (e.g. dev without the Functions host running) —
-      // treat as not yet onboarded rather than pretending success.
-      setUser({ oid, tid, name, email, personId: null, tenantId: null, tenantName: null, onboarded: false, lastLogin });
+      // Network/fetch failure (e.g. dev without the Functions host running,
+      // or a misconfigured proxy port) — surface as a backend error rather
+      // than silently treating the user as "not onboarded", which would
+      // incorrectly show the onboarding form while the real account may
+      // already exist.
+      setBackendError(true);
     } finally {
       setIsLoading(false);
     }
@@ -164,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, inProgress]);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, backendError, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

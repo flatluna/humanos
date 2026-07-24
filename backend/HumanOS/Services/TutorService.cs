@@ -5,6 +5,7 @@ using HumanOS.Models.Capabilities.Graph;
 using HumanOS.Models.Learning;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace HumanOS.Services;
 
@@ -43,12 +44,24 @@ public sealed class TutorService
     private readonly TutorAgentV2 _tutorAgent;
     private readonly InstructorRuntimeOrchestrator _orchestrator;
     private readonly NodeKnowledgeIndexService _knowledgeIndexService;
+    private readonly Agents.Studio.GraphIllustrationImageService _imageService;
+    private readonly HumanOS.Storage.CapabilityGraphIllustrationStorageService _illustrationStorage;
+    private readonly ILogger<TutorService> _logger;
 
-    public TutorService(TutorAgentV2 tutorAgent, InstructorRuntimeOrchestrator orchestrator, NodeKnowledgeIndexService knowledgeIndexService)
+    public TutorService(
+        TutorAgentV2 tutorAgent,
+        InstructorRuntimeOrchestrator orchestrator,
+        NodeKnowledgeIndexService knowledgeIndexService,
+        Agents.Studio.GraphIllustrationImageService imageService,
+        HumanOS.Storage.CapabilityGraphIllustrationStorageService illustrationStorage,
+        ILogger<TutorService> logger)
     {
         _tutorAgent = tutorAgent;
         _orchestrator = orchestrator;
         _knowledgeIndexService = knowledgeIndexService;
+        _imageService = imageService;
+        _illustrationStorage = illustrationStorage;
+        _logger = logger;
     }
 
     public bool IsConfigured => _tutorAgent.IsConfigured;
@@ -211,6 +224,23 @@ public sealed class TutorService
         var score = turn.Response.RecallScore
             ?? throw new InvalidOperationException("TutorAgentV2 did not return a RecallScore for a Recall-mode turn (after retry).");
 
+        // If the Tutor decided its NEW question needs a matching NEW
+        // illustration (2026-07-21 fix — see TutorAgentV2's DiagramPrompt
+        // doc comment: varying concrete numbers/objects each Recall turn
+        // can make the step's previously-shown illustration contradict the
+        // question just asked), generate it now and show it INSTEAD of the
+        // static blueprint illustration for this turn's response — never
+        // blocks the attempt itself if generation fails/isn't configured.
+        if (!string.IsNullOrWhiteSpace(turn.Response.DiagramPrompt))
+        {
+            var newIllustration = await TryGenerateRecallIllustrationAsync(
+                dbContext, step.LearningSessionNode!.CapabilityGraphNodeId, turn.Response.DiagramPrompt, cancellationToken);
+            if (newIllustration is not null)
+            {
+                turn.Illustrations = [newIllustration];
+            }
+        }
+
         var evidenceId = await _orchestrator.SubmitResponseAsync(
             dbContext,
             learningSessionStepId,
@@ -250,6 +280,92 @@ public sealed class TutorService
             RegressedToTeaching = verdict.ItemFailed,
             NextStep = nextStep
         };
+    }
+
+    /// <summary>Best-effort, ephemeral illustration generation for ONE
+    /// dynamic Recall turn — never persists a change to the blueprint step
+    /// itself (LearningSessionStep.CurrentRecallPrompt already tracks the
+    /// dynamic QUESTION text; this is purely the matching image for the
+    /// CURRENT turn's response). Never throws — logs and returns null on
+    /// any failure, same contract as
+    /// BlueprintReviewService/AdaptiveAssessmentEngine's illustration
+    /// generation, so a failed/unconfigured image never blocks the
+    /// student's Recall attempt itself.</summary>
+    private async Task<TutorIllustrationRef?> TryGenerateRecallIllustrationAsync(
+        HumanOsDbContext dbContext,
+        Guid capabilityGraphNodeId,
+        string diagramPrompt,
+        CancellationToken cancellationToken)
+    {
+        if (!_imageService.IsConfigured || !_illustrationStorage.IsConfigured)
+        {
+            _logger.LogWarning("TutorRecall illustration: skipped - imageService/illustrationStorage not configured for node {NodeId}.", capabilityGraphNodeId);
+            return null;
+        }
+
+        var node = await dbContext.CapabilityGraphNodes
+            .Include(n => n.Illustrations)
+            .FirstOrDefaultAsync(n => n.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
+
+        var pathSeed = node?.Illustrations.FirstOrDefault()?.StoragePath;
+        if (pathSeed is null)
+        {
+            _logger.LogWarning("TutorRecall illustration: skipped - node {NodeId} has no existing illustration to derive tenant/capability path from.", capabilityGraphNodeId);
+            return null;
+        }
+
+        var segments = pathSeed.Split('/');
+        if (segments.Length < 3 || !Guid.TryParse(segments[0], out var tenantId) || !Guid.TryParse(segments[1], out var capabilityId))
+        {
+            return null;
+        }
+
+        try
+        {
+            var existingCount = await dbContext.CapabilityGraphNodeIllustrations.CountAsync(i => i.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
+            var imageIndex = 300 + existingCount; // Base offset for Tutor-Recall-turn illustrations — never collides with the pipeline's low sequential indexes, KnowledgeExpansion's fixed 99, Assessment's 100+, or BlueprintReviewEdit's 200+ ranges.
+
+            var generated = await _imageService.GenerateAsync(diagramPrompt, cancellationToken);
+            using var imageStream = generated.ImageBytes.ToStream();
+
+            var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                tenantId, capabilityId, capabilityGraphNodeId, imageIndex, imageStream, cancellationToken: cancellationToken);
+
+            var illustration = new CapabilityGraphNodeIllustration
+            {
+                CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
+                CapabilityGraphNodeId = capabilityGraphNodeId,
+                StoragePath = storagePath,
+                Prompt = diagramPrompt,
+                Purpose = IllustrationPurpose.TutorRecallTurn,
+                ImageModel = generated.ImageModel,
+                Width = generated.Width,
+                Height = generated.Height,
+                CreatedDate = DateTime.UtcNow
+            };
+
+            dbContext.CapabilityGraphNodeIllustrations.Add(illustration);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("TutorRecall illustration: generated successfully, CapabilityGraphNodeIllustrationId={IllustrationId}.", illustration.CapabilityGraphNodeIllustrationId);
+
+            return new TutorIllustrationRef
+            {
+                CapabilityGraphNodeIllustrationId = illustration.CapabilityGraphNodeIllustrationId,
+                StoragePath = illustration.StoragePath,
+                Caption = illustration.Caption
+            };
+        }
+        catch (Exception ex) when (ex.Message.Contains("moderation_blocked", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("TutorRecall illustration: skipped - Azure OpenAI's safety system rejected the prompt (moderation_blocked) for node {NodeId}.", capabilityGraphNodeId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TutorRecall illustration: generation FAILED for node {NodeId}.", capabilityGraphNodeId);
+            return null;
+        }
     }
 
     private static async Task<LearningSessionStep> LoadStepAsync(

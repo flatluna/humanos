@@ -36,7 +36,16 @@ public sealed class TutorTurnResponse
     /// persisted anywhere — purely a chain-of-thought aid for this one
     /// call.</summary>
     public string? RecallVerificationWork { get; set; }
-}
+    /// <summary>A text prompt for a NEW illustration to generate and show
+    /// alongside THIS turn's Message, or null to keep showing whatever
+    /// illustration the step already has (if any). Only meaningful for
+    /// Mode = Recall (2026-07-21 fix — real bug: the Tutor varies concrete
+    /// numbers/objects every Recall turn, e.g. "3 grupos de 6 perritos"
+    /// after an earlier turn/illustration showed a different quantity, but
+    /// the SAME static illustration kept being shown, now contradicting
+    /// the new question). Leave null for every other Mode. See DECIDIENDO
+    /// SI GENERAR UNA NUEVA ILUSTRACIÓN below for exactly when to set this.</summary>
+    public string? DiagramPrompt { get; set; }}
 
 /// <summary>
 /// TutorAgent V2 — the first agent built under the frozen "Version 2"
@@ -218,7 +227,28 @@ public sealed class TutorAgentV2
         content beyond this node's own scope, and never as a substitute for
         the RELATED INFORMATION section above (which retrieves the actual
         specific fact) or for StepContent.
-
+        DECIDIENDO SI GENERAR UNA NUEVA ILUSTRACIÓN (DiagramPrompt)
+        Only ever relevant for Mode = Recall (every other Mode must leave
+        DiagramPrompt null) — Recall is the only mode where YOU introduce a
+        brand-new concrete scenario (different numbers/objects) each turn,
+        so a previously-shown illustration can go stale/wrong the moment
+        you ask a new question. Set DiagramPrompt to a scene description
+        ONLY when BOTH: (a) the NEW question you're about to ask in Message
+        describes a genuinely concrete, visualizable scenario (countable
+        objects, comparable groups, a real-world process), AND (b) either
+        no illustration exists yet for this step, OR one exists but shows
+        DIFFERENT values/objects than the question you're asking now (e.g.
+        it shows some other quantity, and your new question is about "3
+        grupos de 6 perritos" instead) — in that case the old image would
+        now contradict/mislead. If the illustration already shown matches
+        your new question's scenario closely enough (same values/objects),
+        or your new question is abstract/conceptual with nothing concrete
+        to draw, leave DiagramPrompt null. When you do set it, describe
+        ONLY the scene/objects/quantities your new question refers to —
+        NEVER reveal the answer/result within the image description (e.g.
+        never depict the groups already combined/counted). Image generation
+        models don't calculate — if the scene includes any number/quantity,
+        write the exact value explicitly.
         HARD BOUNDARIES (apply to every Mode, no exceptions):
         - Never answer on the student's behalf or complete their task.
         - Never invent domain knowledge beyond what StepContent (or, for

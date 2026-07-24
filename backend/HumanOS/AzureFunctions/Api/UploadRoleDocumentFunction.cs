@@ -130,8 +130,18 @@ public sealed class UploadRoleDocumentFunction
                     request, HttpStatusCode.NotFound, "PersonNotFound", "No person was found with that id.", cancellationToken);
             }
 
+            if (person.TenantId is not Guid tenantId)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request,
+                    HttpStatusCode.BadRequest,
+                    "NoOrganization",
+                    "Uploading a job description requires an organization \u2014 this person has no Tenant.",
+                    cancellationToken);
+            }
+
             storagePath = await _roleDocumentStorageService.UploadJobDescriptionAsync(
-                person.TenantId,
+                tenantId,
                 personId,
                 uploadRequest.FileName,
                 contentStream,

@@ -52,6 +52,13 @@ public sealed class CapabilityConfiguration
             .HasConstraintName(
                 "FK_Capability_CapabilityDomain");
 
+        builder.HasOne(x => x.Subject)
+            .WithMany(x => x.Capabilities)
+            .HasForeignKey(x => x.SubjectId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName(
+                "FK_Capability_Subject");
+
         builder.HasIndex(x => x.Code)
             .IsUnique()
             .HasDatabaseName("UX_Capability_Code");
@@ -59,5 +66,9 @@ public sealed class CapabilityConfiguration
         builder.HasIndex(x => x.CapabilityDomainId)
             .HasDatabaseName(
                 "IX_Capability_CapabilityDomainId");
+
+        builder.HasIndex(x => x.SubjectId)
+            .HasDatabaseName(
+                "IX_Capability_SubjectId");
     }
 }

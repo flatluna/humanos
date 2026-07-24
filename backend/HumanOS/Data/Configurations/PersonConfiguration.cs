@@ -16,8 +16,7 @@ public sealed class PersonConfiguration : IEntityTypeConfiguration<Person>
         builder.Property(x => x.PersonId)
             .HasDefaultValueSql("NEWID()");
 
-        builder.Property(x => x.TenantId)
-            .IsRequired();
+        builder.Property(x => x.TenantId);
 
         builder.Property(x => x.AzureOid)
             .HasMaxLength(100)

@@ -54,7 +54,8 @@ public sealed class TenantService
     /// <summary>
     /// Creates a new Tenant (customer company) during onboarding. The slug
     /// is derived from the company name and de-duplicated with a numeric
-    /// suffix if it already exists.
+    /// suffix if it already exists — never invented independently of the
+    /// real company name the admin typed in.
     /// </summary>
     public async Task<Tenant> CreateAsync(
         string name,

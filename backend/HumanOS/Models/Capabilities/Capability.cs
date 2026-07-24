@@ -8,6 +8,11 @@ public sealed class Capability
 
     public Guid CapabilityDomainId { get; set; }
 
+    /// <summary>Topical browsing axis for students (Finanzas, Cocina,
+    /// Ciencia...). Nullable — a capability may not be categorized yet.
+    /// Distinct from <see cref="CapabilityDomainId"/>.</summary>
+    public Guid? SubjectId { get; set; }
+
     public string Code { get; set; } = null!;
 
     public string Name { get; set; } = null!;
@@ -21,6 +26,8 @@ public sealed class Capability
     public DateTime UpdatedDate { get; set; }
 
     public CapabilityDomain CapabilityDomain { get; set; } = null!;
+
+    public Subject? Subject { get; set; }
 
     public ICollection<CapabilityTranslation> Translations { get; set; } = [];
 

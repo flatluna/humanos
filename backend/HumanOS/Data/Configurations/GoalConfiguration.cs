@@ -17,6 +17,10 @@ public sealed class GoalConfiguration
         builder.Property(x => x.GoalId)
             .HasDefaultValueSql("NEWID()");
 
+        builder.Property(x => x.Code)
+            .HasMaxLength(100)
+            .IsRequired();
+
         builder.Property(x => x.Name)
             .HasMaxLength(400)
             .IsRequired();
@@ -40,6 +44,10 @@ public sealed class GoalConfiguration
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")
             .IsRequired();
+
+        builder.HasIndex(x => x.Code)
+            .IsUnique()
+            .HasDatabaseName("UX_Goal_Code");
 
         builder.ToTable(table =>
         {

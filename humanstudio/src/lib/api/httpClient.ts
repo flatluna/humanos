@@ -37,6 +37,14 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return handleResponse<T>(response);
 }
 
+export async function apiDelete<T = void>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+  });
+  return handleResponse<T>(response);
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;

@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import TopBar from './TopBar';
+import Sidebar from './Sidebar';
 import type { StudentUser } from '../../types';
 
 /**
@@ -30,9 +31,15 @@ export default function AppShell() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-slate-950">
+      <div className="pointer-events-none fixed inset-0 bg-mesh-gradient opacity-40" />
       <TopBar user={MOCK_USER} onSignOut={handleSignOut} />
-      <Outlet />
+      <div className="relative flex flex-1 overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

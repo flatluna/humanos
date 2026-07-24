@@ -1,2 +1,57 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Brand/accent palette ported from humanlearn (see
+ * /memories/repo/multi-frontend-app-landscape.md). The capabilities pages
+ * now fully support both light and dark mode (see `dark:` variants
+ * throughout `src/features/capabilities`), so the full accent scale is
+ * defined here (not just 400/500) for light-mode-appropriate shades. */
+@theme {
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #e0ebff;
+  --color-brand-200: #c7d9ff;
+  --color-brand-300: #a4bfff;
+  --color-brand-400: #7a9bff;
+  --color-brand-500: #5a75ff;
+  --color-brand-600: #4152f2;
+  --color-brand-700: #3540d6;
+  --color-brand-800: #2c36ac;
+  --color-brand-900: #293489;
+  --color-brand-950: #171a4d;
+  --color-accent-50: #fdf2f8;
+  --color-accent-100: #fce7f3;
+  --color-accent-200: #fbcfe8;
+  --color-accent-300: #f9a8d4;
+  --color-accent-400: #f472b6;
+  --color-accent-500: #ec4899;
+  --color-accent-600: #db2777;
+  --color-accent-700: #be185d;
+  --color-accent-800: #9d174d;
+  --color-accent-900: #831843;
+  --color-accent-950: #500724;
+}
+
+@keyframes loadingBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(150%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-loadingBar {
+  animation: loadingBar 1.4s ease-in-out infinite;
+}
+
+.input {
+  @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-slate-500;
+}
+.input:focus {
+  border-color: rgb(122 155 255 / 0.5);
+  box-shadow: 0 0 0 2px rgb(90 117 255 / 0.3);
+}
+

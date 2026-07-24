@@ -78,6 +78,16 @@ public sealed class ExtractJobDescriptionFunction
                 request, HttpStatusCode.NotFound, "PersonNotFound", "No person was found with that id.", cancellationToken);
         }
 
+        if (person.TenantId is not Guid tenantId)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "NoOrganization",
+                "Job Description extraction requires an organization — this person has no Tenant.",
+                cancellationToken);
+        }
+
         ExtractJobDescriptionRequest? extractRequest;
 
         try
@@ -104,7 +114,7 @@ public sealed class ExtractJobDescriptionFunction
         try
         {
             await using var pdfStream = await _roleDocumentStorageService.DownloadJobDescriptionAsync(
-                person.TenantId, extractRequest.StoragePath, cancellationToken);
+                tenantId, extractRequest.StoragePath, cancellationToken);
 
             var text = PdfTextExtractor.ExtractText(pdfStream);
 
@@ -114,7 +124,7 @@ public sealed class ExtractJobDescriptionFunction
         {
             var failedRecord = new JobDescriptionRecord
             {
-                TenantId = person.TenantId,
+                TenantId = tenantId,
                 PersonId = personId,
                 SourceStoragePath = extractRequest.StoragePath,
                 SourceFileName = extractRequest.FileName,
@@ -140,7 +150,7 @@ public sealed class ExtractJobDescriptionFunction
         var now = DateTime.UtcNow;
         var record = new JobDescriptionRecord
         {
-            TenantId = person.TenantId,
+            TenantId = tenantId,
             PersonId = personId,
             SourceStoragePath = extractRequest.StoragePath,
             SourceFileName = extractRequest.FileName,

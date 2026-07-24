@@ -1,14 +1,17 @@
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 const capabilities = [
-  { label: "Critical Thinking", value: 82 },
-  { label: "AI Automation", value: 61 },
-  { label: "Communication", value: 74 },
-  { label: "Problem Solving", value: 68 },
-  { label: "Leadership", value: 43 },
-];
+  { key: "criticalThinking", value: 82 },
+  { key: "aiAutomation", value: 61 },
+  { key: "communication", value: 74 },
+  { key: "problemSolving", value: 68 },
+  { key: "leadership", value: 43 },
+] as const;
 
 export default function CapabilityGrowth() {
+  const { t } = useTranslation();
+
   return (
     <section className="relative bg-white py-28 sm:py-36">
       <div className="max-w-5xl mx-auto px-6">
@@ -20,11 +23,10 @@ export default function CapabilityGrowth() {
           className="text-center"
         >
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight text-slate-900">
-            What Are You Becoming?
+            {t("landing.capabilityGrowth.title")}
           </h2>
           <p className="mt-4 text-lg text-slate-500 max-w-xl mx-auto">
-            Human OS does not track course completion. Human OS tracks
-            capability growth.
+            {t("landing.capabilityGrowth.subtitle")}
           </p>
         </motion.div>
 
@@ -37,9 +39,9 @@ export default function CapabilityGrowth() {
         >
           <div className="space-y-8">
             {capabilities.map((cap, i) => (
-              <div key={cap.label}>
+              <div key={cap.key}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-slate-800">{cap.label}</span>
+                  <span className="font-medium text-slate-800">{t(`landing.capabilityGrowth.items.${cap.key}`)}</span>
                   <span className="text-sm font-semibold text-slate-500">{cap.value}%</span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-slate-200 overflow-hidden">
@@ -63,8 +65,7 @@ export default function CapabilityGrowth() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="mt-12 text-center text-lg text-slate-500 max-w-2xl mx-auto"
         >
-          The future belongs to people who continuously develop capabilities,
-          not simply consume information.
+          {t("landing.capabilityGrowth.footer")}
         </motion.p>
       </div>
     </section>

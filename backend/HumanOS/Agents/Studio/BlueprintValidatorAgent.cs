@@ -178,12 +178,15 @@ public sealed class BlueprintValidatorAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _modelName;
 
     public BlueprintValidatorAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+
+        _modelName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -263,6 +266,7 @@ public sealed class BlueprintValidatorAgent
         var tokenUsage = new AgentTokenUsage
         {
             AgentName = "BlueprintValidator",
+            ModelName = _modelName,
             InputTokens = (int)(usage?.InputTokenCount ?? 0),
             OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
             CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)

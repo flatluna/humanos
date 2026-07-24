@@ -20,10 +20,12 @@ public sealed class PersonService
     /// <paramref name="azureTid"/> must come from the validated/trusted
     /// token claims — never invented — since they are how this person
     /// will be looked up on every subsequent sign-in
-    /// (<see cref="GetByAzureIdentityAsync"/>).
+    /// (<see cref="GetByAzureIdentityAsync"/>). <paramref name="tenantId"/>
+    /// is null for an individual (no-company) account — see
+    /// CreateIndividualOnboardingFunction.
     /// </summary>
     public async Task<PersonResponse> CreateAsync(
-        Guid tenantId,
+        Guid? tenantId,
         string azureOid,
         string azureTid,
         string? email,

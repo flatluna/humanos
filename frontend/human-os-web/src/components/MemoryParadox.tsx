@@ -1,17 +1,22 @@
 import { motion } from "framer-motion";
 import { ArrowDown, Zap } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-const traditional = ["Question", "Answer", "Dependency"];
-const humanOs = ["Question", "Practice", "Recall", "Application", "Evidence", "Mastery"];
-
-const neuroscience = [
-  "Retrieval Practice",
-  "Memory Consolidation",
-  "Schema Formation",
-  "Capability Development",
-];
+const traditionalKeys = ["question", "answer", "dependency"] as const;
+const humanOsKeys = ["question", "practice", "recall", "application", "evidence", "mastery"] as const;
+const neuroscienceKeys = [
+  "retrievalPractice",
+  "memoryConsolidation",
+  "schemaFormation",
+  "capabilityDevelopment",
+] as const;
 
 export default function MemoryParadox() {
+  const { t } = useTranslation();
+  const traditional = traditionalKeys.map((key) => t(`landing.memoryParadox.traditionalSteps.${key}`));
+  const humanOs = humanOsKeys.map((key) => t(`landing.memoryParadox.humanOsSteps.${key}`));
+  const neuroscience = neuroscienceKeys.map((key) => t(`landing.memoryParadox.terms.${key}`));
+
   return (
     <section className="relative bg-[#05060a] py-28 sm:py-36 text-white overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
@@ -28,10 +33,10 @@ export default function MemoryParadox() {
           className="text-center"
         >
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight">
-            The Memory Paradox
+            {t("landing.memoryParadox.title")}
           </h2>
           <p className="mt-4 text-lg text-white/50">
-            The more we outsource thinking, the less we strengthen it.
+            {t("landing.memoryParadox.subtitle")}
           </p>
         </motion.div>
 
@@ -43,7 +48,7 @@ export default function MemoryParadox() {
             transition={{ duration: 0.6 }}
             className="rounded-3xl border border-white/10 bg-white/[0.03] p-10"
           >
-            <h3 className="text-xl font-semibold text-white/90">Traditional AI</h3>
+            <h3 className="text-xl font-semibold text-white/90">{t("landing.memoryParadox.traditionalTitle")}</h3>
 
             <div className="mt-8 flex flex-col items-center gap-3">
               {traditional.map((step, i) => (
@@ -57,8 +62,7 @@ export default function MemoryParadox() {
             </div>
 
             <p className="mt-8 text-sm leading-relaxed text-white/40">
-              Designed for convenience. Little cognitive effort. Limited
-              capability growth.
+              {t("landing.memoryParadox.traditionalDescription")}
             </p>
           </motion.div>
 
@@ -71,10 +75,10 @@ export default function MemoryParadox() {
           >
             <div className="absolute right-6 top-6 flex items-center gap-1.5 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-white/70">
               <Zap className="h-3 w-3 text-blue-300" />
-              Human OS
+              {t("landing.memoryParadox.badge")}
             </div>
 
-            <h3 className="text-xl font-semibold text-white">Human Operative System</h3>
+            <h3 className="text-xl font-semibold text-white">{t("landing.memoryParadox.humanOsTitle")}</h3>
 
             <div className="mt-8 flex flex-col items-center gap-3">
               {humanOs.map((step, i) => (
@@ -88,8 +92,7 @@ export default function MemoryParadox() {
             </div>
 
             <p className="mt-8 text-sm leading-relaxed text-white/70">
-              Designed for human growth. Strengthens memory, thinking, and
-              capability.
+              {t("landing.memoryParadox.humanOsDescription")}
             </p>
           </motion.div>
         </div>

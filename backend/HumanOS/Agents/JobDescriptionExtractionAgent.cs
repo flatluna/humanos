@@ -76,7 +76,11 @@ public sealed class JobDescriptionExtractionAgent
     public JobDescriptionExtractionAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
-        var deploymentName = configuration["AzureOpenAIDeploymentName"];
+        // Economy tier: this is bounded field extraction from an already-provided
+        // text ("only extract what's explicitly present, never invent"), not
+        // open-ended reasoning — a good candidate for a cheaper model. Falls back
+        // to the main deployment if 'AzureOpenAIEconomyDeploymentName' isn't set.
+        var deploymentName = configuration["AzureOpenAIEconomyDeploymentName"] ?? configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
 
         DeploymentName = deploymentName;

@@ -39,11 +39,41 @@ public sealed class StartPdfCapabilityGraphFunction
 
         public string ContentBase64 { get; set; } = string.Empty;
 
+        /// <summary>Optional: the student-facing topical Subject (Finanzas,
+        /// Cocina, Matemáticas...) this capability belongs to. See
+        /// GET /api/subjects. Distinct from CapabilityDomainId.</summary>
+        public Guid? SubjectId { get; set; }
+
         /// <summary>Opt-in: supplements each chapter's topic with CURRENT
         /// web findings via Grounding with Bing Search before curating
         /// (see WebGroundingService). Defaults to false — never enabled
         /// unless the caller explicitly asks for it.</summary>
         public bool EnableWebEnrichment { get; set; }
+
+        /// <summary>Optional: an existing Program to attach this new
+        /// Capability to (appended to the end of its sequence) as soon as
+        /// the Capability row is created — top-down flow (2026-07-23):
+        /// create the Program first, then connect Capabilities to it, here
+        /// or later from the Capability's own detail page.</summary>
+        public Guid? ProgramId { get; set; }
+
+        /// <summary>Optional: the designer's own explicit choice of
+        /// sequence position (1-based, e.g. "#8") within ProgramId's
+        /// sequence. Gaps are allowed — the designer may create #8 before
+        /// #6 exists. Null falls back to auto-append (current max + 1).
+        /// Ignored when ProgramId is null.</summary>
+        public int? ProgramSequenceNumber { get; set; }
+
+        /// <summary>Optional: what this Capability is meant to accomplish
+        /// specifically within ProgramId's sequence (distinct from the
+        /// Program's own overall objectives). Passed to GraphArchitectAgent
+        /// as extra grounding context. Ignored when ProgramId is null.</summary>
+        public string? CapabilityObjectives { get; set; }
+
+        /// <summary>Optional: prerequisites a learner needs before starting
+        /// this Capability within ProgramId's sequence. Ignored when
+        /// ProgramId is null.</summary>
+        public string? CapabilityRequirements { get; set; }
     }
 
     [Function("StartPdfCapabilityGraph")]
@@ -93,9 +123,18 @@ public sealed class StartPdfCapabilityGraphFunction
                 request, HttpStatusCode.BadRequest, "InvalidBase64", "'contentBase64' is not valid base64.", cancellationToken);
         }
 
-        var status = _orchestrator.Start(
-            pdfBytes, body.FileName, body.CapabilityDomainId, body.CapabilityName, body.TenantId, body.EnableWebEnrichment);
+        try
+        {
+            var status = _orchestrator.Start(
+                pdfBytes, body.FileName, body.CapabilityDomainId, body.CapabilityName, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
+                body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements);
 
-        return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
+            return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
+        }
+        catch (PdfCapabilityGraphOrchestrator.ActiveRunConflictException ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.Conflict, "CapabilityGraphRunInProgress", ex.Message, cancellationToken);
+        }
     }
 }

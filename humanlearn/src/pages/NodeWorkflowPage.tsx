@@ -499,10 +499,10 @@ export default function NodeWorkflowPage() {
   if (phase === 'loading') {
     return (
       <div className="mx-auto max-w-3xl p-8">
-        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 hover:underline">
+        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-400 hover:text-white hover:underline">
           ← {t.backToMap}
         </Link>
-        <p className="mt-6 text-slate-500">{t.nodeLoading}</p>
+        <p className="mt-6 text-slate-400">{t.nodeLoading}</p>
       </div>
     );
   }
@@ -510,7 +510,7 @@ export default function NodeWorkflowPage() {
   if (phase === 'summary' && nodeSummary) {
     return (
       <div className="mx-auto max-w-3xl p-4 sm:p-8">
-        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 hover:underline">
+        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-400 hover:text-white hover:underline">
           ← {t.backToMap}
         </Link>
         <NodeSummaryView
@@ -528,10 +528,10 @@ export default function NodeWorkflowPage() {
   if (phase === 'error' || !step) {
     return (
       <div className="mx-auto max-w-3xl p-8">
-        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 hover:underline">
+        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-400 hover:text-white hover:underline">
           ← {t.backToMap}
         </Link>
-        <p className="mt-6 text-red-600">{errorMessage ?? t.nodeError}</p>
+        <p className="mt-6 text-red-400">{errorMessage ?? t.nodeError}</p>
       </div>
     );
   }
@@ -539,11 +539,11 @@ export default function NodeWorkflowPage() {
   if (newlyUnlocked !== null) {
     return (
       <div className="mx-auto max-w-2xl p-8">
-        <div className="rounded-2xl border border-green-200 bg-green-50 p-8 text-center">
-          <Check className="mx-auto h-10 w-10 text-green-600" />
-          <h1 className="mt-3 text-xl font-semibold text-green-800">{t.completedBannerTitle}</h1>
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-8 text-center">
+          <Check className="mx-auto h-10 w-10 text-emerald-400" />
+          <h1 className="mt-3 text-xl font-semibold text-emerald-300">{t.completedBannerTitle}</h1>
           {newlyUnlocked.length > 0 && (
-            <div className="mt-4 text-sm text-green-700">
+            <div className="mt-4 text-sm text-emerald-200">
               <p className="font-medium">{t.newlyUnlockedTitle}</p>
               <ul className="mt-1 space-y-1">
                 {newlyUnlocked.map((n) => (
@@ -554,7 +554,7 @@ export default function NodeWorkflowPage() {
           )}
           <button
             onClick={() => navigate(`/capabilities/${capabilityId}`)}
-            className="mt-6 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+            className="mt-6 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
             {t.backToMapButton}
           </button>
@@ -568,20 +568,20 @@ export default function NodeWorkflowPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">
-      <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 hover:underline">
+      <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-400 hover:text-white hover:underline">
         ← {t.backToMap}
       </Link>
 
       {nodeInfo && (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <h1 className="text-xl font-semibold text-slate-900">{nodeInfo.name}</h1>
-            <span className="whitespace-nowrap text-xs text-slate-400">
+            <h1 className="text-xl font-semibold tracking-tight text-white">{nodeInfo.name}</h1>
+            <span className="whitespace-nowrap text-xs text-slate-500">
               {t.nodeStartTimeLabel}: {startTime.toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })}
             </span>
           </div>
           {nodeInfo.description && (
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
               <span className="font-medium text-slate-500">{t.nodeObjectiveLabel}: </span>
               {nodeInfo.description}
             </p>
@@ -597,15 +597,15 @@ export default function NodeWorkflowPage() {
 
       {expansionLoading && <KnowledgeExpansionLoadingModal t={t} />}
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-        {errorMessage && <p className="mb-4 text-sm text-red-600">{errorMessage}</p>}
+      <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+        {errorMessage && <p className="mb-4 text-sm text-red-400">{errorMessage}</p>}
 
         {/* Recall's content is shown via recallLastPrompt below, and
             Assessment's content is an internal grading rubric ("Criterios
             observables de dominio...") never meant for the student — the
             actual questions come from AssessmentPanel's round state. */}
         {step.stepType !== 'Recall' && step.stepType !== 'Assessment' && (
-          <RichContent className="text-slate-700" html={step.content} />
+          <RichContent className="text-slate-300" html={step.content} />
         )}
 
         {step.illustrations.length > 0 && (
@@ -613,7 +613,7 @@ export default function NodeWorkflowPage() {
             {step.illustrations.map((illustration) => (
               <figure
                 key={illustration.illustrationId}
-                className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]"
               >
                 <img
                   src={`${API_BASE_URL}/illustrations/${illustration.illustrationId}/image`}
@@ -621,7 +621,7 @@ export default function NodeWorkflowPage() {
                   className="h-auto w-full object-contain"
                 />
                 {illustration.caption && (
-                  <figcaption className="border-t border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500">
+                  <figcaption className="border-t border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs text-slate-400">
                     {illustration.caption}
                   </figcaption>
                 )}
@@ -631,7 +631,7 @@ export default function NodeWorkflowPage() {
         )}
 
         {showsTutorChat && (
-          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
             <p className="mb-3 flex items-center gap-1.5 text-xs text-slate-500">
               <MessageCircle className="h-3.5 w-3.5" /> {t.tutorGuidesNotGrades}
             </p>
@@ -641,13 +641,13 @@ export default function NodeWorkflowPage() {
                 value={tutorInput}
                 onChange={(e) => setTutorInput(e.target.value)}
                 placeholder={t.askTutorPlaceholder}
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                className="input flex-1"
                 onKeyDown={(e) => e.key === 'Enter' && handleAskTutor()}
               />
               <button
                 onClick={handleAskTutor}
                 disabled={tutorLoading || !tutorInput.trim()}
-                className="flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+                className="flex items-center gap-1 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-3.5 py-2 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
               >
                 <Send className="h-4 w-4" /> {t.askTutorButton}
               </button>
@@ -660,17 +660,17 @@ export default function NodeWorkflowPage() {
             evidence, never evaluates it) — just a plain advance. */}
         {step.stepType === 'Hypothesis' && (
           <div className="mt-6">
-            <label className="mb-1 block text-sm font-medium text-slate-700">{t.yourResponseLabel}</label>
+            <label className="mb-1 block text-sm font-medium text-slate-300">{t.yourResponseLabel}</label>
             <textarea
               value={responseText}
               onChange={(e) => setResponseText(e.target.value)}
               rows={4}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+              className="input"
             />
             <button
               onClick={handleContinue}
               disabled={submitting || !responseText.trim()}
-              className="mt-3 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
             >
               {t.continueButton}
             </button>
@@ -686,26 +686,26 @@ export default function NodeWorkflowPage() {
         {step.stepType === 'Production' && (
           productionEvaluation?.IsCorrect ? (
             <RewardBanner title={t.productionCorrectTitle} onContinue={handleProductionContinue} t={t}>
-              <p className="mt-2 text-sm text-amber-700">{productionEvaluation.Feedback}</p>
+              <p className="mt-2 text-sm text-amber-200">{productionEvaluation.Feedback}</p>
             </RewardBanner>
           ) : (
             <div className="mt-6">
-              <label className="mb-1 block text-sm font-medium text-slate-700">{t.yourResponseLabel}</label>
+              <label className="mb-1 block text-sm font-medium text-slate-300">{t.yourResponseLabel}</label>
               <textarea
                 value={responseText}
                 onChange={(e) => setResponseText(e.target.value)}
                 rows={4}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                className="input"
               />
               {productionEvaluation && !productionEvaluation.IsCorrect && (
-                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <div className="mt-3 rounded-lg border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-300">
                   {productionEvaluation.Feedback}
                 </div>
               )}
               <button
                 onClick={productionEvaluation ? handleProductionRetry : handleProductionSubmit}
                 disabled={productionSubmitting || (!productionEvaluation && !responseText.trim())}
-                className="mt-3 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
               >
                 {productionSubmitting
                   ? t.productionEvaluating
@@ -727,24 +727,24 @@ export default function NodeWorkflowPage() {
                 learner action only, never auto-surfaced (see
                 /memories/repo/adaptive-learning-engine-design.md). Combines
                 the LLM's own knowledge with a live Bing Grounding search. */}
-            <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+            <div className="mb-4 rounded-xl border border-accent-400/20 bg-accent-500/5 p-4">
               {!knowledgeExpansion && (
                 <button
                   onClick={handleExpandKnowledge}
                   disabled={expansionLoading}
-                  className="flex items-center gap-1.5 rounded-lg border border-purple-300 bg-white px-3.5 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg border border-accent-400/30 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-accent-300 hover:bg-accent-500/10 disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
                   {expansionLoading ? t.expandKnowledgeLoading : t.expandKnowledgeButton}
                 </button>
               )}
-              {expansionError && <p className="mt-2 text-sm text-red-600">{expansionError}</p>}
+              {expansionError && <p className="mt-2 text-sm text-red-400">{expansionError}</p>}
               {knowledgeExpansion && (
                 <div>
                   <button
                     type="button"
                     onClick={() => setExpansionPanelOpen((open) => !open)}
-                    className="flex w-full items-center justify-between gap-1.5 text-xs font-medium uppercase tracking-wide text-purple-600"
+                    className="flex w-full items-center justify-between gap-1.5 text-xs font-medium uppercase tracking-wide text-accent-300"
                   >
                     <span className="flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5" /> {t.expandKnowledgeTitle}
@@ -753,9 +753,9 @@ export default function NodeWorkflowPage() {
                   </button>
                   {expansionPanelOpen && (
                     <div className="mt-2">
-                      <RichContent className="text-slate-700" html={knowledgeExpansion.Content} />
+                      <RichContent className="text-slate-300" html={knowledgeExpansion.Content} />
                       {knowledgeExpansion.DiagramIllustrationId && (
-                        <figure className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        <figure className="mt-3 overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
                           <img
                             src={`${API_BASE_URL}/illustrations/${knowledgeExpansion.DiagramIllustrationId}/image`}
                             alt=""
@@ -769,17 +769,17 @@ export default function NodeWorkflowPage() {
               )}
             </div>
 
-            <label className="mb-1 block text-sm font-medium text-slate-700">{t.teachingNotesLabel}</label>
+            <label className="mb-1 block text-sm font-medium text-slate-300">{t.teachingNotesLabel}</label>
             <textarea
               value={responseText}
               onChange={(e) => setResponseText(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+              className="input"
             />
             <button
               onClick={handleContinue}
               disabled={submitting}
-              className="mt-3 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
             >
               {t.continueWhenReadyButton}
             </button>
@@ -801,31 +801,31 @@ export default function NodeWorkflowPage() {
             <ReviewBanner title={recallReview.title} onContinue={handleRecallReviewContinue} t={t} />
           ) : (
             <div className="mt-6">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 {t.recallItemsMasteredLabel} {recallItemsMastered}/{RECALL_ITEMS_REQUIRED} ·{' '}
                 {t.recallAttemptLabel} {recallAttemptsUsed + 1} {t.assessmentOfLabel} {RECALL_MAX_ATTEMPTS}
               </p>
-              <RichContent className="mt-2 text-slate-700" html={recallLastPrompt ?? step.content} />
+              <RichContent className="mt-2 text-slate-300" html={recallLastPrompt ?? step.content} />
 
-              <label className="mb-1 mt-4 block text-sm font-medium text-slate-700">{t.yourResponseLabel}</label>
+              <label className="mb-1 mt-4 block text-sm font-medium text-slate-300">{t.yourResponseLabel}</label>
               <textarea
                 value={responseText}
                 onChange={(e) => setResponseText(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                className="input"
               />
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <button
                   onClick={handleRecallSubmit}
                   disabled={submitting || !responseText.trim()}
-                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {t.recallSubmit}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleStepIconClick('Teaching')}
-                  className="text-sm text-slate-500 underline decoration-dotted underline-offset-2 hover:text-slate-700"
+                  className="text-sm text-slate-500 underline decoration-dotted underline-offset-2 hover:text-slate-300"
                 >
                   {t.recallReviewTeachingLink}
                 </button>
@@ -878,7 +878,7 @@ function RichContent({ html, className }: { html: string; className?: string }) 
 
   return (
     <div
-      className={`${className ?? ''} [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5`}
+      className={`${className ?? ''} [&_a]:text-brand-300 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5`}
       style={{ whiteSpace: 'pre-wrap' }}
       dangerouslySetInnerHTML={{ __html: sanitized }}
     />
@@ -924,7 +924,7 @@ function StepperBar({
                   type="button"
                   onClick={() => onStepClick(stepType)}
                   title={t.stepReviewHint}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-green-500 bg-green-500 text-white transition hover:brightness-110"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-emerald-400 bg-emerald-500 text-[#fff] shadow-lg shadow-emerald-500/20 transition hover:brightness-110"
                 >
                   <Check className="h-4 w-4" />
                 </button>
@@ -932,21 +932,21 @@ function StepperBar({
                 <div
                   className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
                     isActive
-                      ? 'border-blue-500 bg-blue-50 text-blue-600'
-                      : 'border-slate-300 bg-white text-slate-400'
+                      ? 'border-brand-400 bg-brand-500/10 text-brand-300'
+                      : 'border-white/10 bg-white/[0.03] text-slate-500'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
                 </div>
               )}
               <span
-                className={`text-[11px] font-medium ${isActive ? 'text-blue-700' : isDone ? 'text-green-700' : 'text-slate-400'}`}
+                className={`text-[11px] font-medium ${isActive ? 'text-brand-300' : isDone ? 'text-emerald-300' : 'text-slate-500'}`}
               >
                 {labels[stepType]}
               </span>
             </div>
             {index < STEP_ORDER.length - 1 && (
-              <div className={`mx-1 h-0.5 flex-1 ${index < currentIndex ? 'bg-green-400' : 'bg-slate-200'}`} />
+              <div className={`mx-1 h-0.5 flex-1 ${index < currentIndex ? 'bg-emerald-400/50' : 'bg-white/10'}`} />
             )}
           </div>
         );
@@ -964,16 +964,16 @@ function StepperBar({
 function StepReviewBody({ data, t, language }: { data: StepReviewDto; t: Record<string, string>; language: string }) {
   return (
     <>
-      <RichContent className="text-sm leading-relaxed text-slate-700" html={data.Content} />
+      <RichContent className="text-sm leading-relaxed text-slate-300" html={data.Content} />
 
       {data.Evidence.length > 0 ? (
-        <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{t.stepReviewYourAnswers}</p>
+        <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t.stepReviewYourAnswers}</p>
           {data.Evidence.map((entry, index) => (
-            <div key={index} className="rounded-lg bg-slate-50 p-3">
+            <div key={index} className="rounded-lg bg-white/[0.03] p-3">
               {entry.TutorPrompt && <p className="text-xs text-slate-500">{entry.TutorPrompt}</p>}
-              <p className="mt-1 text-sm font-medium text-slate-800">{entry.StudentResponse}</p>
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-sm font-medium text-slate-200">{entry.StudentResponse}</p>
+              <p className="mt-1 text-[11px] text-slate-500">
                 {new Date(entry.CreatedDate).toLocaleString(language, { dateStyle: 'short', timeStyle: 'short' })}
                 {typeof entry.TutorScore === 'number' && ` · ${t.stepReviewScoreLabel} ${entry.TutorScore}`}
               </p>
@@ -981,7 +981,7 @@ function StepReviewBody({ data, t, language }: { data: StepReviewDto; t: Record<
           ))}
         </div>
       ) : (
-        <p className="mt-5 border-t border-slate-100 pt-4 text-sm text-slate-400">{t.stepReviewNoAnswers}</p>
+        <p className="mt-5 border-t border-white/10 pt-4 text-sm text-slate-500">{t.stepReviewNoAnswers}</p>
       )}
     </>
   );
@@ -1012,13 +1012,13 @@ function KnowledgeExpansionLoadingModal({ t }: { t: Record<string, string> }) {
   }, [steps.length]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-purple-100">
-          <Sparkles className="h-7 w-7 animate-pulse text-purple-600" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-950 p-7 text-center shadow-2xl shadow-black/40">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/10">
+          <Sparkles className="h-7 w-7 animate-pulse text-accent-400" />
         </div>
-        <h2 className="text-lg font-semibold text-slate-900">{t.expandKnowledgeModalTitle}</h2>
-        <p className="mt-1.5 text-sm text-slate-500">{t.expandKnowledgeModalSubtitle}</p>
+        <h2 className="text-lg font-semibold text-white">{t.expandKnowledgeModalTitle}</h2>
+        <p className="mt-1.5 text-sm text-slate-400">{t.expandKnowledgeModalSubtitle}</p>
 
         <ul className="mt-6 space-y-3 text-left">
           {steps.map((label, index) => {
@@ -1030,19 +1030,19 @@ function KnowledgeExpansionLoadingModal({ t }: { t: Record<string, string> }) {
                   className={
                     'flex h-6 w-6 flex-none items-center justify-center rounded-full transition-colors ' +
                     (isDone
-                      ? 'bg-purple-600 text-white'
+                      ? 'bg-accent-500 text-[#fff]'
                       : isActive
-                        ? 'border-2 border-purple-500'
-                        : 'border-2 border-slate-200')
+                        ? 'border-2 border-accent-400'
+                        : 'border-2 border-white/10')
                   }
                 >
                   {isDone ? (
                     <Check className="h-3.5 w-3.5" />
                   ) : isActive ? (
-                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-purple-500" />
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent-400" />
                   ) : null}
                 </span>
-                <span className={'text-sm ' + (isActive ? 'font-medium text-slate-800' : isDone ? 'text-slate-400 line-through' : 'text-slate-400')}>
+                <span className={'text-sm ' + (isActive ? 'font-medium text-white' : isDone ? 'text-slate-500 line-through' : 'text-slate-500')}>
                   {label}
                 </span>
               </li>
@@ -1050,8 +1050,8 @@ function KnowledgeExpansionLoadingModal({ t }: { t: Record<string, string> }) {
           })}
         </ul>
 
-        <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full w-1/3 animate-loadingBar rounded-full bg-purple-500" />
+        <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-1/3 animate-loadingBar rounded-full bg-accent-500" />
         </div>
       </div>
     </div>,
@@ -1087,21 +1087,21 @@ function StepReviewModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40">
         <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900">{stepLabels[review.stepType]}</h2>
+          <h2 className="text-lg font-semibold text-white">{stepLabels[review.stepType]}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {review.loading && <p className="text-sm text-slate-500">{t.stepReviewLoading}</p>}
-        {review.error && <p className="text-sm text-red-600">{t.nodeError}</p>}
+        {review.loading && <p className="text-sm text-slate-400">{t.stepReviewLoading}</p>}
+        {review.error && <p className="text-sm text-red-400">{t.nodeError}</p>}
 
         {review.data && <StepReviewBody data={review.data} t={t} language={language} />}
       </div>
@@ -1173,12 +1173,12 @@ function NodeSummaryView({
 
   return (
     <div className="mt-4 space-y-6">
-      <div className="rounded-2xl border border-green-200 bg-green-50 p-6">
-        <div className="flex items-center gap-2 text-green-700">
+      <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-6">
+        <div className="flex items-center gap-2 text-emerald-300">
           <Check className="h-5 w-5" />
           <h1 className="text-lg font-semibold">{nodeInfo?.name ?? t.nodeSummaryTitle}</h1>
         </div>
-        {nodeInfo?.description && <p className="mt-2 text-sm text-green-800">{nodeInfo.description}</p>}
+        {nodeInfo?.description && <p className="mt-2 text-sm text-emerald-200">{nodeInfo.description}</p>}
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SummaryStat label={t.nodeSummaryAttempts} value={String(summary.AttemptCount)} />
@@ -1205,8 +1205,8 @@ function NodeSummaryView({
         </div>
 
         {summary.PastAttempts.length > 1 && (
-          <div className="mt-5 border-t border-green-100 pt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-green-600">{t.nodeSummaryPastAttempts}</p>
+          <div className="mt-5 border-t border-emerald-400/20 pt-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-emerald-400">{t.nodeSummaryPastAttempts}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {summary.PastAttempts.map((attempt, index) => {
                 const isSelected = attempt.LearningSessionNodeId === viewedAttemptId;
@@ -1220,8 +1220,8 @@ function NodeSummaryView({
                     onClick={() => handleSelectAttempt(attempt)}
                     className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                       isSelected
-                        ? 'border-green-600 bg-green-600 text-white'
-                        : 'border-green-300 bg-white text-green-700 hover:bg-green-100'
+                        ? 'border-emerald-400 bg-emerald-500 text-[#fff]'
+                        : 'border-emerald-400/30 bg-white/[0.03] text-emerald-200 hover:bg-emerald-500/10'
                     }`}
                   >
                     {label}
@@ -1236,22 +1236,22 @@ function NodeSummaryView({
         <button
           onClick={onPracticeAgain}
           disabled={practicing}
-          className="mt-5 rounded-lg bg-green-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50"
+          className="mt-5 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
         >
           {practicing ? t.nodeSummaryPracticing : t.nodeSummaryPracticeAgain}
         </button>
       </div>
 
       <div className="space-y-4">
-        {loadingAttempt && <p className="text-sm text-slate-400">{t.stepReviewLoading}</p>}
+        {loadingAttempt && <p className="text-sm text-slate-500">{t.stepReviewLoading}</p>}
         {!loadingAttempt &&
           viewedSteps.map((stepData) => {
             const Icon = STEP_ICONS[stepData.StepType];
             return (
-              <div key={stepData.StepType} className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div key={stepData.StepType} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
                 <div className="mb-3 flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-slate-500" />
-                  <h2 className="text-sm font-semibold text-slate-800">{stepLabels[stepData.StepType]}</h2>
+                  <Icon className="h-4 w-4 text-slate-400" />
+                  <h2 className="text-sm font-semibold text-slate-200">{stepLabels[stepData.StepType]}</h2>
                 </div>
                 <StepReviewBody data={stepData} t={t} language={language} />
               </div>
@@ -1265,8 +1265,8 @@ function NodeSummaryView({
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[11px] uppercase tracking-wide text-green-600">{label}</p>
-      <p className="text-sm font-semibold text-green-900">{value}</p>
+      <p className="text-[11px] uppercase tracking-wide text-emerald-400">{label}</p>
+      <p className="text-sm font-semibold text-emerald-100">{value}</p>
     </div>
   );
 }
@@ -1289,13 +1289,13 @@ function RewardBanner({
   children?: ReactNode;
 }) {
   return (
-    <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
-      <Star className="mx-auto h-9 w-9 text-amber-500" fill="currentColor" />
-      <p className="mt-2 text-base font-semibold text-amber-800">{title}</p>
+    <div className="mt-6 rounded-xl border border-amber-400/20 bg-amber-500/10 p-6 text-center">
+      <Star className="mx-auto h-9 w-9 text-amber-400" fill="currentColor" />
+      <p className="mt-2 text-base font-semibold text-amber-200">{title}</p>
       {children}
       <button
         onClick={onContinue}
-        className="mt-4 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+        className="mt-4 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
       >
         {t.continueButton}
       </button>
@@ -1321,12 +1321,12 @@ function ReviewBanner({
   t: Record<string, string>;
 }) {
   return (
-    <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-6 text-center">
-      <BookOpen className="mx-auto h-9 w-9 text-blue-500" />
-      <p className="mt-2 text-base font-semibold text-blue-800">{title}</p>
+    <div className="mt-6 rounded-xl border border-brand-400/20 bg-brand-500/10 p-6 text-center">
+      <BookOpen className="mx-auto h-9 w-9 text-brand-300" />
+      <p className="mt-2 text-base font-semibold text-brand-200">{title}</p>
       <button
         onClick={onContinue}
-        className="mt-4 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+        className="mt-4 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
       >
         {t.continueButton}
       </button>
@@ -1342,21 +1342,21 @@ function TutorChat({ messages, loading }: { messages: TutorChatMessage[]; loadin
         <div
           key={index}
           className={`rounded-lg px-3 py-2 text-sm ${
-            message.author === 'student' ? 'ml-8 bg-blue-100 text-blue-900' : 'mr-8 bg-white text-slate-700 shadow-sm'
+            message.author === 'student' ? 'ml-8 bg-brand-500/20 text-brand-100' : 'mr-8 bg-white/[0.05] text-slate-300 shadow-sm'
           }`}
         >
           {message.text}
         </div>
       ))}
-      {loading && <p className="mr-8 rounded-lg bg-white px-3 py-2 text-sm italic text-slate-400 shadow-sm">…</p>}
+      {loading && <p className="mr-8 rounded-lg bg-white/[0.05] px-3 py-2 text-sm italic text-slate-500 shadow-sm">…</p>}
     </div>
   );
 }
 
 const CORRECTNESS_STYLES: Record<string, string> = {
-  Correct: 'border-green-200 bg-green-50 text-green-800',
-  PartiallyCorrect: 'border-amber-200 bg-amber-50 text-amber-800',
-  Incorrect: 'border-red-200 bg-red-50 text-red-800',
+  Correct: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300',
+  PartiallyCorrect: 'border-amber-400/20 bg-amber-500/10 text-amber-300',
+  Incorrect: 'border-red-400/20 bg-red-500/10 text-red-300',
 };
 
 function correctnessLabel(correctness: string, t: Record<string, string>): string {
@@ -1409,29 +1409,29 @@ function AssessmentPanel({
       const passed = lastResult.Passed ?? false;
       return (
         <div className="mt-6">
-          <div className={`rounded-xl border p-4 ${passed ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
-            <p className={`text-sm font-medium ${passed ? 'text-green-800' : 'text-amber-800'}`}>
+          <div className={`rounded-xl border p-4 ${passed ? 'border-emerald-400/20 bg-emerald-500/10' : 'border-amber-400/20 bg-amber-500/10'}`}>
+            <p className={`text-sm font-medium ${passed ? 'text-emerald-300' : 'text-amber-300'}`}>
               {passed ? t.assessmentPassed : t.assessmentFailed}
             </p>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-slate-400">
               {t.assessmentFinalScoreLabel}: {lastResult.FinalScore}/100
             </p>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">{t.assessmentScoreExplanation}</p>
-            {!passed && <p className="mt-2 text-sm text-amber-700">{t.assessmentRoundFailedMessage}</p>}
+            {!passed && <p className="mt-2 text-sm text-amber-300">{t.assessmentRoundFailedMessage}</p>}
           </div>
 
           {passed ? (
             <button
               onClick={onCompleteNode}
               disabled={completing}
-              className="mt-4 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              className="mt-4 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
             >
               {t.completeNodeButton}
             </button>
           ) : (
             <button
               onClick={onContinue}
-              className="mt-4 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+              className="mt-4 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               {t.assessmentStartNewRound}
             </button>
@@ -1444,14 +1444,14 @@ function AssessmentPanel({
       <div className="mt-6">
         <div className={`rounded-xl border p-4 ${style}`}>
           <p className="flex items-center gap-1.5 text-sm font-medium">
-            {lastResult.Grade.Correctness === 'Correct' && <Star className="h-4 w-4 text-amber-500" fill="currentColor" />}
+            {lastResult.Grade.Correctness === 'Correct' && <Star className="h-4 w-4 text-amber-400" fill="currentColor" />}
             {correctnessLabel(lastResult.Grade.Correctness, t)}
           </p>
-          <p className="mt-1 text-sm text-slate-600">{lastResult.Grade.Feedback}</p>
+          <p className="mt-1 text-sm text-slate-400">{lastResult.Grade.Feedback}</p>
         </div>
         <button
           onClick={onContinue}
-          className="mt-4 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+          className="mt-4 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
           {t.assessmentNextQuestion}
         </button>
@@ -1465,13 +1465,13 @@ function AssessmentPanel({
     const passed = round.Status === 'Passed';
     return (
       <div className="mt-6">
-        <div className={`rounded-xl border p-4 ${passed ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
-          <p className={`text-sm font-medium ${passed ? 'text-green-800' : 'text-amber-800'}`}>
+        <div className={`rounded-xl border p-4 ${passed ? 'border-emerald-400/20 bg-emerald-500/10' : 'border-amber-400/20 bg-amber-500/10'}`}>
+          <p className={`text-sm font-medium ${passed ? 'text-emerald-300' : 'text-amber-300'}`}>
             {passed ? t.assessmentRoundPassedMessage : t.assessmentFailed}
           </p>
           {round.FinalScore !== null && round.FinalScore !== undefined && (
             <>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-slate-400">
                 {t.assessmentFinalScoreLabel}: {round.FinalScore}/100
               </p>
               <p className="mt-2 text-xs leading-relaxed text-slate-500">{t.assessmentScoreExplanation}</p>
@@ -1482,7 +1482,7 @@ function AssessmentPanel({
           <button
             onClick={onCompleteNode}
             disabled={completing}
-            className="mt-4 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            className="mt-4 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
           >
             {t.completeNodeButton}
           </button>
@@ -1494,13 +1494,13 @@ function AssessmentPanel({
   const question = round.CurrentQuestion;
   return (
     <div className="mt-6">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {t.assessmentRoundNumberLabel} {round.RoundNumber} · {t.assessmentQuestionLabel} {question.QuestionIndex} {t.assessmentOfLabel}{' '}
         {round.TotalQuestions}
       </p>
-      <RichContent className="mt-2 text-slate-800" html={question.QuestionText} />
+      <RichContent className="mt-2 text-slate-300" html={question.QuestionText} />
       {question.IllustrationId && (
-        <figure className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <figure className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
           <img
             src={`${API_BASE_URL}/illustrations/${question.IllustrationId}/image`}
             alt=""
@@ -1508,17 +1508,17 @@ function AssessmentPanel({
           />
         </figure>
       )}
-      <label className="mb-1 mt-4 block text-sm font-medium text-slate-700">{t.yourResponseLabel}</label>
+      <label className="mb-1 mt-4 block text-sm font-medium text-slate-300">{t.yourResponseLabel}</label>
       <textarea
         value={answerText}
         onChange={(e) => onAnswerTextChange(e.target.value)}
         rows={4}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+        className="input"
       />
       <button
         onClick={onSubmitAnswer}
         disabled={submitting || !answerText.trim()}
-        className="mt-3 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
       >
         {t.assessmentSubmitAnswer}
       </button>

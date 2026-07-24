@@ -105,12 +105,18 @@ public sealed class CuradorAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _modelName;
 
     public CuradorAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
-        var deploymentName = configuration["AzureOpenAIDeploymentName"];
+        // Economy tier: curation here is mostly faithful reformatting, not deep judgment,
+        // so it's a good candidate for a cheaper model. Falls back to the main deployment
+        // if 'AzureOpenAIEconomyDeploymentName' isn't set.
+        var deploymentName = configuration["AzureOpenAIEconomyDeploymentName"] ?? configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+
+        _modelName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -160,6 +166,7 @@ public sealed class CuradorAgent
         var tokenUsage = new AgentTokenUsage
         {
             AgentName = "Curador",
+            ModelName = _modelName,
             InputTokens = (int)(usage?.InputTokenCount ?? 0),
             OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
             CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)

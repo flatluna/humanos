@@ -1,15 +1,11 @@
 import { Outlet, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import {
-  Briefcase,
-  FileText,
   Compass,
-  Building2,
   Gauge,
   Sparkles,
   ClipboardCheck,
   Rocket,
-  TrendingUp,
   Lock,
   CheckCircle2,
   ArrowRight,
@@ -17,21 +13,26 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { useWorkContextStore } from '@/features/enterprise-context/store/useWorkContextStore';
-import { useRoleExperienceStore } from '@/features/role-requirements/store/useRoleExperienceStore';
+import { useCurrentSituationStore } from '@/features/current-situation/store/useCurrentSituationStore';
+import { useFutureDirectionStore } from '@/features/future-direction/store/useFutureDirectionStore';
+import { useStartingPointStore } from '@/features/starting-point/store/useStartingPointStore';
 
 type StepStatus = 'completed' | 'inProgress' | 'notStarted' | 'locked';
 
+/** Reduced to the 6 steps that are actually universal for the
+ *  individuals use case (children, homemakers, students, career
+ *  changers) — the original 9-step sequence in
+ *  /memories/repo/human-os-core-philosophy.md was designed for
+ *  employees (Work Context, Role Requirements, Organizational
+ *  Priorities...). Employee-specific steps (Work and Experience /
+ *  role-experience, Growth Context) are dropped from this index for
+ *  now; their routes still exist for a future employee-specific UX. */
 type StepLabelKey =
-  | 'currentRole'
-  | 'workAndExperience'
-  | 'yourFuture'
-  | 'growthContext'
+  | 'currentSituation'
+  | 'futureDirection'
   | 'startingPoint'
-  | 'agentProposedPlan'
   | 'humanReview'
-  | 'planActivation'
-  | 'continuousEvolution';
+  | 'planActivation';
 
 interface SequenceStep {
   labelKey: StepLabelKey;
@@ -57,35 +58,38 @@ const STATUS_TONE: Record<StepStatus, 'neutral' | 'accent'> = {
 export function GrowthPlanPage() {
   const { t } = useTranslation();
 
-  const workContextConfirmation = useWorkContextStore((state) => state.confirmationStatus);
-  const workContextCorrection = useWorkContextStore((state) => state.pendingCorrectionStatus);
+  const currentSituationCompleted = useCurrentSituationStore((state) => state.completed);
+  const futureDirectionCompleted = useFutureDirectionStore((state) => state.completed);
+  const startingPointCompleted = useStartingPointStore((state) => state.completed);
 
-  const jobDescriptionFeedback = useRoleExperienceStore((state) => state.jobDescriptionFeedback);
-  const employeeProvidedJobDescription = useRoleExperienceStore((state) => state.employeeProvidedJobDescription);
-  const resumeUploadStatus = useRoleExperienceStore((state) => state.resumeUploadStatus);
-
-  const currentRoleStatus: StepStatus =
-    workContextConfirmation === 'confirmed' || workContextCorrection === 'submitted' ? 'completed' : 'notStarted';
-
-  const workAndExperienceStarted =
-    Boolean(jobDescriptionFeedback) || Boolean(employeeProvidedJobDescription) || resumeUploadStatus !== 'idle';
-  const workAndExperienceStatus: StepStatus = workAndExperienceStarted ? 'inProgress' : 'notStarted';
+  const currentSituationStatus: StepStatus = currentSituationCompleted ? 'completed' : 'notStarted';
+  const futureDirectionStatus: StepStatus = currentSituationStatus !== 'completed'
+    ? 'locked'
+    : futureDirectionCompleted
+      ? 'completed'
+      : 'notStarted';
+  const startingPointStatus: StepStatus = futureDirectionStatus !== 'completed'
+    ? 'locked'
+    : startingPointCompleted
+      ? 'completed'
+      : 'notStarted';
 
   const steps: SequenceStep[] = [
-    { labelKey: 'currentRole', icon: Briefcase, to: '/growth-plan/currentrole', status: currentRoleStatus },
+    { labelKey: 'currentSituation', icon: Gauge, to: '/growth-plan/current-situation', status: currentSituationStatus },
     {
-      labelKey: 'workAndExperience',
-      icon: FileText,
-      to: '/growth-plan/role-experience',
-      status: currentRoleStatus === 'completed' ? workAndExperienceStatus : 'locked',
+      labelKey: 'futureDirection',
+      icon: Compass,
+      to: '/growth-plan/future-direction',
+      status: futureDirectionStatus,
     },
-    { labelKey: 'yourFuture', icon: Compass, to: null, status: 'locked' },
-    { labelKey: 'growthContext', icon: Building2, to: null, status: 'locked' },
-    { labelKey: 'startingPoint', icon: Gauge, to: null, status: 'locked' },
-    { labelKey: 'agentProposedPlan', icon: Sparkles, to: null, status: 'locked' },
+    {
+      labelKey: 'startingPoint',
+      icon: Sparkles,
+      to: startingPointStatus === 'locked' ? null : '/growth-plan/starting-point',
+      status: startingPointStatus,
+    },
     { labelKey: 'humanReview', icon: ClipboardCheck, to: null, status: 'locked' },
     { labelKey: 'planActivation', icon: Rocket, to: null, status: 'locked' },
-    { labelKey: 'continuousEvolution', icon: TrendingUp, to: null, status: 'locked' },
   ];
 
   const flow = t('growthPlan.overview.result.flow', { returnObjects: true }) as string[];
@@ -111,7 +115,11 @@ export function GrowthPlanPage() {
                   : 'statusLocked';
           const items = t(`growthPlan.overview.steps.${step.labelKey}.items`, { returnObjects: true }) as string[];
           const description =
-            step.labelKey === 'currentRole' ? t('growthPlan.overview.steps.currentRole.description') : null;
+            step.labelKey === 'currentSituation' ||
+            step.labelKey === 'futureDirection' ||
+            step.labelKey === 'startingPoint'
+              ? t(`growthPlan.overview.steps.${step.labelKey}.description`)
+              : null;
 
           const content = (
             <Card

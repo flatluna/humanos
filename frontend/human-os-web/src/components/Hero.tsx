@@ -1,9 +1,13 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-const flow = ["Mind", "Memory", "Practice", "Recall", "Application", "Capability", "Mastery", "Value"];
+const flowKeys = ["mind", "memory", "practice", "recall", "application", "capability", "mastery", "value"] as const;
 
 export default function Hero() {
+  const { t } = useTranslation();
+  const flow = flowKeys.map((key) => t(`landing.hero.flow.${key}`));
+
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden bg-[#05060a] text-white">
       {/* Ambient background */}
@@ -30,18 +34,18 @@ export default function Hero() {
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/70 backdrop-blur"
           >
             <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-            A new category of human development
+            {t("landing.hero.badge")}
           </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.1 }}
-            className="mt-8 text-5xl sm:text-6xl lg:text-7xl font-semibold leading-[1.05] tracking-tight"
+            className="mt-8 text-2xl sm:text-3xl lg:text-4xl font-semibold leading-[1.05] tracking-tight"
           >
-            The Human Operating System
-            <span className="block bg-gradient-to-r from-blue-400 via-teal-300 to-violet-400 bg-clip-text text-transparent">
-              for the Age of AI
+            {t("landing.hero.titleLine1")}
+            <span className="block text-lg sm:text-xl lg:text-2xl font-normal bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600 bg-clip-text text-transparent">
+              {t("landing.hero.titleLine2")}
             </span>
           </motion.h1>
 
@@ -51,10 +55,7 @@ export default function Hero() {
             transition={{ duration: 0.7, delay: 0.25 }}
             className="mt-8 max-w-xl text-lg text-white/60 leading-relaxed"
           >
-            Artificial intelligence is accelerating. Human capability must
-            accelerate faster. Human Operative System helps individuals and
-            organizations strengthen memory, develop real capabilities, adapt
-            continuously, and create meaningful value throughout life.
+            {t("landing.hero.subtitle")}
           </motion.p>
 
           <motion.div
@@ -64,12 +65,12 @@ export default function Hero() {
             className="mt-10 flex flex-wrap gap-4"
           >
             <button className="group inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 font-medium text-black transition hover:bg-white/90">
-              Start Your Journey
+              {t("landing.hero.ctaPrimary")}
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </button>
 
             <button className="rounded-full border border-white/15 px-7 py-3.5 font-medium text-white/80 transition hover:border-white/30 hover:text-white">
-              Explore the Framework
+              {t("landing.hero.ctaSecondary")}
             </button>
           </motion.div>
         </div>

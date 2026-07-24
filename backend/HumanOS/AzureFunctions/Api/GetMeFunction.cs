@@ -57,14 +57,16 @@ public sealed class GetMeFunction
                 request, HttpStatusCode.NotFound, "PersonNotFound", "No Human OS account exists yet for this identity.", cancellationToken);
         }
 
-        var tenant = await _tenantService.GetByIdAsync(person.TenantId, cancellationToken);
+        var tenant = person.TenantId is Guid tenantId
+            ? await _tenantService.GetByIdAsync(tenantId, cancellationToken)
+            : null;
 
         var response = request.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(new MeResponse
         {
             PersonId = person.PersonId,
             TenantId = person.TenantId,
-            TenantName = tenant?.Name ?? string.Empty,
+            TenantName = tenant?.Name,
             Email = person.Email,
         });
 

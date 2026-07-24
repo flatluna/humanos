@@ -266,6 +266,7 @@ public sealed class GoalService
         return new GoalResponse
         {
             GoalId = goal.GoalId,
+            Code = goal.Code,
             Name = goal.Translations?.FirstOrDefault(t => t.LanguageCode == languageCode)?.Name
                 ?? goal.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Name
                 ?? goal.Name,
@@ -291,6 +292,7 @@ public sealed class GoalService
             PersonGoalId = personGoal.PersonGoalId,
             PersonId = personGoal.PersonId,
             GoalId = personGoal.GoalId,
+            GoalCode = personGoal.Goal.Code,
             GoalName = personGoal.Goal.Translations?.FirstOrDefault(t => t.LanguageCode == languageCode)?.Name
                 ?? personGoal.Goal.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Name
                 ?? personGoal.Goal.Name,

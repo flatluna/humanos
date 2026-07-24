@@ -6,6 +6,10 @@ interface CapabilityActionsMenuProps {
   /** Only present for real published capabilities (GUID capabilityId) —
    * opens the read-only "view real generated content" screen. */
   onViewContent?: () => void;
+  /** Only present for real published capabilities (GUID capabilityId) —
+   * opens the big destructive-action warning modal before actually
+   * calling DELETE /capabilities/{id}. */
+  onDelete?: () => void;
 }
 
 /**
@@ -16,7 +20,7 @@ interface CapabilityActionsMenuProps {
  * propagation so it never also triggers the card's own "open in Studio"
  * click handler.
  */
-export default function CapabilityActionsMenu({ onEdit, onViewContent }: CapabilityActionsMenuProps) {
+export default function CapabilityActionsMenu({ onEdit, onViewContent, onDelete }: CapabilityActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -68,6 +72,17 @@ export default function CapabilityActionsMenu({ onEdit, onViewContent }: Capabil
           >
             Edit
           </button>
+          {onDelete && (
+            <>
+              <div className="my-1 border-t border-gray-100" />
+              <button
+                onClick={() => runAndClose(onDelete)}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 cursor-pointer font-medium"
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { apiGet } from './httpClient';
+import { apiGet, apiDelete } from './httpClient';
 import { CapabilitySummary } from '../../types';
 
 /** Real backend response shape (PascalCase) — see CapabilityResponse.cs. */
@@ -41,4 +41,17 @@ export async function getCapabilities(): Promise<CapabilitySummary[]> {
   return capabilities
     .map(toCapabilitySummary)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+/**
+ * Permanently deletes a capability and ALL its content — levels/modules,
+ * the capability graph (nodes/blueprints/illustrations), any Learning
+ * Runtime sessions run against it, and any learner progress. Backed by
+ * DELETE /capabilities/{id} (see DeleteCapabilityFunction /
+ * CapabilityService.DeleteAsync — fully transactional on the backend).
+ * Irreversible: callers MUST confirm with the user first (see
+ * DeleteCapabilityModal).
+ */
+export async function deleteCapability(capabilityId: string): Promise<void> {
+  await apiDelete(`/capabilities/${capabilityId}`);
 }

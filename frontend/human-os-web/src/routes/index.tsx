@@ -24,6 +24,18 @@ export const router = createBrowserRouter([
             lazy: () => import('@/features/growth-plan').then((m) => ({ Component: m.GrowthPlanPage })),
           },
           {
+            path: 'current-situation',
+            lazy: () => import('@/features/current-situation').then((m) => ({ Component: m.CurrentSituationPage })),
+          },
+          {
+            path: 'future-direction',
+            lazy: () => import('@/features/future-direction').then((m) => ({ Component: m.FutureDirectionPage })),
+          },
+          {
+            path: 'starting-point',
+            lazy: () => import('@/features/starting-point').then((m) => ({ Component: m.StartingPointPage })),
+          },
+          {
             path: 'currentrole',
             lazy: () => import('@/features/enterprise-context').then((m) => ({ Component: m.WorkContextPage })),
           },
@@ -42,7 +54,20 @@ export const router = createBrowserRouter([
       },
       {
         path: 'capabilities',
-        lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.CapabilitiesPage })),
+        children: [
+          {
+            index: true,
+            lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.CapabilitiesPage })),
+          },
+          {
+            path: ':capabilityId',
+            lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.CapabilityGraphPage })),
+          },
+          {
+            path: ':capabilityId/nodes/:nodeId',
+            lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.CapabilityNodePage })),
+          },
+        ],
       },
       { path: 'goals', lazy: () => import('@/features/goals').then((m) => ({ Component: m.GoalsPage })) },
       {

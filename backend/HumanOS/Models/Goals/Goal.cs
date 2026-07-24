@@ -4,6 +4,11 @@ public sealed class Goal
 {
     public Guid GoalId { get; set; }
 
+    /// <summary>Stable slug (e.g. "helpFamily") used to match a catalog row
+    /// from client code, independent of the localized display Name. Same
+    /// pattern as <see cref="HumanOS.Models.Capabilities.Subject.Code"/>.</summary>
+    public string Code { get; set; } = null!;
+
     public string Name { get; set; } = null!;
 
     public string? Description { get; set; }

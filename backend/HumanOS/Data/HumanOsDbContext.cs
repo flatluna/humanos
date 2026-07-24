@@ -8,8 +8,10 @@ using HumanOS.Models.GrowthActions;
 using HumanOS.Models.JobDescriptions;
 using HumanOS.Models.Learning;
 using HumanOS.Models.Localization;
+using HumanOS.Models.Motivations;
 using HumanOS.Models.People;
 using HumanOS.Models.Practice;
+using HumanOS.Models.Programs;
 using HumanOS.Models.Projects;
 using HumanOS.Models.Recall;
 using HumanOS.Models.Tenancy;
@@ -35,6 +37,15 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<HumanState> HumanStates => Set<HumanState>();
 
+    public DbSet<PersonCurrentSituation> PersonCurrentSituations =>
+        Set<PersonCurrentSituation>();
+
+    public DbSet<PersonFutureDirection> PersonFutureDirections =>
+        Set<PersonFutureDirection>();
+
+    public DbSet<PersonStartingPoint> PersonStartingPoints =>
+        Set<PersonStartingPoint>();
+
     public DbSet<GrowthAction> GrowthActions => Set<GrowthAction>();
 
     public DbSet<Agent> Agents => Set<Agent>();
@@ -49,6 +60,11 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<CapabilityDomainTranslation>
         CapabilityDomainTranslations =>
         Set<CapabilityDomainTranslation>();
+
+    public DbSet<Subject> Subjects => Set<Subject>();
+
+    public DbSet<SubjectTranslation> SubjectTranslations =>
+        Set<SubjectTranslation>();
 
     public DbSet<Capability> Capabilities => Set<Capability>();
 
@@ -76,6 +92,14 @@ public sealed class HumanOsDbContext : DbContext
         Set<GoalCapability>();
 
     public DbSet<PersonGoal> PersonGoals => Set<PersonGoal>();
+
+    public DbSet<Motivation> Motivations => Set<Motivation>();
+
+    public DbSet<MotivationTranslation> MotivationTranslations =>
+        Set<MotivationTranslation>();
+
+    public DbSet<PersonMotivation> PersonMotivations =>
+        Set<PersonMotivation>();
 
     public DbSet<Project> Projects => Set<Project>();
 
@@ -127,6 +151,12 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<CapabilityGraphNodeIllustration> CapabilityGraphNodeIllustrations =>
         Set<CapabilityGraphNodeIllustration>();
+
+    /// <summary>Persisted per-agent-call token usage for the cost-per-
+    /// capability dashboard (2026-07-23) — see
+    /// <see cref="CapabilityGenerationUsage"/>.</summary>
+    public DbSet<CapabilityGenerationUsage> CapabilityGenerationUsages =>
+        Set<CapabilityGenerationUsage>();
 
     /// <summary>On-demand "Profundizar" knowledge expansion cache, one row
     /// per node (2026-07-20) — see
@@ -191,6 +221,17 @@ public sealed class HumanOsDbContext : DbContext
     /// resume-hang bug this closes.</summary>
     public DbSet<RuntimeSessionStatus> RuntimeSessionStatuses =>
         Set<RuntimeSessionStatus>();
+
+    /// <summary>Curated learning paths grouping an ordered sequence of
+    /// existing Capabilities (2026-07-23) — see <see cref="LearningProgram"/>.</summary>
+    public DbSet<LearningProgram> Programs =>
+        Set<LearningProgram>();
+
+    public DbSet<ProgramTranslation> ProgramTranslations =>
+        Set<ProgramTranslation>();
+
+    public DbSet<ProgramCapability> ProgramCapabilities =>
+        Set<ProgramCapability>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

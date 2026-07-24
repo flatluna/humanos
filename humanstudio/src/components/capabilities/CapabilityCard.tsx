@@ -25,6 +25,7 @@ interface CapabilityCardProps {
   capability: CapabilitySummary;
   onOpenInStudio: () => void;
   onViewContent?: () => void;
+  onDelete?: () => void;
 }
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,6 +42,7 @@ export default function CapabilityCard({
   capability,
   onOpenInStudio,
   onViewContent,
+  onDelete,
 }: CapabilityCardProps) {
   const isRealCapability = GUID_PATTERN.test(capability.capabilityId);
 
@@ -54,6 +56,7 @@ export default function CapabilityCard({
         <CapabilityActionsMenu
           onEdit={onOpenInStudio}
           onViewContent={isRealCapability ? onViewContent : undefined}
+          onDelete={isRealCapability ? onDelete : undefined}
         />
       </div>
 

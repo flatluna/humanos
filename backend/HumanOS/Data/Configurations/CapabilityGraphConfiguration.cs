@@ -26,6 +26,9 @@ public class CapabilityGraphConfiguration : IEntityTypeConfiguration<CapabilityG
         builder.Property(g => g.KeyEntitiesJson)
             .HasColumnType("nvarchar(max)");
 
+        builder.Property(g => g.CoverImageStoragePath)
+            .HasMaxLength(1000);
+
         builder.Property(g => g.CreatedDate)
             .HasDefaultValueSql("GETUTCDATE()")
             .IsRequired();

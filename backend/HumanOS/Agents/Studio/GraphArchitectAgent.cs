@@ -227,10 +227,33 @@ public sealed class GraphArchitectAgent
            (the chunk that states it, or the chunk it is a prerequisite for).
         3. Every edge MUST have a clear rationale grounded in cognitive/pedagogical
            logic, not speculation.
-        4. Keep the graph small and comprehensible (target: 15-20 nodes, max 30).
-           For a small/simple corpus, a handful of well-chosen nodes (e.g. 3-6)
-           is correct — never pad the graph with document-structure nodes to
-           hit a target count.
+        4. NODE COUNT MUST MATCH THE TOPIC'S REAL COGNITIVE COMPLEXITY — there
+           is NO minimum, NO default, and NO target count whatsoever. Do NOT
+           feel obligated to reach any particular number, small or large.
+           Ask yourself: "How many truly distinct, masterable concepts/skills
+           does this topic actually have?" — then emit EXACTLY that many
+           nodes, nothing more and nothing less. Do not add a node "for
+           completeness," to "round out" the graph, or because a bigger (or
+           even a specific smaller) graph looks more correct — every node
+           that isn't a real, separate, masterable capability is a defect,
+           not a bonus.
+             - Example only (not a rule, not a floor, not a ceiling): "un
+               niño aprende a sumar y restar" has exactly two real skills —
+               "Suma" and "Resta" — plus a shared prerequisite concept like
+               "Cantidad" ONLY if the corpus genuinely treats it as its own
+               distinct idea. That could be 2 nodes, or 3 — never one node
+               per chapter, definition, example type, or sub-example, and
+               never padded to some larger number.
+             - A broader topic simply has more real distinct concepts/skills,
+               so its correct node count is naturally higher — there is
+               still no target to hit, just count what genuinely exists.
+             - 30 is a hard ceiling for extreme cases, never a goal, and
+               never a hint that graphs should trend toward that size.
+           When unsure whether two ideas are one node or two, ALWAYS choose
+           the smaller graph — merging two closely related ideas into one
+           richer node is almost always more correct than splitting them,
+           because splitting produces the document-structure-as-nodes
+           failure mode this agent exists to avoid.
         5. Validate DAG structure: no cycles, no self-loops, no duplicate nodes/edges.
 
         SELF-CHECK BEFORE EMITTING EACH NODE (all must be YES, else discard):
@@ -342,6 +365,23 @@ public sealed class GraphArchitectAgent
           "90/100", "60/100", "20/100") and write them explicitly into the
           prompt — do not describe a data visualization vaguely and hope the
           image model fills in something sensible.
+
+          HUMAN BODY / BIOLOGY / MEDICAL CONTENT IS LEGITIMATE EDUCATIONAL
+          MATERIAL. Some capabilities are genuinely about human anatomy,
+          biology, physiology, or health/medical training (e.g. a Biología
+          course covering organs, the reproductive system, the skeletal or
+          muscular system, a clinical procedure). This is real scientific/
+          educational research and training content, not indecent or
+          inappropriate material — never skip, avoid, or water down a
+          node's actual anatomical content out of unwarranted caution when
+          the source corpus genuinely covers it. When an IllustrationPrompt
+          needs to depict the human body or a body part for this reason,
+          write it the way a real anatomy textbook or clinical/scientific
+          diagram would: a labeled anatomical diagram, cross-section, or
+          educational illustration — clinical and diagrammatic in style,
+          never a photorealistic depiction of a real/identifiable person,
+          never sexualized or gratuitous, never more graphic detail than a
+          standard textbook diagram would show.
         - References: the corpus chunk Tag(s) (e.g. "Definición",
           "Aplicaciones cotidianas") that this node's content is grounded in.
 
@@ -409,12 +449,15 @@ public sealed class GraphArchitectAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _modelName;
 
     public GraphArchitectAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+
+        _modelName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -460,12 +503,25 @@ public sealed class GraphArchitectAgent
     /// chapters 1:1. Null/empty when there is no real chapter structure to
     /// signal (e.g. a short note, or a single-chapter document).
     /// </param>
+    /// <param name="programContext">
+    /// Optional: extra grounding context when this Capability is being
+    /// created directly into an existing Program's sequence \u2014 the
+    /// Program's own name/objectives/requirements, this Capability's
+    /// intended sequence position, and any objectives/requirements the
+    /// designer set specifically for this Capability's role within that
+    /// Program (see ProgramCapability.Objectives/Requirements). Used the
+    /// same way as <paramref name="documentChapterOrder"/>: a STRONG
+    /// SIGNAL, never a rigid rule \u2014 the agent still designs the graph
+    /// from the corpus itself. Null when this Capability isn't being
+    /// attached to a Program at creation time.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>ExtractionResult with Graph + TokenUsage.</returns>
     public async Task<ExtractionResult> ExtractGraphAsync(
         string capabilityName,
         CuratedCorpus curatedCorpus,
         string? documentChapterOrder = null,
+        string? programContext = null,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -498,7 +554,10 @@ public sealed class GraphArchitectAgent
             $"Capability: {capabilityName}\n\n" +
             $"Curated Corpus Summary:\n{curatedCorpus.Summary}\n\n" +
             $"Curated Corpus Chunks:\n{corpusText}" +
-            chapterOrderSection;
+            chapterOrderSection +
+            (string.IsNullOrWhiteSpace(programContext)
+                ? string.Empty
+                : $"\n\n{programContext}");
 
         // Run agent with structured output
         var response = await _agent.RunAsync<CapabilityGraphResponse>(prompt, cancellationToken: cancellationToken);
@@ -522,6 +581,7 @@ public sealed class GraphArchitectAgent
         var tokenUsage = new AgentTokenUsage
         {
             AgentName = "GraphArchitect",
+            ModelName = _modelName,
             InputTokens = (int)(usage?.InputTokenCount ?? 0),
             OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
             CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)

@@ -46,6 +46,17 @@ public class CapabilityGraph
     /// Same generation/usage rules as <see cref="ExecutiveSummary"/>.</summary>
     public string? KeyEntitiesJson { get; set; }
 
+    /// <summary>Blob StoragePath (Azure Data Lake, same "capability-graphs"
+    /// container as per-node illustrations) of a single course-level cover
+    /// image representing the WHOLE capability, generated once at capability
+    /// creation time (2026-07-21 — see
+    /// <see cref="Services.PdfCapabilityGraphPipelineService"/>'s cover-image
+    /// step and <see cref="Storage.CapabilityGraphIllustrationStorageService.UploadCoverImageAsync"/>).
+    /// Null when generation wasn't configured or failed (best-effort, never
+    /// blocks capability creation) — can be backfilled later via
+    /// GenerateCapabilityCoverImageFunction.</summary>
+    public string? CoverImageStoragePath { get; set; }
+
     /// <summary>Fecha UTC de creación del grafo.</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

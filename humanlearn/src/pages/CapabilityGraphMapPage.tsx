@@ -14,7 +14,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { Lock, PlayCircle, CheckCircle2 } from 'lucide-react';
+import { Lock, PlayCircle, CheckCircle2, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { MOCK_USER } from '../components/layout/AppShell';
 import {
@@ -106,9 +106,9 @@ const STATE_STYLES: Record<
   CapabilityGraphNodeState,
   { border: string; bg: string; text: string; Icon: typeof Lock }
 > = {
-  Locked: { border: 'border-slate-300', bg: 'bg-slate-100', text: 'text-slate-500', Icon: Lock },
-  Available: { border: 'border-blue-400', bg: 'bg-blue-50', text: 'text-blue-700', Icon: PlayCircle },
-  Mastered: { border: 'border-green-400', bg: 'bg-green-50', text: 'text-green-700', Icon: CheckCircle2 },
+  Locked: { border: 'border-slate-700', bg: 'bg-slate-800/60', text: 'text-slate-500', Icon: Lock },
+  Available: { border: 'border-brand-400/60', bg: 'bg-brand-500/10', text: 'text-brand-300', Icon: PlayCircle },
+  Mastered: { border: 'border-emerald-400/60', bg: 'bg-emerald-500/10', text: 'text-emerald-300', Icon: CheckCircle2 },
 };
 
 function GraphNodeCard({ data }: NodeProps<GraphNode>) {
@@ -122,10 +122,10 @@ function GraphNodeCard({ data }: NodeProps<GraphNode>) {
         clickable ? 'cursor-pointer hover:shadow-md' : 'cursor-not-allowed opacity-80'
       }`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-slate-400" />
+      <Handle type="target" position={Position.Top} className="!bg-slate-500" />
       <Icon className={`h-4 w-4 shrink-0 ${style.text}`} />
       <span className={`text-sm font-medium leading-tight ${style.text}`}>{data.label}</span>
-      <Handle type="source" position={Position.Bottom} className="!bg-slate-400" />
+      <Handle type="source" position={Position.Bottom} className="!bg-slate-500" />
     </div>
   );
 }
@@ -146,6 +146,10 @@ export default function CapabilityGraphMapPage() {
   // progression: the server doesn't enforce CanStartNodeAsync when
   // starting a session, so this is safe and fully reversible.
   const [reviewMode, setReviewMode] = useState(false);
+  // Course-level executive summary + key entities panel (2026-07-20) —
+  // collapsed by default so it never competes with the graph map for
+  // attention; the student opens it deliberately via "About this course".
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   useEffect(() => {
     if (!capabilityId) return;
@@ -235,44 +239,88 @@ export default function CapabilityGraphMapPage() {
 
   return (
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-6xl flex-col p-4 sm:p-8">
-      <Link to="/" className="text-sm text-slate-500 hover:underline">
+      <Link to="/" className="text-sm text-slate-400 hover:text-white hover:underline">
         ← {t.backToSubjects}
       </Link>
 
       {graph && (
         <div className="mt-2">
-          <h1 className="text-2xl font-semibold text-slate-900">{graph.Name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">{graph.Name}</h1>
           {graph.Description && (
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">{graph.Description}</p>
+            <p className="mt-1 max-w-2xl text-sm text-slate-400">{graph.Description}</p>
+          )}
+
+          {(graph.ExecutiveSummary || (graph.KeyEntities && graph.KeyEntities.length > 0)) && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setSummaryOpen((open) => !open)}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.08]"
+              >
+                <Info className="h-3.5 w-3.5" />
+                {summaryOpen ? t.graphSummaryHideButton : t.graphSummaryShowButton}
+                {summaryOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+
+              {summaryOpen && (
+                <div className="mt-2 max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                  {graph.ExecutiveSummary && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {t.graphExecutiveSummaryTitle}
+                      </p>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-300">{graph.ExecutiveSummary}</p>
+                    </div>
+                  )}
+
+                  {graph.KeyEntities && graph.KeyEntities.length > 0 && (
+                    <div className={graph.ExecutiveSummary ? 'mt-4' : ''}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {t.graphKeyEntitiesTitle}
+                      </p>
+                      <ul className="mt-1.5 space-y-1.5">
+                        {graph.KeyEntities.map((entity) => (
+                          <li key={entity.Name} className="text-sm text-slate-300">
+                            <span className="font-medium text-white">{entity.Name}</span>{' '}
+                            <span className="text-xs text-slate-500">({entity.Type})</span>
+                            {entity.Note && <span className="text-slate-400"> — {entity.Note}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {loading && <p className="mt-6 text-slate-500">{t.graphLoading}</p>}
-      {error && !loading && <p className="mt-6 text-red-600">{error}</p>}
+      {loading && <p className="mt-6 text-slate-400">{t.graphLoading}</p>}
+      {error && !loading && <p className="mt-6 text-red-400">{error}</p>}
 
       {!loading && !error && graph && (
         <>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-4 text-xs text-slate-600">
-              <LegendDot colorClass="bg-slate-400" label={t.graphLegendLocked} />
-              <LegendDot colorClass="bg-blue-500" label={t.graphLegendAvailable} />
-              <LegendDot colorClass="bg-green-500" label={t.graphLegendMastered} />
+            <div className="flex flex-wrap gap-4 text-xs text-slate-400">
+              <LegendDot colorClass="bg-slate-500" label={t.graphLegendLocked} />
+              <LegendDot colorClass="bg-brand-400" label={t.graphLegendAvailable} />
+              <LegendDot colorClass="bg-emerald-400" label={t.graphLegendMastered} />
             </div>
             <button
               type="button"
               onClick={() => setReviewMode((prev) => !prev)}
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                 reviewMode
-                  ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                  ? 'border-amber-400/50 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'
               }`}
             >
               {reviewMode ? '✓ Modo revisión activo — todos los nodos abiertos' : 'Modo revisión: ver todos los nodos'}
             </button>
           </div>
 
-          <div className="mt-4 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="mt-4 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
             <ReactFlow
               nodes={flowNodes}
               edges={flowEdges}
@@ -283,10 +331,11 @@ export default function CapabilityGraphMapPage() {
               nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable={false}
+              colorMode="dark"
             >
-              <Background gap={20} />
+              <Background gap={20} color="#334155" />
               <Controls showInteractive={false} />
-              <MiniMap pannable zoomable />
+              <MiniMap pannable zoomable maskColor="rgba(2, 6, 23, 0.6)" bgColor="#0f172a" />
             </ReactFlow>
           </div>
         </>

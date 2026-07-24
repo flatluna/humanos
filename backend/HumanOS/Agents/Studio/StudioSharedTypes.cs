@@ -146,6 +146,14 @@ public sealed class AgentTokenUsage
 
     public string? ModuleId { get; init; }
 
+    /// <summary>Azure OpenAI deployment name that actually served this call
+    /// (e.g. "gpt4mini", "gpt-5-chat") — 2026-07-23, needed because
+    /// different agents deliberately use different-cost models (economy
+    /// vs. main tier, see CuradorAgent/DocumentContextAgent's doc
+    /// comments), so a single flat cost-per-token rate is wrong. Empty for
+    /// legacy usage that predates this field.</summary>
+    public string ModelName { get; init; } = string.Empty;
+
     public int InputTokens { get; init; }
 
     public int OutputTokens { get; init; }

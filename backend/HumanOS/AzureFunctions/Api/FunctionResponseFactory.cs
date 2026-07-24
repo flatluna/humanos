@@ -1,10 +1,21 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.Azure.Functions.Worker.Http;
 
 namespace HumanOS.AzureFunctions.Api;
 
 public static class FunctionResponseFactory
 {
+    /// <summary>The isolated-worker's default `WriteAsJsonAsync` preserves C#'s
+    /// PascalCase property names as-is (confirmed via curl: GetGoals returned
+    /// {"GoalId":...,"Code":...}), which doesn't match the camelCase every
+    /// frontend (human-os-web, humanlearn, capabilitystudio) assumes for
+    /// response DTOs. Serializing explicitly with these options instead of
+    /// relying on WriteAsJsonAsync's built-in serializer fixes this without
+    /// depending on worker-SDK-version-specific `WorkerOptions.Serializer`
+    /// wiring.</summary>
+    private static readonly JsonSerializerOptions CamelCaseOptions = new(JsonSerializerDefaults.Web);
+
     public static async Task<HttpResponseData> ErrorResponseAsync(
         HttpRequestData request,
         HttpStatusCode statusCode,
@@ -13,7 +24,10 @@ public static class FunctionResponseFactory
         CancellationToken cancellationToken)
     {
         var response = request.CreateResponse(statusCode);
-        await response.WriteAsJsonAsync(new { error, message }, cancellationToken);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(
+            JsonSerializer.Serialize(new { error, message }, CamelCaseOptions),
+            cancellationToken);
         return response;
     }
 
@@ -24,7 +38,8 @@ public static class FunctionResponseFactory
         CancellationToken cancellationToken = default)
     {
         var response = request.CreateResponse(statusCode);
-        await response.WriteAsJsonAsync(data, cancellationToken);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(JsonSerializer.Serialize(data, CamelCaseOptions), cancellationToken);
         return response;
     }
 

@@ -284,12 +284,15 @@ public sealed class ExperienceDesignerAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _modelName;
 
     public ExperienceDesignerAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+
+        _modelName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -382,6 +385,7 @@ public sealed class ExperienceDesignerAgent
         var tokenUsage = new AgentTokenUsage
         {
             AgentName = "ExperienceDesigner",
+            ModelName = _modelName,
             InputTokens = (int)(usage?.InputTokenCount ?? 0),
             OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
             CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)

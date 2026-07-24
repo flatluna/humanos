@@ -6,10 +6,10 @@ using Microsoft.Azure.Functions.Worker.Http;
 namespace HumanOS.AzureFunctions.Api;
 
 /// <summary>
-/// Permanently deletes a capability and all its content. Used for admin/
-/// test cleanup today (e.g. removing smoke-test runs) — My Courses does
-/// not expose this in the UI yet (no real "delete" action there, see
-/// /memories/repo/frontend-backend-integration-validated.md).
+/// Permanently deletes a capability and all its content. Exposed in
+/// humanstudio's Capability Library ("⋮" menu -> Delete, behind a
+/// type-to-confirm warning modal — see DeleteCapabilityModal.tsx). My
+/// Courses (the student-facing app) does not expose this in the UI.
 /// </summary>
 public sealed class DeleteCapabilityFunction
 {

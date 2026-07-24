@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using HumanOS.Agents.Studio;
 
 namespace HumanOS.Services;
@@ -9,6 +10,7 @@ namespace HumanOS.Services;
 /// HumanOS.Agentic.Studio.CapabilityCreationOrchestrator's
 /// CapabilityCreationRunStatus (V1).
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum PdfCapabilityGraphStage
 {
     Running,
@@ -62,6 +64,12 @@ public sealed class PdfCapabilityGraphResult
 
     public Guid CapabilityGraphId { get; set; }
 
+    /// <summary>Set when the caller asked to attach this newly created
+    /// Capability to an existing Program's sequence (see StartRequest's
+    /// optional ProgramId) — lets the frontend link straight back to the
+    /// Program after generation completes.</summary>
+    public Guid? ProgramId { get; set; }
+
     public string GraphName { get; set; } = string.Empty;
 
     public int PageCount { get; set; }
@@ -100,6 +108,15 @@ public sealed class PdfCapabilityGraphResult
     /// uploaded) in this run — the OTHER cost driver besides
     /// <see cref="TokenUsage"/>, billed per-image rather than per-token.</summary>
     public int IllustrationsGeneratedCount { get; set; }
+
+    /// <summary>How many images EMBEDDED in the source PDF's own pages
+    /// (scanned pages, diagrams, photos) were described by
+    /// <see cref="HumanOS.Agents.Studio.PdfImageDescriptionAgent"/> and
+    /// folded into the material Curador/GraphArchitect saw (2026-07-23) —
+    /// 0 for the description/idea entry point (no source PDF), and 0 if
+    /// the agent isn't configured. Its per-call token usage is included in
+    /// <see cref="TokenUsage"/> (AgentName "PdfImageDescription").</summary>
+    public int DescribedImageCount { get; set; }
 
     /// <summary>Estimated USD cost of this run, derived from <see cref="TokenUsage"/>
     /// and <see cref="IllustrationsGeneratedCount"/> — see
