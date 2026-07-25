@@ -65,6 +65,16 @@ public sealed class AcceptedRecommendation
     /// <summary>Null until this recommendation is later activated into a
     /// real Program row.</summary>
     public Guid? ProgramId { get; set; }
+
+    /// <summary>UTC timestamp of when this specific recommendation was
+    /// accepted — set once, on first acceptance, and preserved by the
+    /// frontend on every subsequent save of the Starting Point step (the
+    /// row-level PersonStartingPoint.UpdatedDate reflects the whole step,
+    /// not any single accepted program, so this per-item date is what
+    /// "Mis Programas" uses as the enrollment date). Defaults to UtcNow
+    /// for backward compatibility with recommendations accepted before
+    /// this field existed.</summary>
+    public DateTime AcceptedDate { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>Response for Starting Point step (Step 3).</summary>

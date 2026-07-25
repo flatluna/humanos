@@ -32,6 +32,13 @@ public class LearningSession
     /// <summary>FK: Capability que el estudiante está aprendiendo en esta sesión.</summary>
     public Guid CapabilityId { get; set; }
 
+    /// <summary>FK opcional: LearningProgram en cuyo contexto se cursa esta
+    /// Capability. Null cuando la Capability se aprende de forma standalone
+    /// (fuera de cualquier Programa). Permite que la MISMA Capability tenga
+    /// progreso/scores independientes si pertenece a más de un Programa —
+    /// "una sesión por programa y por curso" (2026-07-24).</summary>
+    public Guid? ProgramId { get; set; }
+
     /// <summary>Estado actual de la sesión.</summary>
     public LearningSessionStatus Status { get; set; } = LearningSessionStatus.NotStarted;
 
@@ -51,6 +58,9 @@ public class LearningSession
 
     /// <summary>Referencia a la Capability que se está aprendiendo.</summary>
     public virtual Capability? Capability { get; set; }
+
+    /// <summary>Referencia al Program en cuyo contexto se cursa esta sesión (null si es standalone).</summary>
+    public virtual HumanOS.Models.Programs.LearningProgram? Program { get; set; }
 
     /// <summary>Progreso del estudiante por cada nodo del grafo visitado en esta sesión.</summary>
     public virtual ICollection<LearningSessionNode> Nodes { get; set; } = new List<LearningSessionNode>();

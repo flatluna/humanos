@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import DOMPurify from 'dompurify';
 import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { useI18n } from '../i18n/useI18n';
@@ -8,6 +8,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { API_BASE_URL } from '../api/httpClient';
 import { getCapabilityGraph } from '../api/capabilityGraphApi';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
+import EngramReviewAgent from '../components/EngramReviewAgent';
 import {
   getActiveSession,
   startSession,
@@ -75,7 +76,10 @@ function normalizeStep(step: BackendRuntimeStep): NormalizedStep {
     learningSessionStepId: step.LearningSessionStepId,
     stepType: step.StepType,
     content: step.Content,
-    illustrations: step.Illustrations.map((i) => ({
+    // Backend doesn't always include Illustrations for every step (e.g. some
+    // step types/responses omit it entirely) — default to [] instead of
+    // crashing the whole page on `.map`/`.length` of undefined.
+    illustrations: (step.Illustrations ?? []).map((i) => ({
       illustrationId: i.IllustrationId,
       storagePath: i.StoragePath,
       caption: i.Caption,
@@ -94,6 +98,9 @@ interface TutorChatMessage {
 
 export default function NodeWorkflowPage() {
   const { capabilityId, nodeId } = useParams();
+  const [searchParams] = useSearchParams();
+  const programId = searchParams.get('programId');
+  const backToMapHref = programId ? `/capabilities/${capabilityId}?programId=${programId}` : `/capabilities/${capabilityId}`;
   const { t, language } = useI18n();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -238,11 +245,11 @@ export default function NodeWorkflowPage() {
         // actually belongs to the node the user is opening right now —
         // otherwise this page silently renders the wrong node's content
         // while the URL still shows the newly-clicked node's id.
-        const active = await getActiveSession(personId, capabilityId!);
+        const active = await getActiveSession(personId, capabilityId!, programId);
         const info =
           active && active.CapabilityGraphNodeId === nodeId
             ? active
-            : await startSession(personId, capabilityId!, nodeId!);
+            : await startSession(personId, capabilityId!, nodeId!, programId);
         if (cancelled) return;
         setSessionNodeId(info.LearningSessionNodeId);
         resetStepUiState(normalizeSessionInfo(info));
@@ -259,14 +266,14 @@ export default function NodeWorkflowPage() {
     return () => {
       cancelled = true;
     };
-  }, [capabilityId, nodeId, personId, resetStepUiState, t.nodeError]);
+  }, [capabilityId, nodeId, personId, programId, resetStepUiState, t.nodeError]);
 
   const handlePracticeAgain = useCallback(async () => {
     if (!capabilityId || !nodeId) return;
     setPracticingAgain(true);
     setErrorMessage(null);
     try {
-      const info = await startSession(personId, capabilityId, nodeId);
+      const info = await startSession(personId, capabilityId, nodeId, programId);
       setSessionNodeId(info.LearningSessionNodeId);
       resetStepUiState(normalizeSessionInfo(info));
       setNodeSummary(null);
@@ -276,7 +283,7 @@ export default function NodeWorkflowPage() {
     } finally {
       setPracticingAgain(false);
     }
-  }, [capabilityId, nodeId, personId, resetStepUiState, t.nodeError]);
+  }, [capabilityId, nodeId, personId, programId, resetStepUiState, t.nodeError]);
 
   const handleContinue = useCallback(async () => {
     if (!step || !sessionNodeId || advancingRef.current) return;
@@ -502,7 +509,7 @@ export default function NodeWorkflowPage() {
   if (phase === 'loading') {
     return (
       <div className="mx-auto max-w-3xl p-8">
-        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
+        <Link to={backToMapHref} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
           ← {t.backToMap}
         </Link>
         <p className="mt-6 text-slate-500 dark:text-slate-400">{t.nodeLoading}</p>
@@ -513,7 +520,7 @@ export default function NodeWorkflowPage() {
   if (phase === 'summary' && nodeSummary) {
     return (
       <div className="mx-auto max-w-3xl p-4 sm:p-8">
-        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
+        <Link to={backToMapHref} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
           ← {t.backToMap}
         </Link>
         <NodeSummaryView
@@ -521,6 +528,7 @@ export default function NodeWorkflowPage() {
           summary={nodeSummary}
           onPracticeAgain={handlePracticeAgain}
           practicing={practicingAgain}
+          personId={personId}
           t={t}
           language={language}
         />
@@ -531,7 +539,7 @@ export default function NodeWorkflowPage() {
   if (phase === 'error' || !step) {
     return (
       <div className="mx-auto max-w-3xl p-8">
-        <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
+        <Link to={backToMapHref} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
           ← {t.backToMap}
         </Link>
         <p className="mt-6 text-red-600 dark:text-red-400">{errorMessage ?? t.nodeError}</p>
@@ -556,7 +564,7 @@ export default function NodeWorkflowPage() {
             </div>
           )}
           <button
-            onClick={() => navigate(`/capabilities/${capabilityId}`)}
+            onClick={() => navigate(backToMapHref)}
             className="mt-6 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
             {t.backToMapButton}
@@ -571,7 +579,7 @@ export default function NodeWorkflowPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">
-      <Link to={`/capabilities/${capabilityId}`} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
+      <Link to={backToMapHref} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
         ← {t.backToMap}
       </Link>
 
@@ -621,7 +629,7 @@ export default function NodeWorkflowPage() {
           <RichContent className="text-slate-600 dark:text-slate-300" html={step.content} />
         )}
 
-        {step.illustrations.length > 0 && (
+        {(step.illustrations?.length ?? 0) > 0 && (
           <div className="mt-4 flex flex-col gap-4">
             {step.illustrations.map((illustration) => (
               <figure
@@ -1135,6 +1143,7 @@ function NodeSummaryView({
   summary,
   onPracticeAgain,
   practicing,
+  personId,
   t,
   language,
 }: {
@@ -1142,9 +1151,15 @@ function NodeSummaryView({
   summary: NodeSummaryDto;
   onPracticeAgain: () => void;
   practicing: boolean;
+  personId: string;
   t: Record<string, string>;
   language: string;
 }) {
+  // "Reactivar Engrama" (2026-07-24) — a second, distinct action from
+  // "Practicar de nuevo": a full-lesson active-recall STUDY conversation,
+  // never an exam, never graded. Rendered as a dedicated modal overlay so
+  // it can own the entire screen while the voice conversation is live.
+  const [showEngramReview, setShowEngramReview] = useState(false);
   const stepLabels: Record<ExperienceStepType, string> = {
     Hypothesis: t.stepHypothesis,
     Teaching: t.stepTeaching,
@@ -1246,14 +1261,34 @@ function NodeSummaryView({
           </div>
         )}
 
-        <button
-          onClick={onPracticeAgain}
-          disabled={practicing}
-          className="mt-5 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
-        >
-          {practicing ? t.nodeSummaryPracticing : t.nodeSummaryPracticeAgain}
-        </button>
+        <div className="mt-5 flex flex-wrap items-start gap-4">
+          <button
+            onClick={onPracticeAgain}
+            disabled={practicing}
+            className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-emerald-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
+          >
+            {practicing ? t.nodeSummaryPracticing : t.nodeSummaryPracticeAgain}
+          </button>
+          <div className="max-w-xs">
+            <button
+              onClick={() => setShowEngramReview(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Sparkles className="h-4 w-4" />
+              {t.reactivateEngramButton}
+            </button>
+            <p className="mt-1.5 text-xs text-emerald-700/80 dark:text-emerald-200/70">{t.reactivateEngramExplanation}</p>
+          </div>
+        </div>
       </div>
+
+      {showEngramReview && (
+        <EngramReviewAgent
+          personId={personId}
+          capabilityGraphNodeId={summary.CapabilityGraphNodeId}
+          onExit={() => setShowEngramReview(false)}
+        />
+      )}
 
       <div className="space-y-4">
         {loadingAttempt && <p className="text-sm text-slate-500">{t.stepReviewLoading}</p>}

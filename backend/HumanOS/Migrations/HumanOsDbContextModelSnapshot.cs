@@ -417,6 +417,36 @@ namespace HumanOS.Migrations
                     b.ToTable("CapabilityDomainTranslation", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityEnrollment", b =>
+                {
+                    b.Property<Guid>("CapabilityEnrollmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("CapabilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("EnrolledDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("CapabilityEnrollmentId")
+                        .HasName("PK_CapabilityEnrollment");
+
+                    b.HasIndex("CapabilityId");
+
+                    b.HasIndex("PersonId", "CapabilityId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CapabilityEnrollment_Person_Capability");
+
+                    b.ToTable("CapabilityEnrollment", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityEvidence", b =>
                 {
                     b.Property<Guid>("CapabilityEvidenceId")
@@ -2082,6 +2112,9 @@ namespace HumanOS.Migrations
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ProgramId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("StartedDate")
                         .HasColumnType("datetime2");
 
@@ -2094,7 +2127,11 @@ namespace HumanOS.Migrations
 
                     b.HasIndex("PersonId");
 
+                    b.HasIndex("ProgramId");
+
                     b.HasIndex("PersonId", "CapabilityId");
+
+                    b.HasIndex("PersonId", "CapabilityId", "ProgramId");
 
                     b.ToTable("LearningSessions");
                 });
@@ -2383,6 +2420,9 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
+                    b.Property<int?>("Confidence")
+                        .HasColumnType("int");
+
                     b.Property<int?>("Energy")
                         .HasColumnType("int");
 
@@ -2391,6 +2431,9 @@ namespace HumanOS.Migrations
 
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Purpose")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("RecordedAt")
                         .ValueGeneratedOnAdd()
@@ -2402,7 +2445,7 @@ namespace HumanOS.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
-                    b.Property<Guid>("TenantId")
+                    b.Property<Guid?>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("HumanStateId")
@@ -3312,6 +3355,25 @@ namespace HumanOS.Migrations
                     b.Navigation("Language");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityEnrollment", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Capability", "Capability")
+                        .WithMany()
+                        .HasForeignKey("CapabilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Capability");
+
+                    b.Navigation("Person");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.CapabilityEvidence", b =>
                 {
                     b.HasOne("HumanOS.Models.Evidence.Evidence", "Evidence")
@@ -3883,9 +3945,16 @@ namespace HumanOS.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("HumanOS.Models.Programs.LearningProgram", "Program")
+                        .WithMany()
+                        .HasForeignKey("ProgramId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Capability");
 
                     b.Navigation("Person");
+
+                    b.Navigation("Program");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Learning.LearningSessionNode", b =>
@@ -3993,7 +4062,6 @@ namespace HumanOS.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("FK_HumanState_Tenant");
 
                     b.Navigation("Person");

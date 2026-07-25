@@ -43,9 +43,11 @@ public sealed class RuntimeGetCurrentStepFunction
                 "Query parameters personId and capabilityId are both required.", cancellationToken);
         }
 
+        Guid? programId = Guid.TryParse(query["programId"], out var parsedProgramId) ? parsedProgramId : null;
+
         try
         {
-            var resumed = await _sessionRecoveryEngine.ResumeSessionAsync(_dbContext, personId, capabilityId, cancellationToken);
+            var resumed = await _sessionRecoveryEngine.ResumeSessionAsync(_dbContext, personId, capabilityId, programId, cancellationToken);
             var response = RuntimeGraphApiMappers.ToCurrentStepResponse(resumed);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, response, cancellationToken: cancellationToken);

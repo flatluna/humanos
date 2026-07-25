@@ -12,6 +12,9 @@ export interface BackendCapabilityGraphNode {
   sortOrder: number;
   state: CapabilityGraphNodeState;
   illustrationId?: string;
+  /** Best passed assessment score (0-100) of the most recent completed
+   * attempt at this node. Undefined while the node isn't Mastered yet. */
+  finalScore?: number;
 }
 
 /** RelationshipType enum values from backend (Requires=0, BuildsOn=1). */

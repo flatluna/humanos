@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Lock, PlayCircle, Star, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Lock, PlayCircle, Star, ChevronDown, Plus } from 'lucide-react';
 import {
   getCapabilityGraph,
   PREVIEW_PERSON_ID,
@@ -11,6 +11,7 @@ import {
 } from '../lib/api/runtimeApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
+import AddGraphNodeModal from '../components/AddGraphNodeModal';
 import { usePreviewMode, withPreviewMode } from '../lib/previewMode';
 
 const STATE_STYLES: Record<
@@ -93,28 +94,22 @@ export default function PreviewGraphPage() {
   const [graph, setGraph] = useState<BackendCapabilityGraph | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addNodeLevel, setAddNodeLevel] = useState<number | null>(null);
 
-  useEffect(() => {
+  const loadGraph = useCallback(() => {
     if (!capabilityId) return;
-    let cancelled = false;
     setLoading(true);
     setError(null);
 
     getCapabilityGraph(capabilityId, PREVIEW_PERSON_ID)
-      .then((data) => {
-        if (!cancelled) setGraph(data);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .then((data) => setGraph(data))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   }, [capabilityId]);
+
+  useEffect(() => {
+    loadGraph();
+  }, [loadGraph]);
 
   const levels = useMemo(() => (graph ? groupIntoLevels(graph.Nodes, graph.Edges) : []), [graph]);
 
@@ -167,9 +162,19 @@ export default function PreviewGraphPage() {
       <div className="mt-10 flex flex-col items-center">
         {levels.map((level, levelIndex) => (
           <div key={levelIndex} className="flex w-full flex-col items-center">
-            <span className="mb-4 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
-              Nivel {levelIndex + 1}
-            </span>
+            <div className="mb-4 flex items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Nivel {levelIndex + 1}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAddNodeLevel(levelIndex)}
+                title="Agregar nodo en este nivel"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/20 px-2 py-1 text-[11px] font-medium text-slate-400 hover:border-brand-400 hover:text-brand-300"
+              >
+                <Plus className="h-3 w-3" /> Agregar nodo
+              </button>
+            </div>
 
             <div className="flex flex-wrap justify-center gap-x-6 gap-y-8">
               {level.map((node) => {
@@ -219,12 +224,42 @@ export default function PreviewGraphPage() {
           </div>
         ))}
 
+        {levels.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAddNodeLevel(levels.length)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-dashed border-white/20 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-brand-400 hover:text-brand-300"
+          >
+            <Plus className="h-3.5 w-3.5" /> Agregar nuevo nivel superior
+          </button>
+        )}
+
         {levels.length === 0 && (
-          <p className="w-full rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center text-sm text-slate-400">
-            Este grafo todavía no tiene nodos.
-          </p>
+          <div className="w-full rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center">
+            <p className="text-sm text-slate-400">Este grafo todavía no tiene nodos.</p>
+            <button
+              type="button"
+              onClick={() => setAddNodeLevel(0)}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25"
+            >
+              <Plus className="h-4 w-4" /> Agregar primer nodo
+            </button>
+          </div>
         )}
       </div>
+
+      {addNodeLevel !== null && graph && (
+        <AddGraphNodeModal
+          capabilityId={capabilityId!}
+          levels={levels}
+          targetLevelIndex={addNodeLevel}
+          onClose={() => setAddNodeLevel(null)}
+          onCreated={() => {
+            setAddNodeLevel(null);
+            loadGraph();
+          }}
+        />
+      )}
 
       {levels.length > 0 && (
         <div className="mt-12 flex flex-wrap justify-center gap-3 border-t border-white/10 pt-6">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Lock, PlayCircle, Star, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { useI18n } from '../i18n/useI18n';
 import { useAuth } from '@/auth/AuthContext';
@@ -86,6 +86,8 @@ const STATE_STYLES: Record<
 
 export default function CapabilityGraphMapPage() {
   const { capabilityId } = useParams();
+  const [searchParams] = useSearchParams();
+  const programId = searchParams.get('programId');
   const { t } = useI18n();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -137,15 +139,28 @@ export default function CapabilityGraphMapPage() {
     return null;
   }, [levels]);
 
+  // Average score across every node that's already Mastered and has a
+  // recorded FinalScore — gives the student one glance-able "how am I
+  // doing overall" number instead of only per-node scores.
+  const averageScore = useMemo(() => {
+    if (!graph) return null;
+    const scored = graph.nodes.filter((n): n is BackendCapabilityGraphNode & { finalScore: number } =>
+      typeof n.finalScore === 'number'
+    );
+    if (scored.length === 0) return null;
+    return Math.round(scored.reduce((sum, n) => sum + n.finalScore, 0) / scored.length);
+  }, [graph]);
+
   function handleNodeClick(node: BackendCapabilityGraphNode) {
     if (node.state === 'Locked' && !reviewMode) return;
-    navigate(`/capabilities/${capabilityId}/nodes/${node.capabilityGraphNodeId}`);
+    const suffix = programId ? `?programId=${programId}` : '';
+    navigate(`/capabilities/${capabilityId}/nodes/${node.capabilityGraphNodeId}${suffix}`);
   }
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">
-      <Link to="/capabilities" className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
-        ← {t.backToSubjects}
+      <Link to={programId ? '/programs' : '/capabilities'} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
+        ← {programId ? 'Mis Programas' : t.backToSubjects}
       </Link>
 
       {graph && (
@@ -206,7 +221,7 @@ export default function CapabilityGraphMapPage() {
 
       {!loading && !error && graph && (
         <>
-          <div className="mt-6 flex justify-center">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
               onClick={() => setReviewMode((prev) => !prev)}
@@ -218,6 +233,12 @@ export default function CapabilityGraphMapPage() {
             >
               {reviewMode ? '✓ Modo revisión activo — todos los nodos abiertos' : 'Modo revisión: ver todos los nodos'}
             </button>
+            {averageScore !== null && (
+              <span className="flex items-center gap-1.5 rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                <Star className="h-3.5 w-3.5" fill="currentColor" />
+                Promedio: {averageScore}/100
+              </span>
+            )}
           </div>
 
           <div className="mt-8 flex flex-col items-center">
@@ -265,6 +286,11 @@ export default function CapabilityGraphMapPage() {
                           </div>
                         </div>
                         <p className={`line-clamp-2 text-xs leading-tight ${style.label}`}>{node.name}</p>
+                        {typeof node.finalScore === 'number' && (
+                          <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-300">
+                            {node.finalScore}/100
+                          </span>
+                        )}
                       </button>
                     );
                   })}

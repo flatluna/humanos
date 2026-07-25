@@ -63,6 +63,10 @@ function toAcceptedRecommendation(subjectCode: string, rec: RecommendationRespon
     steps: rec.steps ?? [],
     rationale: rec.rationale ?? '',
     programId: rec.matchedProgramId ?? null,
+    // Store's upsertAcceptedRecommendation preserves the original date if
+    // this subject was already accepted before — this is only the value
+    // used for a genuinely new acceptance.
+    acceptedDate: new Date().toISOString(),
   };
 }
 
@@ -243,6 +247,21 @@ export function StartingPointPageV2() {
     }));
   };
 
+  // Removing an already-accepted program only updated the in-memory/
+  // localStorage Zustand store before — it never reached the backend, so
+  // reloading the page (loadFromBackend) silently brought the "removed"
+  // program back from SQL. Persist the removal immediately instead.
+  const handleRemoveAcceptedRecommendation = async (subjectCode: string) => {
+    removeAcceptedRecommendation(subjectCode);
+    if (personId) {
+      try {
+        await saveToBackend(personId);
+      } catch (error) {
+        console.warn('⚠️ No se pudo guardar la eliminación en SQL:', error);
+      }
+    }
+  };
+
   // ── "Agregar otro programa" — a subject not necessarily picked in Step 1 ──
 
   const handleExtraGenerateRecommendation = async () => {
@@ -374,7 +393,7 @@ export function StartingPointPageV2() {
                     <p className="text-sm font-medium text-slate-900 dark:text-white">{rec.programName}</p>
                   </div>
                   <button
-                    onClick={() => removeAcceptedRecommendation(rec.subjectCode)}
+                    onClick={() => void handleRemoveAcceptedRecommendation(rec.subjectCode)}
                     className="text-xs font-medium text-slate-500 hover:text-red-600 dark:text-white/50 dark:hover:text-red-400"
                   >
                     Quitar

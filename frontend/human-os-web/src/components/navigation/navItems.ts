@@ -1,7 +1,9 @@
 import {
   CalendarCheck,
   Map,
+  GraduationCap,
   Layers,
+  BookmarkCheck,
   Target,
   FileCheck2,
   TrendingUp,
@@ -15,7 +17,9 @@ export interface NavItem {
   labelKey:
     | 'nav.today'
     | 'nav.growthPlan'
+    | 'nav.myPrograms'
     | 'nav.capabilities'
+    | 'nav.myCapabilities'
     | 'nav.goals'
     | 'nav.evidence'
     | 'nav.myEvolution'
@@ -39,7 +43,9 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: 'nav.groupGrowth',
     items: [
       { to: '/growth-plan', icon: Map, labelKey: 'nav.growthPlan' },
+      { to: '/programs', icon: GraduationCap, labelKey: 'nav.myPrograms' },
       { to: '/capabilities', icon: Layers, labelKey: 'nav.capabilities' },
+      { to: '/my-capabilities', icon: BookmarkCheck, labelKey: 'nav.myCapabilities' },
       { to: '/goals', icon: Target, labelKey: 'nav.goals' },
       { to: '/evidence', icon: FileCheck2, labelKey: 'nav.evidence' },
       { to: '/growth', icon: TrendingUp, labelKey: 'nav.myEvolution' },
@@ -58,8 +64,8 @@ export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.item
  *  rest surface inside the "More" drawer.
  */
 export const MOBILE_BAR_ITEMS: NavItem[] = [
-  ALL_NAV_ITEMS[0], // Today
-  ALL_NAV_ITEMS[1], // Growth Plan
-  ALL_NAV_ITEMS[2], // Capabilities
-  ALL_NAV_ITEMS[5], // My Evolution
+  ALL_NAV_ITEMS.find((item) => item.to === '/today')!,
+  ALL_NAV_ITEMS.find((item) => item.to === '/growth-plan')!,
+  ALL_NAV_ITEMS.find((item) => item.to === '/capabilities')!,
+  ALL_NAV_ITEMS.find((item) => item.to === '/growth')!,
 ];

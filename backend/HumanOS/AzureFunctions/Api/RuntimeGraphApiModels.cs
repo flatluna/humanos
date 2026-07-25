@@ -23,6 +23,12 @@ public sealed class StartRuntimeGraphSessionRequest
     public Guid PersonId { get; set; }
     public Guid CapabilityId { get; set; }
     public Guid CapabilityGraphNodeId { get; set; }
+
+    /// <summary>Optional: the LearningProgram this Capability is being
+    /// studied under. Null when the Capability is started standalone
+    /// (outside any Program) — preserves the pre-existing behavior for
+    /// every caller that doesn't pass it.</summary>
+    public Guid? ProgramId { get; set; }
 }
 
 public sealed class SubmitRuntimeStepResponseRequest

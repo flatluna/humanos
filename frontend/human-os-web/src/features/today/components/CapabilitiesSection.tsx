@@ -40,7 +40,7 @@ export function CapabilitiesSection({ capabilities }: CapabilitiesSectionProps) 
               </div>
 
               <p className="mt-3 text-xs font-medium text-slate-400 dark:text-white/40">
-                {t('capabilities.levelValue', { value: cap.level })}
+                {t(`capabilities.levels.${cap.level}`)}
               </p>
 
               <div className="mt-4 border-t border-slate-100 pt-4 dark:border-white/10">

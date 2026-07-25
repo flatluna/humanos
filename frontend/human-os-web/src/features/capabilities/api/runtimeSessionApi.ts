@@ -3,12 +3,54 @@ import { apiGet, apiPost } from './httpClient';
 /**
  * Client for the Runtime V1 "instructor-runtime" HTTP API — drives a
  * node's 5-step Memory Paradox experience (Hypothesis/Teaching/Recall/
- * Production/Assessment). Mirrors the backend DTOs in
+ * Production/Assessment). DTO shapes below mirror
  * backend/HumanOS/AzureFunctions/Api/RuntimeGraphApiModels.cs and
- * TutorApiModels.cs exactly (PascalCase). Per that file's own doc comment,
- * the UI never treats LearningSessionId/NodeId/StepId as its own source of
- * truth — they're just opaque IDs passed straight through to the next call.
+ * TutorApiModels.cs's C# property names (PascalCase), but the ACTUAL wire
+ * format is camelCase — every response goes through
+ * `FunctionResponseFactory`'s global `JsonSerializerDefaults.Web` policy
+ * (confirmed 2026-07-24: e.g. `{"learningSessionId":...}`, not
+ * `{"LearningSessionId":...}`). Rather than rewrite every DTO/consumer in
+ * this file to camelCase, `rGet`/`rPost` (below) recursively convert the
+ * incoming camelCase keys to PascalCase before returning — same technique
+ * capabilitystudio/src/lib/api/httpClient.ts uses app-wide. This is scoped
+ * to THIS file only (not the shared httpClient.ts) because
+ * capabilityGraphApi.ts/capabilitiesApi.ts/subjectsApi.ts in this app
+ * already use correctly-typed camelCase DTOs against the same shared
+ * httpClient — converting there too would break them.
+ *
+ * Per the backend file's own doc comment, the UI never treats
+ * LearningSessionId/NodeId/StepId as its own source of truth — they're
+ * just opaque IDs passed straight through to the next call.
  */
+
+/** Recursively converts every camelCase object key to PascalCase (first
+ * letter uppercased, rest untouched) so the backend's camelCase JSON
+ * matches this file's PascalCase DTO types. Arrays/nested objects are
+ * walked; primitives (including date strings) pass through untouched. */
+function toPascalCaseDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toPascalCaseDeep);
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+      result[pascalKey] = toPascalCaseDeep(val);
+    }
+    return result;
+  }
+  return value;
+}
+
+async function rGet<T>(path: string): Promise<T> {
+  const data = await apiGet<unknown>(path);
+  return toPascalCaseDeep(data) as T;
+}
+
+async function rPost<T>(path: string, body?: unknown): Promise<T> {
+  const data = await apiPost<unknown>(path, body);
+  return toPascalCaseDeep(data) as T;
+}
 
 export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'Recall' | 'Production' | 'Assessment';
 
@@ -35,22 +77,26 @@ export interface BackendRuntimeSessionInfo {
 
 export function getActiveSession(
   personId: string,
-  capabilityId: string
+  capabilityId: string,
+  programId?: string | null
 ): Promise<BackendRuntimeSessionInfo | null> {
-  return apiGet<BackendRuntimeSessionInfo | null>(
-    `/instructor-runtime/sessions/active?personId=${personId}&capabilityId=${capabilityId}`
+  const programParam = programId ? `&programId=${programId}` : '';
+  return rGet<BackendRuntimeSessionInfo | null>(
+    `/instructor-runtime/sessions/active?personId=${personId}&capabilityId=${capabilityId}${programParam}`
   );
 }
 
 export function startSession(
   personId: string,
   capabilityId: string,
-  capabilityGraphNodeId: string
+  capabilityGraphNodeId: string,
+  programId?: string | null
 ): Promise<BackendRuntimeSessionInfo> {
-  return apiPost<BackendRuntimeSessionInfo>('/instructor-runtime/sessions/start', {
+  return rPost<BackendRuntimeSessionInfo>('/instructor-runtime/sessions/start', {
     PersonId: personId,
     CapabilityId: capabilityId,
     CapabilityGraphNodeId: capabilityGraphNodeId,
+    ProgramId: programId ?? null,
   });
 }
 
@@ -58,14 +104,14 @@ export function submitStepResponse(
   learningSessionStepId: string,
   response: string
 ): Promise<{ success: boolean; learningEvidenceId: string }> {
-  return apiPost('/instructor-runtime/steps/respond', {
+  return rPost('/instructor-runtime/steps/respond', {
     LearningSessionStepId: learningSessionStepId,
     Response: response,
   });
 }
 
 export function advanceStep(learningSessionNodeId: string): Promise<BackendRuntimeStep> {
-  return apiPost<BackendRuntimeStep>('/instructor-runtime/steps/advance', {
+  return rPost<BackendRuntimeStep>('/instructor-runtime/steps/advance', {
     LearningSessionNodeId: learningSessionNodeId,
   });
 }
@@ -92,14 +138,48 @@ export interface VoiceTutorSessionDto {
   Model: string;
   Voice: string;
   ExpiresAtUnixSeconds?: number | null;
+  /** Only populated by requestEngramReviewSession — this node's already-generated illustrations. */
+  Illustrations?: { Id: string; Caption?: string | null }[] | null;
 }
 
 export function requestVoiceTutorSession(
   target: { learningSessionStepId: string; promptText?: string }
 ): Promise<VoiceTutorSessionDto> {
-  return apiPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
+  return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
     LearningSessionStepId: target.learningSessionStepId,
     CurrentPromptText: target.promptText,
+  });
+}
+
+// === "Reactivar Engrama" (2026-07-24) === A second, distinct Agent
+// presence shown alongside "Practicar de nuevo" on an already-Mastered
+// node's summary screen — a full-lesson active-recall STUDY conversation
+// (never an exam/quiz, never grades anything), grounded in the student's
+// own most recent completed attempt (blueprint content + their own past
+// written answers). Reuses the exact same ephemeral-session response shape
+// as the Voice Tutor (VoiceTutorSessionDto) since it's the same kind of
+// Azure OpenAI Realtime session, just with a different system prompt.
+export function requestEngramReviewSession(
+  target: { personId: string; capabilityGraphNodeId: string }
+): Promise<VoiceTutorSessionDto> {
+  return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/engram-review-session', {
+    PersonId: target.personId,
+    CapabilityGraphNodeId: target.capabilityGraphNodeId,
+  });
+}
+
+// On-demand image generation (2026-07-24) for the show_visual_aid tool's
+// kind="generated_image" — used when the student asks to SEE a picture of
+// something that isn't one of the lesson's existing illustrations. Never
+// persisted server-side; just base64 bytes for this one ephemeral overlay.
+export interface GeneratedVisualAidImageDto {
+  ImageBase64: string;
+  ContentType: string;
+}
+
+export function requestGeneratedVisualAidImage(prompt: string): Promise<GeneratedVisualAidImageDto> {
+  return rPost<GeneratedVisualAidImageDto>('/instructor-runtime/tutor/visual-aid/generate-image', {
+    Prompt: prompt,
   });
 }
 
@@ -109,7 +189,7 @@ export function askTutor(
   studentMessage: string,
   rawAssessmentFeedback?: string
 ): Promise<TutorTurnDto> {
-  return apiPost<TutorTurnDto>('/instructor-runtime/tutor/ask', {
+  return rPost<TutorTurnDto>('/instructor-runtime/tutor/ask', {
     LearningSessionStepId: learningSessionStepId,
     Mode: mode,
     StudentMessage: studentMessage,
@@ -138,7 +218,7 @@ export function submitRecallAttempt(
   studentResponse: string,
   tutorPromptShown?: string
 ): Promise<RecallAttemptOutcomeDto> {
-  return apiPost<RecallAttemptOutcomeDto>('/instructor-runtime/tutor/recall-attempts', {
+  return rPost<RecallAttemptOutcomeDto>('/instructor-runtime/tutor/recall-attempts', {
     LearningSessionStepId: learningSessionStepId,
     StudentResponse: studentResponse,
     TutorPromptShown: tutorPromptShown,
@@ -167,7 +247,7 @@ export function getStepReview(
   learningSessionNodeId: string,
   stepType: ExperienceStepType
 ): Promise<StepReviewDto> {
-  return apiGet<StepReviewDto>(
+  return rGet<StepReviewDto>(
     `/instructor-runtime/steps/review?learningSessionNodeId=${learningSessionNodeId}&stepType=${stepType}`
   );
 }
@@ -187,7 +267,7 @@ export interface KnowledgeExpansionDto {
 }
 
 export function expandNodeKnowledge(capabilityGraphNodeId: string): Promise<KnowledgeExpansionDto> {
-  return apiPost<KnowledgeExpansionDto>(`/capability-graph-nodes/${capabilityGraphNodeId}/knowledge-expansion`, {});
+  return rPost<KnowledgeExpansionDto>(`/capability-graph-nodes/${capabilityGraphNodeId}/knowledge-expansion`, {});
 }
 
 /** One past completed attempt at a node — see NodeSummaryDto.PastAttempts. */
@@ -217,7 +297,7 @@ export interface NodeSummaryDto {
 }
 
 export function getNodeSummary(personId: string, capabilityGraphNodeId: string): Promise<NodeSummaryDto> {
-  return apiGet<NodeSummaryDto>(
+  return rGet<NodeSummaryDto>(
     `/instructor-runtime/nodes/summary?personId=${personId}&capabilityGraphNodeId=${capabilityGraphNodeId}`
   );
 }
@@ -229,7 +309,7 @@ export interface AssessmentResultDto {
 }
 
 export function evaluateAssessment(learningSessionNodeId: string): Promise<AssessmentResultDto> {
-  return apiPost<AssessmentResultDto>('/instructor-runtime/nodes/evaluate', {
+  return rPost<AssessmentResultDto>('/instructor-runtime/nodes/evaluate', {
     LearningSessionNodeId: learningSessionNodeId,
   });
 }
@@ -250,7 +330,7 @@ export function evaluateProduction(
   learningSessionStepId: string,
   studentSubmission: string
 ): Promise<EvaluateProductionResponseDto> {
-  return apiPost<EvaluateProductionResponseDto>('/instructor-runtime/production/evaluate', {
+  return rPost<EvaluateProductionResponseDto>('/instructor-runtime/production/evaluate', {
     LearningSessionStepId: learningSessionStepId,
     StudentSubmission: studentSubmission,
   });
@@ -265,7 +345,7 @@ export interface GraphNodeInfoDto {
 export function completeNode(
   learningSessionNodeId: string
 ): Promise<{ success: boolean; newlyUnlockedNodes: GraphNodeInfoDto[] }> {
-  return apiPost('/instructor-runtime/nodes/complete', {
+  return rPost('/instructor-runtime/nodes/complete', {
     LearningSessionNodeId: learningSessionNodeId,
   });
 }
@@ -329,13 +409,13 @@ export interface SubmitAssessmentAnswerResponse {
 export function getActiveAssessmentRound(
   learningSessionNodeId: string
 ): Promise<AssessmentRoundStateDto | null> {
-  return apiGet<AssessmentRoundStateDto | null>(
+  return rGet<AssessmentRoundStateDto | null>(
     `/instructor-runtime/assessment/active?learningSessionNodeId=${learningSessionNodeId}`
   );
 }
 
 export function startAssessmentRound(learningSessionNodeId: string): Promise<AssessmentRoundStateDto> {
-  return apiPost<AssessmentRoundStateDto>('/instructor-runtime/assessment/start-round', {
+  return rPost<AssessmentRoundStateDto>('/instructor-runtime/assessment/start-round', {
     LearningSessionNodeId: learningSessionNodeId,
   });
 }
@@ -344,7 +424,7 @@ export function submitAssessmentAnswer(
   assessmentQuestionId: string,
   studentAnswer: string
 ): Promise<SubmitAssessmentAnswerResponse> {
-  return apiPost<SubmitAssessmentAnswerResponse>('/instructor-runtime/assessment/answer', {
+  return rPost<SubmitAssessmentAnswerResponse>('/instructor-runtime/assessment/answer', {
     AssessmentQuestionId: assessmentQuestionId,
     StudentAnswer: studentAnswer,
   });

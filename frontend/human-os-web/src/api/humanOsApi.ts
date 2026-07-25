@@ -13,6 +13,8 @@ import type {
   PersonCapabilityResponse,
   RecommendGrowthPathRequest,
   RecommendGrowthPathResponse,
+  HumanStateCheckInResponse,
+  UpsertHumanStateRequest,
 } from './types';
 
 /** Typed clients for the real Azure Functions already implemented in
@@ -79,6 +81,13 @@ export async function getMotivations(language: string): Promise<MotivationRespon
   return data;
 }
 
+export async function getPersonMotivations(personId: string, language: string): Promise<PersonMotivationResponse[]> {
+  const { data } = await apiClient.get<PersonMotivationResponse[]>(`/people/${personId}/motivations`, {
+    params: { language },
+  });
+  return data;
+}
+
 export async function setPersonMotivations(
   personId: string,
   motivationCodes: string[],
@@ -93,6 +102,21 @@ export async function setPersonMotivations(
 
 export async function getPersonCapabilities(personId: string): Promise<PersonCapabilityResponse[]> {
   const { data } = await apiClient.get<PersonCapabilityResponse[]>(`/people/${personId}/capabilities`);
+  return data;
+}
+
+// ── Today — "Estado Humano" daily check-in ───────────────────────────────
+
+export async function getHumanStateToday(personId: string): Promise<HumanStateCheckInResponse> {
+  const { data } = await apiClient.get<HumanStateCheckInResponse>(`/people/${personId}/human-state/today`);
+  return data;
+}
+
+export async function upsertHumanState(
+  personId: string,
+  request: UpsertHumanStateRequest,
+): Promise<HumanStateCheckInResponse> {
+  const { data } = await apiClient.post<HumanStateCheckInResponse>(`/people/${personId}/human-state`, request);
   return data;
 }
 

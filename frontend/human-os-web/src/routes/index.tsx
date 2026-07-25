@@ -69,6 +69,23 @@ export const router = createBrowserRouter([
           },
         ],
       },
+      {
+        path: 'my-capabilities',
+        lazy: () => import('@/features/my-capabilities').then((m) => ({ Component: m.MyCapabilitiesPage })),
+      },
+      {
+        path: 'programs',
+        children: [
+          {
+            index: true,
+            lazy: () => import('@/features/my-programs').then((m) => ({ Component: m.MyProgramsPage })),
+          },
+          {
+            path: ':programId',
+            lazy: () => import('@/features/my-programs').then((m) => ({ Component: m.ProgramDetailPage })),
+          },
+        ],
+      },
       { path: 'goals', lazy: () => import('@/features/goals').then((m) => ({ Component: m.GoalsPage })) },
       {
         path: 'evidence',

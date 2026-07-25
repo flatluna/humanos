@@ -91,6 +91,7 @@ public sealed class SessionRecoveryEngine
         HumanOsDbContext dbContext,
         Guid personId,
         Guid capabilityId,
+        Guid? programId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
@@ -99,6 +100,7 @@ public sealed class SessionRecoveryEngine
             .AsNoTracking()
             .Where(n => n.LearningSession!.PersonId == personId
                      && n.LearningSession!.CapabilityId == capabilityId
+                     && n.LearningSession!.ProgramId == programId
                      && n.LearningSession!.Status == LearningSessionStatus.Active
                      && n.Status == LearningSessionNodeStatus.Active)
             .OrderByDescending(n => n.StartedDate)
@@ -160,6 +162,7 @@ public sealed class SessionRecoveryEngine
         HumanOsDbContext dbContext,
         Guid personId,
         Guid capabilityId,
+        Guid? programId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
@@ -168,6 +171,7 @@ public sealed class SessionRecoveryEngine
             .Include(n => n.Steps)
             .Where(n => n.LearningSession!.PersonId == personId
                      && n.LearningSession!.CapabilityId == capabilityId
+                     && n.LearningSession!.ProgramId == programId
                      && n.LearningSession!.Status == LearningSessionStatus.Active
                      && n.Status == LearningSessionNodeStatus.Active)
             .OrderByDescending(n => n.StartedDate)

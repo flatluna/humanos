@@ -40,13 +40,15 @@ public sealed class RuntimeGetActiveSessionFunction
                 "Query parameters personId and capabilityId are both required.", cancellationToken);
         }
 
-        var activeNode = await _sessionRecoveryEngine.GetActiveNodeAsync(_dbContext, personId, capabilityId, cancellationToken);
+        Guid? programId = Guid.TryParse(query["programId"], out var parsedProgramId) ? parsedProgramId : null;
+
+        var activeNode = await _sessionRecoveryEngine.GetActiveNodeAsync(_dbContext, personId, capabilityId, programId, cancellationToken);
         if (activeNode is null)
         {
             return await FunctionResponseFactory.SuccessResponseAsync<object?>(request, null, cancellationToken: cancellationToken);
         }
 
-        var resumed = await _sessionRecoveryEngine.ResumeSessionAsync(_dbContext, personId, capabilityId, cancellationToken);
+        var resumed = await _sessionRecoveryEngine.ResumeSessionAsync(_dbContext, personId, capabilityId, programId, cancellationToken);
         var sessionInfo = RuntimeGraphApiMappers.ToSessionInfo(resumed);
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, sessionInfo, cancellationToken: cancellationToken);

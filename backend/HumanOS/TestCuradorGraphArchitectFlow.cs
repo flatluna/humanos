@@ -461,7 +461,7 @@ public sealed class TestCuradorGraphArchitectFlow
                                                 testPersonId,
                                                 capabilityIdForPersistence,
                                                 firstNode.CapabilityGraphNodeId,
-                                                CancellationToken.None);
+                                                cancellationToken: CancellationToken.None);
 
                                             testLearningSessionNodeId = startResult.LearningSessionNodeId;
                                             testLearningSessionId = startResult.LearningSessionId;
@@ -602,7 +602,7 @@ public sealed class TestCuradorGraphArchitectFlow
                                                     testPersonId,
                                                     capabilityIdForPersistence,
                                                     firstNode.CapabilityGraphNodeId,
-                                                    CancellationToken.None);
+                                                    cancellationToken: CancellationToken.None);
 
                                                 sb.AppendLine("✅ Nueva LearningSession creada para probar recuperación");
                                                 sb.AppendLine($"LearningSessionId: {recoveryStartResult.LearningSessionId}");
@@ -626,7 +626,7 @@ public sealed class TestCuradorGraphArchitectFlow
                                                 sb.AppendLine($"GetActiveSessionAsync() → LearningSessionId: {activeSession?.LearningSessionId}, Status: {activeSession?.Status}\n");
 
                                                 await using var activeNodeDbContext = await _dbContextFactory.CreateDbContextAsync(CancellationToken.None);
-                                                var activeNode = await _sessionRecoveryEngine.GetActiveNodeAsync(activeNodeDbContext, testPersonId, capabilityIdForPersistence, CancellationToken.None);
+                                                var activeNode = await _sessionRecoveryEngine.GetActiveNodeAsync(activeNodeDbContext, testPersonId, capabilityIdForPersistence, cancellationToken: CancellationToken.None);
                                                 sb.AppendLine($"GetActiveNodeAsync() → LearningSessionNodeId: {activeNode?.LearningSessionNodeId}, CapabilityGraphNodeId: {activeNode?.CapabilityGraphNodeId}, Status: {activeNode?.Status}\n");
 
                                                 if (activeNode is not null)
@@ -637,7 +637,7 @@ public sealed class TestCuradorGraphArchitectFlow
                                                 }
 
                                                 await using var resumeDbContext = await _dbContextFactory.CreateDbContextAsync(CancellationToken.None);
-                                                var resumeResult = await _sessionRecoveryEngine.ResumeSessionAsync(resumeDbContext, testPersonId, capabilityIdForPersistence, CancellationToken.None);
+                                                var resumeResult = await _sessionRecoveryEngine.ResumeSessionAsync(resumeDbContext, testPersonId, capabilityIdForPersistence, cancellationToken: CancellationToken.None);
 
                                                 sb.AppendLine("✅ ResumeSessionAsync() ejecutado — estado reconstruido 100% desde SQL:");
                                                 sb.AppendLine($"LearningSessionId: {resumeResult.LearningSessionId}");

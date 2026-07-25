@@ -28,6 +28,11 @@ export interface AcceptedRecommendation {
   steps: RecommendedProgramStep[];
   rationale: string;
   programId: string | null;
+  /** UTC ISO timestamp of when this specific recommendation was accepted —
+   *  set once on first acceptance and preserved on every later save (see
+   *  backend AcceptedRecommendation.AcceptedDate's doc comment). Powers the
+   *  "assigned" date shown on the "Mis Programas" cards. */
+  acceptedDate: string;
 }
 
 export interface StartingPoint {

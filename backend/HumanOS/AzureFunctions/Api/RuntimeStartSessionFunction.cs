@@ -57,7 +57,7 @@ public sealed class RuntimeStartSessionFunction
         try
         {
             var startResult = await _orchestrator.StartSessionAsync(
-                _dbContext, body.PersonId, body.CapabilityId, body.CapabilityGraphNodeId, cancellationToken);
+                _dbContext, body.PersonId, body.CapabilityId, body.CapabilityGraphNodeId, body.ProgramId, cancellationToken);
 
             var currentStep = await _orchestrator.GetCurrentStepAsync(
                 _dbContext, startResult.LearningSessionNodeId, cancellationToken);

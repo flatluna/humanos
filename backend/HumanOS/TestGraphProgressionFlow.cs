@@ -103,7 +103,7 @@ public sealed class TestGraphProgressionFlow
                 var blueprintId = await EnsureBlueprintAsync(dbContext, node, cancellationToken);
 
                 var start = await _orchestrator.StartSessionAsync(
-                    dbContext, resolvedPersonId, capabilityId, node.CapabilityGraphNodeId, cancellationToken);
+                    dbContext, resolvedPersonId, capabilityId, node.CapabilityGraphNodeId, cancellationToken: cancellationToken);
 
                 var current = await _orchestrator.GetCurrentStepAsync(dbContext, start.LearningSessionNodeId, cancellationToken);
                 var response = BuildGroundedResponse(node);

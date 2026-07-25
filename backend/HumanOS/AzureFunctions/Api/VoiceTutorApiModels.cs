@@ -52,4 +52,23 @@ public sealed class VoiceTutorSessionResponseDto
     public string Voice { get; set; } = string.Empty;
 
     public long? ExpiresAtUnixSeconds { get; set; }
+
+    /// <summary>Only populated by "Reactivar Engrama" (EngramReviewSessionFunction),
+    /// null for the plain Voice Tutor. This node's ALREADY-GENERATED
+    /// illustrations, sent straight back in the HTTP response so the
+    /// frontend can display them immediately (GetIllustrationImageFunction
+    /// URLs), rather than depending solely on the model choosing to call
+    /// the show_visual_aid Realtime tool — added 2026-07-24 after live
+    /// testing showed the tool-call round trip is unreliable (the model
+    /// sometimes claims a visual was shown when the frontend never
+    /// received/rendered the corresponding tool call).</summary>
+    public List<IllustrationRefDto>? Illustrations { get; set; }
+}
+
+/// <summary>Minimal illustration reference for <see cref="VoiceTutorSessionResponseDto.Illustrations"/> — just enough for the frontend to build a GetIllustrationImageFunction URL and a caption, no image bytes.</summary>
+public sealed class IllustrationRefDto
+{
+    public Guid Id { get; set; }
+
+    public string? Caption { get; set; }
 }

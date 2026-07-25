@@ -101,12 +101,21 @@ export const useStartingPointStore = create<StartingPointState>()(
           },
         })),
       upsertAcceptedRecommendation: (recommendation) =>
-        set((state) => ({
-          acceptedRecommendations: [
-            ...state.acceptedRecommendations.filter((r) => r.subjectCode !== recommendation.subjectCode),
-            recommendation,
-          ],
-        })),
+        set((state) => {
+          // Preserve the ORIGINAL acceptedDate if this subject was already
+          // accepted before (e.g. the student tweaks their answer and
+          // re-accepts) — only a genuinely NEW subject gets stamped with
+          // now(). PersonStartingPoint.UpdatedDate is one value for the
+          // whole row, so this per-item date is what "Mis Programas" shows
+          // as each program's real enrollment/assigned date (2026-07-24).
+          const existing = state.acceptedRecommendations.find((r) => r.subjectCode === recommendation.subjectCode);
+          return {
+            acceptedRecommendations: [
+              ...state.acceptedRecommendations.filter((r) => r.subjectCode !== recommendation.subjectCode),
+              { ...recommendation, acceptedDate: existing?.acceptedDate ?? recommendation.acceptedDate },
+            ],
+          };
+        }),
       removeAcceptedRecommendation: (subjectCode) =>
         set((state) => ({
           acceptedRecommendations: state.acceptedRecommendations.filter((r) => r.subjectCode !== subjectCode),

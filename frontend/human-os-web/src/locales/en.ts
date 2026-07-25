@@ -223,6 +223,8 @@ const en: Translations = {
   nav: {
     today: 'Today',
     growthPlan: 'Growth Plan',
+    myPrograms: 'My Programs',
+    myCapabilities: 'My Capabilities',
     capabilities: 'Capabilities',
     goals: 'Goals',
     evidence: 'Evidence',
@@ -251,22 +253,14 @@ const en: Translations = {
     afternoon: 'Good Afternoon, {{name}}',
     evening: 'Good Evening, {{name}}',
   },
-  evolution: {
-    sectionTitle: 'Your Evolution Journey',
-    youAreHere: 'You Are Here',
-    layers: {
-      foundation: 'Foundation',
-      exploration: 'Exploration',
-      mastery: 'Mastery',
-      professional: 'Professional',
-      frontier: 'Frontier',
-      creator: 'Creator',
-    },
-  },
-  currentLayer: {
-    label: 'Current Layer',
-    towardNext: '{{value}}% toward {{next}}',
-    futureSelf: 'Future Self',
+  progressOverview: {
+    sectionTitle: 'Your Progress So Far',
+    programsEnrolled: 'Programs enrolled',
+    capabilitiesEnrolled: 'Capabilities enrolled',
+    overallProgress: 'Overall progress',
+    averageScore: 'Average score',
+    noPrograms: "You're not enrolled in any program or capability yet.",
+    viewPrograms: 'Explore Capabilities',
   },
   alignment: {
     sectionTitle: 'Growth Alignment',
@@ -282,17 +276,21 @@ const en: Translations = {
   capabilities: {
     sectionTitle: 'Capabilities Powering Your Future',
     supports: 'Supports',
+    standalone: 'Independent',
     levelValue: 'Level {{value}}',
-  },
-  actions: {
-    sectionTitle: "Today's Growth Actions",
-    whyThisMatters: 'Why this matters',
-    types: {
-      recall: 'Recall Session',
-      practice: 'Practice Session',
-      project: 'Project Progress',
-      evidence: 'Evidence Submission',
+    levels: {
+      none: 'Not started yet',
+      basico: 'Basic',
+      intermedio: 'Intermediate',
+      avanzado: 'Advanced',
     },
+  },
+  continueLearning: {
+    sectionTitle: 'Continue Learning',
+    resume: 'Resume where you left off',
+    emptyTitle: 'Nothing in progress right now.',
+    emptyHint: 'Head to My Programs or My Capabilities to start or continue.',
+    emptyCta: 'Explore Capabilities',
   },
   humanState: {
     sectionTitle: 'Human State',
@@ -300,6 +298,13 @@ const en: Translations = {
     energy: 'Energy',
     purpose: 'Purpose',
     confidence: 'Confidence',
+    checkInPrompt: 'How are you feeling today?',
+    checkInHint: 'Tap a level from 1 to 5 for each.',
+    checkInSubmit: 'Save my check-in for today',
+    checkInSaving: 'Saving...',
+    checkedInToday: "You've already checked in today.",
+    updateCheckIn: 'Update',
+    streak: '{{count}}-day streak',
   },
   growthPlan: {
     pageTitle: 'Growth Plan',

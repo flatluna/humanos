@@ -145,7 +145,7 @@ namespace HumanOS.Migrations
                 columns: table => new
                 {
                     CapabilityDomainId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    LanguageCode = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    LanguageCode = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
                     Name = table.Column<string>(type: "nvarchar(400)", maxLength: 400, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
                     CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "SYSUTCDATETIME()"),

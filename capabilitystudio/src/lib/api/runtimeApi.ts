@@ -42,6 +42,30 @@ export function getCapabilityGraph(capabilityId: string, personId: string): Prom
   return apiGet<BackendCapabilityGraph>(`/capabilities/${capabilityId}/graph?personId=${personId}`);
 }
 
+// === Studio "professor" tool: add a node to an existing graph ===
+
+export interface AddGraphNodeRequest {
+  Prompt: string;
+  RequiresNodeIds: string[];
+  RequiredByNodeIds: string[];
+  GenerateIllustrations: boolean;
+}
+
+export interface AddGraphNodeResponse {
+  CapabilityGraphNodeId: string;
+  Name: string;
+  Description?: string;
+  SortOrder: number;
+  IllustrationsGenerated: number;
+}
+
+export function addCapabilityGraphNode(
+  capabilityId: string,
+  request: AddGraphNodeRequest
+): Promise<AddGraphNodeResponse> {
+  return apiPost<AddGraphNodeResponse>(`/capabilities/${capabilityId}/graph/nodes`, request);
+}
+
 // === Runtime session (5-step Memory Paradox) ===
 
 export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'Recall' | 'Production' | 'Assessment';

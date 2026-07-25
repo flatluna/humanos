@@ -227,6 +227,11 @@ public sealed class GraphProgressionEngine
         public int SortOrder { get; set; }
         public string State { get; set; } = "Locked";
         public Guid? IllustrationId { get; set; }
+
+        /// <summary>Best passed assessment score (0-100) of this person's MOST RECENT
+        /// completed attempt at this node — same semantics as NodeSummaryResult.FinalScore.
+        /// Null while the node isn't Mastered yet.</summary>
+        public int? FinalScore { get; set; }
     }
 
     public sealed class GraphMapEdgeInfo
@@ -282,6 +287,7 @@ public sealed class GraphProgressionEngine
         }
 
         var completedNodeIds = await GetCompletedNodeIdsAsync(dbContext, personId, capabilityId, cancellationToken);
+        var nodeScores = await GetNodeScoresAsync(dbContext, personId, capabilityId, cancellationToken);
 
         var nodes = new List<GraphMapNodeInfo>();
         foreach (var node in graph.Nodes)
@@ -307,7 +313,8 @@ public sealed class GraphProgressionEngine
                 Description = node.Description,
                 SortOrder = node.SortOrder,
                 State = state,
-                IllustrationId = node.Illustrations.FirstOrDefault()?.CapabilityGraphNodeIllustrationId
+                IllustrationId = node.Illustrations.FirstOrDefault()?.CapabilityGraphNodeIllustrationId,
+                FinalScore = nodeScores.TryGetValue(node.CapabilityGraphNodeId, out var score) ? score : null
             });
         }
 
@@ -400,5 +407,40 @@ public sealed class GraphProgressionEngine
             .ToListAsync(cancellationToken);
 
         return ids.ToHashSet();
+    }
+
+    /// <summary>Per-node best-passed assessment score (0-100) of this person's MOST RECENT
+    /// completed attempt at each node — same "latest attempt's best passed score" semantics
+    /// as <see cref="InstructorRuntimeOrchestrator.GetNodeSummaryAsync"/>'s FinalScore, just
+    /// computed for every completed node in the Capability at once (for the map view).</summary>
+    private static async Task<Dictionary<Guid, int>> GetNodeScoresAsync(
+        HumanOsDbContext dbContext,
+        Guid personId,
+        Guid capabilityId,
+        CancellationToken cancellationToken)
+    {
+        var completedNodes = await dbContext.LearningSessionNodes
+            .AsNoTracking()
+            .Include(n => n.AssessmentResults)
+            .Where(n => n.LearningSession!.PersonId == personId
+                     && n.LearningSession!.CapabilityId == capabilityId
+                     && n.Status == LearningSessionNodeStatus.Completed)
+            .ToListAsync(cancellationToken);
+
+        var scores = new Dictionary<Guid, int>();
+        foreach (var group in completedNodes.GroupBy(n => n.CapabilityGraphNodeId))
+        {
+            var latest = group.OrderByDescending(n => n.CompletedDate).First();
+            var bestPassed = latest.AssessmentResults
+                .Where(a => a.Passed)
+                .OrderByDescending(a => a.CreatedDate)
+                .FirstOrDefault();
+            if (bestPassed is not null)
+            {
+                scores[group.Key] = bestPassed.Score;
+            }
+        }
+
+        return scores;
     }
 }

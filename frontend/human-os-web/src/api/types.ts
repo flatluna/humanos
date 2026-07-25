@@ -124,6 +124,26 @@ export interface PersonMotivationResponse {
   createdDate: string;
 }
 
+/** Mirrors backend/HumanOS/Contracts/HumanState/HumanStateContracts.cs (HumanStateCheckInResponse) */
+export interface HumanStateCheckInResponse {
+  personId: string;
+  recordedAt: string | null;
+  energy: number | null;
+  focus: number | null;
+  purpose: number | null;
+  confidence: number | null;
+  streak: number;
+  hasCheckedInToday: boolean;
+}
+
+/** Mirrors backend/HumanOS/Contracts/HumanState/HumanStateContracts.cs (UpsertHumanStateRequest) */
+export interface UpsertHumanStateRequest {
+  energy: number;
+  focus: number;
+  purpose: number;
+  confidence: number;
+}
+
 /** Mirrors backend/HumanOS/Contracts/Capabilities/PersonCapabilityResponse.cs */
 export interface PersonCapabilityResponse {
   personCapabilityId: string;

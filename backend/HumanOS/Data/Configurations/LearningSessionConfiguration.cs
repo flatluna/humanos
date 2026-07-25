@@ -36,8 +36,17 @@ public class LearningSessionConfiguration : IEntityTypeConfiguration<LearningSes
             .IsRequired()
             .OnDelete(DeleteBehavior.Restrict);
 
+        // FK opcional a Program — mismo criterio: nunca cascadear el borrado,
+        // preserva el historial de aprendizaje aunque el Program se elimine.
+        builder.HasOne(s => s.Program)
+            .WithMany()
+            .HasForeignKey(s => s.ProgramId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(s => s.PersonId);
         builder.HasIndex(s => s.CapabilityId);
         builder.HasIndex(s => new { s.PersonId, s.CapabilityId });
+        builder.HasIndex(s => new { s.PersonId, s.CapabilityId, s.ProgramId });
     }
 }

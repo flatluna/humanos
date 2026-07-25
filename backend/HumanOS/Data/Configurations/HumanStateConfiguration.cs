@@ -20,9 +20,6 @@ public sealed class HumanStateConfiguration
         builder.Property(x => x.PersonId)
             .IsRequired();
 
-        builder.Property(x => x.TenantId)
-            .IsRequired();
-
         builder.Property(x => x.Streak)
             .HasDefaultValue(0)
             .IsRequired();

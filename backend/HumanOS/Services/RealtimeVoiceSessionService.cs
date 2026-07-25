@@ -62,11 +62,24 @@ public sealed class RealtimeVoiceSessionService
     {
         public string ClientSecret { get; set; } = string.Empty;
 
-        /// <summary>The exact URL the browser should POST its SDP offer to
-        /// (includes <c>?webrtcfilter=on</c>, which limits the data-channel
-        /// events Azure sends back to the browser to a safe subset that
-        /// never echoes the session's <c>instructions</c> back to the
-        /// client — see the WebRTC doc's own recommendation).</summary>
+        /// <summary>The exact URL the browser should POST its SDP offer to.
+        /// Includes <c>?webrtcfilter=on</c> ONLY for sessions with NO
+        /// function-calling <c>tools</c> (e.g. the plain Hypothesis/Teaching
+        /// Voice Tutor) -- that filter limits the data-channel events Azure
+        /// sends back to a fixed allowlist that keeps the session's
+        /// <c>instructions</c> private, per Microsoft's own WebRTC doc
+        /// (https://learn.microsoft.com/azure/ai-foundry/openai/how-to/realtime-audio-webrtc).
+        /// CONFIRMED 2026-07-24 (via that same doc): that allowlist does NOT
+        /// include <c>response.done</c>/<c>response.output_item.done</c> --
+        /// the ONLY events that carry function-call data. With the filter on,
+        /// the browser never learns a tool was even called, so it never
+        /// sends back a <c>function_call_output</c> and the model's turn
+        /// stalls forever (exactly the "asked the Agent to write something,
+        /// got zero response at all" bug). So whenever <paramref name="tools"/>
+        /// is non-null, the filter is omitted entirely so those events reach
+        /// the browser -- trading a small amount of prompt-instructions
+        /// exposure (visible in that student's own browser dev tools only)
+        /// for function-calling to actually work at all.</summary>
         public string RealtimeCallsUrl { get; set; } = string.Empty;
 
         public string Model { get; set; } = string.Empty;
@@ -83,8 +96,21 @@ public sealed class RealtimeVoiceSessionService
     /// pass anything derived from unsanitized user input here, since this
     /// text becomes the Realtime session's system prompt.
     /// </summary>
+    /// <param name="tools">
+    /// Optional Realtime "tools" (function-calling) definition, passed
+    /// through verbatim to the session config's <c>tools</c> field (see
+    /// https://platform.openai.com/docs/guides/realtime-conversations#function-calling).
+    /// Null (the default) omits the field entirely — existing callers
+    /// (VoiceTutorSessionFunction) are unaffected. Introduced for
+    /// "Reactivar Engrama"'s <c>show_illustration</c> tool (2026-07-24):
+    /// lets the model itself decide, mid-conversation, when a STORY or
+    /// real-life example it's telling would benefit from showing one of
+    /// the node's ALREADY-GENERATED illustrations — no on-demand image
+    /// generation (and its latency) is ever involved, only picking an
+    /// existing image by id.
+    /// </param>
     public async Task<EphemeralSession> CreateEphemeralSessionAsync(
-        string instructions, CancellationToken cancellationToken)
+        string instructions, CancellationToken cancellationToken, object? tools = null)
     {
         if (!IsConfigured)
         {
@@ -96,24 +122,35 @@ public sealed class RealtimeVoiceSessionService
         var baseUri = _endpoint!.TrimEnd('/');
         var requestUri = $"{baseUri}/openai/v1/realtime/client_secrets";
 
-        var sessionConfig = new
+        // Built as a JsonObject (rather than an anonymous type) so `tools`/
+        // `tool_choice` can be omitted entirely when the caller passes none,
+        // instead of serializing as an explicit `"tools": null`.
+        var sessionNode = new System.Text.Json.Nodes.JsonObject
         {
-            session = new
+            ["type"] = "realtime",
+            ["model"] = _deploymentName,
+            ["instructions"] = instructions,
+            ["audio"] = new System.Text.Json.Nodes.JsonObject
             {
-                type = "realtime",
-                model = _deploymentName,
-                instructions,
-                audio = new
+                ["output"] = new System.Text.Json.Nodes.JsonObject { ["voice"] = _voice },
+                // Lets the browser receive `conversation.item.input_audio_transcription.completed`
+                // events with a text transcript of what the student said — used by the Recall
+                // step's voice flow to fill the existing answer textbox (see VoiceTutorAgent.tsx),
+                // WITHOUT this channel ever grading anything itself.
+                ["input"] = new System.Text.Json.Nodes.JsonObject
                 {
-                    output = new { voice = _voice },
-                    // Lets the browser receive `conversation.item.input_audio_transcription.completed`
-                    // events with a text transcript of what the student said — used by the Recall
-                    // step's voice flow to fill the existing answer textbox (see VoiceTutorAgent.tsx),
-                    // WITHOUT this channel ever grading anything itself.
-                    input = new { transcription = new { model = _transcriptionModel } }
+                    ["transcription"] = new System.Text.Json.Nodes.JsonObject { ["model"] = _transcriptionModel }
                 }
             }
         };
+
+        if (tools is not null)
+        {
+            sessionNode["tools"] = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(tools));
+            sessionNode["tool_choice"] = "auto";
+        }
+
+        var sessionConfig = new { session = sessionNode };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, requestUri)
         {
@@ -147,7 +184,13 @@ public sealed class RealtimeVoiceSessionService
         return new EphemeralSession
         {
             ClientSecret = valueElement.GetString()!,
-            RealtimeCallsUrl = $"{baseUri}/openai/v1/realtime/calls?webrtcfilter=on",
+            // See RealtimeCallsUrl's doc comment: the webrtcfilter is only
+            // safe to use when there are no function-calling `tools`, since
+            // its fixed event allowlist drops the function_call-carrying
+            // response.done/response.output_item.done events entirely.
+            RealtimeCallsUrl = tools is null
+                ? $"{baseUri}/openai/v1/realtime/calls?webrtcfilter=on"
+                : $"{baseUri}/openai/v1/realtime/calls",
             Model = _deploymentName!,
             Voice = _voice,
             ExpiresAtUnixSeconds = expiresAt

@@ -150,4 +150,99 @@ public sealed class CapabilityGraphPersistenceService
 
         return graphEntity;
     }
+
+    /// <summary>
+    /// Studio "professor" tool — inserts ONE new node (plus its Requires
+    /// edges to/from existing nodes, plus optional illustration metadata)
+    /// into an ALREADY-PERSISTED CapabilityGraph. Unlike <see cref="PersistAsync"/>
+    /// (which creates a whole new graph), this never touches any other node
+    /// or edge already in the graph.
+    /// </summary>
+    /// <param name="requiresNodeIds">Existing node ids the new node REQUIRES
+    /// (edges created as NewNode --Requires--> existing).</param>
+    /// <param name="requiredByNodeIds">Existing node ids that will now
+    /// REQUIRE the new node (edges created as existing --Requires--> NewNode).</param>
+    /// <param name="sortOrder">Pre-computed SortOrder for the new node
+    /// (caller decides — typically max(existing SortOrder) + 1).</param>
+    public async Task<CapabilityGraphNode> AddNodeAsync(
+        HumanOsDbContext dbContext,
+        Guid capabilityGraphId,
+        GraphNodeDto node,
+        IReadOnlyList<Guid> requiresNodeIds,
+        IReadOnlyList<Guid> requiredByNodeIds,
+        int sortOrder,
+        IReadOnlyList<NodeIllustrationRecord>? illustrations,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dbContext);
+        ArgumentNullException.ThrowIfNull(node);
+
+        var nodeEntity = new CapabilityGraphNode
+        {
+            CapabilityGraphNodeId = node.NodeId != Guid.Empty ? node.NodeId : Guid.NewGuid(),
+            CapabilityGraphId = capabilityGraphId,
+            Name = node.Name,
+            Description = node.Description,
+            NodeType = (LearningNodeType)(int)node.NodeType,
+            SortOrder = sortOrder,
+            AcademicDefinition = node.AcademicDefinition,
+            Interpretation = node.Interpretation,
+            ExamplesJson = JsonSerializer.Serialize(node.Examples),
+            ApplicationsJson = JsonSerializer.Serialize(node.Applications),
+            ReferencesJson = JsonSerializer.Serialize(node.References),
+            CreatedDate = DateTime.UtcNow
+        };
+
+        dbContext.CapabilityGraphNodes.Add(nodeEntity);
+
+        foreach (var requiresId in requiresNodeIds)
+        {
+            dbContext.CapabilityGraphEdges.Add(new CapabilityGraphEdge
+            {
+                CapabilityGraphEdgeId = Guid.NewGuid(),
+                CapabilityGraphId = capabilityGraphId,
+                SourceNodeId = nodeEntity.CapabilityGraphNodeId,
+                TargetNodeId = requiresId,
+                RelationshipType = RelationshipType.Requires,
+                CreatedDate = DateTime.UtcNow
+            });
+        }
+
+        foreach (var requiredById in requiredByNodeIds)
+        {
+            dbContext.CapabilityGraphEdges.Add(new CapabilityGraphEdge
+            {
+                CapabilityGraphEdgeId = Guid.NewGuid(),
+                CapabilityGraphId = capabilityGraphId,
+                SourceNodeId = requiredById,
+                TargetNodeId = nodeEntity.CapabilityGraphNodeId,
+                RelationshipType = RelationshipType.Requires,
+                CreatedDate = DateTime.UtcNow
+            });
+        }
+
+        if (illustrations is not null)
+        {
+            foreach (var illustration in illustrations)
+            {
+                dbContext.CapabilityGraphNodeIllustrations.Add(new CapabilityGraphNodeIllustration
+                {
+                    CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
+                    CapabilityGraphNodeId = nodeEntity.CapabilityGraphNodeId,
+                    StoragePath = illustration.StoragePath,
+                    Prompt = illustration.Prompt,
+                    Caption = illustration.Caption,
+                    ImageModel = illustration.ImageModel,
+                    Width = illustration.Width,
+                    Height = illustration.Height,
+                    Purpose = illustration.Purpose,
+                    CreatedDate = DateTime.UtcNow
+                });
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return nodeEntity;
+    }
 }

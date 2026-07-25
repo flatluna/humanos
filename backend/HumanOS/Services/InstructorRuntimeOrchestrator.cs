@@ -132,6 +132,7 @@ public sealed class InstructorRuntimeOrchestrator
         Guid personId,
         Guid capabilityId,
         Guid capabilityGraphNodeId,
+        Guid? programId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
@@ -160,6 +161,7 @@ public sealed class InstructorRuntimeOrchestrator
         {
             PersonId = personId,
             CapabilityId = capabilityId,
+            ProgramId = programId,
             Status = LearningSessionStatus.Active,
             StartedDate = now
         };

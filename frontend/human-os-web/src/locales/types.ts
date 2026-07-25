@@ -196,7 +196,9 @@ export interface Translations {
   nav: {
     today: string;
     growthPlan: string;
+    myPrograms: string;
     capabilities: string;
+    myCapabilities: string;
     goals: string;
     evidence: string;
     myEvolution: string;
@@ -224,22 +226,14 @@ export interface Translations {
     afternoon: string;
     evening: string;
   };
-  evolution: {
+  progressOverview: {
     sectionTitle: string;
-    youAreHere: string;
-    layers: {
-      foundation: string;
-      exploration: string;
-      mastery: string;
-      professional: string;
-      frontier: string;
-      creator: string;
-    };
-  };
-  currentLayer: {
-    label: string;
-    towardNext: string;
-    futureSelf: string;
+    programsEnrolled: string;
+    capabilitiesEnrolled: string;
+    overallProgress: string;
+    averageScore: string;
+    noPrograms: string;
+    viewPrograms: string;
   };
   alignment: {
     sectionTitle: string;
@@ -255,17 +249,21 @@ export interface Translations {
   capabilities: {
     sectionTitle: string;
     supports: string;
+    standalone: string;
     levelValue: string;
-  };
-  actions: {
-    sectionTitle: string;
-    whyThisMatters: string;
-    types: {
-      recall: string;
-      practice: string;
-      project: string;
-      evidence: string;
+    levels: {
+      none: string;
+      basico: string;
+      intermedio: string;
+      avanzado: string;
     };
+  };
+  continueLearning: {
+    sectionTitle: string;
+    resume: string;
+    emptyTitle: string;
+    emptyHint: string;
+    emptyCta: string;
   };
   humanState: {
     sectionTitle: string;
@@ -273,6 +271,13 @@ export interface Translations {
     energy: string;
     purpose: string;
     confidence: string;
+    checkInPrompt: string;
+    checkInHint: string;
+    checkInSubmit: string;
+    checkInSaving: string;
+    checkedInToday: string;
+    updateCheckIn: string;
+    streak: string;
   };
   growthPlan: {
     pageTitle: string;

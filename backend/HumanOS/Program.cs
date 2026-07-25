@@ -114,7 +114,9 @@ var host = new HostBuilder()
         services.AddScoped<PersonService>();
         services.AddScoped<PersonProfileService>();
         services.AddScoped<GrowthPlanService>();
+        services.AddScoped<CapabilityEnrollmentService>();
         services.AddScoped<HumanProfileService>();
+        services.AddScoped<HumanStateService>();
         services.AddScoped<LanguageService>();
         services.AddScoped<CapabilityDomainService>();
         services.AddScoped<SubjectService>();
@@ -164,6 +166,12 @@ var host = new HostBuilder()
         services.AddSingleton<TocExtractionAgent>();
         services.AddSingleton<ArquitectoAgent>();
         services.AddSingleton<GraphArchitectAgent>();
+        // Studio "professor" tool (2026-07-24): designs ONE new node to be
+        // inserted into an already-published CapabilityGraph from a
+        // free-text prompt — see AddCapabilityGraphNodeFunction. Same
+        // Singleton rationale as every other Studio agent (no per-request
+        // state).
+        services.AddSingleton<HumanOS.Agents.Studio.GraphNodeAdditionAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.DocumentContextAgent>();
         services.AddSingleton<GraphIllustrationImageService>();
         services.AddSingleton<ExperienceDesignerAgent>();

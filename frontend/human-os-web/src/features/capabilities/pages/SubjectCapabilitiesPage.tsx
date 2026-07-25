@@ -1,4 +1,3 @@
-import { Link } from 'react-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   getCapabilities,
@@ -7,10 +6,12 @@ import {
 } from '../api/capabilitiesApi';
 import { getCapabilityGraph, type BackendCapabilityGraph } from '../api/capabilityGraphApi';
 import { getSubjects, type Subject } from '../api/subjectsApi';
+import { enrollCapability, getEnrolledCapabilities, unenrollCapability } from '../api/enrolledCapabilitiesApi';
 import { useAuth } from '@/auth/AuthContext';
 import { useI18n } from '../i18n/useI18n';
 import {
   BookOpen,
+  CheckCircle2,
   ChefHat,
   FlaskConical,
   Globe2,
@@ -20,8 +21,8 @@ import {
   PawPrint,
   Search,
   Sigma,
-  Sparkles,
   Star,
+  UserPlus,
   Users,
   X,
   type LucideIcon,
@@ -238,6 +239,8 @@ function SummaryModal({
  * per the "todo bajo /capabilities/*" structure decision. */
 export function CapabilitiesHomePage() {
   const { language } = useI18n();
+  const { user } = useAuth();
+  const personId = user?.personId ?? '';
   const [capabilities, setCapabilities] = useState<BackendCapabilitySummary[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -245,6 +248,8 @@ export function CapabilitiesHomePage() {
   const [summaryFor, setSummaryFor] = useState<BackendCapabilitySummary | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSubject, setActiveSubject] = useState<string | null>(null);
+  const [enrolledCapabilityIds, setEnrolledCapabilityIds] = useState<Set<string>>(new Set());
+  const [enrollingId, setEnrollingId] = useState<string | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -257,6 +262,36 @@ export function CapabilitiesHomePage() {
   useEffect(() => {
     getSubjects(language).then(setSubjects).catch(() => setSubjects([]));
   }, [language]);
+
+  useEffect(() => {
+    if (!personId) return;
+    getEnrolledCapabilities(personId)
+      .then((enrolled) => setEnrolledCapabilityIds(new Set(enrolled.map((c) => c.capabilityId))))
+      .catch(() => setEnrolledCapabilityIds(new Set()));
+  }, [personId]);
+
+  async function handleToggleEnroll(capability: BackendCapabilitySummary) {
+    if (!personId || enrollingId) return;
+    const isEnrolled = enrolledCapabilityIds.has(capability.capabilityId);
+    setEnrollingId(capability.capabilityId);
+    try {
+      if (isEnrolled) {
+        await unenrollCapability(personId, capability.capabilityId);
+        setEnrolledCapabilityIds((prev) => {
+          const next = new Set(prev);
+          next.delete(capability.capabilityId);
+          return next;
+        });
+      } else {
+        await enrollCapability(personId, capability.capabilityId);
+        setEnrolledCapabilityIds((prev) => new Set(prev).add(capability.capabilityId));
+      }
+    } catch {
+      // Silently ignore — the button just stays in its previous state.
+    } finally {
+      setEnrollingId(null);
+    }
+  }
 
   const subjectsWithCapabilities = useMemo(() => {
     const codesInUse = new Set(capabilities.map((c) => c.subjectCode).filter(Boolean));
@@ -340,23 +375,23 @@ export function CapabilitiesHomePage() {
             key={capability.capabilityId}
             className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] transition-all hover:-translate-y-1 hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-brand-500/10"
           >
-            <Link to={`/capabilities/${capability.capabilityId}`}>
+            <button type="button" onClick={() => setSummaryFor(capability)} className="block w-full text-left">
               <CoverImage capability={capability} />
-            </Link>
+            </button>
 
             <div className="flex flex-1 flex-col gap-2 p-4">
               <ProviderBadge />
-              <Link to={`/capabilities/${capability.capabilityId}`} className="group/title">
+              <button type="button" onClick={() => setSummaryFor(capability)} className="group/title text-left">
                 <h3 className="font-semibold text-slate-900 dark:text-white group-hover/title:text-brand-700 dark:group-hover/title:text-brand-300">
                   {capability.name}
                 </h3>
-              </Link>
+              </button>
               <StarRating rating={placeholderRatingFor(capability.capabilityId)} />
               <p className="line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
                 {capability.learningSummary ?? 'Descubre los conceptos clave de este curso, paso a paso.'}
               </p>
 
-              <div className="mt-auto flex items-center justify-between pt-3">
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
                 <button
                   onClick={() => setSummaryFor(capability)}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
@@ -364,15 +399,31 @@ export function CapabilitiesHomePage() {
                   <Info className="h-3.5 w-3.5" />
                   Ver resumen
                 </button>
-                <Link
-                  to={`/capabilities/${capability.capabilityId}`}
-                  className={`flex items-center gap-1.5 rounded-lg bg-gradient-to-r px-3 py-1.5 text-xs font-semibold text-[#fff] shadow-sm transition hover:opacity-90 ${accentFor(
-                    capability.capabilityId
-                  )}`}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Empezar
-                </Link>
+
+                {personId && (
+                  <button
+                    onClick={() => handleToggleEnroll(capability)}
+                    disabled={enrollingId === capability.capabilityId}
+                    title="Inscribirte no inicia el curso — sólo lleva estadísticas de tu progreso en 'Mis Capacidades'."
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:opacity-60 ${
+                      enrolledCapabilityIds.has(capability.capabilityId)
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                        : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {enrolledCapabilityIds.has(capability.capabilityId) ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Inscrito
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Inscribirme
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>

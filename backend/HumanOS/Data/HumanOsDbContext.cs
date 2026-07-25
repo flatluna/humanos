@@ -74,6 +74,11 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<PersonCapability> PersonCapabilities =>
         Set<PersonCapability>();
 
+    /// <summary>Explicit "Inscribirme" record for a standalone Capability
+    /// (2026-07-24) — see <see cref="CapabilityEnrollment"/>.</summary>
+    public DbSet<CapabilityEnrollment> CapabilityEnrollments =>
+        Set<CapabilityEnrollment>();
+
     public DbSet<CapabilityEvidence> CapabilityEvidence =>
         Set<CapabilityEvidence>();
 

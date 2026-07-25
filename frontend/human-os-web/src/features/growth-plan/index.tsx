@@ -19,20 +19,12 @@ import { useStartingPointStore } from '@/features/starting-point/store/useStarti
 
 type StepStatus = 'completed' | 'inProgress' | 'notStarted' | 'locked';
 
-/** Reduced to the 6 steps that are actually universal for the
- *  individuals use case (children, homemakers, students, career
- *  changers) — the original 9-step sequence in
- *  /memories/repo/human-os-core-philosophy.md was designed for
- *  employees (Work Context, Role Requirements, Organizational
- *  Priorities...). Employee-specific steps (Work and Experience /
- *  role-experience, Growth Context) are dropped from this index for
- *  now; their routes still exist for a future employee-specific UX. */
+/** Reduced to 3 steps — current situation, future direction, and starting point.
+ *  Steps 4 (humanReview) and 5 (planActivation) have been removed. */
 type StepLabelKey =
   | 'currentSituation'
   | 'futureDirection'
-  | 'startingPoint'
-  | 'humanReview'
-  | 'planActivation';
+  | 'startingPoint';
 
 interface SequenceStep {
   labelKey: StepLabelKey;
@@ -88,8 +80,6 @@ export function GrowthPlanPage() {
       to: startingPointStatus === 'locked' ? null : '/growth-plan/starting-point',
       status: startingPointStatus,
     },
-    { labelKey: 'humanReview', icon: ClipboardCheck, to: null, status: 'locked' },
-    { labelKey: 'planActivation', icon: Rocket, to: null, status: 'locked' },
   ];
 
   const flow = t('growthPlan.overview.result.flow', { returnObjects: true }) as string[];

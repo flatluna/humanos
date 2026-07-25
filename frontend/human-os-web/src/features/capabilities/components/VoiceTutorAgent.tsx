@@ -62,9 +62,21 @@ export default function VoiceTutorAgent({
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  // Grace-period timer that re-enables the mic track a short beat after
+  // Grace-period timer that ramps the mic gain back up a short beat after
   // the Agent's audio goes quiet — see monitorRemoteAudioLevel below.
   const micGraceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Real barge-in support (2026-07-24, ported from EngramReviewAgent.tsx):
+  // instead of hard-muting the mic track while the Agent talks (which
+  // fully blocks genuine interruption, not just echo), the raw mic is
+  // routed through a GainNode before being sent over the peer connection.
+  // While the Agent is speaking the gain is ducked way down (not to zero)
+  // so ordinary speaker-bleed echo stays below the server VAD's
+  // `threshold`, but a real, clearly louder interruption from the student
+  // still crosses it and triggers `interrupt_response: true` server-side
+  // like a normal conversation.
+  const micGainNodeRef = useRef<GainNode | null>(null);
+  const micProcessingContextRef = useRef<AudioContext | null>(null);
+  const micProcessedStreamRef = useRef<MediaStream | null>(null);
 
   const teardown = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -80,6 +92,11 @@ export default function VoiceTutorAgent({
     peerConnectionRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    micProcessedStreamRef.current?.getTracks().forEach((track) => track.stop());
+    micProcessedStreamRef.current = null;
+    micGainNodeRef.current = null;
+    micProcessingContextRef.current?.close().catch(() => undefined);
+    micProcessingContextRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
     setState('idle');
@@ -116,38 +133,31 @@ export default function VoiceTutorAgent({
       const average = sum / buffer.length;
       const isAgentSpeaking = average > 12;
 
-      // FIXED 2026-07-23 — confirmed real-world setup is laptop/desktop
-      // speakers + mic (no headphones). That leaks enough acoustic echo of
-      // the Agent's OWN voice back into the mic that browser
-      // echoCancellation alone doesn't fully cancel it (especially right as
-      // a new utterance starts, before AEC has adapted, and on louder
-      // syllables). That echo was crossing the server's VAD `threshold`
-      // and getting misread as the student interrupting, which — via
-      // `interrupt_response: true` — made the server truncate its own
-      // in-progress answer mid-sentence. That's exactly the reported bug:
-      // the Agent starts narrating, cuts itself off, and jumps to a
-      // generic "¿tienes preguntas?" without ever finishing. Genuine
-      // simultaneous barge-in isn't reliable without headphones anyway —
-      // any VAD (energy-based or semantic) reads the echo as real speech
-      // since acoustically it IS the Agent's real voice, just reflected
-      // back. Fix: mute the mic track client-side while the Agent's audio
-      // is audible, plus a short grace period after it goes quiet, so the
-      // echo never reaches the server's VAD at all. The orb's manual
-      // tap-to-stop (sends `response.cancel` directly) still works at any
-      // time as the real interruption path — only automatic barge-in-by-
-      // VAD is disabled while the Agent's own audio is playing.
-      const micTrack = localStreamRef.current?.getAudioTracks()[0];
-      if (micTrack) {
+      // FIXED 2026-07-24 — replaced the earlier hard mic-mute (see below)
+      // with GainNode-based "ducking": confirmed real-world setup is
+      // laptop/desktop speakers + mic (no headphones), which leaks enough
+      // acoustic echo of the Agent's OWN voice back into the mic that
+      // browser echoCancellation alone doesn't fully cancel it. But fully
+      // muting the mic while the Agent spoke also blocked genuine
+      // barge-in entirely (the server's VAD never saw ANY mic audio to
+      // judge). Ducking to a low (not zero) gain lets a real, clearly
+      // louder interruption still cross the server's VAD `threshold` while
+      // ordinary quieter speaker-bleed echo mostly stays below it. Ramped
+      // smoothly (setTargetAtTime) to avoid audible clicks/zipper noise.
+      const micGain = micGainNodeRef.current;
+      if (micGain) {
+        const ctx = micProcessingContextRef.current;
+        const now = ctx?.currentTime ?? 0;
         if (isAgentSpeaking) {
-          micTrack.enabled = false;
+          micGain.gain.setTargetAtTime(0.12, now, 0.05);
           if (micGraceTimeoutRef.current !== null) {
             clearTimeout(micGraceTimeoutRef.current);
             micGraceTimeoutRef.current = null;
           }
-        } else if (!micTrack.enabled && micGraceTimeoutRef.current === null) {
+        } else if (micGain.gain.value < 0.9 && micGraceTimeoutRef.current === null) {
           micGraceTimeoutRef.current = setTimeout(() => {
-            const track = localStreamRef.current?.getAudioTracks()[0];
-            if (track) track.enabled = true;
+            const ctx2 = micProcessingContextRef.current;
+            micGainNodeRef.current?.gain.setTargetAtTime(1, ctx2?.currentTime ?? 0, 0.05);
             micGraceTimeoutRef.current = null;
           }, 500);
         }
@@ -188,10 +198,24 @@ export default function VoiceTutorAgent({
       });
       localStreamRef.current = micStream;
 
+      // Route the raw mic through a GainNode so it can be ducked (not hard
+      // muted) while the Agent is speaking — see monitorRemoteAudioLevel.
+      // The peer connection sends the PROCESSED stream's track, never the
+      // raw hardware mic track directly.
+      const micProcessingContext = new AudioContext();
+      micProcessingContextRef.current = micProcessingContext;
+      const micSource = micProcessingContext.createMediaStreamSource(micStream);
+      const micGainNode = micProcessingContext.createGain();
+      micGainNode.gain.value = 1;
+      micGainNodeRef.current = micGainNode;
+      const micDestination = micProcessingContext.createMediaStreamDestination();
+      micSource.connect(micGainNode).connect(micDestination);
+      micProcessedStreamRef.current = micDestination.stream;
+
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
 
-      micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
+      micDestination.stream.getTracks().forEach((track) => peerConnection.addTrack(track, micDestination.stream));
 
       peerConnection.ontrack = (event) => {
         const [remoteStream] = event.streams;
