@@ -86,11 +86,7 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      { path: 'goals', lazy: () => import('@/features/goals').then((m) => ({ Component: m.GoalsPage })) },
-      {
-        path: 'evidence',
-        lazy: () => import('@/features/evidence').then((m) => ({ Component: m.EvidencePage })),
-      },
+
       {
         path: 'growth',
         lazy: () => import('@/features/my-evolution').then((m) => ({ Component: m.MyEvolutionPage })),
@@ -135,10 +131,6 @@ export const router = createBrowserRouter([
       {
         path: 'application',
         lazy: () => import('@/features/application').then((m) => ({ Component: m.ApplicationPage })),
-      },
-      {
-        path: 'evidence',
-        lazy: () => import('@/features/evidence').then((m) => ({ Component: m.EvidencePage })),
       },
     ],
   },

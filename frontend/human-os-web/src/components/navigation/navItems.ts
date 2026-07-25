@@ -4,8 +4,6 @@ import {
   GraduationCap,
   Layers,
   BookmarkCheck,
-  Target,
-  FileCheck2,
   TrendingUp,
   Bot,
   type LucideIcon,
@@ -20,8 +18,6 @@ export interface NavItem {
     | 'nav.myPrograms'
     | 'nav.capabilities'
     | 'nav.myCapabilities'
-    | 'nav.goals'
-    | 'nav.evidence'
     | 'nav.myEvolution'
     | 'nav.agents';
 }
@@ -46,8 +42,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/programs', icon: GraduationCap, labelKey: 'nav.myPrograms' },
       { to: '/capabilities', icon: Layers, labelKey: 'nav.capabilities' },
       { to: '/my-capabilities', icon: BookmarkCheck, labelKey: 'nav.myCapabilities' },
-      { to: '/goals', icon: Target, labelKey: 'nav.goals' },
-      { to: '/evidence', icon: FileCheck2, labelKey: 'nav.evidence' },
       { to: '/growth', icon: TrendingUp, labelKey: 'nav.myEvolution' },
     ],
   },

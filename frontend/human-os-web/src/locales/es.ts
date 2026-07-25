@@ -226,8 +226,6 @@ const es: Translations = {
     myPrograms: 'Mis Programas',
     capabilities: 'Capacidades',
     myCapabilities: 'Mis Capacidades',
-    goals: 'Metas',
-    evidence: 'Evidencia',
     myEvolution: 'Mi Evolución',
     agents: 'Agentes',
     organizationContext: 'Contexto Organizacional',
