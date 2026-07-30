@@ -143,6 +143,7 @@ public sealed class IdeaToDocumentAgent
     public async Task<ExpansionResult> ExpandAsync(
         string capabilityName,
         string description,
+        string languageCode = "es",
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -152,9 +153,13 @@ public sealed class IdeaToDocumentAgent
                 "'AzureOpenAIDeploymentName' application settings.");
         }
 
+        var targetLanguageName = languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish";
         var prompt =
             $"Capability name: {capabilityName}\n" +
             $"Description of what the student should learn/be able to do: {description}\n\n" +
+            $"Target output language: {targetLanguageName}. Write the ENTIRE document — every " +
+            "heading and all body text — in this language, regardless of what language the " +
+            "capability name/description above happen to be written in.\n\n" +
             "Write the full source document as described in your instructions.";
 
         var response = await _agent.RunAsync(prompt, cancellationToken: cancellationToken);

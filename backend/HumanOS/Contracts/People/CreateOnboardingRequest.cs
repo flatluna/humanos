@@ -22,4 +22,9 @@ public sealed class CreateOnboardingRequest
     public string CompanyEmail { get; set; } = null!;
 
     public string? CompanyPhone { get; set; }
+
+    /// <summary>"en" or "es" — chosen by the admin in the onboarding
+    /// form (see PersonProfile.PreferredLanguage). Defaults to "en" if
+    /// omitted, matching the PersonProfile column default.</summary>
+    public string? PreferredLanguage { get; set; }
 }

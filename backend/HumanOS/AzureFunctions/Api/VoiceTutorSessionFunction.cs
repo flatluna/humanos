@@ -94,6 +94,7 @@ public sealed class VoiceTutorSessionFunction
         ExperienceStepType stepType;
         NodeExperienceBlueprintStep? blueprintStep;
         string? currentPromptText = body.CurrentPromptText;
+        Guid capabilityGraphNodeId;
 
         if (body.LearningSessionStepId != Guid.Empty)
         {
@@ -112,17 +113,19 @@ public sealed class VoiceTutorSessionFunction
 
             if (step.StepType != ExperienceStepType.Hypothesis
                 && step.StepType != ExperienceStepType.Teaching
-                && step.StepType != ExperienceStepType.Recall)
+                && step.StepType != ExperienceStepType.Recall
+                && step.StepType != ExperienceStepType.DeepDive)
             {
                 return await FunctionResponseFactory.ErrorResponseAsync(
                     request,
                     HttpStatusCode.BadRequest,
                     "VoiceNotYetSupportedForStep",
-                    $"Voice Tutor is only available for Hypothesis, Teaching and Recall steps so far (this step is {step.StepType}).",
+                    $"Voice Tutor is only available for Hypothesis, Teaching, Examples and Recall steps so far (this step is {step.StepType}).",
                     cancellationToken);
             }
 
             stepType = step.StepType;
+            capabilityGraphNodeId = step.LearningSessionNode.CapabilityGraphNodeId;
             blueprintStep = await _dbContext.NodeExperienceBlueprintSteps
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
@@ -137,20 +140,23 @@ public sealed class VoiceTutorSessionFunction
             // "read-only peek" has no LearningSession/LearningSessionStep at
             // all for a step the live session hasn't reached yet, so this
             // reads straight from the node's most recent blueprint instead.
-            // Only Hypothesis/Teaching — Recall's voice flow always needs a
-            // real, in-progress LearningSessionStep (it feeds the student's
-            // transcribed answer back into the real grading path).
-            if (parsedStepType != ExperienceStepType.Hypothesis && parsedStepType != ExperienceStepType.Teaching)
+            // Hypothesis/Teaching/Examples — Recall's voice flow always
+            // needs a real, in-progress LearningSessionStep (it feeds the
+            // student's transcribed answer back into the real grading path).
+            if (parsedStepType != ExperienceStepType.Hypothesis
+                && parsedStepType != ExperienceStepType.Teaching
+                && parsedStepType != ExperienceStepType.DeepDive)
             {
                 return await FunctionResponseFactory.ErrorResponseAsync(
                     request,
                     HttpStatusCode.BadRequest,
                     "VoiceNotYetSupportedForStep",
-                    $"Voice Tutor's blueprint-only path only supports Hypothesis and Teaching (got {body.StepType}).",
+                    $"Voice Tutor's blueprint-only path only supports Hypothesis, Teaching and Examples (got {body.StepType}).",
                     cancellationToken);
             }
 
             stepType = parsedStepType;
+            capabilityGraphNodeId = body.CapabilityGraphNodeId.Value;
             currentPromptText = null; // Never used outside the live Recall path.
 
             var blueprintId = await _dbContext.NodeExperienceBlueprints
@@ -186,11 +192,79 @@ public sealed class VoiceTutorSessionFunction
             ? currentPromptText!.Trim()
             : blueprintStep.Content;
 
-        var instructions = BuildInstructions(stepType, effectiveContent);
+        List<ExampleCard>? exampleCards = null;
+        if (stepType == ExperienceStepType.DeepDive)
+        {
+            try
+            {
+                exampleCards = string.IsNullOrWhiteSpace(blueprintStep.ExampleCardsJson)
+                    ? null
+                    : JsonSerializer.Deserialize<List<ExampleCard>>(blueprintStep.ExampleCardsJson);
+            }
+            catch (JsonException)
+            {
+                exampleCards = null;
+            }
+
+            if (exampleCards is null || exampleCards.Count == 0)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity, "BlueprintStepMissing", "The blueprint has no example cards for this step.", cancellationToken);
+            }
+
+            if (body.ExampleCardIndex is null || body.ExampleCardIndex < 0 || body.ExampleCardIndex >= exampleCards.Count)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request,
+                    HttpStatusCode.BadRequest,
+                    "MissingFields",
+                    $"ExampleCardIndex is required for an Examples-step voice session and must be between 0 and {exampleCards.Count - 1}.",
+                    cancellationToken);
+            }
+        }
+
+        // Node/course names for the opening greeting (2026-07-25) — best
+        // effort only, never blocks the session if the join comes back empty.
+        // ContentLanguageCode (2026-07-29) — the voice Agent MUST speak in the
+        // course's own content language, not always Spanish (bug: an English
+        // course was being narrated in Spanish because this was hardcoded).
+        var courseContext = await (
+            from n in _dbContext.CapabilityGraphNodes.AsNoTracking()
+            join g in _dbContext.CapabilityGraphs.AsNoTracking() on n.CapabilityGraphId equals g.CapabilityGraphId
+            join c in _dbContext.Capabilities.AsNoTracking() on g.CapabilityId equals c.CapabilityId
+            where n.CapabilityGraphNodeId == capabilityGraphNodeId
+            select new { NodeName = n.Name, CourseName = c.Name, c.ContentLanguageCode }
+        ).FirstOrDefaultAsync(cancellationToken);
+
+        // Read-only card review (2026-07-30): only meaningful for a DeepDive
+        // blueprint-only session (revisiting an ALREADY-MASTERED card via
+        // Capability Studio's card index) — never for the live-session path,
+        // which always needs the real grading loop.
+        var isReviewOnly = body.IsReviewOnly && stepType == ExperienceStepType.DeepDive;
+
+        var instructions = BuildInstructions(
+            stepType, effectiveContent, body.PersonName, courseContext?.NodeName, courseContext?.CourseName,
+            courseContext?.ContentLanguageCode, exampleCards, body.ExampleCardIndex, isReviewOnly);
+
+        // Deep Dive only (2026-07-30): a real Realtime function-calling tool,
+        // same mechanism as EngramReviewSessionFunction's show_visual_aid.
+        // The voice Agent calls this itself, exactly once, the instant it
+        // decides (per its own hard-capped 1-re-teach-round rule above) that
+        // the student's SPOKEN explanation is good enough — this is what lets
+        // a student who can't write yet (the target age is 6) actually finish
+        // a Deep Dive card by voice alone, without ever needing to type.
+        // The frontend answers the tool call by forwarding the explanation
+        // text to the SAME deterministic backend grading path
+        // (TutorSubmitDeepDiveAttemptFunction -> TutorAgentV2 ->
+        // DeepDiveLoopGate) used for a typed answer — the realtime model
+        // only ever decides WHEN to hand off, never the grade itself.
+        // Never included for a review-only session — there is nothing left
+        // to grade on an already-mastered card, so no tool is offered.
+        var tools = stepType == ExperienceStepType.DeepDive && !isReviewOnly ? BuildDeepDiveTools() : null;
 
         try
         {
-            var session = await _voiceSessionService.CreateEphemeralSessionAsync(instructions, cancellationToken);
+            var session = await _voiceSessionService.CreateEphemeralSessionAsync(instructions, cancellationToken, tools);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, new VoiceTutorSessionResponseDto
             {
@@ -216,46 +290,329 @@ public sealed class VoiceTutorSessionFunction
     /// content, never claim to unlock/advance anything) — this is a
     /// SEPARATE LLM session (Realtime), so it needs its own complete
     /// guardrail text rather than relying on TutorAgentV2's.
+    ///
+    /// REVERTED 2026-07-25: the "wait for the student to say they're
+    /// ready" gating (added earlier the same day) turned out unreliable
+    /// in practice (relies on an async speech-transcription event that
+    /// doesn't always fire) and was explicitly rolled back by the
+    /// product owner. Hypothesis/Teaching now behave like Recall always
+    /// did: start talking immediately, no waiting. The only surviving
+    /// piece of that work is a richer, name/course-aware opening line
+    /// ("Hola, {name}, este es {node}, del curso {course}.") instead of a
+    /// generic one, and — for Teaching — an explicit instruction to READ
+    /// the content plainly without padding it with extra explanation.
     /// </summary>
-    private static string BuildInstructions(ExperienceStepType stepType, string stepContent)
+    private static string BuildInstructions(
+        ExperienceStepType stepType, string stepContent, string? personName, string? nodeName, string? courseName,
+        string? contentLanguageCode = null,
+        List<ExampleCard>? exampleCards = null, int? selectedExampleCardIndex = null,
+        bool isReviewOnly = false)
     {
-        const string hardBoundaries = """
+        // The course's own content language ALWAYS wins — never hardcode
+        // Spanish (2026-07-29 fix: an English-content course was being
+        // narrated in Spanish by this voice Agent regardless of the course's
+        // actual ContentLanguageCode). Defaults to Spanish only when the
+        // language is genuinely unknown (matches Capability's own "es" default).
+        var isEnglish = string.Equals(contentLanguageCode, "en", StringComparison.OrdinalIgnoreCase);
+        var languageRule = isEnglish
+            ? """
+              - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every single turn, from your
+                first word to your last, for the ENTIRE conversation, in a warm, brief and encouraging tone.
+                This never changes, no matter what happens — not even if the student speaks to you in
+                Spanish or any other language, not even if they explicitly ask you to switch languages,
+                not even if you think it would help them understand better. If the student speaks Spanish,
+                you still answer ONLY in English. NEVER switch languages mid-conversation for any reason.
+              """
+            : """
+              - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en absolutamente todos
+                los turnos, desde tu primera palabra hasta la última, durante TODA la conversación, con un
+                tono cercano, breve y alentador. Esto nunca cambia, pase lo que pase — ni siquiera si el
+                estudiante te habla en inglés u otro idioma, ni siquiera si te pide explícitamente que
+                cambies de idioma, ni siquiera si crees que le ayudaría más entenderlo así. Si el estudiante
+                habla en inglés, tú sigues respondiendo SOLO en español. NUNCA cambies de idioma a mitad de
+                la conversación por ningún motivo.
+              """;
+
+        var sharedRules = $"""
             REGLAS OBLIGATORIAS (nunca las rompas):
             - Nunca inventes conocimiento fuera del texto proporcionado abajo.
             - Nunca calificas, evalúas ni decides si la respuesta del estudiante es correcta o incorrecta.
             - Nunca resuelves la tarea en lugar del estudiante ni le das la respuesta correcta.
             - Nunca afirmas poder desbloquear pasos ni cambiar el estado del curso — no tienes esa capacidad.
-            - Habla siempre en español, con un tono cercano, breve y alentador.
-            - Empieza a hablar TÚ MISMO de inmediato en cuanto se conecte, sin esperar a que el
-              estudiante diga algo primero. NUNCA abras con un saludo genérico de asistente como
-              "¡Hola! ¿En qué puedo ayudarte?" — en vez de eso, arranca directo con algo como "Hola,
-              vamos ahora a..." y entra inmediatamente en tu tarea de abajo (leer la pregunta o
-              explicar el contenido). El estudiante ya sabe en qué curso está; no se lo preguntes.
-            - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
-              todavía no ha dicho ni una sola palabra. Por eso, en tu primer turno JAMÁS uses
-              frases que den a entender que él ya respondió o dijo algo (como "perfecto",
-              "genial", "entendido", "buena respuesta", "exacto") — eso confunde al estudiante,
-              que sentirá que le respondes a algo que nunca dijo. Simplemente empieza tu tarea.
+            {languageRule}
             """;
 
-        if (stepType == ExperienceStepType.Hypothesis)
+        string BuildGreeting()
         {
-            return $"""
-                Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Hipótesis.
-                Tu único trabajo: lee en voz alta, exactamente como está escrita, la siguiente pregunta,
-                y después escucha la respuesta hablada del estudiante. Cuando termine de responder,
-                agradece su idea y anímalo a pulsar "Continuar" cuando esté listo — sin decir si es
-                correcta o incorrecta, sin dar la respuesta correcta.
+            var name = string.IsNullOrWhiteSpace(personName) ? null : personName!.Trim();
+            var node = string.IsNullOrWhiteSpace(nodeName) ? null : nodeName!.Trim();
+            var course = string.IsNullOrWhiteSpace(courseName) ? null : courseName!.Trim();
 
-                PREGUNTA A LEER EN VOZ ALTA:
+            if (isEnglish)
+            {
+                var whoEn = name is null ? "Hi" : $"Hi, {name}";
+                var whereEn = node is not null && course is not null
+                    ? $" This is \"{node}\", from the course \"{course}\"."
+                    : node is not null
+                        ? $" This is \"{node}\"."
+                        : course is not null
+                            ? $" This is the course \"{course}\"."
+                            : "";
+
+                return $"{whoEn}.{whereEn}";
+            }
+
+            var who = name is null ? "Hola" : $"Hola, {name}";
+            var where = node is not null && course is not null
+                ? $" Este es \"{node}\", del curso \"{course}\"."
+                : node is not null
+                    ? $" Este es \"{node}\"."
+                    : course is not null
+                        ? $" Este es el curso \"{course}\"."
+                        : "";
+
+            return $"{who}.{where}";
+        }
+
+        if (stepType == ExperienceStepType.Hypothesis || stepType == ExperienceStepType.Teaching)
+        {
+            var greeting = BuildGreeting();
+            var openingRule = $"""
+                - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
+                  estudiante diga algo primero y SIN preguntarle si está listo — arranca directo. Tu
+                  PRIMERA frase, literalmente, debe ser: "{greeting}" — y sin pausa ni espera,
+                  continúa inmediatamente con tu tarea de abajo en el mismo turno.
+                - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
+                  todavía no ha dicho ni una palabra. Por eso, en ese turno JAMÁS uses frases que den
+                  a entender que él ya respondió o dijo algo (como "perfecto", "genial", "entendido",
+                  "exacto") — eso confunde al estudiante. Simplemente saluda y sigue con tu tarea.
+                """;
+
+            if (stepType == ExperienceStepType.Hypothesis)
+            {
+                return $"""
+                    Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Hipótesis.
+                    Tu único trabajo, en el mismo primer turno: saluda (ver regla de apertura abajo) y
+                    después lee en voz alta, exactamente como está escrita, la siguiente pregunta.
+                    Después escucha la respuesta hablada del estudiante. Cuando termine de responder,
+                    agradece su idea y anímalo a pulsar "Continuar" cuando esté listo — sin decir si es
+                    correcta o incorrecta, sin dar la respuesta correcta.
+
+                    PREGUNTA A LEER EN VOZ ALTA:
+                    {stepContent}
+
+                    {openingRule}
+
+                    {sharedRules}
+                    """;
+            }
+
+            // Teaching
+            return $"""
+                Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Enseñanza.
+                Tu único trabajo, en el mismo primer turno: saluda (ver regla de apertura abajo) y
+                después LEE el contenido de abajo tal cual está escrito, en el mismo orden, EN VOZ
+                ALTA — sin agregar explicación adicional, sin ampliar con ejemplos propios, sin
+                parafrasear ni resumir. Simplemente léelo como está, con un tono natural y cercano.
+                Solo si el estudiante pregunta algo EN VIVO sobre este mismo contenido, respóndele
+                brevemente y grounded únicamente en este texto — nunca sobre otros temas.
+
+                CONTENIDO A LEER EN VOZ ALTA (tal cual, sin explicarlo):
                 {stepContent}
 
-                {hardBoundaries}
+                {openingRule}
+
+                {sharedRules}
+                """;
+        }
+
+        if (stepType == ExperienceStepType.DeepDive)
+        {
+            var cards = exampleCards ?? [];
+            var selectedIndex = selectedExampleCardIndex ?? 0;
+            var selected = cards[selectedIndex];
+            var selectedText = StripHtml(selected.Text);
+            var bankEntries = cards
+                .Where((_, i) => i != selectedIndex)
+                .Select(c => $"- {c.Title}: {StripHtml(c.Text)}")
+                .ToList();
+            var bank = bankEntries.Count > 0
+                ? string.Join("\n", bankEntries)
+                : "(no hay otros ejemplos ya preparados — si pide más, invéntalos siguiendo la regla 4 de abajo)";
+
+            var greeting = BuildGreeting();
+            var deepDiveOpeningRule = $"""
+                - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
+                  estudiante diga algo primero. Tu PRIMERA frase, literalmente, debe ser: "{greeting}"
+                  — y sin pausa, continúa inmediatamente explicando el ejemplo de abajo en el mismo turno.
+                - Ese primer turno es el PRIMERO de la conversación: el estudiante todavía no ha dicho
+                  ni una palabra. Por eso, en ese turno JAMÁS uses frases que den a entender que él ya
+                  respondió o dijo algo (como "perfecto", "genial", "exacto") — simplemente saluda y
+                  sigue con tu tarea.
+                """;
+
+            // Read-only card review (2026-07-30 — explicit user request: "no
+            // test, only give the student the chance to review the lesson;
+            // explain it and ask if they have questions about it"). This
+            // student already MASTERED this card — there is nothing left to
+            // grade, and no `mark_explanation_understood` tool is even
+            // offered in this mode (see RunAsync). Deliberately much
+            // shorter/simpler than the quiz-mode instructions below: just
+            // read/explain the card, then invite genuine questions.
+            if (isReviewOnly)
+            {
+                return $"""
+                    Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
+                    ayuda a un estudiante pequeño a REPASAR un ejemplo que YA DOMINÓ anteriormente.
+                    Esto NO es un examen ni un cuestionario — el estudiante ya demostró que entendió
+                    este concepto, así que tu único trabajo es ayudarlo a recordarlo con cariño.
+                    Turno tras turno, tu trabajo es:
+                    1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
+                       simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo
+                       que el estudiante tiene en pantalla si te ayuda a explicarlo. Incluye el
+                       resultado/respuesta final concreto.
+                    2) Después de explicar, pregúntale con calidez si tiene alguna duda o pregunta
+                       sobre este ejemplo — por ejemplo algo como "¿tienes alguna pregunta sobre
+                       esto?" — y responde cualquier pregunta que te haga, siempre basándote solo en
+                       este contenido.
+                    3) NUNCA le pidas que te explique el concepto de vuelta, nunca lo pongas a prueba,
+                       nunca le hagas preguntas de comprobación como si fuera un examen, y nunca
+                       califiques nada — esto es pura conversación de repaso, no evaluación. No existe
+                       ninguna función de calificación disponible en esta conversación.
+                    4) Si el estudiante ya no tiene más preguntas, despídete con calidez, recordándole
+                       lo bien que le está yendo.
+
+                    EJEMPLO A REPASAR (título: "{selected.Title}"):
+                    {selectedText}
+
+                    {deepDiveOpeningRule}
+
+                    {sharedRules}
+                    """;
+            }
+
+            return $"""
+                Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
+                acompaña por voz a un estudiante pequeño en el paso de Repaso Profundo (Deep Dive).
+                Este NO es un paso de simple explicación: tu objetivo real es asegurarte de que el
+                estudiante REALMENTE entendió este concepto antes de seguir adelante. Turno tras
+                turno, tu trabajo es:
+                1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
+                   simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo que
+                   el estudiante tiene en pantalla (por ejemplo "mira el dibujo de arriba") si te ayuda
+                   a explicarlo. SIEMPRE incluye el resultado/respuesta final concreto: nunca lo dejes
+                   como una pregunta sin resolver.
+                2) Después de explicar, SIEMPRE termina tu turno haciéndole una pregunta CONCRETA que
+                   lo obligue a demostrarte que entendió, pidiéndole que TE explique él el concepto con
+                   sus propias palabras (adapta la pregunta al contenido real de este ejemplo — por
+                   ejemplo, para letras podrías preguntar "¿cuál es la mayúscula y cuál la minúscula, y
+                   en qué se parecen?"). NUNCA uses como cierre por defecto una pregunta genérica como
+                   "¿tienes dudas?" o "¿quieres otro ejemplo?" — tu pregunta siempre debe pedirle que
+                   demuestre su propio entendimiento.
+                3) Escucha su respuesta hablada. TÚ decides, turno a turno, cuándo esa explicación ya
+                   es suficiente — pero la calificación real y el avance de tema NUNCA los haces tú
+                   directamente: existen SOLO a través de la función `mark_explanation_understood`.
+                   En el instante exacto en que decidas aceptar su explicación (ver criterio de
+                   generosidad abajo), y NUNCA antes, DEBES llamar a `mark_explanation_understood`
+                   pasando como argumento el texto de lo que el estudiante te explicó, en tus propias
+                   palabras si hace falta resumir. Hasta que la llames, nada avanza — así que no la
+                   olvides justo cuando decidas aceptar.
+
+                   ⚠️ LÍMITE DURO OBLIGATORIO — LO MÁS IMPORTANTE DE TODA ESTA INSTRUCCIÓN, NUNCA LO
+                   ROMPAS: en TODA esta conversación, como máximo puedes pedirle UNA sola vez que te
+                   vuelva a explicar el concepto (es decir, un único ciclo de "re-enseñar y volver a
+                   preguntar") ANTES de llamar a `mark_explanation_understood`. En otras palabras:
+                     · Ante su PRIMERA respuesta hablada sobre este concepto: si muestra que entendió
+                       razonablemente bien (ver criterio de generosidad abajo), acéptala YA, en este
+                       mismo turno — no hay excusa para pedirle una segunda explicación si la primera
+                       ya fue razonable. Solo si de verdad muestra una confusión clara puedes, esta
+                       única vez, re-explicar distinto y volver a preguntar.
+                     · Ante su SEGUNDA respuesta hablada sobre este mismo concepto (es decir, ya te
+                       respondió dos veces, sin importar qué tan imperfecta, incompleta o corta te
+                       parezca la segunda): tienes TERMINANTEMENTE PROHIBIDO pedirle una tercera
+                       explicación o hacer una tercera pregunta de comprobación. DEBES llamar a
+                       `mark_explanation_understood` en automático — sin analizarla más — y felicitarlo
+                       con calidez, cerrando el tema. Esto aplica SIEMPRE, incluso si tú consideras que
+                       todavía "no entendió del todo": ese juicio final ya no es tuyo, es de otro
+                       sistema (el que recibe tu llamada a la función). Un estudiante JAMÁS debe dar 3 o
+                       más explicaciones habladas seguidas sobre el mismo concepto — si estás por pedir
+                       una tercera, DETENTE y en vez de eso llama a la función y avanza.
+
+                   Criterio de generosidad (para decidir tras la primera respuesta):
+                   - SÉ GENEROSO al aceptar, no un examinador estricto. NO exijas una explicación
+                     perfecta ni palabra por palabra: si su respuesta muestra que captó la IDEA
+                     principal — aunque le falten detalles menores, la diga con sus propias palabras
+                     imperfectas, o no use vocabulario técnico — cuéntalo como entendido. Piensa "¿lo
+                     entendió razonablemente bien (más o menos un 85% de acierto), para su edad?" en
+                     vez de "¿lo dijo exactamente como yo?".
+                   - Reserva el criterio ESTRICTO/exacto únicamente para datos concretos e
+                     inequívocos, donde solo existe una respuesta correcta posible (por ejemplo una
+                     operación matemática como "2+2=4", o el nombre exacto de una letra/número
+                     específico). Para conceptos más abiertos, discretos o de definición (por ejemplo
+                     "¿qué es una letra minúscula?", diferencias, comparaciones, o cualquier
+                     explicación en sus propias palabras), sé MUCHO más flexible — hay muchas formas
+                     válidas de decir lo mismo, y eso aplica para estudiantes de cualquier edad, no
+                     solo niños pequeños.
+                   - Cuando aceptes (ya sea en la primera o segunda respuesta): LLAMA A
+                     `mark_explanation_understood` con su explicación de inmediato, en ese mismo turno
+                     (no lo dejes para después), y luego felicítalo con cariño por lo que acaba de
+                     explicarte. NUNCA le pidas que escriba nada ni que repita nada por escrito (este
+                     estudiante es pequeño y todavía no sabe escribir oraciones) — la función es la
+                     ÚNICA forma de registrar su explicación, así que si aceptas y no la llamas, su
+                     progreso se pierde. Después de felicitarlo, dile explícitamente que presione el
+                     botón de Continuar en la pantalla cuando esté listo — por ejemplo: "cuando quieras
+                     seguir, presiona el botón de Continuar". NUNCA sigas tú mismo hablando del
+                     siguiente ejemplo, presentándolo o adelantando de qué se trata — eso lo decide y
+                     lo muestra la aplicación únicamente cuando el estudiante presiona ese botón, nunca
+                     tú por voz. Considera el tema cerrado en cuanto lo felicitas y le pides que
+                     presione el botón. NO seas la razón por la que el estudiante queda atascado dando
+                     vueltas.
+                   - Si usas tu ÚNICO re-intento permitido: identifica QUÉ parte concreta le faltó o
+                     confundió, explícasela de nuevo de una forma DISTINTA (otro ángulo, otra
+                     comparación, señalando otra vez el dibujo), y vuelve a pedirle que te la explique
+                     él. Nunca repitas "ya te lo expliqué" ni la misma explicación palabra por palabra
+                     dos veces seguidas. Recuerda: pase lo que pase en esa segunda respuesta, ya no hay
+                     una tercera vuelta — se acepta sí o sí.
+                4) Solo si el estudiante te dice explícitamente que sigue confundido y pide otro
+                   ejemplo distinto, cuenta UNO del "banco de ejemplos ya preparados" de abajo que
+                   todavía no le hayas contado (completo, con su resultado). Si ya contaste todos y
+                   sigue pidiendo más, improvisa UNO nuevo muy parecido, basado en el mismo concepto.
+                   Después de contar ese ejemplo, vuelve siempre al paso 2: pídele que te explique el
+                   concepto con sus propias palabras.
+                Nunca calificas de forma oficial ni le dices si algo está "bien" o "mal" en un sentido
+                de examen, y nunca decides tú mismo si avanza de paso — eso solo ocurre cuando llamas a
+                `mark_explanation_understood`, que es la ÚNICA forma en que su explicación hablada llega
+                a la calificación real. Por eso JAMÁS le pidas que escriba ni que repita algo por escrito
+                (es un estudiante pequeño que aún no sabe escribir oraciones) — y JAMÁS aceptes una
+                explicación sin llamar a la función en ese mismo turno, o su progreso se perderá.
+
+                EJEMPLO A EXPLICAR AHORA (título: "{selected.Title}"):
+                {selectedText}
+
+                BANCO DE EJEMPLOS YA PREPARADOS (para cuando pida "otro ejemplo" tras seguir confundido):
+                {bank}
+
+                {deepDiveOpeningRule}
+
+                {sharedRules}
                 """;
         }
 
         if (stepType == ExperienceStepType.Recall)
         {
+            const string recallOpeningRule = """
+                - Empieza a hablar TÚ MISMO de inmediato en cuanto se conecte, sin esperar a que el
+                  estudiante diga algo primero. NUNCA abras con un saludo genérico de asistente como
+                  "¡Hola! ¿En qué puedo ayudarte?" — en vez de eso, arranca directo con algo como "Hola,
+                  vamos ahora a..." y entra inmediatamente en tu tarea de abajo (leer la pregunta). El
+                  estudiante ya sabe en qué curso está; no se lo preguntes.
+                - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
+                  todavía no ha dicho ni una sola palabra. Por eso, en tu primer turno JAMÁS uses
+                  frases que den a entender que él ya respondió o dijo algo (como "perfecto",
+                  "genial", "entendido", "buena respuesta", "exacto") — eso confunde al estudiante,
+                  que sentirá que le respondes a algo que nunca dijo. Simplemente empieza tu tarea.
+                """;
+
             return $"""
                 Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Recordar (recall
                 activo). Esto es especialmente importante para practicar pronunciación (por ejemplo en
@@ -270,21 +627,58 @@ public sealed class VoiceTutorSessionFunction
                 PREGUNTA A LEER EN VOZ ALTA:
                 {stepContent}
 
-                {hardBoundaries}
+                {recallOpeningRule}
+
+                {sharedRules}
                 """;
         }
 
-        // Teaching
-        return $"""
-            Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Enseñanza,
-            como un copiloto conversacional. Explica el contenido de abajo con tus propias palabras,
-            de forma clara y en voz alta, y responde cualquier pregunta que el estudiante haga EN VIVO
-            sobre este mismo contenido — nunca sobre otros temas.
-
-            CONTENIDO DE ENSEÑANZA (tu única fuente de verdad):
-            {stepContent}
-
-            {hardBoundaries}
-            """;
+        throw new ArgumentOutOfRangeException(nameof(stepType), stepType, "Unsupported step type for voice tutor instructions.");
     }
+
+    /// <summary>
+    /// Deep Dive's ONLY Realtime function-calling tool (2026-07-30). The
+    /// voice Agent calls this itself, exactly once per card, the instant it
+    /// decides the student's spoken explanation is good enough (per the
+    /// hard-capped 1-re-teach-round rule in <see cref="BuildInstructions"/>).
+    /// The frontend answers the call by forwarding <c>explanation</c> to the
+    /// SAME deterministic grading path (TutorSubmitDeepDiveAttemptFunction)
+    /// used for a typed answer — this tool only ever signals WHEN to grade,
+    /// never the grade/verdict itself, matching every other agent's "propose,
+    /// never decide" rule in this codebase. See VoiceTutorAgent.tsx's
+    /// function_call handling (same pattern as EngramReviewAgent.tsx's
+    /// show_visual_aid tool) and PreviewNodePage.tsx's onExplanationAccepted.
+    /// </summary>
+    private static object BuildDeepDiveTools() => new[]
+    {
+        new
+        {
+            type = "function",
+            name = "mark_explanation_understood",
+            description = "Llama a esta funcion UNA sola vez, exactamente en el turno en que decidas " +
+                "aceptar la explicacion hablada del estudiante (primera o segunda respuesta, segun tu " +
+                "limite duro de re-intento). Esta es la UNICA forma en que su explicacion llega a la " +
+                "calificacion real y el progreso avanza -- si aceptas sin llamarla, su progreso se pierde.",
+            parameters = new
+            {
+                type = "object",
+                properties = new
+                {
+                    explanation = new
+                    {
+                        type = "string",
+                        description = "El texto de la explicacion que el estudiante te dio en voz alta " +
+                            "(tal como la entendiste, resumida en tus propias palabras si hace falta)."
+                    }
+                },
+                required = new[] { "explanation" }
+            }
+        }
+    };
+
+    /// <summary>Strips HTML tags from an ExampleCard's Text (same simple
+    /// approach as EngramReviewSessionFunction.StripHtml) so the voice
+    /// Agent's instructions read as plain, natural text.</summary>
+    private static string StripHtml(string html) =>
+        System.Text.RegularExpressions.Regex.Replace(html ?? string.Empty, "<[^>]+>", " ").Trim();
 }

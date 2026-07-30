@@ -175,100 +175,147 @@ public sealed class GrowthPlanService
     // ── Enrolled Programs ("Mis Programas") ──────────────────────────
 
     /// <summary>
-    /// Every Program the person is enrolled in, derived from the Starting
-    /// Point step's accepted recommendations that resolved to a real
-    /// Program (AcceptedRecommendation.ProgramId != null) — the de facto
-    /// enrollment record (2026-07-24 design decision, no separate
-    /// enrollment table). For each Capability in each Program, progress is
-    /// computed from the Capability Graph's node mastery for this person,
-    /// scoped to this Program (LearningSession.ProgramId), so the same
-    /// Capability tracks independent progress if it belongs to more than
-    /// one Program.
+    /// Every Program the person is enrolled in, from EITHER of two
+    /// enrollment paths, merged into a single list deduped by ProgramId:
+    /// (1) the Starting Point step's accepted recommendations that
+    /// resolved to a real Program (AcceptedRecommendation.ProgramId !=
+    /// null — the original 2026-07-24 design), and (2) an explicit
+    /// "Inscribirme" from the Programs catalog (2026-07-25, see
+    /// <see cref="ProgramEnrollmentService"/>) — for the easier, direct
+    /// enrollment path that doesn't require going through the whole
+    /// Growth Plan flow. A Program accepted as a recommendation AND later
+    /// (redundantly) enrolled via the catalog just keeps its original
+    /// recommendation AcceptedDate. For each Capability in each Program,
+    /// progress is computed from the Capability Graph's node mastery for
+    /// this person, scoped to this Program (LearningSession.ProgramId), so
+    /// the same Capability tracks independent progress if it belongs to
+    /// more than one Program.
     /// </summary>
     public async Task<IReadOnlyList<EnrolledProgramResponse>> GetEnrolledProgramsAsync(
         Guid personId,
         CancellationToken cancellationToken = default)
     {
-        var startingPoint = await GetStartingPointAsync(personId, cancellationToken);
-        if (startingPoint is null || string.IsNullOrWhiteSpace(startingPoint.AcceptedRecommendationsJson))
-        {
-            return [];
-        }
-
-        List<AcceptedRecommendation> recommendations;
-        try
-        {
-            recommendations = System.Text.Json.JsonSerializer.Deserialize<List<AcceptedRecommendation>>(
-                startingPoint.AcceptedRecommendationsJson) ?? [];
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return [];
-        }
-
         var results = new List<EnrolledProgramResponse>();
+        var seenProgramIds = new HashSet<Guid>();
 
-        foreach (var recommendation in recommendations.Where(r => r.ProgramId is not null))
+        var startingPoint = await GetStartingPointAsync(personId, cancellationToken);
+        if (startingPoint is not null && !string.IsNullOrWhiteSpace(startingPoint.AcceptedRecommendationsJson))
         {
-            var programId = recommendation.ProgramId!.Value;
-            var program = await _programService.GetByIdAsync(programId, cancellationToken);
-            if (program is null)
+            List<AcceptedRecommendation> recommendations;
+            try
+            {
+                recommendations = System.Text.Json.JsonSerializer.Deserialize<List<AcceptedRecommendation>>(
+                    startingPoint.AcceptedRecommendationsJson) ?? [];
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                recommendations = [];
+            }
+
+            foreach (var recommendation in recommendations.Where(r => r.ProgramId is not null))
+            {
+                if (!seenProgramIds.Add(recommendation.ProgramId!.Value))
+                {
+                    continue;
+                }
+
+                var response = await BuildEnrolledProgramResponseAsync(
+                    personId, recommendation.ProgramId.Value, recommendation.AcceptedDate, cancellationToken);
+                if (response is not null)
+                {
+                    results.Add(response);
+                }
+            }
+        }
+
+        var directEnrollments = await _dbContext.ProgramEnrollments
+            .AsNoTracking()
+            .Where(x => x.PersonId == personId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var enrollment in directEnrollments)
+        {
+            if (!seenProgramIds.Add(enrollment.ProgramId))
             {
                 continue;
             }
 
-            var capabilities = new List<EnrolledProgramCapabilityResponse>();
-            var allScores = new List<int>();
-            foreach (var programCapability in program.Capabilities.OrderBy(c => c.SortOrder))
+            var response = await BuildEnrolledProgramResponseAsync(
+                personId, enrollment.ProgramId, enrollment.EnrolledDate, cancellationToken);
+            if (response is not null)
             {
-                var graph = await _graphProgressionEngine.GetFullGraphAsync(
-                    _dbContext, personId, programCapability.CapabilityId, cancellationToken);
-
-                var totalNodes = graph?.Nodes.Count ?? 0;
-                var masteredNodes = graph?.Nodes.Count(n => n.State == "Mastered") ?? 0;
-                var capabilityScores = graph?.Nodes
-                    .Where(n => n.FinalScore.HasValue)
-                    .Select(n => n.FinalScore!.Value)
-                    .ToList() ?? [];
-                allScores.AddRange(capabilityScores);
-
-                var hasSession = totalNodes > 0 && await _dbContext.LearningSessions
-                    .AsNoTracking()
-                    .AnyAsync(s => s.PersonId == personId
-                                && s.CapabilityId == programCapability.CapabilityId
-                                && s.ProgramId == programId, cancellationToken);
-
-                var status = totalNodes > 0 && masteredNodes == totalNodes
-                    ? "Completed"
-                    : masteredNodes > 0 || hasSession
-                        ? "InProgress"
-                        : "NotStarted";
-
-                capabilities.Add(new EnrolledProgramCapabilityResponse
-                {
-                    CapabilityId = programCapability.CapabilityId,
-                    Name = programCapability.CapabilityName,
-                    SortOrder = programCapability.SortOrder,
-                    IsRequired = programCapability.IsRequired,
-                    Status = status,
-                    TotalNodes = totalNodes,
-                    MasteredNodes = masteredNodes,
-                    AverageScore = capabilityScores.Count > 0 ? (int)Math.Round(capabilityScores.Average()) : null
-                });
+                results.Add(response);
             }
-
-            results.Add(new EnrolledProgramResponse
-            {
-                ProgramId = program.ProgramId,
-                Code = program.Code,
-                Name = program.Name,
-                Description = program.Description,
-                AcceptedDate = recommendation.AcceptedDate,
-                AverageScore = allScores.Count > 0 ? (int)Math.Round(allScores.Average()) : null,
-                Capabilities = capabilities
-            });
         }
 
         return results.OrderByDescending(r => r.AcceptedDate).ToList();
+    }
+
+    /// <summary>Builds one "Mis Programas" card's worth of data for a
+    /// single Program — shared by both enrollment paths in
+    /// <see cref="GetEnrolledProgramsAsync"/>. Returns null if the Program
+    /// no longer exists (e.g. deactivated after the enrollment was made).</summary>
+    private async Task<EnrolledProgramResponse?> BuildEnrolledProgramResponseAsync(
+        Guid personId,
+        Guid programId,
+        DateTime acceptedDate,
+        CancellationToken cancellationToken)
+    {
+        var program = await _programService.GetByIdAsync(programId, cancellationToken);
+        if (program is null)
+        {
+            return null;
+        }
+
+        var capabilities = new List<EnrolledProgramCapabilityResponse>();
+        var allScores = new List<int>();
+        foreach (var programCapability in program.Capabilities.OrderBy(c => c.SortOrder))
+        {
+            var graph = await _graphProgressionEngine.GetFullGraphAsync(
+                _dbContext, personId, programCapability.CapabilityId, cancellationToken: cancellationToken);
+
+            var totalNodes = graph?.Nodes.Count ?? 0;
+            var masteredNodes = graph?.Nodes.Count(n => n.State == "Mastered") ?? 0;
+            var capabilityScores = graph?.Nodes
+                .Where(n => n.FinalScore.HasValue)
+                .Select(n => n.FinalScore!.Value)
+                .ToList() ?? [];
+            allScores.AddRange(capabilityScores);
+
+            var hasSession = totalNodes > 0 && await _dbContext.LearningSessions
+                .AsNoTracking()
+                .AnyAsync(s => s.PersonId == personId
+                            && s.CapabilityId == programCapability.CapabilityId
+                            && s.ProgramId == programId, cancellationToken);
+
+            var status = totalNodes > 0 && masteredNodes == totalNodes
+                ? "Completed"
+                : masteredNodes > 0 || hasSession
+                    ? "InProgress"
+                    : "NotStarted";
+
+            capabilities.Add(new EnrolledProgramCapabilityResponse
+            {
+                CapabilityId = programCapability.CapabilityId,
+                Name = programCapability.CapabilityName,
+                SortOrder = programCapability.SortOrder,
+                IsRequired = programCapability.IsRequired,
+                Status = status,
+                TotalNodes = totalNodes,
+                MasteredNodes = masteredNodes,
+                AverageScore = capabilityScores.Count > 0 ? (int)Math.Round(capabilityScores.Average()) : null
+            });
+        }
+
+        return new EnrolledProgramResponse
+        {
+            ProgramId = program.ProgramId,
+            Code = program.Code,
+            Name = program.Name,
+            Description = program.Description,
+            AcceptedDate = acceptedDate,
+            AverageScore = allScores.Count > 0 ? (int)Math.Round(allScores.Average()) : null,
+            Capabilities = capabilities
+        };
     }
 }

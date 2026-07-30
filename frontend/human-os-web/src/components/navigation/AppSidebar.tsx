@@ -31,23 +31,34 @@ export function AppSidebar() {
               {t(group.labelKey)}
             </p>
             <ul className="mt-2 space-y-1">
-              {group.items.map(({ to, icon: Icon, labelKey }) => (
+              {group.items.map(({ to, icon: Icon, labelKey, disabled }) => (
                 <li key={to}>
-                  <NavLink
-                    to={to}
-                    className={({ isActive }) =>
-                      clsx(
-                        'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                        isActive
-                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white',
-                      )
-                    }
-                  >
-                    <Icon className="h-5 w-5 shrink-0" />
-                    <span className={collapsed ? 'hidden' : 'hidden lg:inline'}>{t(labelKey)}</span>
-                  </NavLink>
+                  {disabled ? (
+                    <span
+                      aria-disabled="true"
+                      title={t('nav.comingSoon')}
+                      className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 dark:text-white/20"
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                      <span className={collapsed ? 'hidden' : 'hidden lg:inline'}>{t(labelKey)}</span>
+                    </span>
+                  ) : (
+                    <NavLink
+                      to={to}
+                      className={({ isActive }) =>
+                        clsx(
+                          'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+                          isActive
+                            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white',
+                        )
+                      }
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                      <span className={collapsed ? 'hidden' : 'hidden lg:inline'}>{t(labelKey)}</span>
+                    </NavLink>
+                  )}
                 </li>
               ))}
             </ul>

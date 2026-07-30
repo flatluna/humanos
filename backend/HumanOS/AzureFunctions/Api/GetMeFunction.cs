@@ -21,11 +21,13 @@ public sealed class GetMeFunction
 {
     private readonly PersonService _personService;
     private readonly TenantService _tenantService;
+    private readonly PersonProfileService _personProfileService;
 
-    public GetMeFunction(PersonService personService, TenantService tenantService)
+    public GetMeFunction(PersonService personService, TenantService tenantService, PersonProfileService personProfileService)
     {
         _personService = personService;
         _tenantService = tenantService;
+        _personProfileService = personProfileService;
     }
 
     [Function("GetMe")]
@@ -61,6 +63,8 @@ public sealed class GetMeFunction
             ? await _tenantService.GetByIdAsync(tenantId, cancellationToken)
             : null;
 
+        var profile = await _personProfileService.GetByPersonIdAsync(person.PersonId, cancellationToken);
+
         var response = request.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(new MeResponse
         {
@@ -68,6 +72,7 @@ public sealed class GetMeFunction
             TenantId = person.TenantId,
             TenantName = tenant?.Name,
             Email = person.Email,
+            PreferredLanguage = profile?.PreferredLanguage,
         });
 
         return response;

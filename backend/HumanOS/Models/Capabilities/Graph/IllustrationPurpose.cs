@@ -60,5 +60,15 @@ public enum IllustrationPurpose
     /// Recall question, not reused across the whole step like
     /// Hypothesis/Teaching illustrations. See
     /// <see cref="Services.TutorService.SubmitRecallAttemptAsync"/>.</summary>
-    TutorRecallTurn = 5
+    TutorRecallTurn = 5,
+
+    /// <summary>A real generated illustration for ONE ExampleCard of the
+    /// optional Examples step (2026-07-29 upgrade from the original
+    /// emoji-only cards — see <see cref="Models.Capabilities.Graph.ExampleCard"/>'s
+    /// doc comment). Generated AFTER ExperienceDesignerAgent returns the
+    /// card's Title/Text (unlike Hypothesis/Teaching, whose prompts are
+    /// written up-front by GraphArchitectAgent) — see
+    /// <see cref="Services.ExampleCardIllustrationService"/>. Never reused
+    /// across cards; one illustration per card.</summary>
+    Example = 6
 }

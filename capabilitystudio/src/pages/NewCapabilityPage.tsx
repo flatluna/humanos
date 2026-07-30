@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, Link } from 'react-router-dom';
-import { FileText, MessageSquareText, Video, Link2, ArrowLeft, ArrowRight, Sparkles, Globe } from 'lucide-react';
+import { FileText, MessageSquareText, Video, Link2, ArrowLeft, ArrowRight, Sparkles, Globe, Baby, LayoutGrid } from 'lucide-react';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getCapabilityDomains, type CapabilityDomain } from '../lib/api/domainsApi';
 import { getPrograms, getProgramById, type BackendProgram, type BackendProgramDetail } from '../lib/api/programsApi';
@@ -16,11 +17,11 @@ import TypeOptionCard from '../components/TypeOptionCard';
 import FileDropzone from '../components/FileDropzone';
 import { getSubjectIcon } from '../lib/subjectVisuals';
 
-const STEPS = ['Información básica', 'Tipo de material', 'Cargar contenido', 'Revisar y crear'];
-
 type CapabilityType = 'pdf' | 'text' | 'video' | 'link';
 
 export default function NewCapabilityPage() {
+  const { t } = useTranslation();
+  const STEPS = t('newCapability.steps', { returnObjects: true }) as string[];
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
@@ -32,6 +33,9 @@ export default function NewCapabilityPage() {
   const [description, setDescription] = useState('');
   const [subjectId, setSubjectId] = useState<string>('');
   const [capabilityDomainId, setCapabilityDomainId] = useState<string>('');
+  const [languageCode, setLanguageCode] = useState<'es' | 'en'>('es');
+  const [pedagogicalAudience, setPedagogicalAudience] = useState<'Standard' | 'YoungLearner'>('Standard');
+  const [includeExamplesStep, setIncludeExamplesStep] = useState(false);
   const [programId, setProgramId] = useState<string>('');
   const [programDetail, setProgramDetail] = useState<BackendProgramDetail | null>(null);
   const [programSequenceNumber, setProgramSequenceNumber] = useState<number | null>(null);
@@ -122,6 +126,7 @@ export default function NewCapabilityPage() {
           capabilityDomainId,
           subjectId: subjectId || null,
           capabilityName: name.trim(),
+          capabilityDescription: description.trim() || null,
           fileName: file.name,
           contentBase64,
           enableWebEnrichment,
@@ -129,6 +134,9 @@ export default function NewCapabilityPage() {
           programSequenceNumber: programId ? programSequenceNumber : null,
           capabilityObjectives: programId ? capabilityObjectives.trim() || null : null,
           capabilityRequirements: programId ? capabilityRequirements.trim() || null : null,
+          languageCode,
+          pedagogicalAudience: pedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : null,
+          includeExamplesStep,
         });
         navigate(`/runs/${run.RunId}`);
       } else if (capabilityType === 'text') {
@@ -138,11 +146,15 @@ export default function NewCapabilityPage() {
           subjectId: subjectId || null,
           capabilityName: name.trim(),
           description: ideaDescription.trim(),
+          capabilityDescription: description.trim() || null,
           enableWebEnrichment,
           programId: programId || null,
           programSequenceNumber: programId ? programSequenceNumber : null,
           capabilityObjectives: programId ? capabilityObjectives.trim() || null : null,
           capabilityRequirements: programId ? capabilityRequirements.trim() || null : null,
+          languageCode,
+          pedagogicalAudience: pedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : null,
+          includeExamplesStep,
         });
         navigate(`/runs/${run.RunId}`);
       }
@@ -153,9 +165,9 @@ export default function NewCapabilityPage() {
       const activeRun = await getActiveCapabilityGraphRun().catch(() => null);
       if (activeRun) {
         setConflictingRunId(activeRun.RunId);
-        setSubmitError('Ya hay una capability generándose. Espera a que termine antes de iniciar otra.');
+        setSubmitError(t('newCapability.errorAlreadyGenerating'));
       } else {
-        setSubmitError(err instanceof Error ? err.message : 'No se pudo iniciar la creación.');
+        setSubmitError(err instanceof Error ? err.message : t('newCapability.errorGenericStart'));
       }
       setSubmitting(false);
     }
@@ -170,31 +182,111 @@ export default function NewCapabilityPage() {
       {step === 1 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Información básica</h2>
-            <p className="mt-1 text-slate-400">Dale un nombre y clasificación a tu nueva capability.</p>
+            <h2 className="text-2xl font-bold text-white">{t('newCapability.step1Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newCapability.step1Subtitle')}</p>
           </div>
 
-          <Field label="Nombre de la capability">
+          <Field label={t('newCapability.nameLabel')}>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ej. Ley del IVA Mexicana"
+              placeholder={t('newCapability.namePlaceholder')}
               className="input"
             />
           </Field>
 
-          <Field label="Descripción (opcional)">
+          <Field label={t('newCapability.descriptionLabel')}>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="¿Qué aprenderá el estudiante?"
+              placeholder={t('newCapability.descriptionPlaceholder')}
               className="input resize-none"
             />
           </Field>
 
-          <Field label="Dominio / Tema (Subject)">
+          <Field
+            label={t('newCapability.contentLanguageLabel')}
+            hint={t('newCapability.contentLanguageHint')}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { code: 'es' as const, label: t('common.languageSpanish') },
+                  { code: 'en' as const, label: t('common.languageEnglish') },
+                ]
+              ).map((option) => {
+                const active = languageCode === option.code;
+                return (
+                  <button
+                    key={option.code}
+                    type="button"
+                    onClick={() => setLanguageCode(option.code)}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                    }`}
+                  >
+                    <Globe className="h-4 w-4 shrink-0" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <Field
+            label={t('newCapability.pedagogicalAudienceLabel')}
+            hint={t('newCapability.pedagogicalAudienceHint')}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { value: 'Standard' as const, label: t('newCapability.audienceStandard') },
+                  { value: 'YoungLearner' as const, label: t('newCapability.audienceYoungLearner') },
+                ]
+              ).map((option) => {
+                const active = pedagogicalAudience === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setPedagogicalAudience(option.value)}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                    }`}
+                  >
+                    <Baby className="h-4 w-4 shrink-0" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <Field
+            label={t('newCapability.includeExamplesStepLabel')}
+            hint={t('newCapability.includeExamplesStepHint')}
+          >
+            <button
+              type="button"
+              onClick={() => setIncludeExamplesStep((prev) => !prev)}
+              className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                includeExamplesStep
+                  ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                  : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4 shrink-0" />
+              {includeExamplesStep ? t('newCapability.includeExamplesStepOn') : t('newCapability.includeExamplesStepOff')}
+            </button>
+          </Field>
+
+          <Field label={t('newCapability.domainLabel')}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {subjects.map((subject) => {
                 const Icon = getSubjectIcon(subject.Code);
@@ -218,9 +310,9 @@ export default function NewCapabilityPage() {
             </div>
           </Field>
 
-          <Field label="Categoría de autoría (CapabilityDomain)" hint="Metadato interno del Studio, no se muestra al estudiante.">
+          <Field label={t('newCapability.authoringCategoryLabel')} hint={t('newCapability.authoringCategoryHint')}>
             <select value={capabilityDomainId} onChange={(e) => setCapabilityDomainId(e.target.value)} className="input">
-              <option value="">Selecciona una categoría...</option>
+              <option value="">{t('newCapability.categoryPlaceholder')}</option>
               {domains.map((domain) => (
                 <option key={domain.CapabilityDomainId} value={domain.CapabilityDomainId}>
                   {domain.Name}
@@ -229,9 +321,9 @@ export default function NewCapabilityPage() {
             </select>
           </Field>
 
-          <Field label="Programa (opcional)" hint="Si seleccionas un programa, esta capability se agregará al final de su secuencia.">
+          <Field label={t('newCapability.programLabel')} hint={t('newCapability.programHint')}>
             <select value={programId} onChange={(e) => setProgramId(e.target.value)} className="input">
-              <option value="">Ninguno</option>
+              <option value="">{t('newCapability.programNone')}</option>
               {programs.map((program) => (
                 <option key={program.ProgramId} value={program.ProgramId}>
                   {program.Name}
@@ -243,22 +335,21 @@ export default function NewCapabilityPage() {
           {selectedProgram && (
             <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm">
               <p className="text-slate-300">
-                Se conectará al programa <span className="font-semibold text-white">{selectedProgram.Name}</span>.
+                {t('newCapability.connectedToProgram', { name: selectedProgram.Name })}
               </p>
               {selectedProgram.Objectives && (
                 <p className="text-slate-400">
-                  <span className="font-medium text-slate-300">Objetivos del programa: </span>
+                  <span className="font-medium text-slate-300">{t('newCapability.programObjectivesLabel')}</span>
                   {selectedProgram.Objectives}
                 </p>
               )}
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-300">
-                  Número de secuencia en el programa
+                  {t('newCapability.sequenceNumberLabel')}
                 </label>
                 <p className="mb-2 text-xs text-slate-500">
-                  Elige cualquier número del 1 al {MAX_PROGRAM_SEQUENCE_SLOTS}. No es necesario que existan las
-                  posiciones anteriores — puedes crear la #8 aunque la #6 todavía no exista.
+                  {t('newCapability.sequenceHint', { max: MAX_PROGRAM_SEQUENCE_SLOTS })}
                 </p>
                 <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
                   {Array.from({ length: MAX_PROGRAM_SEQUENCE_SLOTS }, (_, i) => i + 1).map((slot) => {
@@ -269,7 +360,7 @@ export default function NewCapabilityPage() {
                         key={slot}
                         type="button"
                         disabled={!!takenBy}
-                        title={takenBy ? `Ocupado por: ${takenBy}` : `Usar posición #${slot}`}
+                        title={takenBy ? t('newCapability.occupiedBy', { name: takenBy }) : t('newCapability.usePosition', { slot })}
                         onClick={() => setProgramSequenceNumber(slot)}
                         className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${
                           takenBy
@@ -287,27 +378,27 @@ export default function NewCapabilityPage() {
               </div>
 
               <Field
-                label="Objetivos de esta capability en el programa (opcional)"
-                hint="Qué debe lograr específicamente esta capability dentro de la secuencia del programa."
+                label={t('newCapability.capabilityObjectivesLabel')}
+                hint={t('newCapability.capabilityObjectivesHint')}
               >
                 <textarea
                   value={capabilityObjectives}
                   onChange={(e) => setCapabilityObjectives(e.target.value)}
                   rows={2}
-                  placeholder="Ej. Que el estudiante domine las operaciones básicas antes de avanzar al álgebra"
+                  placeholder={t('newCapability.capabilityObjectivesPlaceholder')}
                   className="input resize-none"
                 />
               </Field>
 
               <Field
-                label="Requisitos previos dentro del programa (opcional)"
-                hint="Qué debe haber completado o dominado el estudiante antes de esta capability, dentro de este programa."
+                label={t('newCapability.capabilityRequirementsLabel')}
+                hint={t('newCapability.capabilityRequirementsHint')}
               >
                 <textarea
                   value={capabilityRequirements}
                   onChange={(e) => setCapabilityRequirements(e.target.value)}
                   rows={2}
-                  placeholder="Ej. Haber completado la capability #3 (Fundamentos de aritmética)"
+                  placeholder={t('newCapability.capabilityRequirementsPlaceholder')}
                   className="input resize-none"
                 />
               </Field>
@@ -321,37 +412,37 @@ export default function NewCapabilityPage() {
       {step === 2 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Tipo de material</h2>
-            <p className="mt-1 text-slate-400">¿A partir de qué contenido quieres generar la capability?</p>
+            <h2 className="text-2xl font-bold text-white">{t('newCapability.step2Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newCapability.step2Subtitle')}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <TypeOptionCard
               icon={FileText}
-              title="Documento PDF"
-              description="Sube un manual, libro o guía en PDF."
+              title={t('newCapability.materialTypes.pdfTitle')}
+              description={t('newCapability.materialTypes.pdfDescription')}
               selected={capabilityType === 'pdf'}
               onClick={() => setCapabilityType('pdf')}
             />
             <TypeOptionCard
               icon={MessageSquareText}
-              title="Texto / idea"
-              description="Describe el tema directamente."
+              title={t('newCapability.materialTypes.textTitle')}
+              description={t('newCapability.materialTypes.textDescription')}
               selected={capabilityType === 'text'}
               onClick={() => setCapabilityType('text')}
             />
             <TypeOptionCard
               icon={Video}
-              title="Video"
-              description="Genera contenido a partir de un video."
+              title={t('newCapability.materialTypes.videoTitle')}
+              description={t('newCapability.materialTypes.videoDescription')}
               selected={capabilityType === 'video'}
               disabled
               onClick={() => {}}
             />
             <TypeOptionCard
               icon={Link2}
-              title="Enlace web"
-              description="Extrae contenido desde una URL."
+              title={t('newCapability.materialTypes.linkTitle')}
+              description={t('newCapability.materialTypes.linkDescription')}
               selected={capabilityType === 'link'}
               disabled
               onClick={() => {}}
@@ -365,23 +456,23 @@ export default function NewCapabilityPage() {
       {step === 3 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Cargar contenido</h2>
+            <h2 className="text-2xl font-bold text-white">{t('newCapability.step3Title')}</h2>
             <p className="mt-1 text-slate-400">
               {capabilityType === 'pdf'
-                ? 'El PDF será procesado por el pipeline Curador → GraphArchitect.'
-                : 'Tu descripción será expandida por IA en material de curso y luego procesada por el mismo pipeline Curador → GraphArchitect.'}
+                ? t('newCapability.step3SubtitlePdf')
+                : t('newCapability.step3SubtitleText')}
             </p>
           </div>
 
           {capabilityType === 'pdf' && <FileDropzone file={file} onFileSelected={setFile} />}
 
           {capabilityType === 'text' && (
-            <Field label="Describe el tema y lo que debe aprender el estudiante">
+            <Field label={t('newCapability.ideaLabel')}>
               <textarea
                 value={ideaDescription}
                 onChange={(e) => setIdeaDescription(e.target.value)}
                 rows={5}
-                placeholder="Ej. Capacidad para que un niño aprenda a sumar y restar"
+                placeholder={t('newCapability.ideaPlaceholder')}
                 className="input resize-none"
               />
             </Field>
@@ -396,7 +487,7 @@ export default function NewCapabilityPage() {
             />
             <div className="flex items-center gap-2 text-sm text-white">
               <Globe className="h-4 w-4 text-slate-400" />
-              Enriquecer con búsqueda web (opcional)
+              {t('newCapability.webEnrichmentLabel')}
             </div>
           </label>
 
@@ -407,37 +498,42 @@ export default function NewCapabilityPage() {
       {step === 4 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Revisar y crear</h2>
-            <p className="mt-1 text-slate-400">Confirma los detalles antes de iniciar la generación.</p>
+            <h2 className="text-2xl font-bold text-white">{t('newCapability.step4Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newCapability.step4Subtitle')}</p>
           </div>
 
           <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-            <SummaryRow label="Nombre" value={name} />
-            {description && <SummaryRow label="Descripción" value={description} />}
+            <SummaryRow label={t('newCapability.summaryName')} value={name} />
+            {description && <SummaryRow label={t('newCapability.summaryDescription')} value={description} />}
             <SummaryRow
-              label="Dominio"
-              value={subjects.find((s) => s.SubjectId === subjectId)?.Name ?? 'Sin especificar'}
+              label={t('newCapability.summaryDomain')}
+              value={subjects.find((s) => s.SubjectId === subjectId)?.Name ?? t('newCapability.notSpecified')}
             />
             <SummaryRow
-              label="Categoría"
-              value={domains.find((d) => d.CapabilityDomainId === capabilityDomainId)?.Name ?? '—'}
+              label={t('newCapability.summaryCategory')}
+              value={domains.find((d) => d.CapabilityDomainId === capabilityDomainId)?.Name ?? t('newCapability.dash')}
+            />
+            <SummaryRow label={t('newCapability.summaryContentLanguage')} value={languageCode === 'en' ? t('common.languageEnglish') : t('common.languageSpanish')} />
+            <SummaryRow
+              label={t('newCapability.summaryPedagogicalAudience')}
+              value={pedagogicalAudience === 'YoungLearner' ? t('newCapability.audienceYoungLearner') : t('newCapability.audienceStandard')}
             />
             {capabilityType === 'pdf' ? (
-              <SummaryRow label="Archivo" value={file?.name ?? '—'} />
+              <SummaryRow label={t('newCapability.summaryFile')} value={file?.name ?? t('newCapability.dash')} />
             ) : (
-              <SummaryRow label="Idea" value={ideaDescription || '—'} />
+              <SummaryRow label={t('newCapability.summaryIdea')} value={ideaDescription || t('newCapability.dash')} />
             )}
-            <SummaryRow label="Enriquecimiento web" value={enableWebEnrichment ? 'Activado' : 'Desactivado'} />
+            <SummaryRow label={t('newCapability.summaryWebEnrichment')} value={enableWebEnrichment ? t('newCapability.enabled') : t('newCapability.disabled')} />
             {selectedProgram && (
               <>
-                <SummaryRow label="Programa" value={selectedProgram.Name} />
+                <SummaryRow label={t('newCapability.summaryProgram')} value={selectedProgram.Name} />
                 <SummaryRow
-                  label="Secuencia"
-                  value={programSequenceNumber ? `#${programSequenceNumber}` : 'Sin asignar'}
+                  label={t('newCapability.summarySequence')}
+                  value={programSequenceNumber ? `#${programSequenceNumber}` : t('newCapability.unassigned')}
                 />
-                {capabilityObjectives && <SummaryRow label="Objetivos en el programa" value={capabilityObjectives} />}
+                {capabilityObjectives && <SummaryRow label={t('newCapability.summaryObjectives')} value={capabilityObjectives} />}
                 {capabilityRequirements && (
-                  <SummaryRow label="Requisitos en el programa" value={capabilityRequirements} />
+                  <SummaryRow label={t('newCapability.summaryRequirements')} value={capabilityRequirements} />
                 )}
               </>
             )}
@@ -451,7 +547,7 @@ export default function NewCapabilityPage() {
                   to={`/runs/${conflictingRunId}`}
                   className="ml-1.5 inline-flex items-center gap-1 font-medium text-brand-400 hover:text-brand-300"
                 >
-                  Ver progreso <ArrowRight className="h-3.5 w-3.5" />
+                  {t('newCapability.viewProgress')} <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               )}
             </div>
@@ -461,7 +557,7 @@ export default function NewCapabilityPage() {
             onBack={() => setStep(3)}
             onNext={handleSubmit}
             nextDisabled={!canSubmit || submitting}
-            nextLabel={submitting ? 'Iniciando...' : 'Crear capability'}
+            nextLabel={submitting ? t('newCapability.starting') : t('newCapability.createCapability')}
             nextIcon={Sparkles}
           />
         </div>
@@ -493,7 +589,7 @@ function WizardNav({
   onBack,
   onNext,
   nextDisabled,
-  nextLabel = 'Continuar',
+  nextLabel,
   nextIcon: NextIcon = ArrowRight,
 }: {
   onBack?: () => void;
@@ -502,6 +598,8 @@ function WizardNav({
   nextLabel?: string;
   nextIcon?: typeof ArrowRight;
 }) {
+  const { t } = useTranslation();
+  const resolvedNextLabel = nextLabel ?? t('common.continue');
   return (
     <div className="flex items-center justify-between pt-4">
       {onBack ? (
@@ -511,7 +609,7 @@ function WizardNav({
           className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-400 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
-          Atrás
+          {t('common.back')}
         </button>
       ) : (
         <span />
@@ -522,7 +620,7 @@ function WizardNav({
         disabled={nextDisabled}
         className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform enabled:hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {nextLabel}
+        {resolvedNextLabel}
         <NextIcon className="h-4 w-4" />
       </button>
     </div>

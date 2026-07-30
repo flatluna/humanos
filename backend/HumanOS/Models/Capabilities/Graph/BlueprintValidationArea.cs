@@ -18,5 +18,8 @@ public enum BlueprintValidationArea
     Illustration,
 
     /// <summary>Traceability of the blueprint's content back to the node's own fields.</summary>
-    References
+    References,
+
+    /// <summary>The optional Examples step (see <see cref="ExperienceStepType.DeepDive"/>) — added at the end so it never renumbers the persisted values above.</summary>
+    Examples
 }

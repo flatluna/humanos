@@ -154,6 +154,11 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<CapabilityGraphEdge> CapabilityGraphEdges =>
         Set<CapabilityGraphEdge>();
 
+    /// <summary>Professor-given names for computed graph "levels"/tiers
+    /// (2026-07-30) — see <see cref="CapabilityGraphLevel"/>.</summary>
+    public DbSet<CapabilityGraphLevel> CapabilityGraphLevels =>
+        Set<CapabilityGraphLevel>();
+
     public DbSet<CapabilityGraphNodeIllustration> CapabilityGraphNodeIllustrations =>
         Set<CapabilityGraphNodeIllustration>();
 
@@ -197,6 +202,12 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<LearningSessionStep> LearningSessionSteps =>
         Set<LearningSessionStep>();
+
+    /// <summary>Explicit "Inscribirme" record for a Program, created
+    /// directly from the catalog (2026-07-25) — see
+    /// <see cref="Models.Programs.ProgramEnrollment"/>.</summary>
+    public DbSet<Models.Programs.ProgramEnrollment> ProgramEnrollments =>
+        Set<Models.Programs.ProgramEnrollment>();
 
     public DbSet<LearningEvidence> LearningEvidences =>
         Set<LearningEvidence>();

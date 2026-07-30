@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowUp, ArrowDown, Layers, GitBranch, Trash2, X, GraduationCap, AlertTriangle } from 'lucide-react';
 import {
@@ -12,6 +13,7 @@ import { apiImageUrl } from '../lib/api/httpClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function ProgramDetailPage() {
+  const { t } = useTranslation();
   const { programId } = useParams<{ programId: string }>();
   const navigate = useNavigate();
   const [program, setProgram] = useState<BackendProgramDetail | null>(null);
@@ -49,7 +51,7 @@ export default function ProgramDetailPage() {
       await deleteProgram(program.ProgramId);
       navigate('/programs');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo eliminar el programa.');
+      setError(err instanceof Error ? err.message : t('programDetail.deleteErrorFallback'));
       setDeleting(false);
     }
   }
@@ -76,7 +78,7 @@ export default function ProgramDetailPage() {
         })),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo reordenar la secuencia.');
+      setError(err instanceof Error ? err.message : t('programDetail.reorderErrorFallback'));
       // Revert to the last known-good order on failure.
       const refreshed = await getProgramById(program.ProgramId).catch(() => null);
       if (refreshed) setProgram(refreshed);
@@ -96,20 +98,20 @@ export default function ProgramDetailPage() {
       });
       setUnlinkTarget(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo desvincular la capability.');
+      setError(err instanceof Error ? err.message : t('programDetail.unlinkErrorFallback'));
     } finally {
       setUnlinkingId(null);
     }
   }
 
-  if (loading) return <LoadingSpinner label="Cargando programa..." />;
+  if (loading) return <LoadingSpinner label={t('programDetail.loading')} />;
 
   if (error || !program) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16 text-center">
-        <p className="text-red-300">{error ?? 'No se encontró este programa.'}</p>
+        <p className="text-red-300">{error ?? t('programDetail.notFound')}</p>
         <Link to="/programs" className="mt-4 inline-flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
-          <ArrowLeft className="h-4 w-4" /> Volver a programas
+          <ArrowLeft className="h-4 w-4" /> {t('programDetail.backToPrograms')}
         </Link>
       </div>
     );
@@ -128,7 +130,7 @@ export default function ProgramDetailPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-6 pb-6">
           <Link to="/programs" className="mb-3 inline-flex items-center gap-1.5 text-sm text-[#fff]/80 hover:text-[#fff]">
-            <ArrowLeft className="h-4 w-4" /> Programas
+            <ArrowLeft className="h-4 w-4" /> {t('programDetail.programs')}
           </Link>
           <h1 className="text-3xl font-bold text-[#fff]">{program.Name}</h1>
         </div>
@@ -140,23 +142,23 @@ export default function ProgramDetailPage() {
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {program.Objectives && (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <h3 className="mb-2 text-sm font-semibold text-white">Objetivos</h3>
+              <h3 className="mb-2 text-sm font-semibold text-white">{t('programDetail.objectives')}</h3>
               <p className="whitespace-pre-line text-sm text-slate-400">{program.Objectives}</p>
             </div>
           )}
           {program.Requirements && (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <h3 className="mb-2 text-sm font-semibold text-white">Requisitos</h3>
+              <h3 className="mb-2 text-sm font-semibold text-white">{t('programDetail.requirements')}</h3>
               <p className="whitespace-pre-line text-sm text-slate-400">{program.Requirements}</p>
             </div>
           )}
         </div>
 
         <div className="mt-8">
-          <h3 className="mb-3 text-lg font-semibold text-white">Secuencia de capabilities</h3>
+          <h3 className="mb-3 text-lg font-semibold text-white">{t('programDetail.sequenceHeading')}</h3>
           {program.Capabilities.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-slate-500">
-              Este programa aún no tiene capabilities asignadas.
+              {t('programDetail.emptySequence')}
             </div>
           ) : (
             <div className="space-y-2">
@@ -185,7 +187,7 @@ export default function ProgramDetailPage() {
                       pc.IsRequired ? 'bg-brand-500/15 text-brand-300' : 'bg-white/5 text-slate-400'
                     }`}
                   >
-                    {pc.IsRequired ? 'Obligatoria' : 'Electiva'}
+                    {pc.IsRequired ? t('programDetail.required') : t('programDetail.elective')}
                   </span>
                   <div className="flex shrink-0 flex-col">
                     <button
@@ -209,7 +211,7 @@ export default function ProgramDetailPage() {
                     type="button"
                     onClick={() => setUnlinkTarget({ capabilityId: pc.CapabilityId, capabilityName: pc.CapabilityName })}
                     disabled={unlinkingId === pc.CapabilityId}
-                    title="Desvincular del programa"
+                    title={t('programDetail.unlinkTitle')}
                     className="shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-30"
                   >
                     <X className="h-4 w-4" />
@@ -226,14 +228,14 @@ export default function ProgramDetailPage() {
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-3 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02]"
           >
             <GraduationCap className="h-4 w-4" />
-            Ver todos los programas
+            {t('programDetail.viewAllPrograms')}
           </Link>
           <button
             onClick={() => setShowDeleteConfirm(true)}
             className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer border border-red-500/30 hover:border-red-500/50"
           >
             <Trash2 className="h-4 w-4" />
-            Eliminar
+            {t('programDetail.delete')}
           </button>
         </div>
 
@@ -245,10 +247,9 @@ export default function ProgramDetailPage() {
                   <AlertTriangle className="text-red-500" size={28} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-red-500">Desvincular capability</h2>
+                  <h2 className="text-xl font-bold text-red-500">{t('programDetail.unlinkModalTitle')}</h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Vas a quitar <span className="font-bold">"{unlinkTarget.capabilityName}"</span> de este programa. La
-                    capability NO se elimina, solo su pertenencia a "{program.Name}".
+                    {t('programDetail.unlinkModalBody', { name: unlinkTarget.capabilityName, programName: program.Name })}
                   </p>
                 </div>
               </div>
@@ -258,14 +259,14 @@ export default function ProgramDetailPage() {
                   disabled={unlinkingId !== null}
                   className="rounded-lg px-4 py-2 font-medium text-slate-300 transition-all hover:bg-white/5 disabled:opacity-50"
                 >
-                  Cancelar
+                  {t('programDetail.cancel')}
                 </button>
                 <button
                   onClick={handleUnlink}
                   disabled={unlinkingId !== null}
                   className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white transition-all hover:bg-red-500 disabled:opacity-50"
                 >
-                  {unlinkingId !== null ? 'Desvinculando...' : 'Desvincular'}
+                  {unlinkingId !== null ? t('programDetail.unlinking') : t('programDetail.unlink')}
                 </button>
               </div>
             </div>
@@ -280,10 +281,9 @@ export default function ProgramDetailPage() {
                   <AlertTriangle className="text-red-500" size={28} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-red-500">Eliminar programa</h2>
+                  <h2 className="text-xl font-bold text-red-500">{t('programDetail.deleteModalTitle')}</h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Vas a eliminar <span className="font-bold">"{program.Name}"</span>. Las capabilities que contiene
-                    NO se eliminan, solo su pertenencia a este programa.
+                    {t('programDetail.deleteModalBody', { name: program.Name })}
                   </p>
                 </div>
               </div>
@@ -293,14 +293,14 @@ export default function ProgramDetailPage() {
                   disabled={deleting}
                   className="rounded-lg px-4 py-2 font-medium text-slate-300 transition-all hover:bg-white/5 disabled:opacity-50"
                 >
-                  Cancelar
+                  {t('programDetail.cancel')}
                 </button>
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
                   className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white transition-all hover:bg-red-500 disabled:opacity-50"
                 >
-                  {deleting ? 'Eliminando...' : 'Eliminar permanentemente'}
+                  {deleting ? t('programDetail.deleting') : t('programDetail.deletePermanently')}
                 </button>
               </div>
             </div>

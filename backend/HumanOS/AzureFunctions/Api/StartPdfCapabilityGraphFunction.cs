@@ -35,6 +35,12 @@ public sealed class StartPdfCapabilityGraphFunction
 
         public string CapabilityName { get; set; } = string.Empty;
 
+        /// <summary>Optional: the user's own description of what this
+        /// Capability teaches. Saved directly to the Capability row in the
+        /// database (unlike the CapabilityObjectives, which are scoped to a
+        /// specific Program sequence position).</summary>
+        public string? CapabilityDescription { get; set; }
+
         public string FileName { get; set; } = string.Empty;
 
         public string ContentBase64 { get; set; } = string.Empty;
@@ -74,6 +80,29 @@ public sealed class StartPdfCapabilityGraphFunction
         /// this Capability within ProgramId's sequence. Ignored when
         /// ProgramId is null.</summary>
         public string? CapabilityRequirements { get; set; }
+
+        /// <summary>"es" or "en" — the language ALL generated content for
+        /// this capability (graph node names/descriptions, blueprint step
+        /// text, illustration prompts) must be authored in, regardless of
+        /// what language the uploaded PDF itself is written in. Defaults
+        /// to "es" when omitted, for backward compatibility. See
+        /// Capability.ContentLanguageCode.</summary>
+        public string? LanguageCode { get; set; }
+
+        /// <summary>Optional tone/persona directive for ALL generated
+        /// learner-facing content on this capability. Null/omitted (the
+        /// default) means "Standard" — zero prompt change. The only other
+        /// supported value today is "YoungLearner" (K-12 early-childhood
+        /// courses). See Capability.PedagogicalAudience.</summary>
+        public string? PedagogicalAudience { get; set; }
+
+        /// <summary>Formal/school-track opt-in (2026-07-29 feature):
+        /// when true, the generated blueprint for every node includes an
+        /// OPTIONAL 6th step, Examples, with 3+ example cards illustrated
+        /// with emoji. False (default, omitted) leaves every generated
+        /// blueprint identical to before this field existed. See
+        /// Capability.IncludeExamplesStep.</summary>
+        public bool IncludeExamplesStep { get; set; }
     }
 
     [Function("StartPdfCapabilityGraph")]
@@ -127,7 +156,9 @@ public sealed class StartPdfCapabilityGraphFunction
         {
             var status = _orchestrator.Start(
                 pdfBytes, body.FileName, body.CapabilityDomainId, body.CapabilityName, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
-                body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements);
+                body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
+                string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
+                body.PedagogicalAudience, body.IncludeExamplesStep);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

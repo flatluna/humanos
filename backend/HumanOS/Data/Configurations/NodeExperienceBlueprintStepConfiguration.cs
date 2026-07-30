@@ -24,6 +24,9 @@ public class NodeExperienceBlueprintStepConfiguration : IEntityTypeConfiguration
         builder.Property(s => s.ReferencedIllustrationIdsJson)
             .HasColumnType("nvarchar(max)");
 
+        builder.Property(s => s.ExampleCardsJson)
+            .HasColumnType("nvarchar(max)");
+
         builder.Property(s => s.SortOrder)
             .IsRequired();
 

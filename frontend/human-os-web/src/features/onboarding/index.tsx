@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 
@@ -27,17 +28,30 @@ const EMPTY_FORM: OnboardingFormState = {
  *  paths: an individual learner (Person only, no Tenant) or an
  *  organización admin (Tenant + Person, existing flow). Email and oid
  *  always come from the already-authenticated MSAL session, never
- *  re-entered or invented.
+ *  re-entered or invented. The student/admin also picks their preferred
+ *  UI language here (defaulting to whatever the app is currently
+ *  showing, i.e. browser/localStorage-detected) — that choice is saved
+ *  to PersonProfile.PreferredLanguage and becomes the account's default
+ *  language on every future login (see AuthContext.loadUser).
  */
 export function OnboardingPage() {
   const { user, refreshUser } = useAuth();
+  const { t, i18n } = useTranslation();
   const [mode, setMode] = useState<OnboardingMode>('individual');
   const [form, setForm] = useState<OnboardingFormState>(EMPTY_FORM);
+  const [preferredLanguage, setPreferredLanguage] = useState<'en' | 'es'>(
+    i18n.language.startsWith('es') ? 'es' : 'en',
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(false);
 
   function update<K extends keyof OnboardingFormState>(key: K, value: OnboardingFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectLanguage(lang: 'en' | 'es') {
+    setPreferredLanguage(lang);
+    void i18n.changeLanguage(lang);
   }
 
   const isValid =
@@ -65,6 +79,7 @@ export function OnboardingPage() {
                 email: user.email,
                 firstName: form.adminFirstName.trim(),
                 lastName: form.adminLastName.trim(),
+                preferredLanguage,
               }
             : {
                 email: user.email,
@@ -74,6 +89,7 @@ export function OnboardingPage() {
                 companyAddress: form.companyAddress.trim() || null,
                 companyEmail: form.companyEmail.trim(),
                 companyPhone: form.companyPhone.trim() || null,
+                preferredLanguage,
               },
         ),
       });
@@ -94,16 +110,42 @@ export function OnboardingPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-[#05060a]">
       <Card className="w-full max-w-lg p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-300">
-          Bienvenido a Engram Academy
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-300">
+            {t('onboarding.eyebrow')}
+          </p>
+          <div className="flex items-center rounded-full border border-slate-200 p-0.5 text-xs font-semibold dark:border-white/10">
+            <button
+              type="button"
+              onClick={() => selectLanguage('en')}
+              aria-pressed={preferredLanguage === 'en'}
+              className={
+                preferredLanguage === 'en'
+                  ? 'rounded-full bg-slate-900 px-2.5 py-1 text-white dark:bg-white dark:text-slate-900'
+                  : 'rounded-full px-2.5 py-1 text-slate-400 hover:text-slate-700 dark:text-white/40 dark:hover:text-white'
+              }
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => selectLanguage('es')}
+              aria-pressed={preferredLanguage === 'es'}
+              className={
+                preferredLanguage === 'es'
+                  ? 'rounded-full bg-slate-900 px-2.5 py-1 text-white dark:bg-white dark:text-slate-900'
+                  : 'rounded-full px-2.5 py-1 text-slate-400 hover:text-slate-700 dark:text-white/40 dark:hover:text-white'
+              }
+            >
+              ES
+            </button>
+          </div>
+        </div>
         <h1 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
-          {mode === 'individual' ? 'Creemos tu cuenta' : 'Creemos la cuenta de tu organización'}
+          {mode === 'individual' ? t('onboarding.titleIndividual') : t('onboarding.titleOrganization')}
         </h1>
         <p className="mt-2 text-sm text-slate-500 dark:text-white/50">
-          {mode === 'individual'
-            ? 'Solo tu nombre — tu cuenta personal en Engram Academy queda lista al instante.'
-            : 'Solo unos datos para crear tu empresa en Engram Academy y tu perfil de administrador.'}
+          {mode === 'individual' ? t('onboarding.subtitleIndividual') : t('onboarding.subtitleOrganization')}
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-2 rounded-full bg-slate-100 p-1 dark:bg-white/5">
@@ -116,7 +158,7 @@ export function OnboardingPage() {
                 : 'text-slate-500 dark:text-white/50'
             }`}
           >
-            Soy un individuo
+            {t('onboarding.modeIndividual')}
           </button>
           <button
             type="button"
@@ -127,18 +169,18 @@ export function OnboardingPage() {
                 : 'text-slate-500 dark:text-white/50'
             }`}
           >
-            Soy una organización
+            {t('onboarding.modeOrganization')}
           </button>
         </div>
 
         <div className="mt-6 space-y-5">
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-white/40">
-              Tu información
+              {t('onboarding.yourInfo')}
             </h2>
             <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="text-sm font-medium text-slate-700 dark:text-white/80">Nombre</span>
+                <span className="text-sm font-medium text-slate-700 dark:text-white/80">{t('onboarding.firstName')}</span>
                 <input
                   type="text"
                   value={form.adminFirstName}
@@ -147,7 +189,7 @@ export function OnboardingPage() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-medium text-slate-700 dark:text-white/80">Apellido</span>
+                <span className="text-sm font-medium text-slate-700 dark:text-white/80">{t('onboarding.lastName')}</span>
                 <input
                   type="text"
                   value={form.adminLastName}
@@ -156,17 +198,19 @@ export function OnboardingPage() {
                 />
               </label>
             </div>
-            <p className="mt-2 text-xs text-slate-400 dark:text-white/40">Correo: {user?.email}</p>
+            <p className="mt-2 text-xs text-slate-400 dark:text-white/40">
+              {t('onboarding.emailLabel')}: {user?.email}
+            </p>
           </section>
 
           {mode === 'organization' && (
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-white/40">
-              Tu empresa
+              {t('onboarding.yourCompany')}
             </h2>
             <div className="mt-3 space-y-4">
               <label className="block">
-                <span className="text-sm font-medium text-slate-700 dark:text-white/80">Nombre de la empresa</span>
+                <span className="text-sm font-medium text-slate-700 dark:text-white/80">{t('onboarding.companyName')}</span>
                 <input
                   type="text"
                   value={form.companyName}
@@ -175,7 +219,7 @@ export function OnboardingPage() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-medium text-slate-700 dark:text-white/80">Dirección</span>
+                <span className="text-sm font-medium text-slate-700 dark:text-white/80">{t('onboarding.companyAddress')}</span>
                 <input
                   type="text"
                   value={form.companyAddress}
@@ -185,7 +229,7 @@ export function OnboardingPage() {
               </label>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block">
-                  <span className="text-sm font-medium text-slate-700 dark:text-white/80">Correo de la empresa</span>
+                  <span className="text-sm font-medium text-slate-700 dark:text-white/80">{t('onboarding.companyEmail')}</span>
                   <input
                     type="email"
                     value={form.companyEmail}
@@ -194,7 +238,7 @@ export function OnboardingPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm font-medium text-slate-700 dark:text-white/80">Teléfono</span>
+                  <span className="text-sm font-medium text-slate-700 dark:text-white/80">{t('onboarding.companyPhone')}</span>
                   <input
                     type="tel"
                     value={form.companyPhone}
@@ -209,7 +253,7 @@ export function OnboardingPage() {
 
           {error && (
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              No pudimos crear tu cuenta. Inténtalo de nuevo.
+              {t('onboarding.errorMessage')}
             </p>
           )}
 
@@ -219,7 +263,7 @@ export function OnboardingPage() {
             disabled={!isValid || isSaving}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
           >
-            {isSaving ? 'Creando...' : mode === 'individual' ? 'Crear mi cuenta' : 'Crear mi organización'}
+            {isSaving ? t('onboarding.creating') : mode === 'individual' ? t('onboarding.createAccount') : t('onboarding.createOrganization')}
           </button>
         </div>
       </Card>

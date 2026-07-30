@@ -139,10 +139,41 @@ public sealed class RealtimeVoiceSessionService
                 // WITHOUT this channel ever grading anything itself.
                 ["input"] = new System.Text.Json.Nodes.JsonObject
                 {
-                    ["transcription"] = new System.Text.Json.Nodes.JsonObject { ["model"] = _transcriptionModel }
+                    ["transcription"] = new System.Text.Json.Nodes.JsonObject { ["model"] = _transcriptionModel },
+                    // FIXED 2026-07-25: this GA REST schema nests turn_detection/
+                    // noise_reduction under audio.input (same as transcription
+                    // above) — NOT at the top level of `session` like the legacy
+                    // Realtime API. The client's WebRTC data-channel
+                    // `session.update` was previously sending a top-level
+                    // `turn_detection`, which this GA schema silently ignores,
+                    // so the connection ran with the server's DEFAULT VAD
+                    // sensitivity (much more trigger-happy than intended) the
+                    // whole time. Setting it here, nested correctly, from the
+                    // very first turn fixes the root cause of the Agent
+                    // self-interrupting on its own voice bleeding back into an
+                    // open mic (no headphones) and hallucinating a reply to
+                    // silence (e.g. "gracias por compartir" when the student
+                    // said nothing).
+                    ["turn_detection"] = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["type"] = "server_vad",
+                        ["threshold"] = 0.85,
+                        ["prefix_padding_ms"] = 300,
+                        ["silence_duration_ms"] = 700,
+                        ["create_response"] = true,
+                        ["interrupt_response"] = true
+                    },
+                    // Azure/OpenAI Realtime's purpose-built fix for exactly
+                    // this speaker-bleed-into-mic scenario (no headphones):
+                    // suppresses the Agent's own voice picked back up by the
+                    // mic before VAD evaluation, instead of just raising the
+                    // threshold and hoping. "near_field" fits a laptop/desktop
+                    // mic+speakers setup (vs. "far_field" conference-room mics).
+                    ["noise_reduction"] = new System.Text.Json.Nodes.JsonObject { ["type"] = "near_field" }
                 }
             }
         };
+
 
         if (tools is not null)
         {

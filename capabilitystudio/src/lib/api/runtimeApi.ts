@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './httpClient';
+import { apiGet, apiPost, apiPut } from './httpClient';
 
 /**
  * Client for the real Human OS Learning Runtime API, ported from
@@ -29,13 +29,36 @@ export interface BackendCapabilityGraphEdge {
   RelationshipType: BackendRelationshipType;
 }
 
+/** Professor-given name for one computed "climb level"/tier (2026-07-30) —
+ * see PreviewGraphPage.tsx's groupIntoLevels. Only present for levels the
+ * professor has explicitly named; any level missing here falls back to the
+ * generic "Level N" label. */
+export interface BackendCapabilityGraphLevel {
+  LevelIndex: number;
+  Name: string;
+}
+
 export interface BackendCapabilityGraph {
   CapabilityGraphId: string;
   Name: string;
   Description?: string;
   Nodes: BackendCapabilityGraphNode[];
   Edges: BackendCapabilityGraphEdge[];
+  Levels?: BackendCapabilityGraphLevel[];
   ExecutiveSummary?: string;
+}
+
+/** Names (or renames, or clears when name is empty) one computed graph
+ * level for the given capability — Studio's "professor" tool. */
+export function setCapabilityGraphLevelName(
+  capabilityId: string,
+  levelIndex: number,
+  name: string
+): Promise<{ LevelIndex: number; Name: string | null }> {
+  return apiPut<{ LevelIndex: number; Name: string | null }>(
+    `/capabilities/${capabilityId}/graph/levels/${levelIndex}`,
+    { Name: name }
+  );
 }
 
 export function getCapabilityGraph(capabilityId: string, personId: string): Promise<BackendCapabilityGraph> {
@@ -68,12 +91,23 @@ export function addCapabilityGraphNode(
 
 // === Runtime session (5-step Memory Paradox) ===
 
-export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'Recall' | 'Production' | 'Assessment';
+export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'DeepDive' | 'Recall' | 'Production' | 'Assessment';
+
+export interface ExampleCardDto {
+  Title: string;
+  Text: string;
+  Emoji?: string | null;
+  IllustrationId?: string | null;
+}
 
 export interface BackendIllustration {
   IllustrationId: string;
   StoragePath: string;
   Caption?: string;
+  /** Raw generation-model tag ("deterministic-skiasharp-v1" or a generative image model name like "gpt-image-2"). */
+  ImageModel: string;
+  /** Human-readable provenance label for a small caption in the UI. */
+  GeneratedByLabel: string;
 }
 
 export interface BackendRuntimeStep {
@@ -81,6 +115,12 @@ export interface BackendRuntimeStep {
   StepType: ExperienceStepType;
   Content: string;
   Illustrations: BackendIllustration[];
+  /** Only populated when StepType === 'DeepDive'. */
+  ExampleCards?: ExampleCardDto[] | null;
+  /** Only populated when StepType === 'DeepDive' — index (0-based) of the card currently being asked about. */
+  CurrentDeepDiveCardIndex?: number;
+  /** Only populated when StepType === 'DeepDive' — total number of cards that must be sequentially mastered. */
+  DeepDiveTotalCards?: number;
 }
 
 export interface BackendRuntimeSessionInfo {
@@ -171,6 +211,42 @@ export function submitRecallAttempt(
   });
 }
 
+/**
+ * Deep Dive is card-by-card SEQUENTIAL and MANDATORY-ALL — unlike Recall's
+ * "master N distinct items out of an open pool", every single example
+ * card must be mastered in order before the step can advance (see
+ * backend/HumanOS/Agentic/Runtime/DeepDiveLoopGate.cs). There is no
+ * attempt cap and no regression path: the student simply keeps retrying
+ * the SAME card (CardIndex) until Mastered flips true, at which point
+ * NextCardIndex increments and the loop continues until every card is done.
+ */
+export interface DeepDiveAttemptOutcomeDto {
+  TutorTurn: TutorTurnDto;
+  LearningEvidenceId: string;
+  /** 0-based index of the card this attempt was scored against. */
+  CardIndex: number;
+  TotalCards: number;
+  /** True if THIS attempt scored high enough to master the current card. */
+  Mastered: boolean;
+  /** Index of the card to ask about next (unchanged from CardIndex if not yet mastered). */
+  NextCardIndex: number;
+  /** True only when every card has been mastered and the step advanced to Recall. */
+  Advanced: boolean;
+  NextStep?: BackendRuntimeStep | null;
+}
+
+export function submitDeepDiveAttempt(
+  learningSessionStepId: string,
+  studentResponse: string,
+  tutorPromptShown?: string
+): Promise<DeepDiveAttemptOutcomeDto> {
+  return apiPost<DeepDiveAttemptOutcomeDto>('/instructor-runtime/tutor/deep-dive-attempts', {
+    LearningSessionStepId: learningSessionStepId,
+    StudentResponse: studentResponse,
+    TutorPromptShown: tutorPromptShown,
+  });
+}
+
 export interface EvaluateProductionResponseDto {
   IsCorrect: boolean;
   Score: number;
@@ -202,6 +278,70 @@ export function completeNode(
   });
 }
 
+// === Read-only node/step review (2026-07-30) — ported from
+// frontend/human-os-web/src/features/capabilities/api/runtimeSessionApi.ts
+// so Capability Studio's "Probar como estudiante" (real mode) shows the
+// same read-only recap when reopening an already-Mastered node, instead of
+// silently starting a brand-new attempt. Never mutates anything — pure GETs. ===
+
+export interface EvidenceEntryDto {
+  StudentResponse: string;
+  TutorPrompt?: string;
+  TutorScore?: number;
+  CreatedDate: string;
+}
+
+/** Read-only recap of a step the student already started — never mutates anything (no reactivation, no new evidence). */
+export interface StepReviewDto {
+  StepType: ExperienceStepType;
+  Status: 'NotStarted' | 'Active' | 'Completed';
+  StartedDate?: string;
+  CompletedDate?: string;
+  Content: string;
+  Illustrations: BackendIllustration[];
+  Evidence: EvidenceEntryDto[];
+  /** Only populated when StepType === 'DeepDive'. */
+  ExampleCards?: ExampleCardDto[];
+}
+
+export function getStepReview(learningSessionNodeId: string, stepType: ExperienceStepType): Promise<StepReviewDto> {
+  return apiGet<StepReviewDto>(
+    `/instructor-runtime/steps/review?learningSessionNodeId=${learningSessionNodeId}&stepType=${stepType}`
+  );
+}
+
+/** One past completed attempt at a node — see NodeSummaryDto.PastAttempts. */
+export interface NodeAttemptSummaryDto {
+  LearningSessionNodeId: string;
+  StartedDate?: string;
+  CompletedDate?: string;
+  FinalScore?: number;
+  Passed: boolean;
+}
+
+/**
+ * Read-only "what happened the last time I completed this node" recap —
+ * shown when opening a node that is already Mastered on the map, instead
+ * of silently starting a brand-new attempt.
+ */
+export interface NodeSummaryDto {
+  CapabilityGraphNodeId: string;
+  /** Which attempt (row in PastAttempts) the top-level Steps belongs to — always the most recent one. */
+  LearningSessionNodeId: string;
+  AttemptCount: number;
+  FirstCompletedDate?: string;
+  LastCompletedDate?: string;
+  FinalScore?: number;
+  Steps: StepReviewDto[];
+  PastAttempts: NodeAttemptSummaryDto[];
+}
+
+export function getNodeSummary(personId: string, capabilityGraphNodeId: string): Promise<NodeSummaryDto> {
+  return apiGet<NodeSummaryDto>(
+    `/instructor-runtime/nodes/summary?personId=${personId}&capabilityGraphNodeId=${capabilityGraphNodeId}`
+  );
+}
+
 // === Voice Tutor (Azure OpenAI Realtime, 2026-07-21) ===
 // Mints a short-lived ephemeral session so the BROWSER can negotiate
 // WebRTC directly against Azure (see VoiceTutorAgent.tsx) — this backend
@@ -218,14 +358,46 @@ export interface VoiceTutorSessionDto {
 
 export function requestVoiceTutorSession(
   target:
-    | { learningSessionStepId: string; promptText?: string }
-    | { capabilityGraphNodeId: string; stepType: ExperienceStepType }
+    | { learningSessionStepId: string; promptText?: string; personName?: string; exampleCardIndex?: number }
+    | {
+        capabilityGraphNodeId: string;
+        stepType: ExperienceStepType;
+        personName?: string;
+        exampleCardIndex?: number;
+        /** DeepDive only (2026-07-30) — revisiting an already-mastered card
+         * via the read-only card index. Switches the voice Agent to a
+         * plain explain-and-invite-questions conversation, never a quiz. */
+        isReviewOnly?: boolean;
+      }
 ): Promise<VoiceTutorSessionDto> {
   return apiPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
     LearningSessionStepId: 'learningSessionStepId' in target ? target.learningSessionStepId : undefined,
     CurrentPromptText: 'learningSessionStepId' in target ? target.promptText : undefined,
     CapabilityGraphNodeId: 'capabilityGraphNodeId' in target ? target.capabilityGraphNodeId : undefined,
     StepType: 'capabilityGraphNodeId' in target ? target.stepType : undefined,
+    PersonName: target.personName,
+    ExampleCardIndex: target.exampleCardIndex,
+    IsReviewOnly: 'capabilityGraphNodeId' in target ? target.isReviewOnly ?? false : false,
+  });
+}
+
+// === "Reactivar Engrama" / voice lesson review (2026-07-30, ported from
+// frontend/human-os-web's EngramReviewAgent.tsx) === A full-lesson, spoken
+// STUDY conversation for an already-Mastered node's read-only recap screen
+// — deliberately NEVER an exam/quiz, never grades anything. The Agent
+// reads/explains the lesson back to the student (grounded in the
+// blueprint content + the student's own past answers, via the exact same
+// InstructorRuntimeOrchestrator.GetNodeSummaryAsync data as the recap
+// screen itself) and invites questions. Reuses the same ephemeral-session
+// response shape as the regular Voice Tutor (VoiceTutorSessionDto), just
+// with a different system prompt built server-side.
+export function requestEngramReviewSession(
+  personId: string,
+  capabilityGraphNodeId: string
+): Promise<VoiceTutorSessionDto> {
+  return apiPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/engram-review-session', {
+    PersonId: personId,
+    CapabilityGraphNodeId: capabilityGraphNodeId,
   });
 }
 
@@ -308,12 +480,18 @@ export interface BlueprintIllustrationDto {
   IllustrationId: string;
   StoragePath: string;
   Caption?: string;
+  /** Raw generation-model tag ("deterministic-skiasharp-v1" or a generative image model name like "gpt-image-2"). */
+  ImageModel: string;
+  /** Human-readable provenance label for a small caption in the UI, e.g. "Generado con .NET (determinístico)". */
+  GeneratedByLabel: string;
 }
 
 export interface BlueprintStepDto {
   StepType: ExperienceStepType;
   Content: string;
   Illustrations: BlueprintIllustrationDto[];
+  /** Only populated when StepType === 'DeepDive'. */
+  ExampleCards?: ExampleCardDto[] | null;
 }
 
 export interface NodeBlueprintDto {
@@ -332,6 +510,30 @@ export function editNodeBlueprintStep(
   instruction: string
 ): Promise<BlueprintStepDto> {
   return apiPost<BlueprintStepDto>(`/studio/nodes/${capabilityGraphNodeId}/blueprint/steps/${stepType}/edit`, {
+    Instruction: instruction,
+  });
+}
+
+// === Deep Dive card-by-card editing (2026-07-30) ===
+// The generic editNodeBlueprintStep above only ever rewrites a step's plain
+// Content HTML — it has no concept of ExampleCards at all, so using it on
+// the DeepDive step never actually edits a specific card. These two calls
+// target ONE card (or append a brand-new one) without ever touching any of
+// the step's other cards.
+
+export function editDeepDiveCard(
+  capabilityGraphNodeId: string,
+  cardIndex: number,
+  instruction: string
+): Promise<BlueprintStepDto> {
+  return apiPost<BlueprintStepDto>(
+    `/studio/nodes/${capabilityGraphNodeId}/blueprint/deepdive/cards/${cardIndex}/edit`,
+    { Instruction: instruction }
+  );
+}
+
+export function addDeepDiveCard(capabilityGraphNodeId: string, instruction: string): Promise<BlueprintStepDto> {
+  return apiPost<BlueprintStepDto>(`/studio/nodes/${capabilityGraphNodeId}/blueprint/deepdive/cards/add`, {
     Instruction: instruction,
   });
 }

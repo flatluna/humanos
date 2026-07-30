@@ -27,8 +27,9 @@ public sealed class GetCapabilitiesFunction
         var language = query["language"] ?? "en";
         var domain = query["domain"];
         var subject = query["subject"];
+        var contentLanguage = query["contentLanguage"];
 
-        var capabilities = await _capabilityService.GetActiveAsync(language, domain, subject, cancellationToken);
+        var capabilities = await _capabilityService.GetActiveAsync(language, domain, subject, contentLanguage, cancellationToken);
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, capabilities, cancellationToken: cancellationToken);
     }

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useMsal, useIsAuthenticated } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
+import i18n from '@/localization';
 import { loginRequest } from './index';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -26,6 +27,12 @@ export interface HumanOsUser {
   onboarded: boolean;
   /** When the current token was issued (claim "iat") — a proxy for last login. */
   lastLogin: string | null;
+  /** PersonProfile.PreferredLanguage ("en"/"es") chosen at onboarding —
+   *  null until onboarded. Drives the app's default UI language on
+   *  login (see loadUser below); the LanguageSwitcher can still
+   *  override it for the session and persists that back via
+   *  updatePreferredLanguage. */
+  preferredLanguage: string | null;
 }
 
 interface AuthContextValue {
@@ -77,6 +84,7 @@ interface MeResponse {
   TenantId: string | null;
   TenantName: string | null;
   Email: string | null;
+  PreferredLanguage: string | null;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -147,11 +155,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tenantName: data.TenantName,
           onboarded: true,
           lastLogin,
+          preferredLanguage: data.PreferredLanguage,
         });
+        // Start the app in the language saved on the account, not just
+        // whatever localStorage/browser detection guessed before login.
+        if (data.PreferredLanguage) {
+          void i18n.changeLanguage(data.PreferredLanguage);
+        }
       } else if (res.status === 404) {
         // First time — needs to complete onboarding (create the company + admin).
         setBackendError(false);
-        setUser({ oid, tid, name, email, personId: null, tenantId: null, tenantName: null, onboarded: false, lastLogin });
+        setUser({
+          oid,
+          tid,
+          name,
+          email,
+          personId: null,
+          tenantId: null,
+          tenantName: null,
+          onboarded: false,
+          lastLogin,
+          preferredLanguage: null,
+        });
       } else {
         // Any other status (5xx, wrong-proxy 4xx, etc.) means we couldn't
         // actually determine onboarding status — surface this as a backend

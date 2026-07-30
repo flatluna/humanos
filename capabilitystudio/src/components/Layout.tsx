@@ -1,9 +1,12 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Sparkles, Plus, LayoutGrid, GraduationCap, Coins } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
+import LanguageSwitcher from './LanguageSwitcher';
 
 export default function Layout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const onProgramsSection = location.pathname.startsWith('/programs');
 
@@ -32,7 +35,7 @@ export default function Layout() {
               }
             >
               <LayoutGrid className="h-4 w-4" />
-              Catálogo
+              {t('nav.catalog')}
             </NavLink>
             <NavLink
               to="/programs"
@@ -43,7 +46,7 @@ export default function Layout() {
               }
             >
               <GraduationCap className="h-4 w-4" />
-              Programas
+              {t('nav.programs')}
             </NavLink>
             <NavLink
               to="/costs"
@@ -54,11 +57,12 @@ export default function Layout() {
               }
             >
               <Coins className="h-4 w-4" />
-              Costos
+              {t('nav.costs')}
             </NavLink>
           </nav>
 
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
             <ThemeSwitcher />
             {onProgramsSection ? (
               <Link
@@ -66,7 +70,7 @@ export default function Layout() {
                 className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
               >
                 <Plus className="h-4 w-4" strokeWidth={2.5} />
-                Nuevo programa
+                {t('nav.newProgram')}
               </Link>
             ) : (
               <Link
@@ -74,7 +78,7 @@ export default function Layout() {
                 className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
               >
                 <Plus className="h-4 w-4" strokeWidth={2.5} />
-                Nueva capability
+                {t('nav.newCapability')}
               </Link>
             )}
           </div>
@@ -88,7 +92,7 @@ export default function Layout() {
       </main>
 
       <footer className="border-t border-white/10 py-6 text-center text-xs text-slate-500">
-        Capability Studio · Human OS · Runtime v2 (Curador → GraphArchitect)
+        {t('nav.footer')}
       </footer>
     </div>
   );

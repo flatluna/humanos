@@ -38,11 +38,18 @@ internal sealed class TutorTurnExecutor : Executor<TutorTurnRequest, TutorTurnRe
         var prompt = BuildPrompt(request);
         var turn = await _tutorAgent.RespondAsync(prompt, cancellationToken);
 
-        // Recall score never leaks out of Recall mode — defensive
+        // Recall score never leaks out of Recall/DeepDive mode — defensive
         // clamp/null-out here even though TutorAgentV2's instructions
         // already forbid it, same "LLM proposes, code has final say"
-        // discipline used across every other Human OS agent.
-        var recallScore = request.Mode == TutorInteractionMode.Recall
+        // discipline used across every other Human OS agent. BUG FIX
+        // (2026-07-29): this used to check ONLY TutorInteractionMode.Recall,
+        // which unconditionally discarded the LLM's score on EVERY
+        // DeepDive turn (RecallScore is documented as reused by BOTH
+        // Recall and DeepDive) — a 100%-reproducing bug that made every
+        // Deep Dive submission fail with "TutorAgentV2 did not return a
+        // score for a DeepDive-mode turn", regardless of what the model
+        // actually returned.
+        var recallScore = request.Mode is TutorInteractionMode.Recall or TutorInteractionMode.DeepDive
             ? turn.Response.RecallScore is { } score ? Math.Clamp(score, 0, 100) : (int?)null
             : null;
 

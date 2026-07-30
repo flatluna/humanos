@@ -11,6 +11,10 @@ export interface ContinueLearningItem {
   capabilityGraphNodeId: string;
   capabilityName: LocalizedText;
   programName: LocalizedText;
+  /** Only set when this capability was resumed within a real enrolled
+   *  Program — must be forwarded to the node URL so the resumed session
+   *  matches the one actually in progress inside that program. */
+  programId?: string;
 }
 
 interface ContinueLearningSectionProps {
@@ -66,7 +70,9 @@ export function ContinueLearningSection({ items, loading }: ContinueLearningSect
               viewport={{ once: true, amount: 0.4 }}
               transition={{ duration: 0.4, delay: i * 0.05 }}
             >
-              <Link to={`/capabilities/${item.capabilityId}/nodes/${item.capabilityGraphNodeId}`}>
+              <Link
+                to={`/capabilities/${item.capabilityId}/nodes/${item.capabilityGraphNodeId}?from=today${item.programId ? `&programId=${item.programId}` : ''}`}
+              >
                 <Card className="flex items-start gap-4 p-6 transition hover:border-blue-300 dark:hover:border-blue-400/40">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/10 to-violet-500/10 text-blue-600 dark:text-blue-300">
                     <PlayCircle className="h-5 w-5" />

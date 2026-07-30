@@ -136,7 +136,8 @@ body {
 }
 
 ::selection {
-  @apply bg-brand-500/40 text-white;
+  background-color: rgb(var(--color-brand-500) / 0.4);
+  color: rgb(var(--color-ink));
 }
 
 /* Thin, unobtrusive scrollbar matching the active theme */
@@ -172,5 +173,33 @@ body {
 }
 
 .input {
-  @apply w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-brand-400/50 focus:outline-none focus:ring-2 focus:ring-brand-500/30;
+  @apply w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none;
+}
+
+.input:focus {
+  border-color: rgb(var(--color-brand-400) / 0.5);
+  box-shadow: 0 0 0 2px rgb(var(--color-brand-500) / 0.3);
+}
+
+/* Fix select/combobox visibility in dark mode */
+select.input {
+  @apply text-slate-900 bg-slate-100;
+}
+
+select.input option {
+  @apply text-slate-900 bg-slate-100;
+}
+
+select.input option:checked {
+  background-color: rgb(var(--color-brand-500));
+  color: rgb(var(--color-ink));
+}
+
+/* Light theme adjustments */
+[data-theme='light'] select.input {
+  @apply text-slate-950 bg-slate-50;
+}
+
+[data-theme='light'] select.input option {
+  @apply text-slate-950 bg-slate-50;
 }

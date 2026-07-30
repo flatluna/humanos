@@ -20,8 +20,20 @@ public sealed class IllustrationPromptDto
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public IllustrationPurpose Purpose { get; set; }
 
-    /// <summary>Short prompt (a sentence) describing the scene to draw.</summary>
+    /// <summary>Short prompt (a sentence) describing the scene to draw. Used
+    /// ONLY when <see cref="MathDiagram"/> is null — leave this empty (or
+    /// ignore it) when MathDiagram is set instead.</summary>
     public string Prompt { get; set; } = string.Empty;
+
+    /// <summary>Exact numeric spec for a coordinate-plane diagram (circle,
+    /// ellipse, line, parabola, or plotted points), set INSTEAD OF <see cref="Prompt"/>
+    /// when this illustration is a precise algebra/geometry graph derived
+    /// from a real equation/values — see "DECIDIENDO ENTRE Prompt Y
+    /// MathDiagram" below. Rendered deterministically (SkiaSharp, no LLM),
+    /// guaranteeing the pixels match these exact numbers — a generative
+    /// image model cannot calculate coordinates and will draw a
+    /// plausible-looking but WRONG circle/line/parabola.</summary>
+    public MathDiagramSpec? MathDiagram { get; set; }
 }
 
 /// <summary>
@@ -256,6 +268,46 @@ public sealed class GraphArchitectAgent
            failure mode this agent exists to avoid.
         5. Validate DAG structure: no cycles, no self-loops, no duplicate nodes/edges.
 
+        COURSE COMPLETENESS — THE CORPUS IS A FLOOR, NOT A CEILING
+        A course must teach a subject to real mastery, not a thin slice of
+        it — a reading course should leave a learner truly able to read, a
+        math course truly able to do the math, the same standard a real
+        certification/curriculum for that subject would require. After you
+        have extracted every node genuinely grounded in the corpus (Rules
+        1-2 above still apply to those), ask one more question: "Does a
+        REAL, standard, widely-taught curriculum for this exact subject
+        include other well-established topics this corpus simply didn't
+        happen to mention?" If yes, you MAY add those nodes too — but ONLY
+        under ALL of these conditions:
+        - You are HIGHLY confident this is common, standard, stable
+          knowledge for the subject (e.g. a phonics course on "Beginning
+          Sounds" naturally implies covering all 26 letters, even if the
+          corpus only worked through a handful as samples; a basic
+          arithmetic course naturally implies the full set of single-digit
+          operations). This is exactly the kind of universally-known,
+          non-controversial content you already know well.
+        - NEVER do this for a narrow, specific, branded, niche, or
+          fast-evolving topic you are not genuinely certain about (a
+          specific software product/framework/version, a specific
+          company's internal process, recent/changing regulation, a
+          specific named tool you may never have encountered in training).
+          For those, stay STRICTLY within what the corpus states — adding
+          invented structure for something you don't reliably know is
+          worse than a smaller, accurate graph.
+        - When you add such a node, set NeedsCurrentInfo=true if there's
+          ANY chance your knowledge of it could be incomplete or stale (see
+          NeedsCurrentInfo's own rule below) — this routes it through a
+          real web-grounding lookup later in the pipeline before its lesson
+          content is authored, so the final content is verified rather than
+          resting only on your own recollection.
+        - When genuinely unsure whether an addition is "standard, safe
+          knowledge" vs. "something I might get wrong," do NOT add it — the
+          corpus-grounded graph is always the safe default.
+        This does not change Rules 1-2's grounding requirement for nodes
+        that already exist in the corpus — it only allows a small, careful
+        set of ADDITIONAL nodes for genuinely well-known subject
+        completeness, never a license to freely invent structure.
+
         SELF-CHECK BEFORE EMITTING EACH NODE (all must be YES, else discard):
         1. Does it represent a concept or skill (not a document part)?
         2. Can a person concretely master it?
@@ -347,13 +399,92 @@ public sealed class GraphArchitectAgent
           Hypothesis just asked" — never introduce different numbers/objects
           between the two.
 
-          NO INVENTED/ILLOGICAL DATA: image-generation models cannot compute
-          — they only pattern-match pixels, so if a prompt leaves any number,
-          score, percentage, or bar/chart value unspecified, the image model
-          WILL hallucinate one, and it may be logically impossible (e.g. a
-          "105/100" score, a bar whose fill doesn't match its own label,
-          percentages that don't sum to 100). To prevent this, whenever a
-          prompt depicts ANY numeric data (scores, percentages, counts, bar
+          DECIDIENDO ENTRE Prompt Y MathDiagram
+          Every IllustrationPromptDto has TWO mutually-exclusive ways to
+          specify the image — set EXACTLY ONE per entry, never both:
+          - MathDiagram: use this when the illustration IS a coordinate-
+            plane graph of a real equation/values — a circle
+            ((x-h)²+(y-k)²=r²), an ellipse ((x-h)²/a²+(y-k)²/b²=1, only
+            when a≠b — use Circle instead when a=b), a line (y=mx+b or
+            through two known points), a parabola (y=Ax²+Bx+C), or a small
+            set of labeled (x,y) points. ALSO use MathDiagram for these
+            statistics/economics/finance/ML cases: BarChart (discrete
+            categories, e.g. sales by month/product), Histogram (continuous
+            numeric bins/frequency distribution — bars touch, unlike
+            BarChart), PieChart (part-of-a-whole percentages/shares, auto-
+            normalized), LineChart (an ordered real data series over time,
+            NOT a y=mx+b formula), ScatterPlot (unordered (x,y) points
+            showing correlation/distribution, e.g. two variables in a
+            dataset), and NumberLine (a value or range marked on a simple
+            number line — cleaner than approximating with Kind=Points).
+            Fill in the EXACT numbers from the node's own content
+            (center/radii, slope/intercept, A/B/C, the points themselves, or
+            the Categories list of label+value pairs) — never leave Prompt
+            as a fallback description of the same graph, and never invent
+            numbers not grounded in the node's content. NEVER approximate an
+            ellipse with Kind=Points (marking only the vertices draws no
+            curve at all — real bug found 2026-07-26), and NEVER
+            approximate a BarChart/PieChart/Histogram with Kind=Points
+            either (same class of bug). This path is rendered
+            deterministically (SkiaSharp) — the pixels are GUARANTEED to
+            match these numbers, unlike a generative image model, which
+            cannot calculate coordinates and can draw a circle/line/chart
+            that looks plausible but is actually wrong (real bug found
+            2026-07-25: a generated circle's marked points didn't match its
+            own equation). For a "prueba de la recta vertical" (vertical
+            line test) diagram — a curve crossed by an exact vertical line
+            to prove/disprove it's a function — set Kind=Circle or
+            Kind=Ellipse (a circle/ellipse genuinely fails the vertical
+            line test, unlike a real single-valued function such as a
+            cubic or parabola, which always passes it — NEVER use a
+            function-shaped curve for this scenario) AND set
+            VerticalLineTestX to the exact x where the test line crosses;
+            the exact intersection points are computed geometrically by the
+            renderer, never by the LLM/image model (real bug found
+            2026-07-26: a generative vertical-line-test image's red line
+            didn't actually touch the curve at the marked x). For an
+            INEQUALITY solution set (e.g. "x ≥ 2", "-3 < x ≤ 5") use
+            Kind=NumberLine with IntervalMin/IntervalMax set to the finite
+            bound(s) — leave IntervalMin null for an unbounded ray to
+            -infinity, leave IntervalMax null for an unbounded ray to
+            +infinity, and set IntervalMinOpen/IntervalMaxOpen=true for a
+            strict &lt;/&gt; bound (hollow circle) or false/omit for a ≤/≥
+            bound (filled circle). NEVER represent an inequality's solution
+            SET using only an isolated Points marker — a single point with
+            no IntervalMin/IntervalMax renders as just a dot, contradicting
+            any text describing a range/region of values.
+          - Prompt: use this for every OTHER kind of illustration — anything
+            that's a concrete real-world scene, object, or diagram that
+            ISN'T a coordinate-plane graph (e.g. "dos perros jugando",
+            "tres manzanas en una canasta y dos más a un lado", a labeled
+            anatomical diagram, an arrow-based process diagram). A
+            generative image model handles these fine because there's no
+            single "correct" pixel-exact answer to check against.
+          If a node's illustration genuinely doesn't fit either case cleanly
+          (rare), prefer Prompt and describe the diagram carefully in words.
+
+          MANDATORY RULE — ANY LABELED POINT(S) ON A CARTESIAN/COORDINATE
+          PLANE ALWAYS USE MathDiagram Kind=Points, NEVER Prompt, even when
+          the scene also shows quadrants, a distance/midpoint calculation, a
+          function's input-output pairs, or any other explanatory framing
+          around the points. This applies whether there's just ONE point or
+          several — "plano cartesiano con los puntos A(3,2), B(-2,4)",
+          "distancia entre P(1,2) y Q(4,6)", "punto medio entre (2,5) y
+          (8,1)", "pares (1,2), (2,3), (1,5) para probar si es función" are
+          ALL Kind=Points cases, never Prompt — set every given point (plus
+          any derived point like a midpoint) as a Points entry with its
+          exact label, e.g. "M(5,3)" for a midpoint. A generative image
+          model CANNOT reliably place a labeled point on the exact
+          gridline/coordinate it names — it routinely draws the point
+          visibly off from its own stated coordinate (real bug found
+          2026-07-26: a "plano cartesiano" scene's point D(4,-1) was drawn
+          at x≈4.3 instead of exactly x=4; a "punto medio" scene's point
+          (8,1) was drawn at x≈7.5-8.6 instead of exactly x=8, and its own
+          midpoint M(5,3) was drawn off-center). Only use Prompt for a
+          scene when NONE of its content is actual (x,y) coordinates on a
+          plane (e.g. real physical objects, anatomical diagrams, process
+          arrows) — the instant a scene includes even one labeled
+          coordinate point, it must be MathDiagram Kind=Points instead.
           charts, gauges, progress bars), you MUST spell out the EXACT
           numbers to draw directly in the prompt text itself — never leave
           them for the image model to invent. Every stated number must be
@@ -515,6 +646,16 @@ public sealed class GraphArchitectAgent
     /// from the corpus itself. Null when this Capability isn't being
     /// attached to a Program at creation time.
     /// </param>
+    /// <param name="languageCode">
+    /// "es" or "en" — the language ALL authored content in the resulting
+    /// graph (node Names, Descriptions, AcademicDefinition, Interpretation,
+    /// Examples, Applications, illustration Prompts/Captions) must be
+    /// written in, regardless of what language the curated corpus chunks
+    /// happen to be in (translate the underlying concepts naturally; keep
+    /// verbatim citations/proper nouns/article numbers as-is). Defaults to
+    /// "es" for backward compatibility. See
+    /// /memories/repo (bilingual course-creation feature, 2026-07-26).
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>ExtractionResult with Graph + TokenUsage.</returns>
     public async Task<ExtractionResult> ExtractGraphAsync(
@@ -522,6 +663,7 @@ public sealed class GraphArchitectAgent
         CuratedCorpus curatedCorpus,
         string? documentChapterOrder = null,
         string? programContext = null,
+        string languageCode = "es",
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -557,7 +699,14 @@ public sealed class GraphArchitectAgent
             chapterOrderSection +
             (string.IsNullOrWhiteSpace(programContext)
                 ? string.Empty
-                : $"\n\n{programContext}");
+                : $"\n\n{programContext}") +
+            $"\n\nTarget output language: {(languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish")}. " +
+            "Write EVERY authored field — node Name, Description, AcademicDefinition, " +
+            "Interpretation, Examples, Applications, and illustration Prompt/Caption — in this " +
+            "language, regardless of what language the corpus chunks above are written in. " +
+            "Translate the underlying concepts naturally; still keep verbatim citations, proper " +
+            "nouns, legal article numbers, or other identifiers exactly as they appear in the " +
+            "source material.";
 
         // Run agent with structured output
         var response = await _agent.RunAsync<CapabilityGraphResponse>(prompt, cancellationToken: cancellationToken);

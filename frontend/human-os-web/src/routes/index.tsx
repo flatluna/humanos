@@ -81,6 +81,10 @@ export const router = createBrowserRouter([
             lazy: () => import('@/features/my-programs').then((m) => ({ Component: m.MyProgramsPage })),
           },
           {
+            path: 'catalog',
+            lazy: () => import('@/features/my-programs').then((m) => ({ Component: m.ProgramCatalogPage })),
+          },
+          {
             path: ':programId',
             lazy: () => import('@/features/my-programs').then((m) => ({ Component: m.ProgramDetailPage })),
           },
@@ -90,6 +94,10 @@ export const router = createBrowserRouter([
       {
         path: 'growth',
         lazy: () => import('@/features/my-evolution').then((m) => ({ Component: m.MyEvolutionPage })),
+      },
+      {
+        path: 'brain',
+        lazy: () => import('@/features/brain').then((m) => ({ Component: m.BrainPage })),
       },
       { path: 'agents', lazy: () => import('@/features/agents').then((m) => ({ Component: m.AgentsPage })) },
       {

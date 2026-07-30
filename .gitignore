@@ -13,6 +13,9 @@ dist-ssr/
 # Local Azure Storage emulator runtime state (not source)
 .azurite/
 
+# Browser-automation tool scratch output (screenshots, temp state)
+.playwright-mcp/
+
 # Stray log files from local dev runs
 *.log
 

@@ -18,22 +18,34 @@ export function MobileNavigation() {
         aria-label={t('nav.mobileNavigation')}
         className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-slate-200 bg-white/95 px-2 py-1.5 backdrop-blur-md md:hidden dark:border-white/10 dark:bg-[#05060a]/95"
       >
-        {MOBILE_BAR_ITEMS.map(({ to, icon: Icon, labelKey }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              clsx(
-                'flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[11px] font-medium transition',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                isActive ? 'text-blue-600 dark:text-blue-300' : 'text-slate-400 dark:text-white/40',
-              )
-            }
-          >
-            <Icon className="h-5 w-5" />
-            {t(labelKey)}
-          </NavLink>
-        ))}
+        {MOBILE_BAR_ITEMS.map(({ to, icon: Icon, labelKey, disabled }) =>
+          disabled ? (
+            <span
+              key={to}
+              aria-disabled="true"
+              title={t('nav.comingSoon')}
+              className="flex min-h-11 min-w-11 cursor-not-allowed flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[11px] font-medium text-slate-300 dark:text-white/20"
+            >
+              <Icon className="h-5 w-5" />
+              {t(labelKey)}
+            </span>
+          ) : (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                clsx(
+                  'flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[11px] font-medium transition',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+                  isActive ? 'text-blue-600 dark:text-blue-300' : 'text-slate-400 dark:text-white/40',
+                )
+              }
+            >
+              <Icon className="h-5 w-5" />
+              {t(labelKey)}
+            </NavLink>
+          ),
+        )}
 
         <button
           type="button"

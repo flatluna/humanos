@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 
 interface DeleteCapabilityModalProps {
@@ -15,10 +16,13 @@ interface DeleteCapabilityModalProps {
  */
 export default function DeleteCapabilityModal({
   capabilityName,
-  capabilityId,
+  // capabilityId is passed but not currently used; keeping it in the interface
+  // for potential future use (e.g., for analytics or audit logging)
+  capabilityId: _capabilityId,
   onConfirm,
   onCancel,
 }: DeleteCapabilityModalProps) {
+  const { t } = useTranslation();
   const [confirmationText, setConfirmationText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +38,7 @@ export default function DeleteCapabilityModal({
     try {
       await onConfirm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo eliminar la capability.');
+      setError(err instanceof Error ? err.message : t('deleteCapabilityModal.deleteErrorFallback'));
       setIsDeleting(false);
     }
   };
@@ -53,30 +57,31 @@ export default function DeleteCapabilityModal({
           </div>
           <div>
             <h2 id="delete-capability-title" className="text-xl font-bold text-red-500">
-              Eliminar capability permanentemente
+              {t('deleteCapabilityModal.title')}
             </h2>
-            <p className="text-sm text-slate-400 mt-1">Esta acción NO se puede deshacer.</p>
+            <p className="text-sm text-slate-400 mt-1">{t('deleteCapabilityModal.cannotUndo')}</p>
           </div>
         </div>
 
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4 text-sm text-red-200 space-y-2">
           <p>
-            Vas a eliminar <span className="font-bold">"{capabilityName}"</span> y absolutamente todo su contenido:
+            {t('deleteCapabilityModal.willDelete', { name: capabilityName })}
           </p>
           <ul className="list-disc list-inside space-y-1">
-            <li>Todos los niveles, módulos y guiones del instructor</li>
-            <li>El grafo de la capability (nodos, ilustraciones, blueprints)</li>
-            <li>Cualquier sesión de Learning Runtime asociada</li>
+            <li>{t('deleteCapabilityModal.bulletLevels')}</li>
+            <li>{t('deleteCapabilityModal.bulletGraph')}</li>
+            <li>{t('deleteCapabilityModal.bulletSessions')}</li>
             <li>
-              El <span className="font-semibold">progreso de cualquier estudiante</span> (evidencias, mastery,
-              evaluaciones)
+              {t('deleteCapabilityModal.bulletProgressPrefix')}{' '}
+              <span className="font-semibold">{t('deleteCapabilityModal.bulletProgressStrong')}</span>{' '}
+              {t('deleteCapabilityModal.bulletProgressSuffix')}
             </li>
           </ul>
-          <p className="font-semibold">Nada de esto se puede recuperar después de confirmar.</p>
+          <p className="font-semibold">{t('deleteCapabilityModal.cannotRecover')}</p>
         </div>
 
         <label className="block text-sm font-medium text-slate-300 mb-1">
-          Escribe <span className="font-bold">{capabilityName}</span> para confirmar:
+          {t('deleteCapabilityModal.typeToConfirm')} <span className="font-bold">{capabilityName}</span> {t('deleteCapabilityModal.toConfirm')}
         </label>
         <input
           type="text"
@@ -95,14 +100,14 @@ export default function DeleteCapabilityModal({
             disabled={isDeleting}
             className="px-4 py-2 rounded-lg font-medium text-slate-300 hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
           >
-            Cancelar
+            {t('deleteCapabilityModal.cancel')}
           </button>
           <button
             onClick={handleConfirm}
             disabled={!isConfirmationValid || isDeleting}
             className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {isDeleting ? 'Eliminando...' : 'Eliminar permanentemente'}
+            {isDeleting ? t('deleteCapabilityModal.deleting') : t('deleteCapabilityModal.deletePermanently')}
           </button>
         </div>
       </div>

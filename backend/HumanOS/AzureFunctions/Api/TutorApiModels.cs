@@ -51,6 +51,17 @@ public sealed class SubmitRecallAttemptRequest
     public string? TutorPromptShown { get; set; }
 }
 
+public sealed class SubmitDeepDiveAttemptRequest
+{
+    public Guid LearningSessionStepId { get; set; }
+
+    public string StudentResponse { get; set; } = string.Empty;
+
+    /// <summary>The question the Tutor showed right before this attempt —
+    /// null for the student's very first attempt on the CURRENT card.</summary>
+    public string? TutorPromptShown { get; set; }
+}
+
 public sealed class RecallAttemptOutcomeDto
 {
     public TutorTurnDto TutorTurn { get; set; } = null!;
@@ -81,8 +92,37 @@ public sealed class RecallAttemptOutcomeDto
     public RuntimeStepDto? NextStep { get; set; }
 }
 
+public sealed class DeepDiveAttemptOutcomeDto
+{
+    public TutorTurnDto TutorTurn { get; set; } = null!;
+
+    public Guid LearningEvidenceId { get; set; }
+
+    /// <summary>0-based index of the card the student was JUST quizzed on
+    /// this attempt (before any advance).</summary>
+    public int CardIndex { get; set; }
+
+    /// <summary>Total number of cards in this node's Deep Dive pool.</summary>
+    public int TotalCards { get; set; }
+
+    /// <summary>True if THIS attempt scored as mastery of its card.</summary>
+    public bool Mastered { get; set; }
+
+    /// <summary>0-based index of the NEXT card to quiz — unchanged when not
+    /// yet mastered, or CardIndex+1 when mastered.</summary>
+    public int NextCardIndex { get; set; }
+
+    /// <summary>True only when EVERY card has now been mastered in order —
+    /// NextStep (the newly-activated Recall step) is set in that case.</summary>
+    public bool Advanced { get; set; }
+
+    public RuntimeStepDto? NextStep { get; set; }
+}
+
 internal static class TutorApiMappers
 {
+    private const string DeterministicModelTag = "deterministic-skiasharp-v1";
+
     public static TutorTurnDto ToDto(Agentic.Runtime.TutorTurnResult result) => new()
     {
         Message = result.Response.Message,
@@ -91,7 +131,11 @@ internal static class TutorApiMappers
         {
             IllustrationId = i.CapabilityGraphNodeIllustrationId,
             StoragePath = i.StoragePath,
-            Caption = i.Caption
+            Caption = i.Caption,
+            ImageModel = i.ImageModel,
+            GeneratedByLabel = i.ImageModel == DeterministicModelTag
+                ? "Generado con .NET (determinístico, sin IA)"
+                : $"Generado con IA (modelo: {(string.IsNullOrWhiteSpace(i.ImageModel) ? "desconocido" : i.ImageModel)})"
         }).ToList()
     };
 
@@ -105,6 +149,18 @@ internal static class TutorApiMappers
         Mastered = outcome.Mastered,
         Advanced = outcome.Advanced,
         RegressedToTeaching = outcome.RegressedToTeaching,
+        NextStep = outcome.NextStep is null ? null : RuntimeGraphApiMappers.ToStepDto(outcome.NextStep)
+    };
+
+    public static DeepDiveAttemptOutcomeDto ToDto(TutorService.DeepDiveAttemptOutcome outcome) => new()
+    {
+        TutorTurn = ToDto(outcome.TutorTurn),
+        LearningEvidenceId = outcome.LearningEvidenceId,
+        CardIndex = outcome.CardIndex,
+        TotalCards = outcome.TotalCards,
+        Mastered = outcome.Mastered,
+        NextCardIndex = outcome.NextCardIndex,
+        Advanced = outcome.Advanced,
         NextStep = outcome.NextStep is null ? null : RuntimeGraphApiMappers.ToStepDto(outcome.NextStep)
     };
 }

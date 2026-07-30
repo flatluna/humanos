@@ -4,8 +4,6 @@ import {
   Compass,
   Gauge,
   Sparkles,
-  ClipboardCheck,
-  Rocket,
   Lock,
   CheckCircle2,
   ArrowRight,

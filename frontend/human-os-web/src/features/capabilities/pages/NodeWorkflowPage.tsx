@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import DOMPurify from 'dompurify';
-import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp, Images } from 'lucide-react';
 import { useI18n } from '../i18n/useI18n';
 import { useAuth } from '@/auth/AuthContext';
 import { API_BASE_URL } from '../api/httpClient';
@@ -16,6 +16,7 @@ import {
   advanceStep,
   askTutor,
   submitRecallAttempt,
+  submitDeepDiveAttempt,
   evaluateProduction,
   completeNode,
   getActiveAssessmentRound,
@@ -27,6 +28,7 @@ import {
   type ExperienceStepType,
   type BackendRuntimeStep,
   type BackendRuntimeSessionInfo,
+  type ExampleCardDto,
   type TutorMode,
   type GraphNodeInfoDto,
   type AssessmentRoundStateDto,
@@ -56,7 +58,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
  * (see /memories/repo/student-graph-ui-redesign-final-design.md).
  */
 
-const STEP_ORDER: ExperienceStepType[] = ['Hypothesis', 'Teaching', 'Recall', 'Production', 'Assessment'];
+const STEP_ORDER: ExperienceStepType[] = ['Hypothesis', 'Teaching', 'DeepDive', 'Recall', 'Production', 'Assessment'];
 
 // Mirrors backend RecallLoopGate (Agentic/Runtime/RecallLoopGate.cs): each
 // Recall item gets up to this many attempts, and the student must master
@@ -69,6 +71,10 @@ interface NormalizedStep {
   stepType: ExperienceStepType;
   content: string;
   illustrations: { illustrationId: string; storagePath: string; caption?: string }[];
+  exampleCards?: ExampleCardDto[];
+  /** Only meaningful when stepType === 'DeepDive' — lets a page reload resume exactly where the student left off, card-for-card. */
+  currentDeepDiveCardIndex?: number;
+  deepDiveTotalCards?: number;
 }
 
 function normalizeStep(step: BackendRuntimeStep): NormalizedStep {
@@ -84,6 +90,9 @@ function normalizeStep(step: BackendRuntimeStep): NormalizedStep {
       storagePath: i.StoragePath,
       caption: i.Caption,
     })),
+    exampleCards: step.ExampleCards,
+    currentDeepDiveCardIndex: step.CurrentDeepDiveCardIndex,
+    deepDiveTotalCards: step.DeepDiveTotalCards,
   };
 }
 
@@ -100,7 +109,20 @@ export default function NodeWorkflowPage() {
   const { capabilityId, nodeId } = useParams();
   const [searchParams] = useSearchParams();
   const programId = searchParams.get('programId');
-  const backToMapHref = programId ? `/capabilities/${capabilityId}?programId=${programId}` : `/capabilities/${capabilityId}`;
+  // Lets the caller override the "back" destination — e.g. the Brain page's
+  // "Rehacer los 5 pasos" link passes ?from=brain, and /today's "Continuar
+  // Aprendiendo" cards pass ?from=today, so the student returns to exactly
+  // where they came from (not the capability graph map) after finishing/
+  // leaving the node.
+  const fromParam = searchParams.get('from');
+  const backToMapHref =
+    fromParam === 'brain'
+      ? '/brain'
+      : fromParam === 'today'
+        ? '/today'
+        : programId
+          ? `/capabilities/${capabilityId}?programId=${programId}`
+          : `/capabilities/${capabilityId}`;
   const { t, language } = useI18n();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -149,6 +171,14 @@ export default function NodeWorkflowPage() {
   // message until the student clicks through.
   const [recallReview, setRecallReview] = useState<{ nextStep: BackendRuntimeStep; title: string } | null>(null);
 
+  // Deep Dive: sequential, mandatory-all-cards quiz loop (see
+  // backend/HumanOS/Agentic/Runtime/DeepDiveLoopGate.cs) — unlike Recall,
+  // there's no attempt cap and no distinct-N-of-pool logic, just "master
+  // this card, then the next one, in order, until every card is done".
+  const [deepDiveCardIndex, setDeepDiveCardIndex] = useState(0);
+  const [deepDiveTotalCards, setDeepDiveTotalCards] = useState(0);
+  const [deepDiveLastPrompt, setDeepDiveLastPrompt] = useState<string | undefined>(undefined);
+
   // Production ("Aplícalo") formative grading: purely formative feedback,
   // no attempt cap — the student may resubmit as many times as they want
   // until IsCorrect=true, since the goal is genuine learning, not
@@ -185,6 +215,9 @@ export default function NodeWorkflowPage() {
     setRecallItemsMastered(0);
     setRecallLastPrompt(undefined);
     setRecallReview(null);
+    setDeepDiveCardIndex(next.currentDeepDiveCardIndex ?? 0);
+    setDeepDiveTotalCards(next.deepDiveTotalCards ?? next.exampleCards?.length ?? 0);
+    setDeepDiveLastPrompt(undefined);
     setProductionEvaluation(null);
     setAssessmentRound(null);
     setAssessmentAnswerText('');
@@ -437,6 +470,40 @@ export default function NodeWorkflowPage() {
     }
   }, [step, responseText, recallLastPrompt, resetStepUiState, t.nodeError, t.recallRewardTitle, t.recallReviewTitle]);
 
+  // Deep Dive: score one attempt on the CURRENT card only (no attempt cap,
+  // no regression path). Mastering the card advances NextCardIndex; once
+  // every card is mastered in order, Advanced flips true and the same
+  // "reward pause" pattern as Recall plays before moving to the next step.
+  const handleDeepDiveSubmit = useCallback(async () => {
+    if (!step || !responseText.trim()) return;
+    setSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const outcome = await submitDeepDiveAttempt(step.learningSessionStepId, responseText.trim(), deepDiveLastPrompt);
+      setResponseText('');
+      if (outcome.Advanced && outcome.NextStep) {
+        setPendingAdvance({ nextStep: outcome.NextStep, title: t.deepDiveRewardTitle });
+      } else {
+        setDeepDiveCardIndex(outcome.NextCardIndex);
+        setDeepDiveTotalCards(outcome.TotalCards);
+        // BUG FIX (2026-07-30): when THIS attempt just mastered the current
+        // card, TutorTurn.Message is feedback/follow-up about the card that
+        // was JUST mastered, not the NEW card now being shown — showing it
+        // here would carry the previous card's question/answer over onto
+        // the new card (real bug reported live: "Letter F" card shown while
+        // the text below still asked about "Letter E"). Clear it instead so
+        // the generic per-card opening prompt shows for the new card (same
+        // reset the backend already does to CurrentDeepDiveQuestion in this
+        // exact case — see TutorService.SubmitDeepDiveAttemptAsync).
+        setDeepDiveLastPrompt(outcome.Mastered ? undefined : outcome.TutorTurn.Message);
+      }
+    } catch {
+      setErrorMessage(t.nodeError);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [step, responseText, deepDiveLastPrompt, t.nodeError, t.deepDiveRewardTitle]);
+
   // Adaptive Assessment: the first time this node's step becomes
   // Assessment, resume any in-progress round or start a brand-new one.
   useEffect(() => {
@@ -621,11 +688,12 @@ export default function NodeWorkflowPage() {
       <div className="mt-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-6">
         {errorMessage && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{errorMessage}</p>}
 
-        {/* Recall's content is shown via recallLastPrompt below, and
-            Assessment's content is an internal grading rubric ("Criterios
-            observables de dominio...") never meant for the student — the
-            actual questions come from AssessmentPanel's round state. */}
-        {step.stepType !== 'Recall' && step.stepType !== 'Assessment' && (
+        {/* Recall's content is shown via recallLastPrompt below, Deep
+            Dive's via deepDiveLastPrompt below, and Assessment's content is
+            an internal grading rubric ("Criterios observables de
+            dominio...") never meant for the student — the actual
+            questions come from AssessmentPanel's round state. */}
+        {step.stepType !== 'Recall' && step.stepType !== 'DeepDive' && step.stepType !== 'Assessment' && (
           <RichContent className="text-slate-600 dark:text-slate-300" html={step.content} />
         )}
 
@@ -648,6 +716,41 @@ export default function NodeWorkflowPage() {
                 )}
               </figure>
             ))}
+          </div>
+        )}
+
+        {/* Deep Dive — sequential, mandatory-all-cards quiz (see
+            backend/HumanOS/Agentic/Runtime/DeepDiveLoopGate.cs and
+            /memories/repo — every card must be individually mastered, in
+            order, unlike Recall's distinct-N-of-pool rule. Only the
+            CURRENT card is shown; there is no attempt cap, the student
+            just keeps retrying the same card until mastered. A big reward
+            star plays once every card is done, via the same RewardBanner
+            used by Recall. */}
+        {step.stepType === 'DeepDive' && !pendingAdvance && step.exampleCards && step.exampleCards.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {t.deepDiveCardLabel} {Math.min(deepDiveCardIndex + 1, step.exampleCards.length)} {t.assessmentOfLabel}{' '}
+              {deepDiveTotalCards || step.exampleCards.length}
+            </p>
+            {(() => {
+              const card = step.exampleCards![Math.min(deepDiveCardIndex, step.exampleCards!.length - 1)];
+              return (
+                <div className="mt-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] p-4">
+                  {card.IllustrationId ? (
+                    <img
+                      src={`${API_BASE_URL}/illustrations/${card.IllustrationId}/image`}
+                      alt={card.Title}
+                      className="mb-2 h-auto max-h-80 w-full rounded-lg object-contain bg-black/20"
+                    />
+                  ) : (
+                    card.Emoji && <div className="mb-2 text-3xl leading-none">{card.Emoji}</div>
+                  )}
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{card.Title}</p>
+                  <RichContent className="mt-1 text-sm text-slate-600 dark:text-slate-300" html={card.Text} />
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -696,6 +799,49 @@ export default function NodeWorkflowPage() {
               {t.continueButton}
             </button>
           </div>
+        )}
+
+        {/* Deep Dive — same reward-pause pattern as Recall once every
+            card in order has been mastered; otherwise, a fresh question on
+            the CURRENT card each attempt (never advancing card index until
+            mastered), scored via TutorSubmitDeepDiveAttempt. */}
+        {step.stepType === 'DeepDive' && (
+          pendingAdvance ? (
+            <RewardBanner title={pendingAdvance.title} onContinue={handlePendingAdvanceContinue} t={t} />
+          ) : (
+            <div className="mt-6">
+              {/* Before the student's first attempt on this card, there is
+                  no tutor-generated question yet (deepDiveLastPrompt is only
+                  set after a submission) — show a clear, card-specific task
+                  instead of the generic Deep Dive blueprint overview text.
+                  Once the tutor responds, its own dynamic question/follow-up
+                  takes over. */}
+              {deepDiveLastPrompt ? (
+                <RichContent className="text-slate-600 dark:text-slate-300" html={deepDiveLastPrompt} />
+              ) : (
+                <p className="text-slate-600 dark:text-slate-300">
+                  {t.deepDiveOpeningPromptBefore} “
+                  {step.exampleCards?.[Math.min(deepDiveCardIndex, (step.exampleCards?.length ?? 1) - 1)]?.Title ?? ''}”
+                  {t.deepDiveOpeningPromptAfter}
+                </p>
+              )}
+
+              <label className="mb-1 mt-4 block text-sm font-medium text-slate-600 dark:text-slate-300">{t.yourResponseLabel}</label>
+              <textarea
+                value={responseText}
+                onChange={(e) => setResponseText(e.target.value)}
+                rows={3}
+                className="input"
+              />
+              <button
+                onClick={handleDeepDiveSubmit}
+                disabled={submitting || !responseText.trim()}
+                className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
+              >
+                {t.deepDiveSubmit}
+              </button>
+            </div>
+          )
         )}
 
         {/* Production ("Aplícalo") — real, formative AI grading via
@@ -909,6 +1055,7 @@ function RichContent({ html, className }: { html: string; className?: string }) 
 const STEP_ICONS: Record<ExperienceStepType, typeof Lightbulb> = {
   Hypothesis: Lightbulb,
   Teaching: BookOpen,
+  DeepDive: Images,
   Recall: RotateCcw,
   Production: Hammer,
   Assessment: ClipboardCheck,
@@ -926,6 +1073,7 @@ function StepperBar({
   const labels: Record<ExperienceStepType, string> = {
     Hypothesis: t.stepHypothesis,
     Teaching: t.stepTeaching,
+    DeepDive: t.stepDeepDive,
     Recall: t.stepRecall,
     Production: t.stepProduction,
     Assessment: t.stepAssessment,
@@ -986,6 +1134,26 @@ function StepReviewBody({ data, t, language }: { data: StepReviewDto; t: Record<
   return (
     <>
       <RichContent className="text-sm leading-relaxed text-slate-600 dark:text-slate-300" html={data.Content} />
+
+      {data.ExampleCards && data.ExampleCards.length > 0 && (
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {data.ExampleCards.map((card, index) => (
+            <div key={index} className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] p-3">
+              {card.IllustrationId ? (
+                <img
+                  src={`${API_BASE_URL}/illustrations/${card.IllustrationId}/image`}
+                  alt={card.Title}
+                  className="mb-1.5 h-24 w-full rounded-lg object-cover"
+                />
+              ) : (
+                card.Emoji && <div className="mb-1.5 text-2xl leading-none">{card.Emoji}</div>
+              )}
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">{card.Title}</p>
+              <RichContent className="mt-1 text-sm text-slate-600 dark:text-slate-300" html={card.Text} />
+            </div>
+          ))}
+        </div>
+      )}
 
       {data.Evidence.length > 0 ? (
         <div className="mt-5 space-y-3 border-t border-slate-200 dark:border-white/10 pt-4">
@@ -1102,6 +1270,7 @@ function StepReviewModal({
   const stepLabels: Record<ExperienceStepType, string> = {
     Hypothesis: t.stepHypothesis,
     Teaching: t.stepTeaching,
+    DeepDive: t.stepDeepDive,
     Recall: t.stepRecall,
     Production: t.stepProduction,
     Assessment: t.stepAssessment,
@@ -1163,6 +1332,7 @@ function NodeSummaryView({
   const stepLabels: Record<ExperienceStepType, string> = {
     Hypothesis: t.stepHypothesis,
     Teaching: t.stepTeaching,
+    DeepDive: t.stepDeepDive,
     Recall: t.stepRecall,
     Production: t.stepProduction,
     Assessment: t.stepAssessment,

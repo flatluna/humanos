@@ -55,12 +55,19 @@ public sealed class PdfCapabilityGraphPipelineService
 {
     private const int DefaultMaxPages = 100;
 
+    /// <summary>Default cap on how many nodes' Paso 8 blueprint design
+    /// (ExperienceDesigner + illustrations + validation + RAG indexing) run
+    /// concurrently — see <see cref="MaxConcurrentNodeBlueprintDesigns"/>.</summary>
+    private const int DefaultMaxConcurrentNodeBlueprintDesigns = 3;
+
     private readonly CuradorAgent _curador;
     private readonly TocExtractionAgent _tocExtraction;
     private readonly GraphArchitectAgent _graphArchitect;
     private readonly DocumentContextAgent _documentContext;
     private readonly GraphIllustrationImageService _imageService;
+    private readonly MathDiagramRenderService _mathDiagramRenderService;
     private readonly ExperienceDesignerAgent _experienceDesigner;
+    private readonly ExampleCardIllustrationService _exampleCardIllustrationService;
     private readonly BlueprintValidatorAgent _blueprintValidator;
     private readonly WebGroundingService _webGrounding;
     private readonly NodeKnowledgeIndexService _knowledgeIndexService;
@@ -84,7 +91,9 @@ public sealed class PdfCapabilityGraphPipelineService
         GraphArchitectAgent graphArchitect,
         DocumentContextAgent documentContext,
         GraphIllustrationImageService imageService,
+        MathDiagramRenderService mathDiagramRenderService,
         ExperienceDesignerAgent experienceDesigner,
+        ExampleCardIllustrationService exampleCardIllustrationService,
         BlueprintValidatorAgent blueprintValidator,
         WebGroundingService webGrounding,
         NodeKnowledgeIndexService knowledgeIndexService,
@@ -98,7 +107,9 @@ public sealed class PdfCapabilityGraphPipelineService
         _graphArchitect = graphArchitect;
         _documentContext = documentContext;
         _imageService = imageService;
+        _mathDiagramRenderService = mathDiagramRenderService;
         _experienceDesigner = experienceDesigner;
+        _exampleCardIllustrationService = exampleCardIllustrationService;
         _blueprintValidator = blueprintValidator;
         _webGrounding = webGrounding;
         _knowledgeIndexService = knowledgeIndexService;
@@ -166,6 +177,19 @@ public sealed class PdfCapabilityGraphPipelineService
         }
     }
 
+    /// <summary>Configurable via the 'MaxConcurrentNodeBlueprintDesigns' app
+    /// setting (2026-07-29) — how many nodes' Paso 8 blueprint design run at
+    /// the same time. Kept modest by default to avoid tripping Azure OpenAI/
+    /// image-generation rate limits on courses with many nodes.</summary>
+    public int MaxConcurrentNodeBlueprintDesigns
+    {
+        get
+        {
+            var raw = _configuration["MaxConcurrentNodeBlueprintDesigns"];
+            return int.TryParse(raw, out var value) && value > 0 ? value : DefaultMaxConcurrentNodeBlueprintDesigns;
+        }
+    }
+
     public async Task<PdfCapabilityGraphResult> RunAsync(
         byte[] pdfBytes,
         string fileName,
@@ -179,7 +203,11 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid? programId = null,
         int? programSequenceNumber = null,
         string? capabilityObjectives = null,
-        string? capabilityRequirements = null)
+        string? capabilityRequirements = null,
+        string? capabilityDescription = null,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
+        bool includeExamplesStep = false)
     {
         // ==================== 1. EXTRACT TEXT + IMAGES, PER PAGE ====================
         reportProgress("Extrayendo texto del PDF");
@@ -305,7 +333,11 @@ public sealed class PdfCapabilityGraphPipelineService
             programId,
             programSequenceNumber,
             capabilityObjectives,
-            capabilityRequirements);
+            capabilityRequirements,
+            capabilityDescription,
+            languageCode,
+            pedagogicalAudience,
+            includeExamplesStep);
 
         result.DescribedImageCount = describedImageCount;
         return result;
@@ -339,7 +371,11 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid? programId = null,
         int? programSequenceNumber = null,
         string? capabilityObjectives = null,
-        string? capabilityRequirements = null)
+        string? capabilityRequirements = null,
+        string? capabilityDescription = null,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
+        bool includeExamplesStep = false)
     {
         if (!_ideaToDocument.IsConfigured)
         {
@@ -349,7 +385,7 @@ public sealed class PdfCapabilityGraphPipelineService
         }
 
         reportProgress("Expandiendo la idea en material de curso");
-        var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, cancellationToken);
+        var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, languageCode, cancellationToken);
 
         return await RunFromDocumentTextAsync(
             expansion.DocumentText,
@@ -368,7 +404,11 @@ public sealed class PdfCapabilityGraphPipelineService
             programId,
             programSequenceNumber,
             capabilityObjectives,
-            capabilityRequirements);
+            capabilityRequirements,
+            capabilityDescription ?? description,
+            languageCode,
+            pedagogicalAudience,
+            includeExamplesStep);
     }
 
     /// <summary>Shared continuation of both <see cref="RunAsync"/> (real
@@ -394,7 +434,11 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid? programId = null,
         int? programSequenceNumber = null,
         string? capabilityObjectives = null,
-        string? capabilityRequirements = null)
+        string? capabilityRequirements = null,
+        string? capabilityDescription = null,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
+        bool includeExamplesStep = false)
     {
         // ==================== 2. DETECT CHAPTERS (best-effort) ====================
         reportProgress("Detectando capítulos/índice");
@@ -526,7 +570,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
         var documentChapterOrder = hasRealChapters ? string.Join("\n", chapterOrderLines) : null;
         var graphResult = await _graphArchitect.ExtractGraphAsync(
-            capabilityName, mergedCorpus, documentChapterOrder, programContext, cancellationToken);
+            capabilityName, mergedCorpus, documentChapterOrder, programContext, languageCode, cancellationToken);
 
         var graph = graphResult.Graph;
         tokenUsage.Add(WithModuleId(graphResult.TokenUsage, capabilityName));
@@ -544,7 +588,7 @@ public sealed class PdfCapabilityGraphPipelineService
             reportProgress("Extrayendo resumen ejecutivo y entidades clave");
             try
             {
-                var documentContextResult = await _documentContext.ExtractAsync(capabilityName, mergedCorpus, cancellationToken);
+                var documentContextResult = await _documentContext.ExtractAsync(capabilityName, mergedCorpus, languageCode, cancellationToken);
                 executiveSummary = documentContextResult.Context.ExecutiveSummary;
                 keyEntitiesJson = System.Text.Json.JsonSerializer.Serialize(documentContextResult.Context.Entities);
                 tokenUsage.Add(WithModuleId(documentContextResult.TokenUsage, capabilityName));
@@ -565,6 +609,17 @@ public sealed class PdfCapabilityGraphPipelineService
         var nodesNeedingCurrentInfo = new HashSet<Guid>(
             graph.Nodes.Where(n => n.NeedsCurrentInfo).Select(n => n.NodeId));
 
+        // Auto-activate Bing Grounding (2026-07-29): grounding is no longer
+        // just a nice-to-have enrichment — nodes flagged NeedsCurrentInfo
+        // rely on it to avoid the LLM inventing/misremembering specialized
+        // or fast-evolving content (e.g. a specific software framework it
+        // may know poorly or not at all). Leaving this opt-in would let a
+        // course creator who forgot to tick a checkbox silently reintroduce
+        // that exact hallucination risk, so activate it automatically
+        // whenever the graph actually contains such nodes — the caller's
+        // own explicit `true` still works exactly as before too.
+        var effectiveEnableWebEnrichment = enableWebEnrichment || nodesNeedingCurrentInfo.Count > 0;
+
         // Real Capability row this graph belongs to — created up front so
         // illustration storage paths (PASO 6) and persistence (PASO 7) both
         // use the same CapabilityId.
@@ -572,7 +627,7 @@ public sealed class PdfCapabilityGraphPipelineService
         await using (var setupDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
         {
             capabilityId = await EnsureCapabilityAsync(
-                setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, cancellationToken);
+                setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, cancellationToken);
 
             // Top-down flow (2026-07-23): Programs are created empty first;
             // Capabilities are connected to them afterward. When the wizard
@@ -611,7 +666,11 @@ public sealed class PdfCapabilityGraphPipelineService
         LogPipelineEvent($"=== Illustration stage starting — {graph.Nodes.Count} nodes ===");
 
         var illustrationRecords = new List<CapabilityGraphPersistenceService.NodeIllustrationRecord>();
-        if (_imageService.IsConfigured && _illustrationStorage.IsConfigured)
+        // MathDiagramRenderService.IsConfigured is always true (no external
+        // API), so illustrations still get generated even when the AI image
+        // service isn't configured, as long as at least one node's prompt
+        // is a MathDiagram (deterministic path never needs _imageService).
+        if ((_imageService.IsConfigured || _mathDiagramRenderService.IsConfigured) && _illustrationStorage.IsConfigured)
         {
             reportProgress("Generando ilustraciones");
 
@@ -619,16 +678,34 @@ public sealed class PdfCapabilityGraphPipelineService
             {
                 foreach (var (imageIndex, promptDto) in node.IllustrationPrompts.Select((p, i) => (i + 1, p)))
                 {
+                    var isMathDiagram = promptDto.MathDiagram is not null;
                     LogPipelineEvent(
                         $"START node={node.NodeId} image={imageIndex} purpose={promptDto.Purpose} " +
-                        $"promptLen={promptDto.Prompt.Length}");
+                        $"mode={(isMathDiagram ? "MathDiagram" : "AI-Prompt")} promptLen={promptDto.Prompt.Length}");
                     try
                     {
-                        var generated = await _imageService.GenerateAsync(promptDto.Prompt, cancellationToken);
-                        LogPipelineEvent(
-                            $"GENERATED node={node.NodeId} image={imageIndex} bytes={generated.ImageBytes.ToArray().Length} model={generated.ImageModel}");
+                        // Two mutually-exclusive rendering paths, decided by
+                        // GraphArchitectAgent per-illustration (LLM proposes,
+                        // code just dispatches): precise coordinate-plane
+                        // graphs go through the deterministic SkiaSharp
+                        // renderer (guaranteed-correct pixels), everything
+                        // else through the generative image model as before.
+                        // See MathDiagramRenderService's doc comment.
+                        var generated = isMathDiagram
+                            ? await _mathDiagramRenderService.RenderAsync(promptDto.MathDiagram!, cancellationToken)
+                            : (object)await _imageService.GenerateAsync(promptDto.Prompt, cancellationToken);
 
-                        using var imageStream = generated.ImageBytes.ToStream();
+                        var (imageBytes, imageModel, width, height) = generated switch
+                        {
+                            MathDiagramRenderService.RenderedDiagram rendered => (rendered.ImageBytes, rendered.ImageModel, rendered.Width, rendered.Height),
+                            GraphIllustrationImageService.GeneratedIllustration ai => (ai.ImageBytes, ai.ImageModel, ai.Width, ai.Height),
+                            _ => throw new InvalidOperationException("Unreachable")
+                        };
+
+                        LogPipelineEvent(
+                            $"GENERATED node={node.NodeId} image={imageIndex} bytes={imageBytes.ToArray().Length} model={imageModel}");
+
+                        using var imageStream = imageBytes.ToStream();
                         var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                             tenantId, capabilityId, node.NodeId, imageIndex, imageStream);
 
@@ -636,10 +713,10 @@ public sealed class PdfCapabilityGraphPipelineService
                         {
                             NodeId = node.NodeId,
                             StoragePath = storagePath,
-                            Prompt = promptDto.Prompt,
-                            ImageModel = generated.ImageModel,
-                            Width = generated.Width,
-                            Height = generated.Height,
+                            Prompt = isMathDiagram ? (promptDto.MathDiagram!.EquationLabel ?? "MathDiagram") : promptDto.Prompt,
+                            ImageModel = imageModel,
+                            Width = width,
+                            Height = height,
                             Purpose = promptDto.Purpose
                         });
                         LogPipelineEvent($"UPLOADED node={node.NodeId} image={imageIndex} path={storagePath}");
@@ -720,6 +797,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
         // ==================== 8. PER-NODE MEMORY PARADOX BLUEPRINT ====================
         var nodesWithBlueprintCount = 0;
+        var exampleCardIllustrationsGenerated = 0;
         if (_experienceDesigner.IsConfigured)
         {
             List<CapabilityGraphNode> reloadedNodes;
@@ -732,64 +810,38 @@ public sealed class PdfCapabilityGraphPipelineService
                     .ToListAsync(cancellationToken);
             }
 
-            LogPipelineEvent($"=== Blueprint stage starting — {reloadedNodes.Count} nodes ===");
+            // PARALLEL per-node blueprint design (2026-07-29): each node's
+            // blueprint (ExperienceDesigner call + illustrations + validation
+            // + RAG indexing) is fully independent of every other node's —
+            // the graph itself was already designed+persisted as ONE whole
+            // above, so there's no cross-node ordering requirement left at
+            // this stage. Now that Examples cards cover the node's FULL
+            // coverage pool (richer/heavier calls per node), running nodes
+            // sequentially made a real Unit/course take a long time — a
+            // bounded-concurrency fan-out cuts wall-clock time without
+            // changing what gets generated. Capped via MaxConcurrentNodeBlueprintDesigns
+            // to avoid tripping Azure OpenAI/image-gen rate limits.
+            LogPipelineEvent($"=== Blueprint stage starting — {reloadedNodes.Count} nodes (parallel, max {MaxConcurrentNodeBlueprintDesigns}) ===");
 
-            foreach (var node in reloadedNodes)
+            using var nodeBlueprintSemaphore = new SemaphoreSlim(MaxConcurrentNodeBlueprintDesigns);
+            var nodeBlueprintTasks = reloadedNodes.Select(node => ProcessNodeBlueprintStageAsync(
+                node, nodesNeedingCurrentInfo, effectiveEnableWebEnrichment, capabilityName, languageCode,
+                pedagogicalAudience, includeExamplesStep, tenantId, capabilityId, allChunks, reportProgress,
+                nodeBlueprintSemaphore, cancellationToken)).ToList();
+
+            var nodeBlueprintResults = await Task.WhenAll(nodeBlueprintTasks);
+
+            // Merge every node's results back sequentially (single thread,
+            // after all tasks finished) — no locking needed for tokenUsage/
+            // the counters since this happens strictly after Task.WhenAll.
+            foreach (var nodeResult in nodeBlueprintResults)
             {
-                LogPipelineEvent($"NODE-START node={node.CapabilityGraphNodeId} name={node.Name}");
-
-                // Per-node web enrichment: only for nodes GraphArchitectAgent
-                // flagged as NeedsCurrentInfo=true (evolving topics), never
-                // for timeless ones (math/algebra/stable definitions) — see
-                // GraphArchitectAgent's NeedsCurrentInfo decision rule.
-                // Best-effort, same as every other web-enrichment call in
-                // this pipeline: never fails the whole run.
-                string? webFindings = null;
-                if (enableWebEnrichment && _webGrounding.IsConfigured
-                    && nodesNeedingCurrentInfo.Contains(node.CapabilityGraphNodeId))
-                {
-                    reportProgress($"Buscando información actualizada (Bing) para: {node.Name}");
-                    try
-                    {
-                        var webResult = await _webGrounding.SearchAsync(node.Name, capabilityName, cancellationToken);
-                        if (!string.IsNullOrWhiteSpace(webResult.Text))
-                        {
-                            webFindings = webResult.Text;
-                        }
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        // Best-effort optional supplement — never fail the
-                        // whole capability-creation run over it.
-                    }
-                }
-
-                reportProgress($"Diseñando experiencia de aprendizaje: {node.Name}");
-                if (await TryDesignPersistValidateBlueprintAsync(node, webFindings, tokenUsage, cancellationToken))
+                tokenUsage.AddRange(nodeResult.TokenUsage);
+                exampleCardIllustrationsGenerated += nodeResult.ExampleCardIllustrationsGenerated;
+                if (nodeResult.BlueprintPersisted)
                 {
                     nodesWithBlueprintCount++;
                 }
-
-                // Best-effort RAG indexing (2026-07-20) — a failure here
-                // must never abort the rest of capability creation, same
-                // discipline as illustrations/web-grounding above.
-                if (_knowledgeIndexService.IsConfigured)
-                {
-                    LogPipelineEvent($"RAG-INDEX-START node={node.CapabilityGraphNodeId}");
-                    try
-                    {
-                        await using var indexDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-                        await _knowledgeIndexService.IndexNodeAsync(indexDbContext, node, allChunks, cancellationToken);
-                        LogPipelineEvent($"RAG-INDEX-OK node={node.CapabilityGraphNodeId}");
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        LogPipelineEvent($"RAG-INDEX-FAILED node={node.CapabilityGraphNodeId} exType={ex.GetType().FullName} msg={ex.Message}");
-                        // Best-effort — see comment above.
-                    }
-                }
-
-                LogPipelineEvent($"NODE-DONE node={node.CapabilityGraphNodeId}");
             }
 
             LogPipelineEvent("=== Blueprint stage finished ===");
@@ -848,8 +900,8 @@ public sealed class PdfCapabilityGraphPipelineService
             NodesWithBlueprintCount = nodesWithBlueprintCount,
             UnreferencedChunkTags = unreferencedTags,
             TokenUsage = tokenUsage,
-            IllustrationsGeneratedCount = illustrationRecords.Count,
-            EstimatedCost = TokenCostEstimator.Estimate(tokenUsage, illustrationRecords.Count, _configuration)
+            IllustrationsGeneratedCount = illustrationRecords.Count + exampleCardIllustrationsGenerated,
+            EstimatedCost = TokenCostEstimator.Estimate(tokenUsage, illustrationRecords.Count + exampleCardIllustrationsGenerated, _configuration)
         };
     }
 
@@ -908,6 +960,10 @@ public sealed class PdfCapabilityGraphPipelineService
         string capabilityName,
         Guid? subjectId,
         string generationSourceDescription,
+        string? userProvidedDescription,
+        string languageCode,
+        string? pedagogicalAudience,
+        bool includeExamplesStep,
         CancellationToken cancellationToken)
     {
         var domainExists = await dbContext.CapabilityDomains
@@ -936,8 +992,13 @@ public sealed class PdfCapabilityGraphPipelineService
             SubjectId = subjectId,
             Code = $"PDF-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
             Name = capabilityName,
-            Description = $"Generado automáticamente a partir de {generationSourceDescription}.",
+            Description = !string.IsNullOrWhiteSpace(userProvidedDescription)
+                ? userProvidedDescription
+                : $"Generado automáticamente a partir de {generationSourceDescription}.",
             IsActive = true,
+            ContentLanguageCode = string.IsNullOrWhiteSpace(languageCode) ? "es" : languageCode.Trim().ToLowerInvariant(),
+            PedagogicalAudience = string.IsNullOrWhiteSpace(pedagogicalAudience) ? null : pedagogicalAudience.Trim(),
+            IncludeExamplesStep = includeExamplesStep,
             CreatedDate = DateTime.UtcNow,
             UpdatedDate = DateTime.UtcNow
         };
@@ -949,12 +1010,133 @@ public sealed class PdfCapabilityGraphPipelineService
     }
 
     /// <summary>Designs, persists and validates a single node's blueprint.
-    /// Swallows its own exceptions (returns false) so one bad node never
-    /// aborts blueprint generation for the rest of the graph. Appends its
-    /// own agent calls' token usage (ExperienceDesigner + BlueprintValidator,
-    /// ModuleId = node name) to <paramref name="tokenUsage"/>.</summary>
-    private async Task<bool> TryDesignPersistValidateBlueprintAsync(
-        CapabilityGraphNode node, string? webFindings, List<AgentTokenUsage> tokenUsage, CancellationToken cancellationToken)
+    /// Swallows its own exceptions (returns success=false) so one bad node
+    /// never aborts blueprint generation for the rest of the graph. Appends
+    /// its own agent calls' token usage (ExperienceDesigner +
+    /// BlueprintValidator, ModuleId = node name) to <paramref name="tokenUsage"/>.
+    /// Returns how many ExampleCard illustrations were generated (0 when
+    /// the Examples step isn't included or none were successfully
+    /// generated), so the caller can fold it into its own illustration
+    /// count/cost telemetry.</summary>
+    /// <summary>Result of one node's parallel Paso 8 blueprint-stage work —
+    /// merged into the caller's shared counters/tokenUsage AFTER every node's
+    /// Task.WhenAll finishes, so no locking is needed for the merge itself.</summary>
+    private sealed class NodeBlueprintStageResult
+    {
+        public bool BlueprintPersisted { get; set; }
+
+        public int ExampleCardIllustrationsGenerated { get; set; }
+
+        public List<AgentTokenUsage> TokenUsage { get; set; } = [];
+    }
+
+    /// <summary>
+    /// One node's full Paso 8 unit of work (web enrichment lookup, blueprint
+    /// design+persist+validate, best-effort RAG indexing) — safe to run
+    /// concurrently for different nodes of the SAME already-persisted graph,
+    /// since nothing here depends on another node's blueprint. Bounded by
+    /// <paramref name="semaphore"/> so the whole graph's nodes don't all hit
+    /// Azure OpenAI/image-gen at once.
+    /// </summary>
+    private async Task<NodeBlueprintStageResult> ProcessNodeBlueprintStageAsync(
+        CapabilityGraphNode node,
+        HashSet<Guid> nodesNeedingCurrentInfo,
+        bool effectiveEnableWebEnrichment,
+        string capabilityName,
+        string languageCode,
+        string? pedagogicalAudience,
+        bool includeExamplesStep,
+        Guid tenantId,
+        Guid capabilityId,
+        List<CuratedChunk> allChunks,
+        Action<string> reportProgress,
+        SemaphoreSlim semaphore,
+        CancellationToken cancellationToken)
+    {
+        await semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var result = new NodeBlueprintStageResult();
+            LogPipelineEvent($"NODE-START node={node.CapabilityGraphNodeId} name={node.Name}");
+
+            // Per-node web enrichment: only for nodes GraphArchitectAgent
+            // flagged as NeedsCurrentInfo=true (evolving topics), never for
+            // timeless ones (math/algebra/stable definitions) — see
+            // GraphArchitectAgent's NeedsCurrentInfo decision rule.
+            // Best-effort, same as every other web-enrichment call in this
+            // pipeline: never fails the whole run.
+            string? webFindings = null;
+            var needsCurrentInfo = nodesNeedingCurrentInfo.Contains(node.CapabilityGraphNodeId);
+            if (effectiveEnableWebEnrichment && _webGrounding.IsConfigured && needsCurrentInfo)
+            {
+                reportProgress($"Buscando información actualizada (Bing) para: {node.Name}");
+                try
+                {
+                    var webResult = await _webGrounding.SearchAsync(node.Name, capabilityName, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(webResult.Text))
+                    {
+                        webFindings = webResult.Text;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Best-effort optional supplement — never fail the
+                    // whole capability-creation run over it.
+                }
+            }
+
+            // Safety net (2026-07-29): this node was flagged as needing
+            // current/specialized info, but no verified web findings ended
+            // up available (grounding not configured, or the search
+            // failed/returned nothing useful) — never silently fall through
+            // as if it were a timeless, well-known topic. Tell
+            // ExperienceDesignerAgent explicitly to stay conservative rather
+            // than invent unverified specifics.
+            if (needsCurrentInfo && string.IsNullOrWhiteSpace(webFindings))
+            {
+                webFindings = "[NOTA: este nodo fue marcado como que necesita información actualizada/especializada, " +
+                    "pero no fue posible verificarlo con una búsqueda web real. Sé conservador: no inventes " +
+                    "detalles específicos o recientes que no puedas confirmar; prefiere una explicación general " +
+                    "y, si corresponde, indica que ciertos detalles podrían requerir verificación adicional.]";
+            }
+
+            reportProgress($"Diseñando experiencia de aprendizaje: {node.Name}");
+            var (blueprintPersisted, exampleIllustrationsForNode) = await TryDesignPersistValidateBlueprintAsync(
+                node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, tenantId, capabilityId, result.TokenUsage, cancellationToken);
+            result.BlueprintPersisted = blueprintPersisted;
+            result.ExampleCardIllustrationsGenerated = exampleIllustrationsForNode;
+
+            // Best-effort RAG indexing (2026-07-20) — a failure here must
+            // never abort the rest of capability creation, same discipline
+            // as illustrations/web-grounding above.
+            if (_knowledgeIndexService.IsConfigured)
+            {
+                LogPipelineEvent($"RAG-INDEX-START node={node.CapabilityGraphNodeId}");
+                try
+                {
+                    await using var indexDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+                    await _knowledgeIndexService.IndexNodeAsync(indexDbContext, node, allChunks, cancellationToken);
+                    LogPipelineEvent($"RAG-INDEX-OK node={node.CapabilityGraphNodeId}");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    LogPipelineEvent($"RAG-INDEX-FAILED node={node.CapabilityGraphNodeId} exType={ex.GetType().FullName} msg={ex.Message}");
+                    // Best-effort — see comment above.
+                }
+            }
+
+            LogPipelineEvent($"NODE-DONE node={node.CapabilityGraphNodeId}");
+            return result;
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
+    private async Task<(bool Success, int ExampleCardIllustrationsGenerated)> TryDesignPersistValidateBlueprintAsync(
+        CapabilityGraphNode node, string? webFindings, string languageCode, string? pedagogicalAudience, bool includeExamplesStep,
+        Guid tenantId, Guid capabilityId, List<AgentTokenUsage> tokenUsage, CancellationToken cancellationToken)
     {
         try
         {
@@ -970,16 +1152,35 @@ public sealed class PdfCapabilityGraphPipelineService
 
             LogPipelineEvent($"DESIGN-START node={node.CapabilityGraphNodeId}");
             var designResult = await _experienceDesigner.DesignBlueprintAsync(
-                node, availableIllustrations, webFindings, cancellationToken);
+                node, availableIllustrations, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, cancellationToken: cancellationToken);
             tokenUsage.Add(WithModuleId(designResult.TokenUsage, node.Name));
             LogPipelineEvent($"DESIGN-OK node={node.CapabilityGraphNodeId}");
 
             NodeExperienceBlueprint persistedBlueprint;
+            var exampleCardIllustrationsGenerated = 0;
             LogPipelineEvent($"SQL-SAVE-START node={node.CapabilityGraphNodeId} what=blueprint");
             await using (var blueprintDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
             {
+                // Real illustrations for the Examples step's cards
+                // (2026-07-29): must happen AFTER the agent invents the
+                // cards' Title/Text, and BEFORE persisting, so each card's
+                // IllustrationId is already resolved in the JSON blob.
+                // Best-effort — see ExampleCardIllustrationService's own
+                // doc comment.
+                if (includeExamplesStep)
+                {
+                    var examplesStepDto = designResult.Blueprint.Steps
+                        .FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+                    if (examplesStepDto?.ExampleCards is { Count: > 0 })
+                    {
+                        exampleCardIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
+                            blueprintDbContext, tenantId, capabilityId, node.CapabilityGraphNodeId,
+                            node.Illustrations.Count, examplesStepDto.ExampleCards, cancellationToken);
+                    }
+                }
+
                 persistedBlueprint = await _blueprintPersistenceService.PersistAsync(
-                    blueprintDbContext, node.CapabilityGraphNodeId, designResult.Blueprint, node.Illustrations.ToList(), cancellationToken);
+                    blueprintDbContext, node.CapabilityGraphNodeId, designResult.Blueprint, node.Illustrations.ToList(), includeExamplesStep, cancellationToken);
             }
             LogPipelineEvent($"SQL-SAVE-OK node={node.CapabilityGraphNodeId} what=blueprint");
 
@@ -1011,12 +1212,12 @@ public sealed class PdfCapabilityGraphPipelineService
                 }
             }
 
-            return true;
+            return (true, exampleCardIllustrationsGenerated);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogPipelineEvent($"BLUEPRINT-FAILED node={node.CapabilityGraphNodeId} exType={ex.GetType().FullName} msg={ex.Message}\n{ex}");
-            return false;
+            return (false, 0);
         }
     }
 }

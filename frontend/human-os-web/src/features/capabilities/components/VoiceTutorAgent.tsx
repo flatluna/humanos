@@ -38,15 +38,30 @@ export default function VoiceTutorAgent({
   learningSessionStepId,
   promptText,
   onTranscript,
+  exampleCardIndex,
+  autoConnect = true,
+  compact = false,
 }: {
   learningSessionStepId: string;
   promptText?: string;
   onTranscript?: (transcript: string) => void;
+  /** Only for the Examples step (2026-07-29) — which ExampleCard's "habla
+   * con tu maestro" button was pressed, so the voice Agent explains THAT
+   * specific example (with its result) instead of the step's own generic
+   * content. */
+  exampleCardIndex?: number;
+  /** Set to false for a per-ExampleCard button (2026-07-29) — the Agent
+   * must only start talking when the student explicitly presses that
+   * card's button, never auto-connect on a timer like Hypothesis/Teaching. */
+  autoConnect?: boolean;
+  /** Renders a small inline button instead of the full glowing-orb card —
+   * used for the per-ExampleCard "habla con tu maestro" button. */
+  compact?: boolean;
 }) {
   // Stable identity for "which step is this widget currently about" — used
   // to reset/re-auto-connect when the parent page swaps in a different
   // step without remounting this component instance.
-  const targetKey = learningSessionStepId;
+  const targetKey = exampleCardIndex !== undefined ? learningSessionStepId + ':' + exampleCardIndex : learningSessionStepId;
 
   const [state, setState] = useState<VoiceState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -182,7 +197,7 @@ export default function VoiceTutorAgent({
     setErrorMessage(null);
     setState('connecting');
     try {
-      const session = await requestVoiceTutorSession({ learningSessionStepId, promptText });
+      const session = await requestVoiceTutorSession({ learningSessionStepId, promptText, exampleCardIndex });
 
       // Explicit (not just `true`) so the browser can't skip echo
       // cancellation — without it, the mic picks up the Agent's own voice
@@ -355,13 +370,39 @@ export default function VoiceTutorAgent({
   }, [connect]);
 
   useEffect(() => {
+    if (!autoConnect) return undefined;
     const timer = setTimeout(() => {
       if (stateRef.current === 'idle') {
         connectRef.current();
       }
     }, 3000);
     return () => clearTimeout(timer);
-  }, [targetKey]);
+  }, [targetKey, autoConnect]);
+
+  if (compact) {
+    return (
+      <div className="mt-2 flex flex-col items-start gap-1">
+        <button
+          type="button"
+          onClick={isActive ? stopConversation : connect}
+          disabled={isBusy}
+          className="flex items-center gap-1.5 rounded-full border border-accent-300 bg-accent-50 px-3 py-1.5 text-xs font-semibold text-accent-700 transition hover:bg-accent-100 disabled:opacity-50 dark:border-accent-400/30 dark:bg-accent-500/10 dark:text-accent-300 dark:hover:bg-accent-500/20"
+        >
+          {isBusy ? (
+            <Sparkles className="h-3.5 w-3.5 animate-spin" />
+          ) : isActive ? (
+            <Mic className="h-3.5 w-3.5" />
+          ) : (
+            <Bot className="h-3.5 w-3.5" />
+          )}
+          {isActive ? STATE_LABELS[state] : 'Habla con tu maestro sobre este ejemplo'}
+        </button>
+        {errorMessage && <p className="text-[11px] text-red-600 dark:text-red-400">{errorMessage}</p>}
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <audio ref={audioElementRef} autoPlay />
+      </div>
+    );
+  }
 
   return (
     <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-accent-200 bg-gradient-to-b from-accent-50 to-white p-6 dark:border-accent-400/20 dark:from-accent-500/[0.08] dark:to-transparent">

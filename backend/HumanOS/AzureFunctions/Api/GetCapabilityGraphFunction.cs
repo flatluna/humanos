@@ -40,7 +40,9 @@ public sealed class GetCapabilityGraphFunction
                 "Query parameter personId is required.", cancellationToken);
         }
 
-        var graph = await _graphProgressionEngine.GetFullGraphAsync(_dbContext, personId, capabilityId, cancellationToken);
+        var languageCode = query["language"] ?? "en";
+
+        var graph = await _graphProgressionEngine.GetFullGraphAsync(_dbContext, personId, capabilityId, languageCode, cancellationToken);
 
         if (graph is null)
         {

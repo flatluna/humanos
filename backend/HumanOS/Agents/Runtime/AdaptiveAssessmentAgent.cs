@@ -1,5 +1,6 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using HumanOS.Models.Capabilities.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
@@ -29,6 +30,14 @@ public sealed class GeneratedAssessmentQuestionResponse
     /// visual to draw). Same "leave null rather than invent one" rule as
     /// KnowledgeExpansionAgent.DiagramPrompt.</summary>
     public string? DiagramPrompt { get; set; }
+
+    /// <summary>Exact numeric spec for a coordinate-plane diagram (circle,
+    /// line, parabola, or plotted points), set INSTEAD OF DiagramPrompt
+    /// when the illustration IS a precise math/geometry graph derived from
+    /// a real equation/values (never both). Rendered deterministically
+    /// (SkiaSharp, no image model) — see MathDiagramRenderService and the
+    /// "MathDiagram vs DiagramPrompt" guidance below.</summary>
+    public MathDiagramSpec? MathDiagram { get; set; }
 }
 
 /// <summary>Structured output: the grade for one answered Assessment question.</summary>
@@ -207,6 +216,29 @@ public sealed class AdaptiveAssessmentAgent
         ellas" — NUNCA describir el bloqueo ni el abrazo. Si aun aplicando
         esta regla no puedes describir nada visual sin mencionar el acto,
         deja DiagramPrompt en null antes que arriesgarte a describirlo.
+
+        MathDiagram VS DiagramPrompt
+        Si SÍ decides ilustrar y la escena es literalmente una gráfica de
+        coordenadas de una ecuación real (un círculo, una elipse
+        (x-h)²/a²+(y-k)²/b²=1 con a≠b — usa círculo si a=b, una recta, una
+        parábola, o un conjunto de puntos con valores exactos — p. ej. una
+        recta numérica con un punto marcado, o una gráfica de
+        y = 2x + 3), llena MathDiagram con esos números EXACTOS en vez de
+        DiagramPrompt (nunca ambos). También usa MathDiagram para casos de
+        estadística/economía/finanzas: BarChart (categorías discretas),
+        Histogram (bins numéricos continuos, barras sin separación),
+        PieChart (porcentajes de un total), LineChart (serie de datos real
+        ordenada, no una fórmula), ScatterPlot (puntos (x,y) sin conectar,
+        correlación entre variables), y NumberLine (valor/rango en una recta
+        numérica simple). Esto se renderiza de forma
+        determinística, garantizando que los píxeles coincidan exactamente
+        con esos números, algo que un modelo generativo de imágenes NO
+        puede garantizar. NUNCA aproximes una elipse o un
+        BarChart/PieChart/Histogram con Kind=Points (marcar
+        solo los vértices no dibuja ninguna curva). Para cualquier otra
+        escena concreta (objetos para
+        contar, un lugar físico, una balanza, etc.) sigue usando
+        DiagramPrompt como ya se describió arriba.
 
         Ejemplos de cuándo SÍ pedirla (distintas materias):
         - ActiveRecall de matemáticas con recta numérica: "empiezas en 6 y

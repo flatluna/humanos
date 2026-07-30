@@ -18,10 +18,10 @@ import { useSearchParams } from 'react-router-dom';
  */
 export type PreviewMode = 'real' | 'demo' | 'edit';
 
-export const PREVIEW_MODE_OPTIONS: { value: PreviewMode; label: string; description: string }[] = [
-  { value: 'real', label: 'Real', description: 'Como lo ve el estudiante — con candados' },
-  { value: 'demo', label: 'Demo', description: 'Sin candados, para revisar y aprobar todo' },
-  { value: 'edit', label: 'Edición', description: 'Editar contenido con IA (próximamente)' },
+export const PREVIEW_MODE_OPTIONS: { value: PreviewMode; labelKey: string; descriptionKey: string }[] = [
+  { value: 'real', labelKey: 'previewMode.real', descriptionKey: 'previewMode.realDescription' },
+  { value: 'demo', labelKey: 'previewMode.demo', descriptionKey: 'previewMode.demoDescription' },
+  { value: 'edit', labelKey: 'previewMode.edit', descriptionKey: 'previewMode.editDescription' },
 ];
 
 /** Reads/writes the `mode` query param shared across all `/preview` routes. */

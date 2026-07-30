@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
-import { Layers, GitBranch, ImageOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Layers, GitBranch, ImageOff, Baby } from 'lucide-react';
 import type { BackendCapability } from '../lib/api/capabilitiesApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 import { getSubjectGradient, getSubjectIcon } from '../lib/subjectVisuals';
 
 export default function CapabilityCard({ capability }: { capability: BackendCapability }) {
+  const { t } = useTranslation();
   const SubjectIcon = getSubjectIcon(capability.SubjectCode);
   const gradient = getSubjectGradient(capability.SubjectCode);
 
@@ -32,6 +34,21 @@ export default function CapabilityCard({ capability }: { capability: BackendCapa
             {capability.SubjectCode}
           </span>
         )}
+        {capability.PedagogicalAudience === 'YoungLearner' && (
+          <span
+            className="absolute left-3 bottom-3 flex items-center gap-1 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-medium text-[#fff] backdrop-blur-sm"
+            title={t('capabilityCard.youngLearnerAudience')}
+          >
+            <Baby className="h-3 w-3" />
+            {t('capabilityCard.youngLearnerBadge')}
+          </span>
+        )}
+        <span
+          className="absolute right-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm"
+          title={capability.ContentLanguageCode === 'en' ? t('capabilityCard.contentInEnglish') : t('capabilityCard.contentInSpanish')}
+        >
+          {capability.ContentLanguageCode === 'en' ? 'EN' : 'ES'}
+        </span>
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-5">
@@ -43,16 +60,16 @@ export default function CapabilityCard({ capability }: { capability: BackendCapa
         <div className="mt-auto flex items-center gap-4 pt-3 text-xs text-slate-500">
           <span className="flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5" />
-            {capability.LevelCount} niveles
+            {t('capabilityCard.levels', { count: capability.LevelCount })}
           </span>
           <span className="flex items-center gap-1.5">
             <GitBranch className="h-3.5 w-3.5" />
-            {capability.NodeCount} nodos
+            {t('capabilityCard.nodes', { count: capability.NodeCount })}
           </span>
           {!capability.IsActive && (
             <span className="ml-auto flex items-center gap-1 text-amber-400">
               <ImageOff className="h-3.5 w-3.5" />
-              Inactiva
+              {t('capabilityCard.inactive')}
             </span>
           )}
         </div>

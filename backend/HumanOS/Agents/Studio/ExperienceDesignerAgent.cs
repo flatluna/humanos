@@ -35,11 +35,46 @@ public sealed class AvailableIllustrationDto
 }
 
 /// <summary>
+/// DTO for one "example card" of the OPTIONAL Deep Dive step. See
+/// <see cref="HumanOS.Models.Capabilities.Graph.ExampleCard"/> for the
+/// persisted shape this maps 1:1 onto.
+/// </summary>
+public sealed class ExampleCardDto
+{
+    public string Title { get; set; } = string.Empty;
+
+    public string Text { get; set; } = string.Empty;
+
+    public string? Emoji { get; set; }
+
+    /// <summary>
+    /// True when the agent judges this specific card is worth a real,
+    /// generated illustration (not just its Emoji) — see the "COVERAGE
+    /// POOL" rules below for how many cards should be marked true.
+    /// <see cref="Services.ExampleCardIllustrationService"/> only generates
+    /// a real image for cards where this is true (subject to its own hard
+    /// cost cap); every other card falls back to Emoji-only.
+    /// </summary>
+    public bool SuggestedForIllustration { get; set; }
+
+    /// <summary>
+    /// NOT part of the agent's structured-output schema (the model never
+    /// invents this) — set in code AFTER the agent responds, by
+    /// <see cref="Services.ExampleCardIllustrationService"/>, once a real
+    /// illustration has been generated for this card. Same "resolved in
+    /// code after the response comes back" pattern as
+    /// <see cref="GraphEdgeDto.SourceNodeId"/>.
+    /// </summary>
+    [JsonIgnore]
+    public Guid? IllustrationId { get; set; }
+}
+
+/// <summary>
 /// DTO for one step of the "Memory Paradox" pedagogical sequence.
 /// </summary>
 public sealed class NodeExperienceBlueprintStepDto
 {
-    /// <summary>Which of the 5 fixed step types this is.</summary>
+    /// <summary>Which of the 5 fixed step types this is (or the optional 6th, DeepDive).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ExperienceStepType StepType { get; set; }
 
@@ -51,6 +86,12 @@ public sealed class NodeExperienceBlueprintStepDto
     /// EXISTING illustrations this step reuses. Empty if this step needs none.
     /// </summary>
     public List<int> IllustrationIndexes { get; set; } = [];
+
+    /// <summary>
+    /// ONLY populated when StepType == DeepDive: 3+ short example cards
+    /// (Title/Text/Emoji). Null/empty for every other step type.
+    /// </summary>
+    public List<ExampleCardDto>? ExampleCards { get; set; }
 }
 
 /// <summary>
@@ -267,6 +308,12 @@ public sealed class ExperienceDesignerAgent
         - If the findings don't say anything useful/relevant to this
           specific node, ignore them entirely rather than padding content
           with unrelated trivia.
+        - If this section instead contains a bracketed NOTE saying no
+          verified web findings were available for a node flagged as
+          needing current info, treat that as an explicit instruction to be
+          conservative: avoid stating specific recent facts/details you
+          cannot verify, and prefer general, timeless framing over a
+          specific claim you're not sure is still accurate.
 
         OUTPUT FORMAT
         Return a NodeExperienceBlueprintResponse JSON with:
@@ -285,6 +332,131 @@ public sealed class ExperienceDesignerAgent
 
     private readonly AIAgent? _agent;
     private readonly string _modelName;
+
+    /// <summary>
+    /// Persona block appended to the prompt ONLY when the owning Capability's
+    /// PedagogicalAudience is "YoungLearner" (early-childhood/K-12 courses,
+    /// e.g. a Grade 1 phonics/reading course). Does NOT change the fixed
+    /// 5-step structure or the source-field grounding rules above — it only
+    /// changes the VOICE/TONE the Content is written in.
+    /// </summary>
+    private const string YoungLearnerPersonaBlock = """
+        AUDIENCE PERSONA — YOUNG LEARNER MODE (this capability is for young
+        children, roughly ages 5-8, e.g. Kindergarten/Grade 1)
+        Write every step's Content as a warm, friendly, patient, playful, and
+        encouraging teacher speaking DIRECTLY to the child — never to a parent
+        or teacher, and never in a neutral/academic register. Concretely:
+        - Address the child as "you", in simple words a young child already
+          knows. Never assume prior vocabulary or reading fluency beyond what
+          the node itself establishes.
+        - Use short sentences and short paragraphs. Avoid abstract or formal
+          phrasing — explain everything as if talking out loud to the child.
+        - Sound genuinely excited and encouraging (e.g. "Great job trying!",
+          "You're doing amazing!", "Let's go!") — never scold or make a
+          mistake feel bad; frame mistakes as a normal part of learning.
+        - Hypothesis: open with a short, friendly greeting/warm-up before the
+          guess question (e.g. "Hi again! Today we're going to look at
+          something fun.") — still never reveal the answer.
+        - Teaching: explain like a caring teacher sitting beside the child,
+          walking through the example step by step in simple words.
+        - Recall/Production: phrase practice prompts like a game or a fun
+          challenge, not a test.
+        - Assessment: keep the required observable-behavior criteria (for the
+          internal mastery check), but the surrounding Content should still
+          read like a friendly wrap-up, and may include a short celebratory
+          closing line once criteria are listed.
+        This persona changes ONLY the voice/tone — it never changes which of
+        the 5 fixed steps exists, their order, or which source fields ground
+        each step's Content.
+        """;
+
+    /// <summary>
+    /// Prompt addendum appended ONLY when the owning Capability has
+    /// IncludeExamplesStep=true (formal/school-track capabilities).
+    /// Describes the OPTIONAL 6th step, Deep Dive, without altering the 5
+    /// fixed steps' rules above.
+    /// </summary>
+    private const string ExamplesStepAddendum = """
+        THIS CAPABILITY ALSO REQUIRES AN OPTIONAL 6TH STEP: DEEP DIVE
+        In addition to the 5 fixed steps above, produce ONE more step with
+        StepType="DeepDive", conceptually positioned between Teaching and
+        Recall (final order: Hypothesis, Teaching, DeepDive, Recall,
+        Production, Assessment — you may still return the 6 steps in any
+        JSON order, code re-sorts them). At runtime, Deep Dive is an
+        INTERACTIVE mastery loop (not passive reading): the student is
+        quizzed on each card, one at a time, strictly in the order you
+        return them, and must demonstrate mastery of EACH card before
+        moving to the next — so the cards you generate ARE the quizzable
+        content, not just illustrative reading material.
+        COVERAGE POOL — GENERATE THE FULL SCOPE, NOT A TOKEN SAMPLE
+        A learner must reach REAL mastery of this node's full scope, not
+        just superficial familiarity with 2-3 arbitrary instances. For
+        EVERY node, first decide: "What is the complete set of concrete
+        instances a learner needs to practice to truly master this
+        concept/skill?" This reasoning is domain-agnostic — apply it
+        equally to reading, math, cooking, programming, or any other
+        subject:
+        - If the concept/skill has a NATURAL, FINITE, ENUMERABLE scope
+          (e.g. all 26 letters of the alphabet and their sounds, the full
+          set of single-digit addition facts, the days of the week, the
+          countries of a region, the basic knife cuts in cooking), generate
+          ONE card per item in that ENTIRE set — never an arbitrary small
+          subset of a finite domain.
+        - If the concept/skill is OPEN-ENDED/unbounded (e.g. reading
+          comprehension of varied sentences, general conversation practice,
+          creative writing prompts), generate a large REPRESENTATIVE set
+          (aim for 15-30 cards) that meaningfully covers the range of ways
+          the concept/skill shows up — never just 2-3 token examples.
+        - Never fall back to a tiny fixed count "for simplicity" — a course
+          this thin does not achieve real learning, which defeats the whole
+          purpose of this step existing.
+        Every card must still be grounded strictly in this node's own
+        AcademicDefinition/Interpretation/Examples/Applications (never an
+        invented fact the node doesn't already contain), and each card must
+        show something genuinely DIFFERENT — never near-duplicates or mere
+        rewordings of the same instance.
+
+        EACH CARD:
+        - Title: a short concrete label, e.g. "Letter Aa" or "Rhyming Words".
+        - Text: 2-4 short sentences using ONLY the restricted HTML tags
+          (p, br, strong, em, ul, ol, li, a) that concretely illustrate ONE
+          specific, grounded instance.
+          CRITICAL — ALWAYS STATE THE RESOLVED RESULT (fixed 2026-07-29):
+          these are WORKED EXAMPLES for the student to learn FROM, never
+          unsolved exercises for the student to solve. Text must ALWAYS
+          state the concrete outcome/result/answer explicitly and plainly
+          — NEVER end on an open, unanswered question like "¿cuántos hay en
+          total?" or "how many are there?" without immediately giving the
+          resolved number/answer in the same Text. If posing a question
+          helps engagement, it must be immediately followed, in the same
+          Text, by its resolved answer. Good example: "Un niño tiene 2
+          carros y después agrega 3 más. Al juntar todos los carros, en
+          total tiene 5 carros." Bad example (missing the result): "Un niño
+          tiene 2 carros y después agrega 3 más. ¿Cuántos carros tiene en
+          total?" — never write a card like this second one.
+        - Emoji: OPTIONAL 1-4 emoji characters that visually represent the
+          card's concrete content (e.g. "🍎" for an apple example, "🐱🎩" for
+          a cat-wearing-a-hat rhyme example). Omit (null) if no emoji
+          genuinely fits — never force an unrelated emoji.
+        - SuggestedForIllustration: mark TRUE for a small, carefully-chosen
+          SUBSET of cards that best represent the full range of the pool
+          (a good default target is 5-8 cards, but use judgment: if the
+          whole pool is smaller than that, mark all of them true; if the
+          pool is large, keep the illustrated subset proportionally small —
+          real generated images are expensive, so this subset must stay
+          deliberately curated, never all of them). Mark FALSE for every
+          other card — those still teach fully via Title/Text/Emoji, just
+          without a generated image.
+
+        Also fill this step's own Content field with a short (1-2 sentence)
+        HTML introduction framing what the cards below are about — Content
+        must never be empty, even though the real substance lives in
+        ExampleCards.
+        This step never uses IllustrationIndexes (leave it empty) — cards
+        marked SuggestedForIllustration=true get a real generated
+        illustration assigned by code after your response; every other
+        card's illustration is its own Emoji field.
+        """;
 
     public ExperienceDesignerAgent(IConfiguration configuration)
     {
@@ -331,10 +503,33 @@ public sealed class ExperienceDesignerAgent
     /// when no web enrichment was performed for this node.
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="languageCode">
+    /// "es" or "en" — the language ALL authored blueprint step Content
+    /// must be written in. Defaults to "es" for backward compatibility.
+    /// See /memories/repo (bilingual course-creation feature, 2026-07-26).
+    /// </param>
+    /// <param name="pedagogicalAudience">
+    /// Optional tone/persona directive, copied straight from the owning
+    /// Capability's <see cref="HumanOS.Models.Capabilities.Capability.PedagogicalAudience"/>.
+    /// Null/empty (the default) leaves the prompt byte-for-byte identical to
+    /// before this parameter existed. "YoungLearner" appends a warm/playful,
+    /// direct-to-the-child persona block — see /memories/repo (K-12 lesson
+    /// course feature, 2026-07-26).
+    /// </param>
+    /// <param name="includeExamplesStep">
+    /// Copied from the owning Capability's
+    /// <see cref="HumanOS.Models.Capabilities.Capability.IncludeExamplesStep"/>.
+    /// False (the default) leaves the prompt byte-for-byte identical to
+    /// before this parameter existed. True requests an OPTIONAL 6th step,
+    /// Examples, with 3+ example cards (2026-07-29 feature).
+    /// </param>
     public async Task<DesignResult> DesignBlueprintAsync(
         CapabilityGraphNode node,
         IReadOnlyList<AvailableIllustrationDto> availableIllustrations,
         string? webFindings = null,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
+        bool includeExamplesStep = false,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -359,6 +554,14 @@ public sealed class ExperienceDesignerAgent
             ? string.Empty
             : $"\n\nCurrent Web Findings (Bing Grounding — supplementary/optional, see Instructions):\n{webFindings}";
 
+        var personaSection = string.Equals(pedagogicalAudience, "YoungLearner", StringComparison.OrdinalIgnoreCase)
+            ? "\n\n" + YoungLearnerPersonaBlock
+            : string.Empty;
+
+        var examplesStepSection = includeExamplesStep
+            ? "\n\n" + ExamplesStepAddendum
+            : string.Empty;
+
         var prompt =
             $"Node Name: {node.Name}\n" +
             $"NodeType: {node.NodeType}\n" +
@@ -368,7 +571,12 @@ public sealed class ExperienceDesignerAgent
             $"Examples:\n{string.Join("\n", examples.Select(e => $"- {e}"))}\n\n" +
             $"Applications:\n{string.Join("\n", applications.Select(a => $"- {a}"))}\n\n" +
             $"Available Illustrations (reference by number, never generate new ones):\n{illustrationsText}" +
-            webFindingsSection;
+            webFindingsSection +
+            personaSection +
+            examplesStepSection +
+            $"\n\nTarget output language: {(languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish")}. " +
+            "Write every step's Content field in this language, regardless of what language the " +
+            "node context above is written in.";
 
         var response = await _agent.RunAsync<NodeExperienceBlueprintResponse>(prompt, cancellationToken: cancellationToken);
 

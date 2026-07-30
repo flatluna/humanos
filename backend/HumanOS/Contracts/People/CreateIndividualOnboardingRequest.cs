@@ -16,4 +16,9 @@ public sealed class CreateIndividualOnboardingRequest
     public string FirstName { get; set; } = null!;
 
     public string LastName { get; set; } = null!;
+
+    /// <summary>"en" or "es" — chosen by the student in the onboarding
+    /// form (see PersonProfile.PreferredLanguage). Defaults to "en" if
+    /// omitted, matching the PersonProfile column default.</summary>
+    public string? PreferredLanguage { get; set; }
 }

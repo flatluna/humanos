@@ -109,7 +109,7 @@ public sealed class CreateIndividualOnboardingFunction
             onboardingRequest.LastName,
             displayName: $"{onboardingRequest.FirstName} {onboardingRequest.LastName}".Trim(),
             phoneNumber: null,
-            preferredLanguage: "en",
+            preferredLanguage: onboardingRequest.PreferredLanguage ?? "en",
             countryCode: null,
             timeZone: null,
             profilePhotoUrl: null,

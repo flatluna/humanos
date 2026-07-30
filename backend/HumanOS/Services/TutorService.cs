@@ -45,6 +45,7 @@ public sealed class TutorService
     private readonly InstructorRuntimeOrchestrator _orchestrator;
     private readonly NodeKnowledgeIndexService _knowledgeIndexService;
     private readonly Agents.Studio.GraphIllustrationImageService _imageService;
+    private readonly MathDiagramRenderService _mathDiagramRenderService;
     private readonly HumanOS.Storage.CapabilityGraphIllustrationStorageService _illustrationStorage;
     private readonly ILogger<TutorService> _logger;
 
@@ -53,6 +54,7 @@ public sealed class TutorService
         InstructorRuntimeOrchestrator orchestrator,
         NodeKnowledgeIndexService knowledgeIndexService,
         Agents.Studio.GraphIllustrationImageService imageService,
+        MathDiagramRenderService mathDiagramRenderService,
         HumanOS.Storage.CapabilityGraphIllustrationStorageService illustrationStorage,
         ILogger<TutorService> logger)
     {
@@ -60,6 +62,7 @@ public sealed class TutorService
         _orchestrator = orchestrator;
         _knowledgeIndexService = knowledgeIndexService;
         _imageService = imageService;
+        _mathDiagramRenderService = mathDiagramRenderService;
         _illustrationStorage = illustrationStorage;
         _logger = logger;
     }
@@ -99,6 +102,39 @@ public sealed class TutorService
         /// to Teaching to review — <see cref="NextStep"/> is set (the
         /// reactivated Teaching step) in that case.</summary>
         public bool RegressedToTeaching { get; set; }
+
+        public InstructorRuntimeOrchestrator.CurrentStepResult? NextStep { get; set; }
+    }
+
+    /// <summary>Result of one persisted Deep Dive attempt: the Tutor's
+    /// turn, the LearningEvidence row it produced, and the deterministic
+    /// mastery/advance verdict computed by <see cref="DeepDiveLoopGate"/>.</summary>
+    public sealed class DeepDiveAttemptOutcome
+    {
+        public TutorTurnResult TutorTurn { get; set; } = null!;
+
+        public Guid LearningEvidenceId { get; set; }
+
+        /// <summary>0-based index of the card the student was JUST quizzed
+        /// on this attempt (before any advance).</summary>
+        public int CardIndex { get; set; }
+
+        /// <summary>Total number of cards in this node's Deep Dive pool.</summary>
+        public int TotalCards { get; set; }
+
+        /// <summary>True if THIS specific attempt was scored as mastery of
+        /// its card (score &gt;= <see cref="DeepDiveLoopGate.MasteryThreshold"/>).</summary>
+        public bool Mastered { get; set; }
+
+        /// <summary>0-based index of the NEXT card the student should be
+        /// quizzed on — unchanged from <see cref="CardIndex"/> when not yet
+        /// mastered (retry the same card), or CardIndex+1 when mastered.</summary>
+        public int NextCardIndex { get; set; }
+
+        /// <summary>True only when EVERY card has now been mastered in
+        /// order and the step advanced to Recall — <see cref="NextStep"/>
+        /// is set in that case.</summary>
+        public bool Advanced { get; set; }
 
         public InstructorRuntimeOrchestrator.CurrentStepResult? NextStep { get; set; }
     }
@@ -231,10 +267,10 @@ public sealed class TutorService
         // question just asked), generate it now and show it INSTEAD of the
         // static blueprint illustration for this turn's response — never
         // blocks the attempt itself if generation fails/isn't configured.
-        if (!string.IsNullOrWhiteSpace(turn.Response.DiagramPrompt))
+        if (!string.IsNullOrWhiteSpace(turn.Response.DiagramPrompt) || turn.Response.MathDiagram is not null)
         {
             var newIllustration = await TryGenerateRecallIllustrationAsync(
-                dbContext, step.LearningSessionNode!.CapabilityGraphNodeId, turn.Response.DiagramPrompt, cancellationToken);
+                dbContext, step.LearningSessionNode!.CapabilityGraphNodeId, turn.Response.DiagramPrompt, turn.Response.MathDiagram, cancellationToken);
             if (newIllustration is not null)
             {
                 turn.Illustrations = [newIllustration];
@@ -262,7 +298,7 @@ public sealed class TutorService
         InstructorRuntimeOrchestrator.CurrentStepResult? nextStep = null;
         if (verdict.StepComplete)
         {
-            nextStep = await _orchestrator.AdvanceToNextStepAsync(dbContext, step.LearningSessionNodeId, cancellationToken, bypassRecallGuard: true);
+            nextStep = await _orchestrator.AdvanceToNextStepAsync(dbContext, step.LearningSessionNodeId, cancellationToken, bypassGatedStepGuard: true);
         }
         else if (verdict.ItemFailed)
         {
@@ -282,6 +318,158 @@ public sealed class TutorService
         };
     }
 
+    /// <summary>
+    /// Scores one Deep Dive attempt on the CURRENT example card, persists
+    /// it as LearningEvidence, and — per <see cref="DeepDiveLoopGate"/> —
+    /// either: (a) keeps the loop going on the same card (not yet
+    /// mastered), (b) moves on to the NEXT card (mastered, more cards
+    /// remain), or (c) advances the whole step to Recall once EVERY card
+    /// has been mastered in order (confirmed product decision, 2026-07-29
+    /// — Deep Dive requires ALL cards, sequentially, unlike Recall's
+    /// "N distinct items out of an open pool"). No attempt cap and no
+    /// regression path — the student simply keeps retrying the same card.
+    /// </summary>
+    /// <param name="tutorPromptShown">The question the Tutor showed the
+    /// student right before THIS attempt (the previous call's
+    /// <see cref="TutorTurnResponse.Message"/>) — null for the student's
+    /// very first attempt on the CURRENT card.</param>
+    public async Task<DeepDiveAttemptOutcome> SubmitDeepDiveAttemptAsync(
+        HumanOsDbContext dbContext,
+        Guid learningSessionStepId,
+        string studentResponse,
+        string? tutorPromptShown,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dbContext);
+
+        var step = await LoadStepAsync(dbContext, learningSessionStepId, cancellationToken);
+
+        if (step.StepType != ExperienceStepType.DeepDive)
+        {
+            throw new InvalidOperationException(
+                $"LearningSessionStep {learningSessionStepId} is not a Deep Dive step (StepType={step.StepType}) — use AskAsync instead.");
+        }
+
+        var blueprintStep = await dbContext.NodeExperienceBlueprintSteps
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                s => s.NodeExperienceBlueprintId == step.LearningSessionNode!.NodeExperienceBlueprintId && s.StepType == ExperienceStepType.DeepDive,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Blueprint {step.LearningSessionNode!.NodeExperienceBlueprintId} has no Deep Dive step — data inconsistency.");
+
+        var cards = string.IsNullOrWhiteSpace(blueprintStep.ExampleCardsJson)
+            ? []
+            : System.Text.Json.JsonSerializer.Deserialize<List<ExampleCard>>(blueprintStep.ExampleCardsJson) ?? [];
+
+        if (cards.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Deep Dive blueprint step {blueprintStep.NodeExperienceBlueprintStepId} has no example cards — nothing to quiz.");
+        }
+
+        // Clamp defensively — CurrentDeepDiveCardIndex should never exceed
+        // cards.Count-1 in practice (the gate stops advancing once the
+        // step is complete), but guards against stale data if the pool
+        // size ever shrinks after the step was already in progress.
+        var currentCardIndex = Math.Min(step.CurrentDeepDiveCardIndex, cards.Count - 1);
+        var currentCard = cards[currentCardIndex];
+        var cardContent = string.IsNullOrWhiteSpace(currentCard.Text)
+            ? currentCard.Title
+            : $"{currentCard.Title}\n{currentCard.Text}";
+
+        // Same self-healing fallback as SubmitRecallAttemptAsync — if the
+        // frontend lost its in-memory "last question shown" state (e.g. a
+        // reload mid-card), fall back to what the step itself last
+        // persisted as its current dynamic question for THIS card.
+        var effectiveTutorPromptShown = string.IsNullOrWhiteSpace(tutorPromptShown)
+            ? step.CurrentDeepDiveQuestion
+            : tutorPromptShown;
+
+        // REAL BUG FIX (2026-07-29): unlike Recall, Deep Dive has NO
+        // preceding tutor-asked-question round-trip before the student's
+        // very FIRST explanation of a card — CurrentDeepDiveQuestion is
+        // only ever set AFTER a turn completes (see below), so on every
+        // card's first attempt effectiveTutorPromptShown was null. Per
+        // TutorAgentV2's own instructions (which borrow Recall's "no prior
+        // question yet ⇒ leave RecallScore null, just ask a first
+        // question" discipline), this made the agent deterministically
+        // return a null score on EVERY first attempt of EVERY card, for
+        // EVERY student — a 100%-reproducing structural bug (not a rare
+        // LLM flake retries could ever fix), surfaced as an unhandled
+        // exception/HTTP 400 that looked like the frontend was "stuck in
+        // a loop". Synthesize an implicit question from the card's own
+        // title so the agent always has something concrete to verify the
+        // student's explanation against, even on the first attempt.
+        if (string.IsNullOrWhiteSpace(effectiveTutorPromptShown))
+        {
+            effectiveTutorPromptShown = $"Explain what you just learned about \"{currentCard.Title}\".";
+        }
+
+        var request = await BuildRequestAsync(
+            dbContext, step, TutorInteractionMode.DeepDive, studentResponse, rawAssessmentFeedback: null, cancellationToken,
+            currentQuestionBeingAnswered: effectiveTutorPromptShown, overrideStepContent: cardContent);
+
+        var turn = await RunWorkflowAsync(request, cancellationToken);
+
+        // Retry up to twice more (3 attempts total) — rare non-compliant
+        // structured-output omissions usually resolve on a retry, but a
+        // single retry was observed to still fail occasionally in practice
+        // (2026-07-29), stranding the student's already-typed answer with a
+        // hard error and forcing them to resubmit. A second retry costs
+        // little (the student's text is never lost either way) and makes
+        // this failure mode far rarer in a live session.
+        for (var attempt = 0; attempt < 2 && turn.Response.RecallScore is null; attempt++)
+        {
+            turn = await RunWorkflowAsync(request, cancellationToken);
+        }
+
+        var score = turn.Response.RecallScore
+            ?? throw new InvalidOperationException("TutorAgentV2 did not return a score for a DeepDive-mode turn (after retry).");
+
+        var evidenceId = await _orchestrator.SubmitResponseAsync(
+            dbContext,
+            learningSessionStepId,
+            studentResponse,
+            cancellationToken,
+            tutorPrompt: effectiveTutorPromptShown,
+            tutorScore: score);
+
+        var verdict = DeepDiveLoopGate.Evaluate(currentCardIndex, cards.Count, score);
+
+        // Persist the NEW question the TutorAgent just generated — null it
+        // out instead when the student just moved to a brand-new card, so
+        // that card's very first attempt correctly falls back to its own
+        // static content (see BuildRequestAsync's DeepDive fallback) rather
+        // than showing the PREVIOUS card's last question.
+        step.CurrentDeepDiveQuestion = verdict.CardMasteredThisAttempt && !verdict.StepComplete
+            ? null
+            : turn.Response.Message;
+        step.CurrentDeepDiveCardIndex = verdict.NextCardIndex;
+
+        InstructorRuntimeOrchestrator.CurrentStepResult? nextStep = null;
+        if (verdict.StepComplete)
+        {
+            nextStep = await _orchestrator.AdvanceToNextStepAsync(dbContext, step.LearningSessionNodeId, cancellationToken, bypassGatedStepGuard: true);
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return new DeepDiveAttemptOutcome
+        {
+            TutorTurn = turn,
+            LearningEvidenceId = evidenceId,
+            CardIndex = currentCardIndex,
+            TotalCards = cards.Count,
+            Mastered = verdict.CardMasteredThisAttempt,
+            NextCardIndex = verdict.NextCardIndex,
+            Advanced = verdict.StepComplete,
+            NextStep = nextStep
+        };
+    }
+
     /// <summary>Best-effort, ephemeral illustration generation for ONE
     /// dynamic Recall turn — never persists a change to the blueprint step
     /// itself (LearningSessionStep.CurrentRecallPrompt already tracks the
@@ -294,10 +482,11 @@ public sealed class TutorService
     private async Task<TutorIllustrationRef?> TryGenerateRecallIllustrationAsync(
         HumanOsDbContext dbContext,
         Guid capabilityGraphNodeId,
-        string diagramPrompt,
+        string? diagramPrompt,
+        MathDiagramSpec? mathDiagram,
         CancellationToken cancellationToken)
     {
-        if (!_imageService.IsConfigured || !_illustrationStorage.IsConfigured)
+        if (!_illustrationStorage.IsConfigured || (mathDiagram is null && !_imageService.IsConfigured))
         {
             _logger.LogWarning("TutorRecall illustration: skipped - imageService/illustrationStorage not configured for node {NodeId}.", capabilityGraphNodeId);
             return null;
@@ -325,8 +514,21 @@ public sealed class TutorService
             var existingCount = await dbContext.CapabilityGraphNodeIllustrations.CountAsync(i => i.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
             var imageIndex = 300 + existingCount; // Base offset for Tutor-Recall-turn illustrations — never collides with the pipeline's low sequential indexes, KnowledgeExpansion's fixed 99, Assessment's 100+, or BlueprintReviewEdit's 200+ ranges.
 
-            var generated = await _imageService.GenerateAsync(diagramPrompt, cancellationToken);
-            using var imageStream = generated.ImageBytes.ToStream();
+            // Two mutually-exclusive rendering paths, decided by
+            // TutorAgentV2 (LLM proposes, code just dispatches): precise
+            // coordinate-plane graphs go through the deterministic SkiaSharp
+            // renderer, everything else through the generative image model
+            // as before. See MathDiagramRenderService's doc comment.
+            object generated = mathDiagram is not null
+                ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
+                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+            var (imageBytes, imageModel, width, height) = generated switch
+            {
+                MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),
+                Agents.Studio.GraphIllustrationImageService.GeneratedIllustration g => (g.ImageBytes, g.ImageModel, g.Width, g.Height),
+                _ => throw new InvalidOperationException("Unreachable")
+            };
+            using var imageStream = imageBytes.ToStream();
 
             var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                 tenantId, capabilityId, capabilityGraphNodeId, imageIndex, imageStream, cancellationToken: cancellationToken);
@@ -336,11 +538,11 @@ public sealed class TutorService
                 CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
                 CapabilityGraphNodeId = capabilityGraphNodeId,
                 StoragePath = storagePath,
-                Prompt = diagramPrompt,
+                Prompt = mathDiagram is not null ? (mathDiagram.EquationLabel ?? "MathDiagram") : diagramPrompt!,
                 Purpose = IllustrationPurpose.TutorRecallTurn,
-                ImageModel = generated.ImageModel,
-                Width = generated.Width,
-                Height = generated.Height,
+                ImageModel = imageModel,
+                Width = width,
+                Height = height,
                 CreatedDate = DateTime.UtcNow
             };
 
@@ -353,7 +555,8 @@ public sealed class TutorService
             {
                 CapabilityGraphNodeIllustrationId = illustration.CapabilityGraphNodeIllustrationId,
                 StoragePath = illustration.StoragePath,
-                Caption = illustration.Caption
+                Caption = illustration.Caption,
+                ImageModel = illustration.ImageModel
             };
         }
         catch (Exception ex) when (ex.Message.Contains("moderation_blocked", StringComparison.OrdinalIgnoreCase))
@@ -399,7 +602,8 @@ public sealed class TutorService
         string studentMessage,
         string? rawAssessmentFeedback,
         CancellationToken cancellationToken,
-        string? currentQuestionBeingAnswered = null)
+        string? currentQuestionBeingAnswered = null,
+        string? overrideStepContent = null)
     {
         string stepContent = string.Empty;
         var illustrations = new List<TutorIllustrationRef>();
@@ -418,6 +622,16 @@ public sealed class TutorService
 
             stepContent = blueprintStep.Content;
 
+            // Deep Dive quizzes ONE example card at a time (see
+            // DeepDiveLoopGate/TutorService.SubmitDeepDiveAttemptAsync) —
+            // the caller resolves the CURRENT card's own title/text and
+            // passes it here, overriding the blueprint step's full Content
+            // (which is the whole node's Deep Dive prose, not a single card).
+            if (mode == TutorInteractionMode.DeepDive && overrideStepContent is not null)
+            {
+                stepContent = overrideStepContent;
+            }
+
             // A Recall step's very first attempt (each activation) has no
             // dynamic tutor-generated question yet — CurrentRecallPrompt is
             // intentionally null until AFTER this first turn (see
@@ -433,7 +647,7 @@ public sealed class TutorService
             // answer, causing SubmitRecallAttemptAsync's "did not return a
             // RecallScore" exception. Always giving the model SOME concrete
             // question to grade against removes that ambiguity.
-            if (mode == TutorInteractionMode.Recall && string.IsNullOrWhiteSpace(currentQuestionBeingAnswered))
+            if ((mode == TutorInteractionMode.Recall || mode == TutorInteractionMode.DeepDive) && string.IsNullOrWhiteSpace(currentQuestionBeingAnswered))
             {
                 currentQuestionBeingAnswered = stepContent;
             }
@@ -455,7 +669,8 @@ public sealed class TutorService
                         {
                             CapabilityGraphNodeIllustrationId = i.CapabilityGraphNodeIllustrationId,
                             StoragePath = i.StoragePath,
-                            Caption = i.Caption
+                            Caption = i.Caption,
+                            ImageModel = i.ImageModel
                         })
                         .ToListAsync(cancellationToken);
                 }

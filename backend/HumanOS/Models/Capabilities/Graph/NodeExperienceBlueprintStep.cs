@@ -33,6 +33,14 @@ public class NodeExperienceBlueprintStep
     /// <summary>Orden fijo del step (0=Hypothesis .. 4=Assessment) — mirrors ExperienceStepType's numeric value.</summary>
     public int SortOrder { get; set; }
 
+    /// <summary>
+    /// JSON-serialized List&lt;ExampleCard&gt; — populated ONLY when
+    /// StepType == ExperienceStepType.Examples (null for every other step
+    /// type, and for every blueprint that doesn't include an Examples
+    /// step). See <see cref="ExampleCard"/>.
+    /// </summary>
+    public string? ExampleCardsJson { get; set; }
+
     /// <summary>Fecha UTC de creación del step.</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

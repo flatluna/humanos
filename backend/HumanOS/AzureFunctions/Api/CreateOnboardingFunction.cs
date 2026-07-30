@@ -119,7 +119,7 @@ public sealed class CreateOnboardingFunction
             onboardingRequest.AdminLastName,
             displayName: $"{onboardingRequest.AdminFirstName} {onboardingRequest.AdminLastName}".Trim(),
             phoneNumber: null,
-            preferredLanguage: "en",
+            preferredLanguage: onboardingRequest.PreferredLanguage ?? "en",
             countryCode: null,
             timeZone: null,
             profilePhotoUrl: null,

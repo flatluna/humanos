@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router-dom';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { getActiveCapabilityGraphRun, type PdfCapabilityGraphRunStatus } from '../lib/api/pdfPipelineApi';
@@ -14,6 +15,7 @@ const POLL_INTERVAL_MS = 4000;
  * so no client-side storage of the RunId is needed for this to work.
  */
 export default function ActiveRunBanner() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [activeRun, setActiveRun] = useState<PdfCapabilityGraphRunStatus | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -49,14 +51,14 @@ export default function ActiveRunBanner() {
         <div className="flex items-center gap-2.5 text-brand-100">
           <Loader2 className="h-4 w-4 flex-none animate-spin" />
           <span>
-            Generando una capability ahora mismo — <span className="text-slate-300">{activeRun.CurrentStepDescription}</span>
+            {t('activeRunBanner.generatingPrefix')} <span className="text-slate-300">{activeRun.CurrentStepDescription}</span>
           </span>
         </div>
         <Link
           to={`/runs/${activeRun.RunId}`}
           className="flex flex-none items-center gap-1 font-medium text-brand-300 hover:text-brand-200"
         >
-          Ver progreso <ArrowRight className="h-3.5 w-3.5" />
+          {t('activeRunBanner.viewProgress')} <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
     </div>

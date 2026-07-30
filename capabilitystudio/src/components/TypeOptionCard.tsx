@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface TypeOptionCardProps {
   icon: LucideIcon;
@@ -10,6 +11,7 @@ interface TypeOptionCardProps {
 }
 
 export default function TypeOptionCard({ icon: Icon, title, description, selected, disabled, onClick }: TypeOptionCardProps) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -25,7 +27,7 @@ export default function TypeOptionCard({ icon: Icon, title, description, selecte
     >
       {disabled && (
         <span className="absolute right-3 top-3 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-300">
-          Próximamente
+          {t('typeOptionCard.comingSoon')}
         </span>
       )}
       <div

@@ -10,6 +10,9 @@ export interface StartPdfCapabilityGraphRequest {
   capabilityDomainId: string;
   subjectId?: string | null;
   capabilityName: string;
+  /** Optional: the user's own description of what this Capability teaches.
+   * Saved directly to the Capability row in the database. */
+  capabilityDescription?: string | null;
   fileName: string;
   contentBase64: string;
   enableWebEnrichment?: boolean;
@@ -30,6 +33,25 @@ export interface StartPdfCapabilityGraphRequest {
    * Capability within programId's sequence. Ignored when programId is
    * null. */
   capabilityRequirements?: string | null;
+  /** "es" or "en" — the language ALL generated content for this
+   * capability (graph node names/descriptions, blueprint step text,
+   * illustration prompts) will be authored in, regardless of what
+   * language the uploaded PDF itself is written in. Defaults to "es"
+   * when omitted. */
+  languageCode?: 'es' | 'en';
+  /** Optional tone/persona directive for ALL generated learner-facing
+   * content on this capability. Omit/undefined means "Standard" — zero
+   * behavior change. The only other supported value today is
+   * "YoungLearner" (K-12 early-childhood courses, e.g. a Grade 1
+   * phonics/reading course) — appends a warm/playful, direct-to-the-child
+   * persona to the generation prompts. */
+  pedagogicalAudience?: 'YoungLearner' | null;
+  /** Formal/school-track opt-in (2026-07-29 feature): when true, the
+   * generated blueprint for every node includes an OPTIONAL 6th step,
+   * Examples, with 3+ example cards illustrated with emoji. False/omitted
+   * (the default) leaves every generated blueprint identical to before
+   * this field existed. */
+  includeExamplesStep?: boolean;
 }
 
 export type PdfCapabilityGraphStage = 'Running' | 'Completed' | 'Failed';
@@ -123,6 +145,10 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   subjectId?: string | null;
   capabilityName: string;
   description: string;
+  /** Optional: the user's own description of what this Capability teaches.
+   * Saved directly to the Capability row in the database. If not provided,
+   * uses description as both the idea expansion input and the stored description. */
+  capabilityDescription?: string | null;
   enableWebEnrichment?: boolean;
   /** See StartPdfCapabilityGraphRequest.programId for the full rationale. */
   programId?: string | null;
@@ -132,6 +158,12 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   capabilityObjectives?: string | null;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   capabilityRequirements?: string | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  languageCode?: 'es' | 'en';
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  pedagogicalAudience?: 'YoungLearner' | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  includeExamplesStep?: boolean;
 }
 
 /** Starts a V2 run from a short idea/goal description instead of a PDF —

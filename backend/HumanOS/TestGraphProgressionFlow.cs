@@ -197,7 +197,7 @@ public sealed class TestGraphProgressionFlow
         var design = await _experienceDesigner.DesignBlueprintAsync(node, availableIllustrations, cancellationToken: cancellationToken);
 
         var persisted = await _blueprintPersistenceService.PersistAsync(
-            dbContext, node.CapabilityGraphNodeId, design.Blueprint, node.Illustrations.ToList(), cancellationToken);
+            dbContext, node.CapabilityGraphNodeId, design.Blueprint, node.Illustrations.ToList(), cancellationToken: cancellationToken);
 
         return persisted.NodeExperienceBlueprintId;
     }

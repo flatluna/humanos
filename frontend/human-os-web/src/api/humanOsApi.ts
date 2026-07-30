@@ -37,6 +37,14 @@ export async function getPersonProfile(personId: string): Promise<PersonProfileR
   return data;
 }
 
+/** Persists an EN/ES UI language change to the account (see
+ *  UpdatePreferredLanguageFunction.cs) — only touches PreferredLanguage,
+ *  never the rest of the profile. Used by LanguageSwitcher so the choice
+ *  "sticks" across devices/sessions, not just this browser's localStorage. */
+export async function updatePreferredLanguage(personId: string, preferredLanguage: string): Promise<void> {
+  await apiClient.put(`/people/${personId}/profile/language`, { preferredLanguage });
+}
+
 export async function getHumanProfile(personId: string): Promise<HumanProfileResponse> {
   const { data } = await apiClient.get<HumanProfileResponse>(`/people/${personId}/human-profile`);
   return data;

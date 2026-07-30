@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, PlayCircle, Layers, GitBranch, Calendar, Trash2, GraduationCap, X } from 'lucide-react';
-import { getCapabilities, deleteCapability, type BackendCapability } from '../lib/api/capabilitiesApi';
+import { ArrowLeft, ExternalLink, PlayCircle, Layers, GitBranch, Calendar, Trash2, GraduationCap, X, Baby } from 'lucide-react';
+import { getCapabilities, deleteCapability, updateCapabilityPedagogicalAudience, type BackendCapability } from '../lib/api/capabilitiesApi';
 import {
   getPrograms,
   getProgramsForCapability,
@@ -18,6 +19,7 @@ import { getSubjectGradient, getSubjectIcon } from '../lib/subjectVisuals';
 const LEARN_APP_BASE_URL = 'http://localhost:3001';
 
 export default function CapabilityDetailPage() {
+  const { t, i18n } = useTranslation();
   const { capabilityId } = useParams<{ capabilityId: string }>();
   const navigate = useNavigate();
   const [capability, setCapability] = useState<BackendCapability | null>(null);
@@ -30,6 +32,8 @@ export default function CapabilityDetailPage() {
   const [programToAdd, setProgramToAdd] = useState('');
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [audienceBusy, setAudienceBusy] = useState(false);
+  const [audienceError, setAudienceError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +43,7 @@ export default function CapabilityDetailPage() {
         if (cancelled) return;
         const match = all.find((c) => c.CapabilityId === capabilityId) ?? null;
         setCapability(match);
-        if (!match) setError('No se encontró esta capability.');
+        if (!match) setError(t('capabilityDetail.notFound'));
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -75,7 +79,7 @@ export default function CapabilityDetailPage() {
       setMemberships(refreshed);
       setProgramToAdd('');
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : 'No se pudo agregar al programa.');
+      setLinkError(err instanceof Error ? err.message : t('capabilityDetail.addToProgramErrorFallback'));
     } finally {
       setLinkBusy(false);
     }
@@ -89,20 +93,36 @@ export default function CapabilityDetailPage() {
       await removeCapabilityFromProgram(capabilityId, programId);
       setMemberships((prev) => prev.filter((m) => m.ProgramId !== programId));
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : 'No se pudo quitar del programa.');
+      setLinkError(err instanceof Error ? err.message : t('capabilityDetail.removeFromProgramErrorFallback'));
     } finally {
       setLinkBusy(false);
     }
   }
 
-  if (loading) return <LoadingSpinner label="Cargando capability..." />;
+  async function handleSetAudience(next: 'Standard' | 'YoungLearner') {
+    if (!capability || audienceBusy) return;
+    const current = capability.PedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : 'Standard';
+    if (current === next) return;
+    setAudienceBusy(true);
+    setAudienceError(null);
+    try {
+      await updateCapabilityPedagogicalAudience(capability.CapabilityId, next === 'YoungLearner' ? 'YoungLearner' : null);
+      setCapability({ ...capability, PedagogicalAudience: next === 'YoungLearner' ? 'YoungLearner' : null });
+    } catch (err) {
+      setAudienceError(err instanceof Error ? err.message : t('capabilityDetail.audienceErrorFallback'));
+    } finally {
+      setAudienceBusy(false);
+    }
+  }
+
+  if (loading) return <LoadingSpinner label={t('capabilityDetail.loading')} />;
 
   if (error || !capability) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16 text-center">
-        <p className="text-red-300">{error ?? 'No se encontró esta capability.'}</p>
+        <p className="text-red-300">{error ?? t('capabilityDetail.notFound')}</p>
         <Link to="/" className="mt-4 inline-flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300">
-          <ArrowLeft className="h-4 w-4" /> Volver al catálogo
+          <ArrowLeft className="h-4 w-4" /> {t('capabilityDetail.backToCatalog')}
         </Link>
       </div>
     );
@@ -124,7 +144,7 @@ export default function CapabilityDetailPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-6 pb-6">
           <Link to="/" className="mb-3 inline-flex items-center gap-1.5 text-sm text-[#fff]/80 hover:text-[#fff]">
-            <ArrowLeft className="h-4 w-4" /> Catálogo
+            <ArrowLeft className="h-4 w-4" /> {t('capabilityDetail.catalog')}
           </Link>
           <h1 className="text-3xl font-bold text-[#fff]">{capability.Name}</h1>
           {capability.SubjectCode && (
@@ -143,13 +163,17 @@ export default function CapabilityDetailPage() {
         {capability.Description && <p className="mt-3 max-w-3xl text-sm text-slate-400">{capability.Description}</p>}
 
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <StatCard icon={Layers} label="Niveles" value={capability.LevelCount} />
-          <StatCard icon={GitBranch} label="Nodos" value={capability.NodeCount} />
-          <StatCard icon={Calendar} label="Actualizado" value={new Date(capability.UpdatedDate).toLocaleDateString('es-MX')} />
+          <StatCard icon={Layers} label={t('capabilityDetail.levels')} value={capability.LevelCount} />
+          <StatCard icon={GitBranch} label={t('capabilityDetail.nodes')} value={capability.NodeCount} />
+          <StatCard
+            icon={Calendar}
+            label={t('capabilityDetail.updated')}
+            value={new Date(capability.UpdatedDate).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'es-MX')}
+          />
         </div>
 
         <div className="mt-8">
-          <h3 className="mb-3 text-lg font-semibold text-white">Programas</h3>
+          <h3 className="mb-3 text-lg font-semibold text-white">{t('capabilityDetail.programsHeading')}</h3>
 
           {memberships.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
@@ -181,7 +205,7 @@ export default function CapabilityDetailPage() {
               onChange={(e) => setProgramToAdd(e.target.value)}
               className="input max-w-xs"
             >
-              <option value="">Agregar a un programa...</option>
+              <option value="">{t('capabilityDetail.addToProgramPlaceholder')}</option>
               {allPrograms
                 .filter((p) => !memberships.some((m) => m.ProgramId === p.ProgramId))
                 .map((p) => (
@@ -197,11 +221,43 @@ export default function CapabilityDetailPage() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <GraduationCap className="h-4 w-4" />
-              Agregar
+              {t('capabilityDetail.add')}
             </button>
           </div>
 
           {linkError && <p className="mt-2 text-sm text-red-300">{linkError}</p>}
+        </div>
+
+        <div className="mt-8">
+          <h3 className="mb-1 text-lg font-semibold text-white">{t('capabilityDetail.audienceHeading')}</h3>
+          <p className="mb-3 text-sm text-slate-400">{t('capabilityDetail.audienceHint')}</p>
+          <div className="grid max-w-md grid-cols-2 gap-2">
+            {(
+              [
+                { value: 'Standard' as const, label: t('newCapability.audienceStandard') },
+                { value: 'YoungLearner' as const, label: t('newCapability.audienceYoungLearner') },
+              ]
+            ).map((option) => {
+              const active = (capability.PedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : 'Standard') === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={audienceBusy}
+                  onClick={() => handleSetAudience(option.value)}
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    active
+                      ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                      : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                  }`}
+                >
+                  <Baby className="h-4 w-4 shrink-0" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {audienceError && <p className="mt-2 text-sm text-red-300">{audienceError}</p>}
         </div>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -210,7 +266,7 @@ export default function CapabilityDetailPage() {
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-3 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02]"
           >
             <PlayCircle className="h-4 w-4" />
-            Probar como estudiante
+            {t('capabilityDetail.tryAsStudent')}
           </Link>
           <a
             href={`${LEARN_APP_BASE_URL}/capabilities/${capability.CapabilityId}`}
@@ -218,7 +274,7 @@ export default function CapabilityDetailPage() {
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white"
           >
-            Abrir en la app del estudiante
+            {t('capabilityDetail.openInStudentApp')}
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
           <button
@@ -226,7 +282,7 @@ export default function CapabilityDetailPage() {
             className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer border border-red-500/30 hover:border-red-500/50"
           >
             <Trash2 className="h-4 w-4" />
-            Eliminar
+            {t('capabilityDetail.delete')}
           </button>
         </div>
 

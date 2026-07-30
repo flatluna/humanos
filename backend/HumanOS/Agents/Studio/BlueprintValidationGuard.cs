@@ -29,6 +29,19 @@ public static class BlueprintValidationGuard
         ExperienceStepType.Assessment
     ];
 
+    /// <summary>Used when the blueprint has an optional Deep Dive step —
+    /// see <see cref="HumanOS.Services.NodeExperienceBlueprintPersistenceService"/>'s
+    /// identically-named array for the full rationale.</summary>
+    private static readonly ExperienceStepType[] FormalEducationStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.DeepDive,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Production,
+        ExperienceStepType.Assessment
+    ];
+
     private static readonly string[] PlaceholderMarkers =
     [
         "lorem ipsum", "todo", "[...]", "placeholder"
@@ -47,11 +60,14 @@ public static class BlueprintValidationGuard
         ArgumentNullException.ThrowIfNull(blueprint);
         ArgumentNullException.ThrowIfNull(response);
 
+        var hasExamplesStep = blueprint.Steps.Any(s => s.StepType == ExperienceStepType.DeepDive);
+        var stepOrder = hasExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+
         var orderedSteps = blueprint.Steps.OrderBy(s => s.SortOrder).ToList();
         var structuralFailure = false;
 
         // VALIDACIÓN 1 — Memory Paradox complete.
-        foreach (var stepType in CanonicalStepOrder)
+        foreach (var stepType in stepOrder)
         {
             if (!orderedSteps.Any(s => s.StepType == stepType))
             {
@@ -64,16 +80,49 @@ public static class BlueprintValidationGuard
             }
         }
 
-        // VALIDACIÓN 2 — order correct (SortOrder must mirror ExperienceStepType's numeric value).
+        // VALIDACIÓN 2 — order correct (SortOrder must mirror this blueprint's
+        // canonical position, i.e. its index in stepOrder — NOT the enum's
+        // raw numeric value, since the optional Deep Dive step's enum value
+        // (5) intentionally sits after Assessment(4) to avoid renumbering
+        // any other blueprint's persisted steps; its real teaching position
+        // is index 2 (between Teaching and Recall) within stepOrder).
         foreach (var step in orderedSteps)
         {
-            if (step.SortOrder != (int)step.StepType)
+            var expectedSortOrder = Array.IndexOf(stepOrder, step.StepType);
+            if (expectedSortOrder < 0 || step.SortOrder != expectedSortOrder)
             {
                 structuralFailure = true;
                 response.Issues.Add(new BlueprintValidationIssueDto
                 {
                     Area = ToArea(step.StepType),
-                    Message = $"Step '{step.StepType}' has SortOrder={step.SortOrder}, expected {(int)step.StepType} — order violates the fixed Memory Paradox sequence."
+                    Message = $"Step '{step.StepType}' has SortOrder={step.SortOrder}, expected {expectedSortOrder} — order violates the fixed Memory Paradox sequence."
+                });
+            }
+        }
+
+        // VALIDACIÓN 11 (Deep Dive step, non-blocking) — must have 3+ example cards.
+        if (hasExamplesStep)
+        {
+            var examplesStep = orderedSteps.FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+            var cardCount = 0;
+            if (!string.IsNullOrWhiteSpace(examplesStep?.ExampleCardsJson))
+            {
+                try
+                {
+                    cardCount = System.Text.Json.JsonSerializer.Deserialize<List<ExampleCard>>(examplesStep.ExampleCardsJson)?.Count ?? 0;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    cardCount = 0;
+                }
+            }
+
+            if (cardCount < 3)
+            {
+                response.Warnings.Add(new BlueprintValidationIssueDto
+                {
+                    Area = BlueprintValidationArea.Examples,
+                    Message = $"Deep Dive step has only {cardCount} example card(s); expected 3 or more."
                 });
             }
         }
@@ -163,6 +212,7 @@ public static class BlueprintValidationGuard
         ExperienceStepType.Recall => BlueprintValidationArea.Recall,
         ExperienceStepType.Production => BlueprintValidationArea.Production,
         ExperienceStepType.Assessment => BlueprintValidationArea.Assessment,
+        ExperienceStepType.DeepDive => BlueprintValidationArea.Examples,
         _ => BlueprintValidationArea.References
     };
 }

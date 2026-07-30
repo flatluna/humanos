@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mic, Bot, Sparkles } from 'lucide-react';
-import { requestVoiceTutorSession, type ExperienceStepType } from '../lib/api/runtimeApi';
+import { requestVoiceTutorSession, requestEngramReviewSession, type ExperienceStepType } from '../lib/api/runtimeApi';
 
 type VoiceState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error';
 
-const STATE_LABELS: Record<VoiceState, string> = {
-  idle: 'Habla con Tu Agente Tutor de AI',
-  connecting: 'Conectando…',
-  connected: 'Conectado — puedes hablar',
-  listening: 'Escuchando…',
-  speaking: 'Hablando…',
-  error: 'No se pudo conectar',
-};
+const getStateLabels = (t: (key: string) => string): Record<VoiceState, string> => ({
+  idle: t('voiceTutorAgent.idle'),
+  connecting: t('voiceTutorAgent.connecting'),
+  connected: t('voiceTutorAgent.connected'),
+  listening: t('voiceTutorAgent.listening'),
+  speaking: t('voiceTutorAgent.speaking'),
+  error: t('voiceTutorAgent.error'),
+});
 
 /**
  * "Agente de voz" — a real-time WebRTC voice presence for the Instructor
@@ -46,24 +47,69 @@ export default function VoiceTutorAgent({
   capabilityGraphNodeId,
   stepType,
   promptText,
+  personName,
   onTranscript,
+  onExplanationAccepted,
+  exampleCardIndex,
+  reviewOnly,
+  reviewSession,
+  startLabel,
+  autoConnect = true,
+  compact = false,
 }: {
   /** Live-session path: the student is actually on (or already completed) this step. */
   learningSessionStepId?: string;
   /** Blueprint-only path (2026-07-22) — for Studio demo's read-only "peek"
    * at a step the live session hasn't reached yet (no LearningSessionStep
    * row exists there). Provide this together with `stepType` INSTEAD of
-   * `learningSessionStepId`; only 'Hypothesis'/'Teaching' are supported. */
+   * `learningSessionStepId`; 'Hypothesis'/'Teaching'/'DeepDive' are supported. */
   capabilityGraphNodeId?: string;
   stepType?: ExperienceStepType;
   promptText?: string;
+  /** Optional (2026-07-25) — student's display name, used only for the
+   * Hypothesis/Teaching opening greeting server-side. Omit if unknown. */
+  personName?: string;
   onTranscript?: (transcript: string) => void;
+  /** Deep Dive only (2026-07-30): fired when the voice Agent itself calls
+   * the `mark_explanation_understood` Realtime tool — i.e. the exact
+   * moment IT decides (per its own hard-capped instructions) the
+   * student's spoken explanation is good enough. The caller should
+   * forward this straight to the same deterministic grading endpoint used
+   * for a typed answer (submitDeepDiveAttempt) — this callback only ever
+   * signals WHEN to grade, never the grade itself. */
+  onExplanationAccepted?: (explanation: string) => void;
+  /** Only for the Deep Dive step (2026-07-29) — which ExampleCard's "habla
+   * con tu maestro" button was pressed. */
+  exampleCardIndex?: number;
+  /** DeepDive blueprint-only path only (2026-07-30) — revisiting an
+   * already-mastered card via the read-only card index. Switches the
+   * Agent to a plain explain-and-invite-questions conversation with no
+   * grading tool offered at all — never a quiz. Ignored for every other
+   * path/step type. */
+  reviewOnly?: boolean;
+  /** "Reactivar Engrama" path (2026-07-30, ported from human-os-web's
+   * EngramReviewAgent.tsx): a full-lesson, NEVER-graded spoken review of
+   * an already-Mastered node — the Agent reads/explains the whole lesson
+   * back (grounded in the blueprint + the student's own past answers) and
+   * invites questions. Provide this INSTEAD of learningSessionStepId/
+   * capabilityGraphNodeId+stepType; takes priority over both if given. */
+  reviewSession?: { personId: string; capabilityGraphNodeId: string };
+  /** Overrides the default idle-button label (e.g. "Talk to the agent")
+   * with custom already-localized text — used by the review flow to say
+   * something like "Listen to this lesson" instead. */
+  startLabel?: string;
+  /** Set to false for a per-ExampleCard button — the Agent must only
+   * start talking when the student explicitly presses that card's button. */
+  autoConnect?: boolean;
+  /** Renders a small inline button instead of the full glowing-orb card. */
+  compact?: boolean;
 }) {
+  const { t } = useTranslation();
   // Stable identity for "which step is this widget currently about" —
   // used to reset/re-auto-connect when the parent page swaps in a
   // different step (either a live step or a different peeked step)
   // without remounting this component instance.
-  const targetKey = learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`;
+  const targetKey = `${learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`}:${exampleCardIndex ?? ''}`;
 
   const [state, setState] = useState<VoiceState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -79,18 +125,18 @@ export default function VoiceTutorAgent({
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  // Grace-period timer that re-enables the mic track a short beat after
-  // the Agent's audio goes quiet — see monitorRemoteAudioLevel below.
-  const micGraceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Dedup guard for the Deep Dive `mark_explanation_understood` tool call —
+  // Azure can legitimately report the SAME completed function call via both
+  // `response.output_item.done` and `response.done` (see EngramReviewAgent's
+  // identical note); only ever act on a given call_id once, and only ever
+  // send its function_call_output once (double-answering re-triggers the
+  // model into generating extra responses, per that earlier bug).
+  const handledToolCallIdsRef = useRef<Set<string>>(new Set());
 
   const teardown = useCallback(() => {
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
-    }
-    if (micGraceTimeoutRef.current !== null) {
-      clearTimeout(micGraceTimeoutRef.current);
-      micGraceTimeoutRef.current = null;
     }
     dataChannelRef.current = null;
     peerConnectionRef.current?.close();
@@ -133,42 +179,24 @@ export default function VoiceTutorAgent({
       const average = sum / buffer.length;
       const isAgentSpeaking = average > 12;
 
-      // FIXED 2026-07-23 — confirmed real-world setup is laptop/desktop
-      // speakers + mic (no headphones). That leaks enough acoustic echo of
-      // the Agent's OWN voice back into the mic that browser
-      // echoCancellation alone doesn't fully cancel it (especially right as
-      // a new utterance starts, before AEC has adapted, and on louder
-      // syllables). That echo was crossing the server's VAD `threshold`
-      // and getting misread as the student interrupting, which — via
-      // `interrupt_response: true` — made the server truncate its own
-      // in-progress answer mid-sentence. That's exactly the reported bug:
-      // the Agent starts narrating, cuts itself off, and jumps to a
-      // generic "¿tienes preguntas?" without ever finishing. Genuine
-      // simultaneous barge-in isn't reliable without headphones anyway —
-      // any VAD (energy-based or semantic) reads the echo as real speech
-      // since acoustically it IS the Agent's real voice, just reflected
-      // back. Fix: mute the mic track client-side while the Agent's audio
-      // is audible, plus a short grace period after it goes quiet, so the
-      // echo never reaches the server's VAD at all. The orb's manual
-      // tap-to-stop (sends `response.cancel` directly) still works at any
-      // time as the real interruption path — only automatic barge-in-by-
-      // VAD is disabled while the Agent's own audio is playing.
-      const micTrack = localStreamRef.current?.getAudioTracks()[0];
-      if (micTrack) {
-        if (isAgentSpeaking) {
-          micTrack.enabled = false;
-          if (micGraceTimeoutRef.current !== null) {
-            clearTimeout(micGraceTimeoutRef.current);
-            micGraceTimeoutRef.current = null;
-          }
-        } else if (!micTrack.enabled && micGraceTimeoutRef.current === null) {
-          micGraceTimeoutRef.current = setTimeout(() => {
-            const track = localStreamRef.current?.getAudioTracks()[0];
-            if (track) track.enabled = true;
-            micGraceTimeoutRef.current = null;
-          }, 500);
-        }
-      }
+      // CHANGED 2026-07-25 (explicit user request: "quiero que cuando el
+      // usuario hable el agente se calle, que permita yo interrumpa") —
+      // the mic now stays live the ENTIRE time, including while the Agent
+      // is speaking, so the server's own VAD (`turn_detection: server_vad`,
+      // `interrupt_response: true`, configured in the data channel's
+      // `session.update` below) can detect real speech and auto-cancel/
+      // truncate the Agent's in-progress response — true voice barge-in.
+      // `input_audio_buffer.speech_started` (handled in the data channel's
+      // onmessage below) pauses local playback immediately for a snappy
+      // felt interruption as soon as the server detects it.
+      //
+      // Trade-off accepted (previously avoided by a 2026-07-23 fix that
+      // muted the mic while the Agent spoke): on speaker+mic setups
+      // without headphones, acoustic echo of the Agent's own voice can
+      // occasionally leak into the mic and false-trigger the VAD, causing
+      // the Agent to self-interrupt mid-sentence. Headphones avoid this
+      // entirely. This trade-off is intentional per explicit request —
+      // real barge-in is now prioritized over that echo edge case.
 
       // If the agent's audio resumes (a new response), make sure local
       // playback isn't left paused from a previous manual/auto interrupt.
@@ -188,10 +216,19 @@ export default function VoiceTutorAgent({
   const connect = useCallback(async () => {
     setErrorMessage(null);
     setState('connecting');
+    handledToolCallIdsRef.current.clear();
     try {
-      const session = learningSessionStepId
-        ? await requestVoiceTutorSession({ learningSessionStepId, promptText })
-        : await requestVoiceTutorSession({ capabilityGraphNodeId: capabilityGraphNodeId!, stepType: stepType! });
+      const session = reviewSession
+        ? await requestEngramReviewSession(reviewSession.personId, reviewSession.capabilityGraphNodeId)
+        : learningSessionStepId
+        ? await requestVoiceTutorSession({ learningSessionStepId, promptText, personName, exampleCardIndex })
+        : await requestVoiceTutorSession({
+            capabilityGraphNodeId: capabilityGraphNodeId!,
+            stepType: stepType!,
+            personName,
+            exampleCardIndex,
+            isReviewOnly: reviewOnly,
+          });
 
       // Explicit (not just `true`) so the browser can't skip echo
       // cancellation — without it, the mic picks up the Agent's own
@@ -246,34 +283,82 @@ export default function VoiceTutorAgent({
         ) {
           onTranscript(payload.transcript.trim());
         }
+
+        // Deep Dive's `mark_explanation_understood` tool call — same
+        // "check both possible completed-item events" defensiveness as
+        // EngramReviewAgent's show_visual_aid handling, since it's unclear
+        // ahead of time which one Azure will use for a given session.
+        if (onExplanationAccepted) {
+          const items =
+            payload.type === 'response.output_item.done' && payload.item
+              ? [payload.item as Record<string, unknown>]
+              : payload.type === 'response.done'
+                ? (((payload.response as Record<string, unknown> | undefined)?.output as
+                    | Record<string, unknown>[]
+                    | undefined) ?? [])
+                : [];
+          for (const item of items) {
+            if (item.type !== 'function_call' || item.name !== 'mark_explanation_understood') continue;
+            const callId = item.call_id as string;
+            if (handledToolCallIdsRef.current.has(callId)) continue;
+            handledToolCallIdsRef.current.add(callId);
+            let explanation = '';
+            try {
+              const args = JSON.parse((item.arguments as string) ?? '{}') as { explanation?: string };
+              explanation = args.explanation?.trim() ?? '';
+            } catch {
+              explanation = '';
+            }
+            if (explanation) onExplanationAccepted(explanation);
+            if (dataChannelRef.current?.readyState === 'open') {
+              dataChannelRef.current.send(
+                JSON.stringify({
+                  type: 'conversation.item.create',
+                  item: { type: 'function_call_output', call_id: callId, output: 'Explicación registrada para calificación real.' },
+                })
+              );
+              dataChannelRef.current.send(JSON.stringify({ type: 'response.create' }));
+            }
+          }
+        }
       };
       dataChannel.onopen = () => {
-        // Real barge-in: keep the mic live and let the server's own VAD
-        // decide when the student is genuinely interrupting (as opposed to
-        // acoustic echo of the Agent's own voice leaking into the mic).
-        // `interrupt_response: true` (the API default, set explicitly here)
-        // makes the server auto-cancel the in-progress response and
-        // auto-truncate its unplayed audio the moment real speech is
-        // detected — WebRTC connections need no manual truncate bookkeeping
-        // client-side for this. The `threshold` stays high enough that
-        // ordinary speaker-bleed echo (with browser echoCancellation on)
-        // usually doesn't cross it, while a real, clearly louder
-        // interruption does.
+        // FIXED 2026-07-25: this GA Realtime session schema nests
+        // turn_detection under `session.audio.input.turn_detection` (same
+        // place as transcription), NOT at the top level like the legacy
+        // Realtime API. The previous top-level `session: { turn_detection }`
+        // sent here was silently ignored by the server, so the connection
+        // actually ran on the server's DEFAULT (much more trigger-happy) VAD
+        // sensitivity the whole time — the real cause of the Agent
+        // self-interrupting on its own voice bleeding back into an open mic
+        // (no headphones) and answering as if the student had said
+        // something when they hadn't. The backend now ALSO sets this
+        // correctly (plus `noise_reduction: near_field`) right at session
+        // creation (see RealtimeVoiceSessionService), so this client-side
+        // update is now redundant/defensive rather than the only source of
+        // truth — kept for clarity and in case a future per-session
+        // override is needed.
         dataChannel.send(
           JSON.stringify({
             type: 'session.update',
             session: {
-              turn_detection: {
-                type: 'server_vad',
-                threshold: 0.75,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 700,
-                create_response: true,
-                interrupt_response: true,
+              audio: {
+                input: {
+                  turn_detection: {
+                    type: 'server_vad',
+                    threshold: 0.85,
+                    prefix_padding_ms: 300,
+                    silence_duration_ms: 700,
+                    create_response: true,
+                    interrupt_response: true,
+                  },
+                  noise_reduction: { type: 'near_field' },
+                },
               },
             },
           }),
         );
+
 
         // The Realtime model otherwise waits silently for the student to
         // speak first. Trigger its first turn WITHOUT overriding
@@ -301,7 +386,7 @@ export default function VoiceTutorAgent({
       });
 
       if (!sdpResponse.ok) {
-        throw new Error(`No se pudo negociar la sesión de voz (status ${sdpResponse.status}).`);
+        throw new Error(t('voiceTutorAgent.negotiationError', { status: sdpResponse.status }));
       }
 
       const answerSdp = await sdpResponse.text();
@@ -310,32 +395,34 @@ export default function VoiceTutorAgent({
       setState('connected');
     } catch (err) {
       console.error('VoiceTutorAgent: connection failed', err);
-      setErrorMessage('No se pudo conectar con el Agente de voz. Verifica el micrófono e intenta de nuevo.');
+      
+      // Distinguish between "step type not supported" vs other connection errors
+      let errorMsg = t('voiceTutorAgent.connectionErrorFallback');
+      const errorText = String(err);
+      if (errorText.includes('only available for')) {
+        errorMsg = t('voiceTutorAgent.stepNotSupported');
+      }
+      
+      setErrorMessage(errorMsg);
       teardown();
       setState('error');
     }
-  }, [learningSessionStepId, capabilityGraphNodeId, stepType, promptText, onTranscript, monitorRemoteAudioLevel, teardown]);
+  }, [
+    learningSessionStepId,
+    capabilityGraphNodeId,
+    stepType,
+    promptText,
+    personName,
+    onTranscript,
+    onExplanationAccepted,
+    reviewOnly,
+    reviewSession,
+    monitorRemoteAudioLevel,
+    teardown,
+  ]);
 
   const isActive = state === 'connected' || state === 'listening' || state === 'speaking';
   const isBusy = state === 'connecting';
-
-  // Manual fallback interrupt: even with real voice barge-in enabled
-  // (server_vad + interrupt_response), echo cancellation quality varies a
-  // lot by device/headphones, so give students a guaranteed, deterministic
-  // way to cut the Agent off — tapping the orb while it's speaking cancels
-  // only the in-progress response and KEEPS the session/conversation
-  // context alive (unlike a full stop, which would end the Realtime
-  // session and lose all context accumulated so far). A full stop
-  // (teardown) is reserved for when the Agent is connected/listening but
-  // not actively speaking — see the button's onClick below.
-  const interruptSpeaking = useCallback(() => {
-    const dataChannel = dataChannelRef.current;
-    if (dataChannel?.readyState === 'open') {
-      dataChannel.send(JSON.stringify({ type: 'response.cancel' }));
-    }
-    audioElementRef.current?.pause();
-    setState('listening');
-  }, []);
 
   // Auto-start: rather than making the student click the orb, connect the
   // Agent on its own shortly after landing on a step so it starts reading
@@ -352,28 +439,48 @@ export default function VoiceTutorAgent({
   }, [connect]);
 
   useEffect(() => {
+    if (!autoConnect) return undefined;
     const timer = setTimeout(() => {
       if (stateRef.current === 'idle') {
         connectRef.current();
       }
     }, 3000);
     return () => clearTimeout(timer);
-  }, [targetKey]);
+  }, [targetKey, autoConnect]);
+
+  if (compact) {
+    return (
+      <div className="mt-2 flex flex-col items-start gap-1">
+        <button
+          type="button"
+          onClick={isActive ? teardown : connect}
+          disabled={isBusy}
+          className="flex items-center gap-1.5 rounded-full border border-accent-400/30 bg-accent-500/10 px-3 py-1.5 text-xs font-semibold text-accent-300 transition hover:bg-accent-500/20 disabled:opacity-50"
+        >
+          {isBusy ? (
+            <Sparkles className="h-3.5 w-3.5 animate-spin" />
+          ) : isActive ? (
+            <Mic className="h-3.5 w-3.5" />
+          ) : (
+            <Bot className="h-3.5 w-3.5" />
+          )}
+          {isActive ? getStateLabels(t)[state] : startLabel ?? t('voiceTutorAgent.talkAboutExample')}
+        </button>
+        {errorMessage && <p className="text-[11px] text-red-400">{errorMessage}</p>}
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <audio ref={audioElementRef} autoPlay />
+      </div>
+    );
+  }
 
   return (
     <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-accent-400/20 bg-gradient-to-b from-accent-500/[0.08] to-transparent p-6">
       <button
         type="button"
-        onClick={state === 'speaking' ? interruptSpeaking : isActive ? teardown : connect}
+        onClick={isActive ? teardown : connect}
         disabled={isBusy}
         className="group relative flex h-20 w-20 items-center justify-center rounded-full outline-none"
-        aria-label={
-          state === 'speaking'
-            ? 'Interrumpir al Agente de voz'
-            : isActive
-              ? 'Detener al Agente de voz'
-              : 'Hablar con el Agente de voz'
-        }
+        aria-label={isActive ? t('voiceTutorAgent.stopAgent') : startLabel ?? t('voiceTutorAgent.talkToAgent')}
       >
         {(state === 'listening' || state === 'speaking' || state === 'connecting') && (
           <span className="absolute inset-0 animate-ping rounded-full bg-accent-400/30" />
@@ -394,7 +501,9 @@ export default function VoiceTutorAgent({
         </span>
       </button>
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">{STATE_LABELS[state]}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">
+        {state === 'idle' && startLabel ? startLabel : getStateLabels(t)[state]}
+      </p>
       {errorMessage && <p className="text-xs text-red-400">{errorMessage}</p>}
 
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

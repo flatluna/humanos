@@ -11,6 +11,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useI18n } from '../i18n/useI18n';
 import {
   BookOpen,
+  Calendar,
   CheckCircle2,
   ChefHat,
   FlaskConical,
@@ -89,6 +90,32 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+/** Formats Capability.CreatedDate (ISO-8601 UTC string) as a short local
+ * date + time, e.g. "12 mar 2026, 14:05". Returns null when missing/invalid
+ * so callers can skip rendering the badge entirely. */
+function formatCreatedDate(createdDate?: string): string | null {
+  if (!createdDate) return null;
+  const parsed = new Date(createdDate);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const datePart = parsed.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = parsed.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart}, ${timePart}`;
+}
+
+function CreatedDateBadge({ createdDate }: { createdDate?: string }) {
+  const formatted = formatCreatedDate(createdDate);
+  if (!formatted) return null;
+  return (
+    <div
+      className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400"
+      title="Fecha y hora de creación"
+    >
+      <Calendar className="h-3.5 w-3.5" />
+      {formatted}
+    </div>
+  );
+}
+
 /** "Provider" byline shown above the title, mirroring Coursera's
  * university/company logo row. App/company name isn't finalized yet, so
  * this reuses the same "HO" gradient badge + "Human OS" wordmark as the
@@ -127,6 +154,12 @@ function CoverImage({ capability }: { capability: BackendCapabilitySummary }) {
           <BookOpen className="h-12 w-12 text-white/80" strokeWidth={1.5} />
         </div>
       )}
+      <div
+        className="absolute left-2 top-2 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#fff] backdrop-blur-sm"
+        title={capability.contentLanguageCode === 'en' ? 'Contenido en inglés' : 'Contenido en español'}
+      >
+        {capability.contentLanguageCode === 'en' ? 'EN' : 'ES'}
+      </div>
       {typeof capability.nodeCount === 'number' && capability.nodeCount > 0 && (
         <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-[#fff] backdrop-blur-sm">
           <Layers className="h-3.5 w-3.5" />
@@ -387,6 +420,7 @@ export function CapabilitiesHomePage() {
                 </h3>
               </button>
               <StarRating rating={placeholderRatingFor(capability.capabilityId)} />
+              <CreatedDateBadge createdDate={capability.createdDate} />
               <p className="line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
                 {capability.learningSummary ?? 'Descubre los conceptos clave de este curso, paso a paso.'}
               </p>

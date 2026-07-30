@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { GraduationCap, Layers, BookOpen, Star, ArrowRight } from 'lucide-react';
+import { GraduationCap, Layers, BookOpen, Star, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 
 interface ProgressOverviewProps {
@@ -69,6 +69,16 @@ export function ProgressOverview({
         ]
       : []),
     { key: 'nodes', icon: Layers, value: `${overallProgress}%`, label: t('progressOverview.overallProgress') },
+    ...(totalNodes > 0
+      ? [
+          {
+            key: 'nodesMastered',
+            icon: CheckCircle2,
+            value: `${masteredNodes}/${totalNodes}`,
+            label: t('progressOverview.nodesMastered'),
+          },
+        ]
+      : []),
     ...(averageScore !== undefined
       ? [{ key: 'score', icon: Star, value: `${averageScore}/100`, label: t('progressOverview.averageScore') }]
       : []),
@@ -83,7 +93,7 @@ export function ProgressOverview({
         {t('progressOverview.sectionTitle')}
       </h2>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (

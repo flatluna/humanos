@@ -162,6 +162,51 @@ public sealed class PersonProfileService
         return profile;
     }
 
+    /// <summary>
+    /// Updates ONLY PersonProfile.PreferredLanguage, leaving every other
+    /// profile field untouched — used by the frontend's language
+    /// switcher (see LanguageSwitcher.tsx) so toggling EN/ES persists to
+    /// the account without risking clobbering FirstName/LastName/etc.
+    /// the way a full <see cref="UpdateAsync"/> call would if the caller
+    /// only had the language value in hand.
+    /// </summary>
+    public async Task<PersonProfile?> UpdatePreferredLanguageAsync(
+        Guid personId,
+        string preferredLanguage,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await _dbContext.PersonProfiles
+            .SingleOrDefaultAsync(
+                item => item.PersonId == personId,
+                cancellationToken);
+
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var languageExists = await _dbContext.Languages
+            .AnyAsync(
+                language =>
+                    language.LanguageCode == preferredLanguage &&
+                    language.IsActive,
+                cancellationToken);
+
+        if (!languageExists)
+        {
+            throw new ArgumentException(
+                "The preferred language is not supported.",
+                nameof(preferredLanguage));
+        }
+
+        profile.PreferredLanguage = preferredLanguage.Trim();
+        profile.UpdatedDate = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return profile;
+    }
+
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value)

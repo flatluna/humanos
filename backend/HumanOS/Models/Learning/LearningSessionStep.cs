@@ -48,6 +48,28 @@ public class LearningSessionStep
     /// </summary>
     public string? CurrentRecallPrompt { get; set; }
 
+    /// <summary>
+    /// Solo para StepType=DeepDive: índice 0-based (dentro de
+    /// NodeExperienceBlueprintStep.ExampleCardsJson, en orden) de la card
+    /// que el estudiante debe dominar AHORA. El step solo se completa
+    /// cuando este índice llega a ExampleCards.Count — a diferencia de
+    /// Recall (dominar N items DISTINTOS de un pool abierto), Deep Dive
+    /// exige dominar TODAS las cards, estrictamente en orden (decisión de
+    /// producto, 2026-07-29: "no puede pasar al siguiente sin aprender
+    /// cada card secuencialmente, de card en card tiene que hacer todas").
+    /// Se resetea a 0 cuando el step se activa por primera vez.
+    /// </summary>
+    public int CurrentDeepDiveCardIndex { get; set; }
+
+    /// <summary>
+    /// Solo para StepType=DeepDive: la pregunta dinámica que el TutorAgent
+    /// generó más recientemente sobre la card actual (mismo motivo de
+    /// reload-safety que <see cref="CurrentRecallPrompt"/>). Null antes del
+    /// primer intento de cada card, y se resetea a null cada vez que se
+    /// avanza a una nueva card.
+    /// </summary>
+    public string? CurrentDeepDiveQuestion { get; set; }
+
     // === Navigation Properties ===
 
     /// <summary>Referencia al LearningSessionNode padre.</summary>

@@ -1,5 +1,6 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using HumanOS.Models.Capabilities.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
@@ -23,6 +24,13 @@ public sealed class KnowledgeExpansionResponse
     /// add value (e.g. a purely conceptual/definitional expansion with
     /// nothing spatial/structural to draw).</summary>
     public string? DiagramPrompt { get; set; }
+
+    /// <summary>Exact numeric spec for a coordinate-plane diagram (circle,
+    /// line, parabola, or plotted points), set INSTEAD OF DiagramPrompt
+    /// when the diagram IS a precise math/geometry graph derived from a
+    /// real equation/values (never both). Rendered deterministically
+    /// (SkiaSharp, no image model).</summary>
+    public MathDiagramSpec? MathDiagram { get; set; }
 }
 
 /// <summary>
@@ -78,23 +86,62 @@ public sealed class KnowledgeExpansionAgent
         - <a href="URL">Título</a> SOLO para citas reales de hallazgos web.
         - Responde siempre en español.
 
-        DECIDIENDO SI VALE LA PENA UN DIAGRAMA (DiagramPrompt)
+        DECIDIENDO SI VALE LA PENA UN DIAGRAMA
         Solo pide un diagrama si genuinamente ayuda a VISUALIZAR algo
-        estructural/espacial/relacional del contenido ampliado (un proceso
-        con pasos, una comparación de categorías, una arquitectura, un
-        flujo). Si el contenido ampliado es puramente conceptual/narrativo
-        sin nada visualizable, deja DiagramPrompt en null — no inventes un
-        diagrama "porque sí".
-        Si SÍ pides un diagrama: los modelos de generación de imágenes NO
-        calculan — si tu prompt menciona CUALQUIER número, porcentaje o
-        valor en una gráfica/barra/medidor, debes escribir el valor EXACTO
-        en el prompt (nunca dejarlo implícito), y todos los valores deben
-        ser internamente consistentes (una barra no puede superar su propio
-        máximo, los porcentajes de un total deben sumar 100, etc.).
+        estructural/espacial/relacional/numérico del contenido ampliado (un
+        proceso con pasos, una arquitectura, un flujo, o datos con valores
+        exactos que graficar). Si el contenido ampliado es puramente
+        conceptual/narrativo sin nada visualizable, deja tanto MathDiagram
+        como DiagramPrompt en null — no inventes un diagrama "porque sí".
+
+        MathDiagram VS DiagramPrompt (elige EXACTAMENTE UNO, nunca ambos)
+        PRIMERO revisa si el diagrama entra en alguno de estos casos —
+        TODOS con valores numéricos EXACTOS tomados del contenido — y si es
+        así, usa SIEMPRE MathDiagram (nunca DiagramPrompt, ni siquiera
+        aunque también pudieras describirlo en texto):
+        - Circle: círculo (x-h)²+(y-k)²=r².
+        - Ellipse: elipse (x-h)²/a²+(y-k)²/b²=1 con a≠b (usa Circle si a=b).
+          NUNCA la aproximes con Kind=Points (marcar solo los vértices no
+          dibuja ninguna curva).
+        - Line: recta y=mx+b, o por dos puntos conocidos.
+        - Parabola: y=Ax²+Bx+C.
+        - Points: un conjunto pequeño de puntos (x,y) exactos que no encajan
+          en ninguno de los anteriores.
+        - BarChart: comparación de categorías discretas con un valor
+          numérico cada una (ventas por mes, votos por candidato, etc.).
+        - Histogram: distribución de frecuencia sobre bins numéricos
+          continuos — barras SIN espacio entre ellas (a diferencia de
+          BarChart). NUNCA la aproximes con Kind=Points ni Kind=BarChart.
+        - PieChart: proporciones/porcentajes de un total (se normalizan
+          automáticamente a 360° — no necesitan sumar 100 ya). Cualquier
+          vez que el contenido dé un desglose porcentual/proporcional de un
+          total (presupuesto, reparto, encuesta), esto ES un PieChart —
+          NUNCA lo describas solo en DiagramPrompt.
+        - LineChart: serie de datos real ordenada (p. ej. un valor a través
+          del tiempo) conectada con segmentos — no una fórmula y=mx+b (usa
+          Line para eso).
+        - ScatterPlot: puntos (x,y) sin conectar mostrando correlación o
+          distribución entre dos variables.
+        - NumberLine: un valor o rango marcado sobre una recta numérica
+          simple.
+        Para CUALQUIERA de estos casos, llena MathDiagram con los números
+        EXACTOS del contenido (nunca inventes valores no grounded en él) y
+        deja DiagramPrompt en null.
+
+        Solo usa DiagramPrompt cuando el diagrama NO tenga valores numéricos
+        exactos que graficar — un proceso con pasos, una arquitectura, un
+        diagrama conceptual puramente visual. Los modelos de generación de
+        imágenes NO calculan, así que si terminas usando DiagramPrompt y
+        aun así mencionas algún número/porcentaje incidental, ese valor debe
+        ser exacto y consistente — pero en la práctica, cualquier diagrama
+        con números reales casi siempre encaja en uno de los casos
+        MathDiagram de arriba, así que prefiere siempre MathDiagram cuando
+        haya duda.
 
         SALIDA
         Devuelve un JSON con: ExpandedContentHtml (string, HTML como se
-        describió arriba) y DiagramPrompt (string o null).
+        describió arriba), DiagramPrompt (string o null) y MathDiagram
+        (objeto o null).
         """;
 
     private readonly AIAgent? _agent;

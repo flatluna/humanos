@@ -31,12 +31,33 @@ public sealed class InstructorRuntimeOrchestrator
         ExperienceStepType.Assessment
     ];
 
+    /// <summary>Used ONLY when the node's blueprint includes the optional
+    /// Examples step (formal/school-track capabilities) — see
+    /// NodeExperienceBlueprintPersistenceService's identically-named array
+    /// for the full rationale. Examples behaves as a plain "read + continue"
+    /// step, exactly like Teaching, with no special gating.</summary>
+    private static readonly ExperienceStepType[] FormalEducationStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.DeepDive,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Production,
+        ExperienceStepType.Assessment
+    ];
+
     /// <summary>One illustration resolved from Data Lake metadata (never the image bytes themselves).</summary>
     public sealed class IllustrationRef
     {
         public Guid CapabilityGraphNodeIllustrationId { get; set; }
         public string StoragePath { get; set; } = string.Empty;
         public string? Caption { get; set; }
+
+        /// <summary>Raw generation-model tag ("deterministic-skiasharp-v1" or a
+        /// generative image model name like "gpt-image-2") — surfaced to the
+        /// UI so reviewers/students can see exactly which pipeline produced
+        /// each image.</summary>
+        public string ImageModel { get; set; } = string.Empty;
     }
 
     /// <summary>Result of starting a new LearningSession at its first (Hypothesis) step.</summary>
@@ -57,6 +78,17 @@ public sealed class InstructorRuntimeOrchestrator
         public ExperienceStepType StepType { get; set; }
         public string StepContent { get; set; } = string.Empty;
         public List<IllustrationRef> Illustrations { get; set; } = [];
+
+        /// <summary>Only populated when StepType == DeepDive.</summary>
+        public List<ExampleCard>? ExampleCards { get; set; }
+
+        /// <summary>Only populated when StepType == DeepDive: 0-based index
+        /// of the card the student is currently required to master.</summary>
+        public int? CurrentDeepDiveCardIndex { get; set; }
+
+        /// <summary>Only populated when StepType == DeepDive: total number
+        /// of cards in this node's Deep Dive pool (ExampleCards.Count).</summary>
+        public int? DeepDiveTotalCards { get; set; }
     }
 
     /// <summary>One past student response, as recorded in LearningEvidence — read-only.</summary>
@@ -85,6 +117,9 @@ public sealed class InstructorRuntimeOrchestrator
         public string StepContent { get; set; } = string.Empty;
         public List<IllustrationRef> Illustrations { get; set; } = [];
         public List<EvidenceEntryRef> Evidence { get; set; } = [];
+
+        /// <summary>Only populated when StepType == Examples.</summary>
+        public List<ExampleCard>? ExampleCards { get; set; }
     }
 
     /// <summary>One past completed attempt at this node — read-only summary row, see <see cref="NodeSummaryResult.PastAttempts"/>.</summary>
@@ -286,7 +321,7 @@ public sealed class InstructorRuntimeOrchestrator
         HumanOsDbContext dbContext,
         Guid learningSessionNodeId,
         CancellationToken cancellationToken = default,
-        bool bypassRecallGuard = false)
+        bool bypassGatedStepGuard = false)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -312,29 +347,42 @@ public sealed class InstructorRuntimeOrchestrator
                 "Already on the Assessment step — there is no next step. Call CompleteNodeAsync instead.");
         }
 
-        // Recall NEVER advances through the GENERIC public step-advance
-        // endpoint (RuntimeAdvanceStepFunction) — it can only move to
-        // Production via SubmitRecallAttemptAsync's own RecallLoopGate
-        // (which requires the student to actually demonstrate mastery on
-        // graded recall items first). Without this guard, calling this
-        // generic endpoint while Recall is Active would silently complete it
-        // with zero LearningEvidence rows, bypassing the recall check
-        // entirely — this is exactly what happened to stale test data found
-        // in the DB for one node (Recall step completed in 34s with 0
-        // evidence rows, immediately followed by Production).
-        // `bypassRecallGuard` is set ONLY by TutorService.SubmitRecallAttemptAsync,
-        // which calls this method itself once RecallLoopGate.Evaluate already
-        // confirmed StepComplete — without the bypass, that legitimate internal
-        // call would ALSO trip this guard (the step is still StepType=Recall
-        // at this exact point — it only becomes Completed inside this method).
-        if (activeStep.StepType == ExperienceStepType.Recall && !bypassRecallGuard)
+        // Recall and Deep Dive NEVER advance through the GENERIC public
+        // step-advance endpoint (RuntimeAdvanceStepFunction) — they can
+        // only move forward via SubmitRecallAttemptAsync/
+        // SubmitDeepDiveAttemptAsync's own deterministic gates
+        // (RecallLoopGate/DeepDiveLoopGate), which require the student to
+        // actually demonstrate mastery first. Without this guard, calling
+        // this generic endpoint while either is Active would silently
+        // complete it with zero/incomplete LearningEvidence, bypassing the
+        // mastery check entirely — this is exactly what happened to stale
+        // test data found in the DB for one node (Recall step completed in
+        // 34s with 0 evidence rows, immediately followed by Production).
+        // `bypassGatedStepGuard` is set ONLY by TutorService's
+        // SubmitRecallAttemptAsync/SubmitDeepDiveAttemptAsync, which call
+        // this method themselves once their respective gate already
+        // confirmed StepComplete — without the bypass, that legitimate
+        // internal call would ALSO trip this guard (the step is still
+        // StepType=Recall/DeepDive at this exact point — it only becomes
+        // Completed inside this method).
+        if ((activeStep.StepType == ExperienceStepType.Recall || activeStep.StepType == ExperienceStepType.DeepDive) && !bypassGatedStepGuard)
         {
             throw new InvalidOperationException(
-                "Cannot advance away from Recall via the generic step-advance path — Recall only advances through SubmitRecallAttemptAsync once the recall mastery gate is satisfied.");
+                $"Cannot advance away from {activeStep.StepType} via the generic step-advance path — {activeStep.StepType} only advances through its own dedicated attempt endpoint once its mastery gate is satisfied.");
         }
 
-        var currentIndex = Array.IndexOf(CanonicalStepOrder, activeStep.StepType);
-        var nextStepType = CanonicalStepOrder[currentIndex + 1];
+        // Formal/school-track blueprints (Capability.IncludeExamplesStep)
+        // include an OPTIONAL Examples step between Teaching and Recall —
+        // detect its presence directly from THIS blueprint (not from the
+        // Capability flag, which could theoretically change after the
+        // blueprint was generated) and advance through the matching order.
+        var hasExamplesStep = await dbContext.NodeExperienceBlueprintSteps
+            .AsNoTracking()
+            .AnyAsync(s => s.NodeExperienceBlueprintId == sessionNode.NodeExperienceBlueprintId && s.StepType == ExperienceStepType.DeepDive, cancellationToken);
+        var stepOrder = hasExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+
+        var currentIndex = Array.IndexOf(stepOrder, activeStep.StepType);
+        var nextStepType = stepOrder[currentIndex + 1];
 
         var now = DateTime.UtcNow;
 
@@ -538,6 +586,7 @@ public sealed class InstructorRuntimeOrchestrator
             CompletedDate = step.CompletedDate,
             StepContent = current.StepContent,
             Illustrations = current.Illustrations,
+            ExampleCards = current.ExampleCards,
             Evidence = step.Evidence
                 .OrderBy(e => e.CreatedDate)
                 .Select(e => new EvidenceEntryRef
@@ -590,8 +639,22 @@ public sealed class InstructorRuntimeOrchestrator
 
         var latest = completedNodes[0];
 
+        // Formal/school-track blueprints may include the optional Examples
+        // step — try every possible step type in this node's OWN blueprint
+        // order (the try/catch below already tolerates any step that was
+        // never started, so trying the extended 6-item order for every
+        // node is safe even for the common 5-step case).
+        var hasExamplesStep = await dbContext.NodeExperienceBlueprintSteps
+            .AsNoTracking()
+            .AnyAsync(s => s.NodeExperienceBlueprintId == dbContext.LearningSessionNodes
+                .Where(n => n.LearningSessionNodeId == latest.LearningSessionNodeId)
+                .Select(n => n.NodeExperienceBlueprintId)
+                .FirstOrDefault()
+                && s.StepType == ExperienceStepType.DeepDive, cancellationToken);
+        var stepOrder = hasExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+
         var steps = new List<StepReviewResult>();
-        foreach (var stepType in CanonicalStepOrder)
+        foreach (var stepType in stepOrder)
         {
             try
             {
@@ -667,7 +730,8 @@ public sealed class InstructorRuntimeOrchestrator
                     {
                         CapabilityGraphNodeIllustrationId = i.CapabilityGraphNodeIllustrationId,
                         StoragePath = i.StoragePath,
-                        Caption = i.Caption
+                        Caption = i.Caption,
+                        ImageModel = i.ImageModel
                     })
                     .ToListAsync(cancellationToken);
             }
@@ -678,10 +742,17 @@ public sealed class InstructorRuntimeOrchestrator
         // blueprint text — otherwise a page reload/resume mid-Recall would
         // show the ORIGINAL generic Recall prompt instead of the actual
         // question the student was just asked, desyncing the UI from the
-        // conversation history the TutorAgent sees.
+        // conversation history the TutorAgent sees. Same rationale for
+        // Deep Dive's CurrentDeepDiveQuestion.
         var stepContent = step.StepType == ExperienceStepType.Recall && !string.IsNullOrWhiteSpace(step.CurrentRecallPrompt)
             ? step.CurrentRecallPrompt
-            : blueprintStep.Content;
+            : step.StepType == ExperienceStepType.DeepDive && !string.IsNullOrWhiteSpace(step.CurrentDeepDiveQuestion)
+                ? step.CurrentDeepDiveQuestion
+                : blueprintStep.Content;
+
+        var exampleCards = step.StepType == ExperienceStepType.DeepDive && !string.IsNullOrWhiteSpace(blueprintStep.ExampleCardsJson)
+            ? System.Text.Json.JsonSerializer.Deserialize<List<ExampleCard>>(blueprintStep.ExampleCardsJson)
+            : null;
 
         return new CurrentStepResult
         {
@@ -690,7 +761,10 @@ public sealed class InstructorRuntimeOrchestrator
             LearningSessionStepId = step.LearningSessionStepId,
             StepType = step.StepType,
             StepContent = stepContent,
-            Illustrations = illustrations
+            Illustrations = illustrations,
+            ExampleCards = exampleCards,
+            CurrentDeepDiveCardIndex = step.StepType == ExperienceStepType.DeepDive ? step.CurrentDeepDiveCardIndex : null,
+            DeepDiveTotalCards = step.StepType == ExperienceStepType.DeepDive ? exampleCards?.Count : null
         };
     }
 }

@@ -35,6 +35,14 @@ public sealed class CapabilityConfiguration
             .HasDefaultValue(true)
             .IsRequired();
 
+        builder.Property(x => x.ContentLanguageCode)
+            .HasMaxLength(10)
+            .HasDefaultValue("es")
+            .IsRequired();
+
+        builder.Property(x => x.PedagogicalAudience)
+            .HasMaxLength(30);
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { UploadCloud, FileText, X } from 'lucide-react';
 
 interface FileDropzoneProps {
@@ -13,9 +14,12 @@ export default function FileDropzone({
   file,
   onFileSelected,
   accept = 'application/pdf',
-  title = 'Arrastra tu PDF aquí',
-  subtitle = 'o haz clic para seleccionar un archivo',
+  title,
+  subtitle,
 }: FileDropzoneProps) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t('fileDropzone.defaultTitle');
+  const resolvedSubtitle = subtitle ?? t('fileDropzone.defaultSubtitle');
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -69,8 +73,8 @@ export default function FileDropzone({
         <UploadCloud className="h-7 w-7 text-slate-400" />
       </div>
       <div>
-        <p className="font-medium text-white">{title}</p>
-        <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
+        <p className="font-medium text-white">{resolvedTitle}</p>
+        <p className="mt-1 text-sm text-slate-400">{resolvedSubtitle}</p>
       </div>
       <input
         ref={inputRef}

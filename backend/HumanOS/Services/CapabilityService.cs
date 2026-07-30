@@ -17,6 +17,7 @@ public sealed class CapabilityService
         string languageCode,
         string? domainCode = null,
         string? subjectCode = null,
+        string? contentLanguageCode = null,
         CancellationToken cancellationToken = default)
     {
         var normalizedLanguageCode = languageCode.Trim();
@@ -45,6 +46,18 @@ public sealed class CapabilityService
             query = query.Where(c => c.Subject != null && c.Subject.Code == normalizedSubjectCode);
         }
 
+        // Filters by the language the capability's CONTENT (graph nodes,
+        // blueprint steps) was authored in — distinct from languageCode
+        // above, which only picks a Translations row for the Name/
+        // Description labels. Same topic in two languages (e.g.
+        // "Matemáticas"/"Math") are two separate Capability rows; this is
+        // how the catalog shows only one language's courses at a time.
+        if (!string.IsNullOrWhiteSpace(contentLanguageCode))
+        {
+            var normalizedContentLanguageCode = contentLanguageCode.Trim().ToLowerInvariant();
+            query = query.Where(c => c.ContentLanguageCode == normalizedContentLanguageCode);
+        }
+
         var capabilities = await query
             .OrderBy(c => c.CapabilityDomain.Code)
             .ThenBy(c => c.Code)
@@ -65,6 +78,9 @@ public sealed class CapabilityService
                 ?? c.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Description
                 ?? c.Description,
             IsActive = c.IsActive,
+            ContentLanguageCode = c.ContentLanguageCode,
+            PedagogicalAudience = c.PedagogicalAudience,
+            IncludeExamplesStep = c.IncludeExamplesStep,
             // V1 capabilities (legacy course-authoring flow) have real
             // CapabilityLevel rows; V2 capabilities (the PDF/idea graph
             // pipeline — everything created today) have NONE, so this used
@@ -387,6 +403,10 @@ public sealed class CapabilityService
     ///      alongside the Program tables (2026-07-23) and originally missed
     ///      here, which caused DELETEs of any capability attached to a
     ///      Program to fail with an FK violation (surfaced as a 500).
+    ///  11b. CapabilityEnrollment rows (CapabilityId Restrict) — the
+    ///      explicit "student is taking this course" record for standalone
+    ///      capabilities, added 2026-07-24 alongside the enrollment feature
+    ///      and originally missed here too, same symptom (500 on delete).
     ///  12. The Capability row itself — cascades at the DB level to
     ///      CapabilityTranslations, CapabilityLevels (-> Modules -> Metrics/
     ///      Verifications/Chapters), CapabilityGraph (-> Nodes -> Edges/
@@ -396,6 +416,34 @@ public sealed class CapabilityService
     /// still opened but nothing is deleted/committed in that case either
     /// way — cheap no-op).
     /// </summary>
+    /// <summary>
+    /// Updates the tone/persona directive for ALL FUTURE generated content
+    /// on this capability (new nodes added via AddCapabilityGraphNode,
+    /// re-designed blueprints, etc.) — see Capability.PedagogicalAudience.
+    /// Does NOT retroactively rewrite already-persisted blueprint step
+    /// text for existing nodes. Pass null/empty to reset to "Standard".
+    /// Returns false if no matching capability was found.
+    /// </summary>
+    public async Task<bool> UpdatePedagogicalAudienceAsync(
+        Guid capabilityId, string? pedagogicalAudience, CancellationToken cancellationToken = default)
+    {
+        var capability = await _dbContext.Capabilities
+            .FirstOrDefaultAsync(c => c.CapabilityId == capabilityId, cancellationToken);
+
+        if (capability is null)
+        {
+            return false;
+        }
+
+        capability.PedagogicalAudience = string.IsNullOrWhiteSpace(pedagogicalAudience)
+            ? null
+            : pedagogicalAudience.Trim();
+        capability.UpdatedDate = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> DeleteAsync(Guid capabilityId, CancellationToken cancellationToken = default)
     {
         var capabilityExists = await _dbContext.Capabilities
@@ -481,6 +529,16 @@ public sealed class CapabilityService
                 // later with the Program tables — see doc comment above).
                 await _dbContext.ProgramCapabilities
                     .Where(p => p.CapabilityId == capabilityId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                // 11b. CapabilityEnrollment (Restrict FK, added 2026-07-24
+                // alongside the standalone-capability enrollment feature and
+                // originally missed here — this is exactly "students taking
+                // the course", so deleting the Capability must also delete
+                // their enrollment records or the DELETE fails with a FK
+                // violation surfaced as a 500).
+                await _dbContext.CapabilityEnrollments
+                    .Where(e => e.CapabilityId == capabilityId)
                     .ExecuteDeleteAsync(cancellationToken);
 
                 // 12. The Capability itself — cascades to Translations, Levels

@@ -48,17 +48,20 @@ public sealed class AdaptiveAssessmentEngine
 
     private readonly AdaptiveAssessmentAgent _agent;
     private readonly HumanOS.Agents.Studio.GraphIllustrationImageService _imageService;
+    private readonly MathDiagramRenderService _mathDiagramRenderService;
     private readonly HumanOS.Storage.CapabilityGraphIllustrationStorageService _illustrationStorage;
     private readonly Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> _logger;
 
     public AdaptiveAssessmentEngine(
         AdaptiveAssessmentAgent agent,
         HumanOS.Agents.Studio.GraphIllustrationImageService imageService,
+        MathDiagramRenderService mathDiagramRenderService,
         HumanOS.Storage.CapabilityGraphIllustrationStorageService illustrationStorage,
         Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> logger)
     {
         _agent = agent;
         _imageService = imageService;
+        _mathDiagramRenderService = mathDiagramRenderService;
         _illustrationStorage = illustrationStorage;
         _logger = logger;
     }
@@ -471,7 +474,7 @@ public sealed class AdaptiveAssessmentEngine
         var prompt = BuildQuestionGenerationPrompt(context, questionIndex, alreadyAskedThisRound, errorsObservedSoFar, requiredType, allowMultipleChoiceSubstitute);
         var response = await _agent.GenerateQuestionAsync(prompt, cancellationToken);
 
-        var illustrationId = await TryGenerateQuestionIllustrationAsync(dbContext, context, response.DiagramPrompt, cancellationToken);
+        var illustrationId = await TryGenerateQuestionIllustrationAsync(dbContext, context, response.DiagramPrompt, response.MathDiagram, cancellationToken);
 
         if (allowMultipleChoiceSubstitute && ParseQuestionType(response.QuestionType) == AssessmentQuestionType.MultipleChoice)
         {
@@ -495,15 +498,15 @@ public sealed class AdaptiveAssessmentEngine
     /// time); skips silently if the node has none yet.
     /// </summary>
     private async Task<Guid?> TryGenerateQuestionIllustrationAsync(
-        HumanOsDbContext dbContext, NodeContext context, string? diagramPrompt, CancellationToken cancellationToken)
+        HumanOsDbContext dbContext, NodeContext context, string? diagramPrompt, MathDiagramSpec? mathDiagram, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(diagramPrompt))
+        if (string.IsNullOrWhiteSpace(diagramPrompt) && mathDiagram is null)
         {
-            _logger.LogInformation("AdaptiveAssessment illustration: skipped - agent returned no DiagramPrompt for node {NodeId}.", context.NodeId);
+            _logger.LogInformation("AdaptiveAssessment illustration: skipped - agent returned no DiagramPrompt/MathDiagram for node {NodeId}.", context.NodeId);
             return null;
         }
 
-        if (!_imageService.IsConfigured || !_illustrationStorage.IsConfigured)
+        if (!_illustrationStorage.IsConfigured || (mathDiagram is null && !_imageService.IsConfigured))
         {
             _logger.LogWarning("AdaptiveAssessment illustration: skipped - imageService.IsConfigured={ImageConfigured}, illustrationStorage.IsConfigured={StorageConfigured}.", _imageService.IsConfigured, _illustrationStorage.IsConfigured);
             return null;
@@ -530,8 +533,21 @@ public sealed class AdaptiveAssessmentEngine
                 .CountAsync(i => i.CapabilityGraphNodeId == context.NodeId, cancellationToken);
             var imageIndex = AssessmentIllustrationBaseIndex + existingCount;
 
-            var generated = await _imageService.GenerateAsync(diagramPrompt, cancellationToken);
-            using var imageStream = generated.ImageBytes.ToStream();
+            // Two mutually-exclusive rendering paths, decided by
+            // AdaptiveAssessmentAgent (LLM proposes, code just dispatches):
+            // precise coordinate-plane graphs go through the deterministic
+            // SkiaSharp renderer, everything else through the generative
+            // image model as before. See MathDiagramRenderService's doc comment.
+            object generated = mathDiagram is not null
+                ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
+                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+            var (imageBytes, imageModel, width, height) = generated switch
+            {
+                MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),
+                HumanOS.Agents.Studio.GraphIllustrationImageService.GeneratedIllustration g => (g.ImageBytes, g.ImageModel, g.Width, g.Height),
+                _ => throw new InvalidOperationException("Unreachable")
+            };
+            using var imageStream = imageBytes.ToStream();
 
             var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                 tenantId, capabilityId, context.NodeId, imageIndex, imageStream, cancellationToken: cancellationToken);
@@ -541,11 +557,11 @@ public sealed class AdaptiveAssessmentEngine
                 CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
                 CapabilityGraphNodeId = context.NodeId,
                 StoragePath = storagePath,
-                Prompt = diagramPrompt,
+                Prompt = mathDiagram is not null ? (mathDiagram.EquationLabel ?? "MathDiagram") : diagramPrompt!,
                 Purpose = IllustrationPurpose.Assessment,
-                ImageModel = generated.ImageModel,
-                Width = generated.Width,
-                Height = generated.Height,
+                ImageModel = imageModel,
+                Width = width,
+                Height = height,
                 CreatedDate = DateTime.UtcNow
             };
 

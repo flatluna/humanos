@@ -40,6 +40,12 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
         /// expanded into a full source document by IdeaToDocumentAgent.</summary>
         public string Description { get; set; } = string.Empty;
 
+        /// <summary>Optional: the user's own description of what this
+        /// Capability teaches. Saved directly to the Capability row in the
+        /// database. If not provided, uses Description as both the idea
+        /// expansion input and the stored description.</summary>
+        public string? CapabilityDescription { get; set; }
+
         /// <summary>Optional: the student-facing topical Subject (Finanzas,
         /// Cocina, Matemáticas...) this capability belongs to. See
         /// GET /api/subjects. Distinct from CapabilityDomainId.</summary>
@@ -64,6 +70,15 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
 
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public string? CapabilityRequirements { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public string? LanguageCode { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public string? PedagogicalAudience { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public bool IncludeExamplesStep { get; set; }
     }
 
     [Function("StartCapabilityGraphFromDescription")]
@@ -105,7 +120,9 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
         {
             var status = _orchestrator.StartFromDescription(
                 body.Description, body.CapabilityName, body.CapabilityDomainId, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
-                body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements);
+                body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
+                string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
+                body.PedagogicalAudience, body.IncludeExamplesStep);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

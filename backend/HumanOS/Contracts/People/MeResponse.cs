@@ -12,6 +12,13 @@ public sealed class MeResponse
     public string? TenantName { get; set; }
 
     public string? Email { get; set; }
+
+    /// <summary>The signed-in Person's PersonProfile.PreferredLanguage
+    /// ("en"/"es") — lets the frontend set its UI language from the
+    /// account itself right after login, instead of only relying on
+    /// browser/localStorage detection. Null if the profile doesn't exist
+    /// yet (shouldn't normally happen once onboarded).</summary>
+    public string? PreferredLanguage { get; set; }
 }
 
 /// <summary>Response for POST /api/onboarding or /api/onboarding/individual —

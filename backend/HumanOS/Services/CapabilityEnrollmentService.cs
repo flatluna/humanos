@@ -129,7 +129,7 @@ public sealed class CapabilityEnrollmentService
         }
 
         var graph = await _graphProgressionEngine.GetFullGraphAsync(
-            _dbContext, enrollment.PersonId, enrollment.CapabilityId, cancellationToken);
+            _dbContext, enrollment.PersonId, enrollment.CapabilityId, cancellationToken: cancellationToken);
 
         var totalNodes = graph?.Nodes.Count ?? 0;
         var masteredNodes = graph?.Nodes.Count(n => n.State == "Mastered") ?? 0;

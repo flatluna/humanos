@@ -284,6 +284,21 @@ export default function CapabilityGraphMapPage() {
                               fill={node.state === 'Mastered' ? 'currentColor' : 'none'}
                             />
                           </div>
+                          {/* Deep Dive mastery badge — a SMALL, visually
+                              distinct star (sky blue, corner-pinned) from
+                              the large amber Mastered-state star above.
+                              Can light up well before the node's overall
+                              state becomes 'Mastered' (Deep Dive is only
+                              one of the 5 steps) — see
+                              GraphProgressionEngine.DeepDiveMastered. */}
+                          {node.deepDiveMastered && node.state !== 'Mastered' && (
+                            <span
+                              title={t.deepDiveMasteredBadgeHint}
+                              className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-sky-500 shadow-md dark:border-slate-950"
+                            >
+                              <Star className="h-2.5 w-2.5 text-[#fff]" fill="currentColor" />
+                            </span>
+                          )}
                         </div>
                         <p className={`line-clamp-2 text-xs leading-tight ${style.label}`}>{node.name}</p>
                         {typeof node.finalScore === 'number' && (

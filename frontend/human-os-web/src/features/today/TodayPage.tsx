@@ -8,6 +8,7 @@ import { getEnrolledPrograms, type EnrolledProgram } from '@/features/my-program
 import { getEnrolledCapabilities, type EnrolledCapability } from '@/features/capabilities/api/enrolledCapabilitiesApi';
 import { getActiveSession } from '@/features/capabilities/api/runtimeSessionApi';
 import { Card } from '@/components/ui/Card';
+import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import { ProgressOverview } from './components/ProgressOverview';
 import { GrowthAlignment } from './components/GrowthAlignment';
 import { CapabilitiesSection } from './components/CapabilitiesSection';
@@ -60,42 +61,37 @@ export function TodayPage() {
   const [savingCheckIn, setSavingCheckIn] = useState(false);
   const [continueItems, setContinueItems] = useState<ContinueLearningItem[]>([]);
   const [continueLoading, setContinueLoading] = useState(true);
+  // Tracks the initial batch of page-wide fetches (programs, capabilities,
+  // goals, motivations, human state) so we can show a clear "in progress"
+  // modal instead of leaving the user staring at an empty/stale page while
+  // several requests are still in flight.
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
     if (!personId) return;
     let cancelled = false;
 
-    getEnrolledPrograms(personId)
-      .then((data) => {
+    Promise.allSettled([
+      getEnrolledPrograms(personId).then((data) => {
         if (!cancelled) setPrograms(data);
-      })
-      .catch(() => {});
-
-    getEnrolledCapabilities(personId)
-      .then((data) => {
+      }),
+      getEnrolledCapabilities(personId).then((data) => {
         if (!cancelled) setStandaloneCapabilities(data);
-      })
-      .catch(() => {});
-
-    getPersonGoals(personId, i18n.language)
-      .then((goals) => {
+      }),
+      getPersonGoals(personId, i18n.language).then((goals) => {
         if (cancelled) return;
         const active = goals.find((g) => g.status === 'Active');
         setPersonalGoal(active ? { id: active.personGoalId, title: toLocalizedText(active.goalName) } : null);
-      })
-      .catch(() => {});
-
-    getPersonMotivations(personId, i18n.language)
-      .then((data) => {
+      }),
+      getPersonMotivations(personId, i18n.language).then((data) => {
         if (!cancelled) setMotivations(data.map((m) => toLocalizedText(m.motivationName)));
-      })
-      .catch(() => {});
-
-    getHumanStateToday(personId)
-      .then((data) => {
+      }),
+      getHumanStateToday(personId).then((data) => {
         if (!cancelled) setHumanState(data);
-      })
-      .catch(() => {});
+      }),
+    ]).finally(() => {
+      if (!cancelled) setInitialLoading(false);
+    });
 
     return () => {
       cancelled = true;
@@ -123,6 +119,7 @@ export function TodayPage() {
           capabilityGraphNodeId: active.CapabilityGraphNodeId,
           capabilityName: toLocalizedText(cap.name),
           programName: toLocalizedText(program.name),
+          programId: program.programId,
         };
         return item;
       }),
@@ -218,6 +215,9 @@ export function TodayPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#05060a]">
+      {initialLoading && (
+        <LoadingBackdrop title={t('todayPage.loadingTitle')} description={t('todayPage.loadingDescription')} />
+      )}
       <main>
         <div className="mx-auto max-w-6xl px-6 pt-8">
           <p className="text-2xl font-semibold text-slate-900 dark:text-white">

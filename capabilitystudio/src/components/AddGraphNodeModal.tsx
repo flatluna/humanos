@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Sparkles, Loader2, ChevronRight, CheckCircle2, Circle } from 'lucide-react';
 import {
   addCapabilityGraphNode,
@@ -40,6 +41,7 @@ export default function AddGraphNodeModal({
   onClose,
   onCreated,
 }: AddGraphNodeModalProps) {
+  const { t } = useTranslation();
   const belowLevel = targetLevelIndex > 0 ? levels[targetLevelIndex - 1] : [];
   const aboveLevel = targetLevelIndex < levels.length - 1 ? levels[targetLevelIndex + 1] : levels[targetLevelIndex] ?? [];
 
@@ -54,14 +56,14 @@ export default function AddGraphNodeModal({
 
   const steps = useMemo(() => {
     const base = [
-      'Analizando el grafo existente y sus prerrequisitos',
-      'Generando definición, ejemplos y aplicaciones con IA',
-      'Verificando dependencias y evitando ciclos',
+      t('addGraphNodeModal.stepAnalyzing'),
+      t('addGraphNodeModal.stepGenerating'),
+      t('addGraphNodeModal.stepVerifying'),
     ];
-    if (generateIllustrations) base.push('Generando ilustraciones (Hipótesis + Enseñanza)');
-    base.push('Guardando el nodo en la base de datos');
+    if (generateIllustrations) base.push(t('addGraphNodeModal.stepIllustrations'));
+    base.push(t('addGraphNodeModal.stepSaving'));
     return base;
-  }, [generateIllustrations]);
+  }, [generateIllustrations, t]);
 
   useEffect(() => {
     if (!submitting) {
@@ -98,7 +100,7 @@ export default function AddGraphNodeModal({
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el nodo.');
+      setError(err instanceof Error ? err.message : t('addGraphNodeModal.createErrorFallback'));
       setSubmitting(false);
     }
   }
@@ -118,11 +120,10 @@ export default function AddGraphNodeModal({
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
               <Sparkles className="h-5 w-5 text-brand-400" />
-              Agregar nodo — Nivel {targetLevelIndex + 1}
+              {t('addGraphNodeModal.title', { level: targetLevelIndex + 1 })}
             </h2>
             <p className="mt-1 text-sm text-slate-400">
-              Describe el nuevo concepto o skill. La IA generará su definición, ejemplos, aplicaciones e
-              ilustraciones, igual que en la generación original del grafo.
+              {t('addGraphNodeModal.description')}
             </p>
           </div>
           <button
@@ -141,28 +142,28 @@ export default function AddGraphNodeModal({
           <>
             <div className="mt-5">
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">
-                ¿Qué debe enseñar este nodo?
+                {t('addGraphNodeModal.whatShouldTeach')}
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={4}
-                placeholder='Ej: "Un nodo sobre fracciones equivalentes, con ejemplos usando pizzas y barras de chocolate"'
+                placeholder={t('addGraphNodeModal.placeholder')}
                 className="input w-full resize-none"
               />
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <NodeChecklist
-                title="Requiere (prerrequisitos)"
-                hint="El estudiante debe dominar estos nodos ANTES de este nuevo nodo."
+                title={t('addGraphNodeModal.requiresTitle')}
+                hint={t('addGraphNodeModal.requiresHint')}
                 nodes={belowLevel.length > 0 ? belowLevel : levels[targetLevelIndex] ?? []}
                 selected={requiresIds}
                 onToggle={(id) => toggle(requiresIds, setRequiresIds, id)}
               />
               <NodeChecklist
-                title="Es requerido por (dependientes)"
-                hint="Estos nodos existentes pasarán a depender del nuevo nodo (opcional)."
+                title={t('addGraphNodeModal.requiredByTitle')}
+                hint={t('addGraphNodeModal.requiredByHint')}
                 nodes={aboveLevel}
                 selected={requiredByIds}
                 onToggle={(id) => toggle(requiredByIds, setRequiredByIds, id)}
@@ -176,7 +177,7 @@ export default function AddGraphNodeModal({
                 onChange={(e) => setGenerateIllustrations(e.target.checked)}
                 className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-brand-500"
               />
-              Generar ilustraciones automáticamente (Hipótesis + Enseñanza)
+              {t('addGraphNodeModal.generateIllustrationsLabel')}
             </label>
 
             {error && (
@@ -191,7 +192,7 @@ export default function AddGraphNodeModal({
                 onClick={handleClose}
                 className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/[0.06]"
               >
-                Cancelar
+                {t('addGraphNodeModal.cancel')}
               </button>
               <button
                 type="button"
@@ -199,7 +200,7 @@ export default function AddGraphNodeModal({
                 disabled={!prompt.trim()}
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Crear nodo <ChevronRight className="h-4 w-4" />
+                {t('addGraphNodeModal.createNode')} <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </>
@@ -210,6 +211,7 @@ export default function AddGraphNodeModal({
 }
 
 function ProgressView({ steps, currentIndex }: { steps: string[]; currentIndex: number }) {
+  const { t } = useTranslation();
   return (
     <div className="mt-6">
       <div className="space-y-3">
@@ -233,8 +235,7 @@ function ProgressView({ steps, currentIndex }: { steps: string[]; currentIndex: 
         })}
       </div>
       <p className="mt-6 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-        No cierres esta ventana. Esto puede tardar 10–30 segundos, especialmente si se están generando
-        ilustraciones.
+        {t('addGraphNodeModal.progressWarning')}
       </p>
     </div>
   );
@@ -253,12 +254,13 @@ function NodeChecklist({
   selected: Set<string>;
   onToggle: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">{title}</p>
       <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>
       <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-        {nodes.length === 0 && <p className="py-2 text-xs text-slate-600">No hay nodos disponibles.</p>}
+        {nodes.length === 0 && <p className="py-2 text-xs text-slate-600">{t('addGraphNodeModal.noNodesAvailable')}</p>}
         {nodes.map((node) => (
           <label
             key={node.CapabilityGraphNodeId}

@@ -111,7 +111,11 @@ public sealed class PdfCapabilityGraphOrchestrator
         Guid? programId = null,
         int? programSequenceNumber = null,
         string? capabilityObjectives = null,
-        string? capabilityRequirements = null)
+        string? capabilityRequirements = null,
+        string? capabilityDescription = null,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
+        bool includeExamplesStep = false)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -142,7 +146,11 @@ public sealed class PdfCapabilityGraphOrchestrator
                     programId,
                     programSequenceNumber,
                     capabilityObjectives,
-                    capabilityRequirements);
+                    capabilityRequirements,
+                    capabilityDescription,
+                    languageCode,
+                    pedagogicalAudience,
+                    includeExamplesStep);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }
@@ -191,7 +199,11 @@ public sealed class PdfCapabilityGraphOrchestrator
         Guid? programId = null,
         int? programSequenceNumber = null,
         string? capabilityObjectives = null,
-        string? capabilityRequirements = null)
+        string? capabilityRequirements = null,
+        string? capabilityDescription = null,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
+        bool includeExamplesStep = false)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -217,7 +229,11 @@ public sealed class PdfCapabilityGraphOrchestrator
                     programId,
                     programSequenceNumber,
                     capabilityObjectives,
-                    capabilityRequirements);
+                    capabilityRequirements,
+                    capabilityDescription,
+                    languageCode,
+                    pedagogicalAudience,
+                    includeExamplesStep);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }

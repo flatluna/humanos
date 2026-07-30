@@ -127,6 +127,7 @@ public sealed class DocumentContextAgent
     public async Task<ExtractionResult> ExtractAsync(
         string capabilityName,
         CuratedCorpus curatedCorpus,
+        string languageCode = "es",
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -145,7 +146,10 @@ public sealed class DocumentContextAgent
         var prompt =
             $"Capability: {capabilityName}\n\n" +
             $"Curated Corpus Summary:\n{curatedCorpus.Summary}\n\n" +
-            $"Curated Corpus Chunks:\n{corpusText}";
+            $"Curated Corpus Chunks:\n{corpusText}\n\n" +
+            $"Target output language: {(languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish")}. " +
+            "Write the ExecutiveSummary and every Entity description in this language, " +
+            "regardless of what language the corpus chunks above are written in.";
 
         var response = await _agent.RunAsync<DocumentContextResponse>(prompt, cancellationToken: cancellationToken);
 

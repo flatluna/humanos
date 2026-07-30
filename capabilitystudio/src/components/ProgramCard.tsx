@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Layers, GraduationCap, ImageOff } from 'lucide-react';
 import type { BackendProgram } from '../lib/api/programsApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 
 export default function ProgramCard({ program }: { program: BackendProgram }) {
+  const { t } = useTranslation();
   return (
     <Link
       to={`/programs/${program.ProgramId}`}
@@ -31,12 +33,12 @@ export default function ProgramCard({ program }: { program: BackendProgram }) {
         <div className="mt-auto flex items-center gap-4 pt-3 text-xs text-slate-500">
           <span className="flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5" />
-            {program.CapabilityCount} capabilities
+            {t('programCard.capabilities', { count: program.CapabilityCount })}
           </span>
           {!program.IsActive && (
             <span className="ml-auto flex items-center gap-1 text-amber-400">
               <ImageOff className="h-3.5 w-3.5" />
-              Inactivo
+              {t('programCard.inactive')}
             </span>
           )}
         </div>

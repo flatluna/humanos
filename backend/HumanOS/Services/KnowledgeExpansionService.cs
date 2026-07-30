@@ -26,6 +26,7 @@ public sealed class KnowledgeExpansionService
     private readonly KnowledgeExpansionAgent _agent;
     private readonly WebGroundingService _webGrounding;
     private readonly GraphIllustrationImageService _imageService;
+    private readonly MathDiagramRenderService _mathDiagramRenderService;
     private readonly NodeKnowledgeIndexService _knowledgeIndexService;
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
 
@@ -39,12 +40,14 @@ public sealed class KnowledgeExpansionService
         KnowledgeExpansionAgent agent,
         WebGroundingService webGrounding,
         GraphIllustrationImageService imageService,
+        MathDiagramRenderService mathDiagramRenderService,
         NodeKnowledgeIndexService knowledgeIndexService,
         IConfiguration configuration)
     {
         _agent = agent;
         _webGrounding = webGrounding;
         _imageService = imageService;
+        _mathDiagramRenderService = mathDiagramRenderService;
         _knowledgeIndexService = knowledgeIndexService;
         _illustrationStorage = new CapabilityGraphIllustrationStorageService(configuration);
     }
@@ -110,7 +113,7 @@ public sealed class KnowledgeExpansionService
 
         var expansion = await _agent.ExpandAsync(node.Name, baseContent, webFindingsText, cancellationToken);
 
-        var diagramIllustrationId = await TryGenerateDiagramAsync(dbContext, node, expansion.DiagramPrompt, cancellationToken);
+        var diagramIllustrationId = await TryGenerateDiagramAsync(dbContext, node, expansion.DiagramPrompt, expansion.MathDiagram, cancellationToken);
 
         var entity = new CapabilityGraphNodeKnowledgeExpansion
         {
@@ -154,9 +157,10 @@ public sealed class KnowledgeExpansionService
         HumanOsDbContext dbContext,
         CapabilityGraphNode node,
         string? diagramPrompt,
+        MathDiagramSpec? mathDiagram,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(diagramPrompt) || !_imageService.IsConfigured || !_illustrationStorage.IsConfigured)
+        if ((string.IsNullOrWhiteSpace(diagramPrompt) && mathDiagram is null) || !_illustrationStorage.IsConfigured || (mathDiagram is null && !_imageService.IsConfigured))
         {
             return null;
         }
@@ -175,8 +179,16 @@ public sealed class KnowledgeExpansionService
 
         try
         {
-            var generated = await _imageService.GenerateAsync(diagramPrompt, cancellationToken);
-            using var imageStream = generated.ImageBytes.ToStream();
+            object generated = mathDiagram is not null
+                ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
+                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+            var (imageBytes, imageModel, width, height) = generated switch
+            {
+                MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),
+                GraphIllustrationImageService.GeneratedIllustration g => (g.ImageBytes, g.ImageModel, g.Width, g.Height),
+                _ => throw new InvalidOperationException("Unreachable")
+            };
+            using var imageStream = imageBytes.ToStream();
 
             var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                 tenantId, capabilityId, node.CapabilityGraphNodeId, DiagramImageIndex, imageStream,
@@ -187,11 +199,11 @@ public sealed class KnowledgeExpansionService
                 CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
                 CapabilityGraphNodeId = node.CapabilityGraphNodeId,
                 StoragePath = storagePath,
-                Prompt = diagramPrompt,
+                Prompt = mathDiagram is not null ? (mathDiagram.EquationLabel ?? "MathDiagram") : diagramPrompt!,
                 Purpose = IllustrationPurpose.KnowledgeExpansion,
-                ImageModel = generated.ImageModel,
-                Width = generated.Width,
-                Height = generated.Height,
+                ImageModel = imageModel,
+                Width = width,
+                Height = height,
                 CreatedDate = DateTime.UtcNow
             };
 

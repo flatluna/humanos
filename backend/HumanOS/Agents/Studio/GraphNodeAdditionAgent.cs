@@ -110,6 +110,21 @@ public sealed class GraphNodeAdditionAgent
     private readonly AIAgent? _agent;
     private readonly string _modelName;
 
+    /// <summary>Same persona block as <see cref="ExperienceDesignerAgent.YoungLearnerPersonaBlock"/>
+    /// (kept as a separate literal since the two agents/prompts are otherwise
+    /// independent) — applied ONLY when the owning Capability's
+    /// PedagogicalAudience is "YoungLearner". Affects only the VOICE of
+    /// Interpretation/Examples/Applications, never the node structure/rules
+    /// above.</summary>
+    private const string YoungLearnerPersonaBlock = """
+        AUDIENCE PERSONA — YOUNG LEARNER MODE (this capability is for young
+        children, roughly ages 5-8, e.g. Kindergarten/Grade 1). Write
+        Interpretation/Examples/Applications in warm, simple words a young
+        child already knows, as if a friendly teacher is speaking directly
+        to the child — never formal/academic register. This changes only
+        the VOICE, never the required fields/structure above.
+        """;
+
     public GraphNodeAdditionAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
@@ -154,6 +169,8 @@ public sealed class GraphNodeAdditionAgent
         IReadOnlyList<(string Name, string? Description)> requiresNodes,
         IReadOnlyList<(string Name, string? Description)> requiredByNodes,
         string professorPrompt,
+        string languageCode = "es",
+        string? pedagogicalAudience = null,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -171,6 +188,10 @@ public sealed class GraphNodeAdditionAgent
                 ? "(none)"
                 : string.Join("\n", nodes.Select(n => $"- {n.Name}" + (string.IsNullOrWhiteSpace(n.Description) ? "" : $": {n.Description}")));
 
+        var personaSection = string.Equals(pedagogicalAudience, "YoungLearner", StringComparison.OrdinalIgnoreCase)
+            ? $"\n\n{YoungLearnerPersonaBlock}"
+            : string.Empty;
+
         var prompt =
             $"Capability: {capabilityName}\n" +
             (string.IsNullOrWhiteSpace(capabilityDescription) ? "" : $"Capability description: {capabilityDescription}\n") +
@@ -178,7 +199,10 @@ public sealed class GraphNodeAdditionAgent
             (existingNodeNames.Count == 0 ? "(none)" : string.Join(", ", existingNodeNames)) +
             $"\n\nNodes the new node must REQUIRE (its prerequisites):\n{DescribeNodeList(requiresNodes)}" +
             $"\n\nExisting nodes that will now REQUIRE the new node (its dependents):\n{DescribeNodeList(requiredByNodes)}" +
-            $"\n\nProfessor's instruction for the new node:\n{professorPrompt}";
+            $"\n\nProfessor's instruction for the new node:\n{professorPrompt}" +
+            personaSection +
+            $"\n\nTarget output language: {(languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish")}. " +
+            "Write Name/Description/AcademicDefinition/Interpretation/Examples/Applications in this language.";
 
         var response = await _agent.RunAsync<GraphNodeDto>(prompt, cancellationToken: cancellationToken);
         var node = response.Result;

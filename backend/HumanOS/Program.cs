@@ -134,6 +134,7 @@ var host = new HostBuilder()
         services.AddScoped<CapabilityService>();
         services.AddScoped<PersonCapabilityService>();
         services.AddScoped<ProgramService>();
+        services.AddScoped<ProgramEnrollmentService>();
         services.AddScoped<CapabilityCostService>();
         services.AddScoped<HumanOS.Storage.ProgramLogoStorageService>();
         services.AddScoped<GoalService>();
@@ -174,9 +175,26 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.GraphNodeAdditionAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.DocumentContextAgent>();
         services.AddSingleton<GraphIllustrationImageService>();
+        // Deterministic (non-AI) coordinate-plane diagram renderer
+        // (2026-07-25) — used instead of GraphIllustrationImageService
+        // whenever an illustration prompt is a precise math/geometry graph
+        // (circle/line/parabola/points) that a generative image model can't
+        // guarantee pixel-accurate coordinates for. See
+        // Services/MathDiagramRenderService.cs's doc comment.
+        services.AddSingleton<HumanOS.Services.MathDiagramRenderService>();
         services.AddSingleton<ExperienceDesignerAgent>();
+        // Generates a real illustration per ExampleCard of the optional
+        // Examples step (2026-07-29), upgrading the original emoji-only
+        // cards. Singleton, same rationale as GraphIllustrationImageService
+        // (no per-request state; builds its own storage-service instance).
+        services.AddSingleton<HumanOS.Services.ExampleCardIllustrationService>();
         services.AddSingleton<BlueprintValidatorAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.BlueprintStepEditorAgent>();
+        // Deep Dive card-by-card review edits (2026-07-30) — see
+        // Agents/Studio/ExampleCardEditorAgent.cs's doc comment for why this
+        // is a SEPARATE agent from BlueprintStepEditorAgent (which has no
+        // concept of ExampleCards at all).
+        services.AddSingleton<HumanOS.Agents.Studio.ExampleCardEditorAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.WebGroundingService>();
         services.AddSingleton<InstructorAgent>();
         services.AddSingleton<MetricoAgent>();

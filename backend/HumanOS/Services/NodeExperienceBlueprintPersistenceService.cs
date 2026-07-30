@@ -32,7 +32,25 @@ public sealed class NodeExperienceBlueprintPersistenceService
     ];
 
     /// <summary>
-    /// Persists a NodeExperienceBlueprint (with its 5 steps) for the given node.
+    /// Used ONLY when <c>includeExamplesStep</c> is true (formal/school-track
+    /// capabilities) — inserts the OPTIONAL <see cref="ExperienceStepType.DeepDive"/>
+    /// step between Teaching and Recall. SortOrder is assigned from this
+    /// array's INDEX (not the enum's raw numeric value — Examples=5 would
+    /// otherwise sort last), so it correctly reflects teaching order without
+    /// ever renumbering any other blueprint's already-persisted steps.
+    /// </summary>
+    private static readonly ExperienceStepType[] FormalEducationStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.DeepDive,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Production,
+        ExperienceStepType.Assessment
+    ];
+
+    /// <summary>
+    /// Persists a NodeExperienceBlueprint (with its 5 or 6 steps) for the given node.
     /// </summary>
     /// <param name="dbContext">DbContext to write with (caller owns its lifetime).</param>
     /// <param name="capabilityGraphNodeId">The node this blueprint teaches.</param>
@@ -42,11 +60,18 @@ public sealed class NodeExperienceBlueprintPersistenceService
     /// <see cref="NodeExperienceBlueprintStepDto.IllustrationIndexes"/> can be
     /// resolved back to real <see cref="CapabilityGraphNodeIllustration"/> IDs.
     /// </param>
+    /// <param name="includeExamplesStep">
+    /// Copied from the owning Capability's
+    /// <see cref="HumanOS.Models.Capabilities.Capability.IncludeExamplesStep"/>.
+    /// False (default) persists exactly the same 5 steps as before this
+    /// parameter existed.
+    /// </param>
     public async Task<NodeExperienceBlueprint> PersistAsync(
         HumanOsDbContext dbContext,
         Guid capabilityGraphNodeId,
         NodeExperienceBlueprintResponse response,
         IReadOnlyList<CapabilityGraphNodeIllustration> availableIllustrations,
+        bool includeExamplesStep = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
@@ -62,8 +87,11 @@ public sealed class NodeExperienceBlueprintPersistenceService
             CreatedDate = DateTime.UtcNow
         };
 
-        foreach (var stepType in CanonicalStepOrder)
+        var stepOrder = includeExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+
+        for (var sortOrder = 0; sortOrder < stepOrder.Length; sortOrder++)
         {
+            var stepType = stepOrder[sortOrder];
             var stepDto = response.Steps.FirstOrDefault(s => s.StepType == stepType);
             if (stepDto is null)
             {
@@ -87,7 +115,10 @@ public sealed class NodeExperienceBlueprintPersistenceService
                 StepType = stepType,
                 Content = stepDto.Content,
                 ReferencedIllustrationIdsJson = JsonSerializer.Serialize(referencedIllustrationIds),
-                SortOrder = (int)stepType,
+                ExampleCardsJson = stepType == ExperienceStepType.DeepDive && stepDto.ExampleCards is { Count: > 0 }
+                    ? JsonSerializer.Serialize(stepDto.ExampleCards.Select(c => new ExampleCard { Title = c.Title, Text = c.Text, Emoji = c.Emoji, SuggestedForIllustration = c.SuggestedForIllustration, IllustrationId = c.IllustrationId }))
+                    : null,
+                SortOrder = sortOrder,
                 CreatedDate = DateTime.UtcNow
             });
         }
@@ -105,8 +136,10 @@ public sealed class NodeExperienceBlueprintPersistenceService
     /// ExperienceStepType matches its IllustrationPurpose. Hypothesis can
     /// only ever show a Hypothesis-purpose (before-state, no-answer)
     /// illustration; Teaching can only ever show a Teaching-purpose (worked-
-    /// example) illustration. Any other step never references illustrations
-    /// today, so it's silently dropped rather than trusted from the LLM.
+    /// example) illustration. Any other step (including the optional
+    /// Examples step, which illustrates via its own per-card Emoji field
+    /// instead) never references illustrations today, so it's silently
+    /// dropped rather than trusted from the LLM.
     /// </summary>
     private static bool MatchesStepPurpose(ExperienceStepType stepType, IllustrationPurpose purpose) => stepType switch
     {

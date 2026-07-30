@@ -240,7 +240,20 @@ public sealed class BlueprintValidatorAgent
             "\n\n",
             orderedSteps.Select(s =>
                 $"[{s.StepType}] (SortOrder={s.SortOrder})\n{s.Content}\n" +
-                $"ReferencedIllustrationIds: {s.ReferencedIllustrationIdsJson}"));
+                $"ReferencedIllustrationIds: {s.ReferencedIllustrationIdsJson}" +
+                (s.StepType == ExperienceStepType.DeepDive ? $"\nExampleCardsJson: {s.ExampleCardsJson}" : string.Empty)));
+
+        var hasExamplesStep = orderedSteps.Any(s => s.StepType == ExperienceStepType.DeepDive);
+        var examplesAddendum = hasExamplesStep
+            ? "\n\nNOTE: this blueprint is for a formal/school-track capability and " +
+              "legitimately includes an OPTIONAL 6th step, Examples, positioned between " +
+              "Teaching and Recall (Hypothesis, Teaching, Examples, Recall, Production, " +
+              "Assessment). Do NOT flag its presence or this position as a structural " +
+              "order violation — that rule is superseded for this blueprint only. Only " +
+              "check that Examples' content/cards are non-empty and grounded in the " +
+              "node's own fields; it does not need to satisfy any of checks 3-9 above " +
+              "(those only apply to Hypothesis/Teaching/Recall/Production/Assessment)."
+            : string.Empty;
 
         var prompt = $"""
             NODE:
@@ -258,7 +271,7 @@ public sealed class BlueprintValidatorAgent
 
             STEPS (in the order they were persisted):
             {stepsText}
-            """;
+            """ + examplesAddendum;
 
         var response = await _agent.RunAsync<BlueprintValidationResponse>(prompt);
 

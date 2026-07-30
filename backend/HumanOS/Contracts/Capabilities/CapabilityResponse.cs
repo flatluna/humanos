@@ -22,6 +22,21 @@ public sealed class CapabilityResponse
 
     public bool IsActive { get; set; }
 
+    /// <summary>"es" or "en" — the language this capability's entire
+    /// generated content was authored in. See Capability.ContentLanguageCode.</summary>
+    public string ContentLanguageCode { get; set; } = "es";
+
+    /// <summary>Optional tone/persona directive for ALL generated
+    /// learner-facing content on this capability. Null means "Standard".
+    /// The only other supported value today is "YoungLearner" (K-12
+    /// early-childhood courses). See Capability.PedagogicalAudience.</summary>
+    public string? PedagogicalAudience { get; set; }
+
+    /// <summary>Formal/school-track opt-in: when true, this capability's
+    /// generated blueprints include an OPTIONAL 6th step, Examples, with
+    /// example cards. See Capability.IncludeExamplesStep.</summary>
+    public bool IncludeExamplesStep { get; set; }
+
     public int LevelCount { get; set; }
 
     public int ModuleCount { get; set; }

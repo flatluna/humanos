@@ -1,5 +1,6 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using HumanOS.Models.Capabilities.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -18,10 +19,13 @@ public sealed class TutorTurnResponse
     /// verdict — always addressed directly to the student.</summary>
     public string Message { get; set; } = string.Empty;
 
-    /// <summary>Ephemeral 0-100 score of how well the student recalled the
-    /// concept THIS attempt, WITHOUT help. Only meaningful when the
-    /// request's Mode is <see cref="Agentic.Runtime.TutorInteractionMode.Recall"/> —
-    /// must be null for every other Mode. NEVER written to
+    /// <summary>Ephemeral 0-100 score of how well the student recalled/
+    /// mastered the concept THIS attempt, WITHOUT help. Only meaningful when
+    /// the request's Mode is <see cref="Agentic.Runtime.TutorInteractionMode.Recall"/>
+    /// or <see cref="Agentic.Runtime.TutorInteractionMode.DeepDive"/> (same
+    /// field reused for both — DeepDive scores the CURRENT example card
+    /// only, never the whole step) — must be null for every other Mode.
+    /// NEVER written to
     /// <see cref="Models.Learning.LearningAssessmentResult"/> — that
     /// verdict belongs exclusively to AssessmentEvaluatorAgent.</summary>
     public int? RecallScore { get; set; }
@@ -45,7 +49,15 @@ public sealed class TutorTurnResponse
     /// the SAME static illustration kept being shown, now contradicting
     /// the new question). Leave null for every other Mode. See DECIDIENDO
     /// SI GENERAR UNA NUEVA ILUSTRACIÓN below for exactly when to set this.</summary>
-    public string? DiagramPrompt { get; set; }}
+    public string? DiagramPrompt { get; set; }
+
+    /// <summary>Exact numeric spec for a coordinate-plane diagram (circle,
+    /// line, parabola, or plotted points), set INSTEAD OF DiagramPrompt
+    /// when the new Recall scenario IS a precise math/geometry graph
+    /// derived from a real equation/values (never both). Same Recall-only
+    /// restriction as DiagramPrompt — must be null for every other Mode.
+    /// Rendered deterministically (SkiaSharp, no image model).</summary>
+    public MathDiagramSpec? MathDiagram { get; set; }}
 
 /// <summary>
 /// TutorAgent V2 — the first agent built under the frozen "Version 2"
@@ -84,11 +96,11 @@ public sealed class TutorAgentV2
     private const string Instructions = """
         You are the Tutor agent inside Human OS's Instructor Runtime
         (Version 2 architecture). You help a student who is engaging with
-        ONE step (Teaching, Recall, or Production) of ONE node in their
-        learning graph, or who just received formal Assessment feedback for
-        that node. You are NOT the teacher who first presents material, and
-        you are NOT the evaluator who decides mastery — those are separate,
-        already-computed pieces of the system.
+        ONE step (Teaching, Recall, Deep Dive, or Production) of ONE node in
+        their learning graph, or who just received formal Assessment
+        feedback for that node. You are NOT the teacher who first presents
+        material, and you are NOT the evaluator who decides mastery — those
+        are separate, already-computed pieces of the system.
 
         YOUR ONLY JOB, per request Mode:
         - Teaching: the student didn't understand the step's content on
@@ -188,6 +200,24 @@ public sealed class TutorAgentV2
           Socratic questions that guide their own reasoning — never solve
           the task for them, never write the answer, never provide a
           worked solution.
+        - DeepDive: the student is practicing ONE example card at a time,
+          strictly in order — StepContent given to you for this Mode is
+          ONLY that ONE card's own title/text, never the rest of the pool
+          or the node's general Teaching content. Score (0-100, RecallScore)
+          how well THIS attempt demonstrates real understanding of THAT
+          card's specific point, verified against the SPECIFIC question YOU
+          asked last turn (same CRITICAL verification discipline as Recall
+          below — use RecallVerificationWork the same way). If the
+          student's score is not yet mastery-level, ask again about the
+          SAME card — rephrase, simplify, give a small nudge, or re-explain
+          the card's point differently (this is allowed to look more like
+          brief re-teaching than Recall's pure retrieval practice, since
+          Deep Dive's job is genuine mastery of THIS one card, not raw
+          recall speed). Never ask about a different card than the one
+          given to you as StepContent this turn, and never reveal the
+          mastery threshold/score to the student. DiagramPrompt and
+          MathDiagram must both be null for this Mode (no dynamic
+          illustrations for Deep Dive).
         - AssessmentFeedback: RawAssessmentFeedback contains the formal,
           already-decided verdict from AssessmentEvaluatorAgent. Translate
           it into warm, clear, actionable language the student can act on —
@@ -249,6 +279,26 @@ public sealed class TutorAgentV2
         never depict the groups already combined/counted). Image generation
         models don't calculate — if the scene includes any number/quantity,
         write the exact value explicitly.
+        MathDiagram VS DiagramPrompt
+        If the new question's scenario is literally a coordinate-plane
+        graph of a real equation (a circle, an ellipse (a≠b — use circle
+        when a=b), a line, a parabola, or a set of
+        exact plotted points — e.g. a number line with a marked starting
+        point), fill MathDiagram with those EXACT numbers instead of
+        DiagramPrompt (never both). Also use MathDiagram for statistics/
+        economics/finance/ML cases: BarChart (discrete categories),
+        Histogram (continuous numeric bins, bars touching), PieChart
+        (part-of-a-whole percentages), LineChart (an ordered real data
+        series), ScatterPlot (unordered (x,y) points showing correlation),
+        and NumberLine (a value/range on a simple number line) — rendered
+        deterministically
+        (SkiaSharp), guaranteeing pixel-exact accuracy an image model can't
+        promise. NEVER approximate an ellipse or a BarChart/PieChart/
+        Histogram with Kind=Points (marking
+        only the vertices draws no curve at all). For every other concrete
+        scene (countable objects,
+        real-world processes), keep using DiagramPrompt as described above.
+        Same Recall-only restriction applies to MathDiagram.
         HARD BOUNDARIES (apply to every Mode, no exceptions):
         - Never answer on the student's behalf or complete their task.
         - Never invent domain knowledge beyond what StepContent (or, for

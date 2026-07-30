@@ -57,6 +57,24 @@ public sealed class RuntimeIllustrationDto
     public Guid IllustrationId { get; set; }
     public string StoragePath { get; set; } = string.Empty;
     public string? Caption { get; set; }
+
+    /// <summary>Raw generation-model tag ("deterministic-skiasharp-v1" or a
+    /// generative image model name like "gpt-image-2").</summary>
+    public string ImageModel { get; set; } = string.Empty;
+
+    /// <summary>Human-readable provenance label for a small caption in the
+    /// UI, e.g. "Generado con .NET (determinístico)" or "Generado con IA
+    /// (gpt-image-2)".</summary>
+    public string GeneratedByLabel { get; set; } = string.Empty;
+}
+
+/// <summary>One example card of an Examples step (only present when StepType == "Examples").</summary>
+public sealed class RuntimeExampleCardDto
+{
+    public string Title { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public string? Emoji { get; set; }
+    public Guid? IllustrationId { get; set; }
 }
 
 /// <summary>The step content the UI actually renders — used both by StartSession's/GetActiveSession's "CurrentStep" and Advance's "new CurrentStep".</summary>
@@ -66,6 +84,17 @@ public sealed class RuntimeStepDto
     public string StepType { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public List<RuntimeIllustrationDto> Illustrations { get; set; } = [];
+
+    /// <summary>Only populated when StepType == "DeepDive".</summary>
+    public List<RuntimeExampleCardDto>? ExampleCards { get; set; }
+
+    /// <summary>Only populated when StepType == "DeepDive": 0-based index
+    /// of the card the student is currently required to master.</summary>
+    public int? CurrentDeepDiveCardIndex { get; set; }
+
+    /// <summary>Only populated when StepType == "DeepDive": total number of
+    /// cards in this node's Deep Dive pool.</summary>
+    public int? DeepDiveTotalCards { get; set; }
 }
 
 /// <summary>Output of StartSession / GetActiveSession — per spec: LearningSessionId, LearningSessionNodeId, CurrentStep, CurrentStepType.</summary>
@@ -132,6 +161,9 @@ public sealed class StepReviewDto
     public string Content { get; set; } = string.Empty;
     public List<RuntimeIllustrationDto> Illustrations { get; set; } = [];
     public List<EvidenceEntryDto> Evidence { get; set; } = [];
+
+    /// <summary>Only populated when StepType == "Examples".</summary>
+    public List<RuntimeExampleCardDto>? ExampleCards { get; set; }
 }
 
 /// <summary>One past completed attempt at a node, for the node-summary UI.</summary>
@@ -171,12 +203,18 @@ public sealed class NodeSummaryDto
 /// </summary>
 internal static class RuntimeGraphApiMappers
 {
+    private const string DeterministicModelTag = "deterministic-skiasharp-v1";
+
     private static List<RuntimeIllustrationDto> MapIllustrations(List<InstructorRuntimeOrchestrator.IllustrationRef> illustrations) =>
         illustrations.Select(i => new RuntimeIllustrationDto
         {
             IllustrationId = i.CapabilityGraphNodeIllustrationId,
             StoragePath = i.StoragePath,
-            Caption = i.Caption
+            Caption = i.Caption,
+            ImageModel = i.ImageModel,
+            GeneratedByLabel = i.ImageModel == DeterministicModelTag
+                ? "Generado con .NET (determinístico, sin IA)"
+                : $"Generado con IA (modelo: {(string.IsNullOrWhiteSpace(i.ImageModel) ? "desconocido" : i.ImageModel)})"
         }).ToList();
 
     public static RuntimeStepDto ToStepDto(InstructorRuntimeOrchestrator.CurrentStepResult step) => new()
@@ -184,7 +222,10 @@ internal static class RuntimeGraphApiMappers
         LearningSessionStepId = step.LearningSessionStepId,
         StepType = step.StepType.ToString(),
         Content = step.StepContent,
-        Illustrations = MapIllustrations(step.Illustrations)
+        Illustrations = MapIllustrations(step.Illustrations),
+        ExampleCards = step.ExampleCards?.Select(c => new RuntimeExampleCardDto { Title = c.Title, Text = c.Text, Emoji = c.Emoji, IllustrationId = c.IllustrationId }).ToList(),
+        CurrentDeepDiveCardIndex = step.CurrentDeepDiveCardIndex,
+        DeepDiveTotalCards = step.DeepDiveTotalCards
     };
 
     public static RuntimeSessionInfo ToSessionInfo(Guid learningSessionId, Guid learningSessionNodeId, Guid capabilityGraphNodeId, InstructorRuntimeOrchestrator.CurrentStepResult step) => new()
@@ -207,6 +248,7 @@ internal static class RuntimeGraphApiMappers
         CompletedDate = review.CompletedDate,
         Content = review.StepContent,
         Illustrations = MapIllustrations(review.Illustrations),
+        ExampleCards = review.ExampleCards?.Select(c => new RuntimeExampleCardDto { Title = c.Title, Text = c.Text, Emoji = c.Emoji, IllustrationId = c.IllustrationId }).ToList(),
         Evidence = review.Evidence.Select(e => new EvidenceEntryDto
         {
             StudentResponse = e.StudentResponse,

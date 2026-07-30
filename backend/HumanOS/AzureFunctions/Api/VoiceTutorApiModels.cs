@@ -35,6 +35,33 @@ public sealed class VoiceTutorSessionRequest
     /// used for anything other than telling the voice Agent what question
     /// to read aloud — it grants no grading authority.</summary>
     public string? CurrentPromptText { get; set; }
+
+    /// <summary>Optional (2026-07-25). The student's display name, used
+    /// ONLY for Hypothesis/Teaching's opening greeting ("Bienvenido,
+    /// {PersonName}. ¿Listo para comenzar?"). Never used for anything
+    /// else. Null/blank falls back to a nameless "Bienvenido."</summary>
+    public string? PersonName { get; set; }
+
+    /// <summary>Required when StepType (or the live step being talked
+    /// about) is Examples (2026-07-29) — 0-based index into that step's
+    /// ExampleCards list identifying WHICH card's "habla con tu maestro"
+    /// button the student pressed. The voice Agent explains that specific
+    /// card (with its resolved result) and, if the student asks for
+    /// another example, draws on the step's OTHER already-prepared cards
+    /// before improvising a new, closely-analogous one. Ignored for every
+    /// other step type.</summary>
+    public int? ExampleCardIndex { get; set; }
+
+    /// <summary>DeepDive blueprint-only path only (2026-07-30) — set when
+    /// the student is revisiting an ALREADY-MASTERED card via the read-only
+    /// card index (Capability Studio's PreviewNodePage), NOT actively
+    /// working through it. Switches the DeepDive instructions from the
+    /// normal "explain, then quiz the student back, then call
+    /// mark_explanation_understood" loop to a plain, no-tools explain +
+    /// invite-questions conversation — explicitly NOT a test, since the
+    /// student already mastered this card. Ignored for every other
+    /// StepType/path.</summary>
+    public bool IsReviewOnly { get; set; }
 }
 
 public sealed class VoiceTutorSessionResponseDto

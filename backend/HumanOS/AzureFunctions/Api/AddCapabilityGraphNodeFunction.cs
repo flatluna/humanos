@@ -32,6 +32,7 @@ public sealed class AddCapabilityGraphNodeFunction
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
     private readonly CapabilityGraphPersistenceService _persistenceService;
     private readonly ExperienceDesignerAgent _experienceDesignerAgent;
+    private readonly ExampleCardIllustrationService _exampleCardIllustrationService;
     private readonly NodeExperienceBlueprintPersistenceService _blueprintPersistenceService;
     private readonly BlueprintValidatorAgent _blueprintValidatorAgent;
     private readonly BlueprintValidationPersistenceService _blueprintValidationPersistenceService;
@@ -43,6 +44,7 @@ public sealed class AddCapabilityGraphNodeFunction
         IConfiguration configuration,
         CapabilityGraphPersistenceService persistenceService,
         ExperienceDesignerAgent experienceDesignerAgent,
+        ExampleCardIllustrationService exampleCardIllustrationService,
         NodeExperienceBlueprintPersistenceService blueprintPersistenceService,
         BlueprintValidatorAgent blueprintValidatorAgent,
         BlueprintValidationPersistenceService blueprintValidationPersistenceService)
@@ -53,6 +55,7 @@ public sealed class AddCapabilityGraphNodeFunction
         _illustrationStorage = new CapabilityGraphIllustrationStorageService(configuration);
         _persistenceService = persistenceService;
         _experienceDesignerAgent = experienceDesignerAgent;
+        _exampleCardIllustrationService = exampleCardIllustrationService;
         _blueprintPersistenceService = blueprintPersistenceService;
         _blueprintValidatorAgent = blueprintValidatorAgent;
         _blueprintValidationPersistenceService = blueprintValidationPersistenceService;
@@ -93,6 +96,19 @@ public sealed class AddCapabilityGraphNodeFunction
                 $"No CapabilityGraph found for capability {capabilityId}.", cancellationToken);
         }
 
+        // Read the owning Capability's language + tone directives so a node
+        // added here matches the rest of its capability's content — without
+        // this, every "add node" call silently defaulted to Spanish/Standard
+        // tone regardless of the capability's own ContentLanguageCode/
+        // PedagogicalAudience (2026-07-26 fix, K-12 lesson course feature).
+        var capabilityMeta = await _dbContext.Capabilities
+            .Where(c => c.CapabilityId == capabilityId)
+            .Select(c => new { c.ContentLanguageCode, c.PedagogicalAudience, c.IncludeExamplesStep })
+            .FirstOrDefaultAsync(cancellationToken);
+        var languageCode = capabilityMeta?.ContentLanguageCode ?? "es";
+        var pedagogicalAudience = capabilityMeta?.PedagogicalAudience;
+        var includeExamplesStep = capabilityMeta?.IncludeExamplesStep ?? false;
+
         var nodesById = graph.Nodes.ToDictionary(n => n.CapabilityGraphNodeId);
 
         var unknownIds = body.RequiresNodeIds.Concat(body.RequiredByNodeIds).Where(id => !nodesById.ContainsKey(id)).ToList();
@@ -131,7 +147,7 @@ public sealed class AddCapabilityGraphNodeFunction
         {
             result = await _agent.GenerateNodeAsync(
                 graph.Name, graph.Description, existingNodeNames, requiresNodes, requiredByNodes,
-                body.Prompt, cancellationToken);
+                body.Prompt, languageCode, pedagogicalAudience, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -203,6 +219,7 @@ public sealed class AddCapabilityGraphNodeFunction
         // capability-creation pipeline for this one new node.
         bool blueprintGenerated = false;
         string? blueprintWarning = null;
+        var exampleIllustrationsGenerated = 0;
         try
         {
             var savedIllustrations = await _dbContext.CapabilityGraphNodeIllustrations
@@ -221,10 +238,33 @@ public sealed class AddCapabilityGraphNodeFunction
                 .ToList();
 
             var designResult = await _experienceDesignerAgent.DesignBlueprintAsync(
-                savedNode, availableIllustrations, webFindings: null, cancellationToken);
+                savedNode, availableIllustrations, webFindings: null, languageCode: languageCode,
+                pedagogicalAudience: pedagogicalAudience, includeExamplesStep: includeExamplesStep, cancellationToken: cancellationToken);
+
+            // Real illustrations for the Examples step's cards (2026-07-29):
+            // must happen AFTER the agent invents the cards' Title/Text, and
+            // BEFORE persisting, so each card's IllustrationId is already
+            // resolved in the JSON blob. Best-effort, same tenantId-lookup
+            // technique as the node illustrations above.
+            if (includeExamplesStep)
+            {
+                var examplesStepDto = designResult.Blueprint.Steps
+                    .FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+                if (examplesStepDto?.ExampleCards is { Count: > 0 })
+                {
+                    var exampleTenantId = TryParseTenantIdFromExistingIllustration(graph.Nodes);
+                    if (exampleTenantId is not null)
+                    {
+                        exampleIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
+                            _dbContext, exampleTenantId.Value, capabilityId, savedNode.CapabilityGraphNodeId,
+                            savedIllustrations.Count, examplesStepDto.ExampleCards, cancellationToken);
+                    }
+                }
+            }
 
             var blueprintEntity = await _blueprintPersistenceService.PersistAsync(
-                _dbContext, savedNode.CapabilityGraphNodeId, designResult.Blueprint, savedIllustrations, cancellationToken);
+                _dbContext, savedNode.CapabilityGraphNodeId, designResult.Blueprint, savedIllustrations,
+                includeExamplesStep: includeExamplesStep, cancellationToken: cancellationToken);
 
             blueprintGenerated = true;
 
@@ -260,7 +300,7 @@ public sealed class AddCapabilityGraphNodeFunction
                 Name = savedNode.Name,
                 Description = savedNode.Description,
                 SortOrder = savedNode.SortOrder,
-                IllustrationsGenerated = illustrationRecords.Count,
+                IllustrationsGenerated = illustrationRecords.Count + exampleIllustrationsGenerated,
                 BlueprintGenerated = blueprintGenerated,
                 BlueprintWarning = blueprintWarning
             },

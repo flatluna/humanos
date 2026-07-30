@@ -52,7 +52,14 @@ async function rPost<T>(path: string, body?: unknown): Promise<T> {
   return toPascalCaseDeep(data) as T;
 }
 
-export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'Recall' | 'Production' | 'Assessment';
+export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'DeepDive' | 'Recall' | 'Production' | 'Assessment';
+
+export interface ExampleCardDto {
+  Title: string;
+  Text: string;
+  Emoji?: string;
+  IllustrationId?: string | null;
+}
 
 export interface BackendIllustration {
   IllustrationId: string;
@@ -65,6 +72,12 @@ export interface BackendRuntimeStep {
   StepType: ExperienceStepType;
   Content: string;
   Illustrations: BackendIllustration[];
+  /** Only populated when StepType === 'DeepDive'. */
+  ExampleCards?: ExampleCardDto[];
+  /** Only populated when StepType === 'DeepDive' — index (0-based) of the card currently being asked about. */
+  CurrentDeepDiveCardIndex?: number;
+  /** Only populated when StepType === 'DeepDive' — total number of cards that must be sequentially mastered. */
+  DeepDiveTotalCards?: number;
 }
 
 export interface BackendRuntimeSessionInfo {
@@ -143,11 +156,12 @@ export interface VoiceTutorSessionDto {
 }
 
 export function requestVoiceTutorSession(
-  target: { learningSessionStepId: string; promptText?: string }
+  target: { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
     LearningSessionStepId: target.learningSessionStepId,
     CurrentPromptText: target.promptText,
+    ExampleCardIndex: target.exampleCardIndex,
   });
 }
 
@@ -225,6 +239,42 @@ export function submitRecallAttempt(
   });
 }
 
+/**
+ * Deep Dive is card-by-card SEQUENTIAL and MANDATORY-ALL — unlike Recall's
+ * "master N distinct items out of an open pool", every single example
+ * card must be mastered in order before the step can advance (see
+ * backend/HumanOS/Agentic/Runtime/DeepDiveLoopGate.cs). There is no
+ * attempt cap and no regression path: the student simply keeps retrying
+ * the SAME card (CardIndex) until Mastered flips true, at which point
+ * NextCardIndex increments and the loop continues until every card is done.
+ */
+export interface DeepDiveAttemptOutcomeDto {
+  TutorTurn: TutorTurnDto;
+  LearningEvidenceId: string;
+  /** 0-based index of the card this attempt was scored against. */
+  CardIndex: number;
+  TotalCards: number;
+  /** True if THIS attempt scored high enough to master the current card. */
+  Mastered: boolean;
+  /** Index of the card to ask about next (unchanged from CardIndex if not yet mastered). */
+  NextCardIndex: number;
+  /** True only when every card has been mastered and the step advanced to Recall. */
+  Advanced: boolean;
+  NextStep?: BackendRuntimeStep | null;
+}
+
+export function submitDeepDiveAttempt(
+  learningSessionStepId: string,
+  studentResponse: string,
+  tutorPromptShown?: string
+): Promise<DeepDiveAttemptOutcomeDto> {
+  return rPost<DeepDiveAttemptOutcomeDto>('/instructor-runtime/tutor/deep-dive-attempts', {
+    LearningSessionStepId: learningSessionStepId,
+    StudentResponse: studentResponse,
+    TutorPromptShown: tutorPromptShown,
+  });
+}
+
 export interface EvidenceEntryDto {
   StudentResponse: string;
   TutorPrompt?: string;
@@ -241,6 +291,8 @@ export interface StepReviewDto {
   Content: string;
   Illustrations: BackendIllustration[];
   Evidence: EvidenceEntryDto[];
+  /** Only populated when StepType === 'DeepDive'. */
+  ExampleCards?: ExampleCardDto[];
 }
 
 export function getStepReview(

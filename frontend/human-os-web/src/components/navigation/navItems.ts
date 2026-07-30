@@ -5,6 +5,7 @@ import {
   Layers,
   BookmarkCheck,
   TrendingUp,
+  Brain,
   Bot,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,11 +16,18 @@ export interface NavItem {
   labelKey:
     | 'nav.today'
     | 'nav.growthPlan'
+    | 'nav.programs'
     | 'nav.myPrograms'
     | 'nav.capabilities'
     | 'nav.myCapabilities'
     | 'nav.myEvolution'
+    | 'nav.myBrain'
     | 'nav.agents';
+  /** Shown in the nav but not yet navigable (2026-07-25: Growth Plan is
+   *  seeing low real-world usage vs. the direct catalog enroll flow, so
+   *  it's kept visible as a placeholder for a future lighter-weight,
+   *  goal-based AI recommender instead of being removed outright). */
+  disabled?: boolean;
 }
 
 export interface NavGroup {
@@ -38,11 +46,13 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.groupGrowth',
     items: [
-      { to: '/growth-plan', icon: Map, labelKey: 'nav.growthPlan' },
-      { to: '/programs', icon: GraduationCap, labelKey: 'nav.myPrograms' },
+      { to: '/growth-plan', icon: Map, labelKey: 'nav.growthPlan', disabled: true },
+      { to: '/programs/catalog', icon: GraduationCap, labelKey: 'nav.programs' },
+      { to: '/programs', icon: BookmarkCheck, labelKey: 'nav.myPrograms' },
       { to: '/capabilities', icon: Layers, labelKey: 'nav.capabilities' },
       { to: '/my-capabilities', icon: BookmarkCheck, labelKey: 'nav.myCapabilities' },
       { to: '/growth', icon: TrendingUp, labelKey: 'nav.myEvolution' },
+      { to: '/brain', icon: Brain, labelKey: 'nav.myBrain' },
     ],
   },
   {
@@ -50,6 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [{ to: '/agents', icon: Bot, labelKey: 'nav.agents' }],
   },
 ];
+
 
 /** Flat list, used for the mobile bottom bar and route→title lookups. */
 export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);

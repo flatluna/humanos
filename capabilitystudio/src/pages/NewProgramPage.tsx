@@ -1,10 +1,9 @@
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, GraduationCap, Sparkles, RefreshCw, Check } from 'lucide-react';
 import { createProgram, uploadProgramLogo, generateProgramLogoPreview } from '../lib/api/programsApi';
 import StepIndicator from '../components/StepIndicator';
-
-const STEPS = ['Información básica', 'Objetivos y requisitos', 'Revisar y publicar'];
 
 function base64ToFile(base64: string, contentType: string, fileName: string): File {
   const byteChars = atob(base64);
@@ -15,6 +14,8 @@ function base64ToFile(base64: string, contentType: string, fileName: string): Fi
 }
 
 export default function NewProgramPage() {
+  const { t } = useTranslation();
+  const STEPS = t('newProgram.steps', { returnObjects: true }) as string[];
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
@@ -46,7 +47,7 @@ export default function NewProgramPage() {
       setLogo(file);
       setLogoPreviewUrl(`data:${result.ContentType};base64,${result.ImageBase64}`);
     } catch (err) {
-      setLogoGenError(err instanceof Error ? err.message : 'No se pudo generar el logo.');
+      setLogoGenError(err instanceof Error ? err.message : t('newProgram.logoGenErrorFallback'));
     } finally {
       setGeneratingLogo(false);
     }
@@ -69,7 +70,7 @@ export default function NewProgramPage() {
 
       navigate(`/programs/${program.ProgramId}`);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'No se pudo crear el programa.');
+      setSubmitError(err instanceof Error ? err.message : t('newProgram.createErrorFallback'));
       setSubmitting(false);
     }
   }
@@ -83,42 +84,42 @@ export default function NewProgramPage() {
       {step === 1 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Información básica</h2>
-            <p className="mt-1 text-slate-400">Dale un nombre, descripción y logo a tu nuevo programa.</p>
+            <h2 className="text-2xl font-bold text-white">{t('newProgram.step1Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newProgram.step1Subtitle')}</p>
           </div>
 
-          <Field label="Nombre del programa">
+          <Field label={t('newProgram.nameLabel')}>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ej. Ruta de Contabilidad Fiscal"
+              placeholder={t('newProgram.namePlaceholder')}
               className="input"
             />
           </Field>
 
-          <Field label="Descripción (opcional)">
+          <Field label={t('newProgram.descriptionLabel')}>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="¿Qué logrará el estudiante al completar este programa?"
+              placeholder={t('newProgram.descriptionPlaceholder')}
               className="input resize-none"
             />
           </Field>
 
-          <Field label="Logo del programa (opcional)" hint="Generado por IA (gpt-image-1.5) a partir del nombre y la descripción.">
+          <Field label={t('newProgram.logoLabel')} hint={t('newProgram.logoHint')}>
             <div className="space-y-3">
               {logoPreviewUrl && (
                 <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <img src={logoPreviewUrl} alt="Logo generado" className="h-20 w-20 shrink-0 rounded-xl object-cover" />
+                  <img src={logoPreviewUrl} alt={t('newProgram.logoAlt')} className="h-20 w-20 shrink-0 rounded-xl object-cover" />
                   <div className="min-w-0 flex-1">
                     {logoAccepted ? (
                       <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-400">
-                        <Check className="h-4 w-4" /> Logo aceptado
+                        <Check className="h-4 w-4" /> {t('newProgram.logoAccepted')}
                       </p>
                     ) : (
-                      <p className="text-sm text-slate-400">¿Usar este logo generado?</p>
+                      <p className="text-sm text-slate-400">{t('newProgram.useThisLogo')}</p>
                     )}
                     <div className="mt-2 flex gap-2">
                       {!logoAccepted && (
@@ -127,7 +128,7 @@ export default function NewProgramPage() {
                           onClick={() => setLogoAccepted(true)}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500/15 px-3 py-1.5 text-xs font-medium text-brand-300 hover:bg-brand-500/25"
                         >
-                          <Check className="h-3.5 w-3.5" /> Aceptar
+                          <Check className="h-3.5 w-3.5" /> {t('newProgram.accept')}
                         </button>
                       )}
                       <button
@@ -136,7 +137,7 @@ export default function NewProgramPage() {
                         disabled={generatingLogo}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/5 disabled:opacity-50"
                       >
-                        <RefreshCw className="h-3.5 w-3.5" /> Regenerar
+                        <RefreshCw className="h-3.5 w-3.5" /> {t('newProgram.regenerate')}
                       </button>
                     </div>
                   </div>
@@ -151,7 +152,7 @@ export default function NewProgramPage() {
                   className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] py-8 text-sm font-medium text-slate-300 hover:border-white/25 hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Sparkles className={`h-4 w-4 ${generatingLogo ? 'animate-pulse' : ''}`} />
-                  {generatingLogo ? 'Generando logo...' : 'Generar logo con IA'}
+                  {generatingLogo ? t('newProgram.generatingLogo') : t('newProgram.generateLogo')}
                 </button>
               )}
 
@@ -166,26 +167,26 @@ export default function NewProgramPage() {
       {step === 2 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Objetivos y requisitos</h2>
-            <p className="mt-1 text-slate-400">Comunica al estudiante qué logrará y qué necesita antes de empezar.</p>
+            <h2 className="text-2xl font-bold text-white">{t('newProgram.step2Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newProgram.step2Subtitle')}</p>
           </div>
 
-          <Field label="Objetivos del programa">
+          <Field label={t('newProgram.objectivesLabel')}>
             <textarea
               value={objectives}
               onChange={(e) => setObjectives(e.target.value)}
               rows={5}
-              placeholder="Ej. Al terminar, el estudiante podrá calcular y presentar declaraciones de IVA..."
+              placeholder={t('newProgram.objectivesPlaceholder')}
               className="input resize-none"
             />
           </Field>
 
-          <Field label="Requisitos (opcional)">
+          <Field label={t('newProgram.requirementsLabel')}>
             <textarea
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
               rows={4}
-              placeholder="Ej. Conocimientos básicos de aritmética y contabilidad general"
+              placeholder={t('newProgram.requirementsPlaceholder')}
               className="input resize-none"
             />
           </Field>
@@ -197,16 +198,16 @@ export default function NewProgramPage() {
       {step === 3 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">Revisar y publicar</h2>
-            <p className="mt-1 text-slate-400">Confirma los detalles antes de crear el programa.</p>
+            <h2 className="text-2xl font-bold text-white">{t('newProgram.step3Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newProgram.step3Subtitle')}</p>
           </div>
 
           <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-            <SummaryRow label="Nombre" value={name} />
-            {description && <SummaryRow label="Descripción" value={description} />}
-            <SummaryRow label="Logo" value={logo && logoAccepted ? 'Generado por IA' : 'Sin logo'} />
-            <SummaryRow label="Objetivos" value={objectives || '—'} />
-            <SummaryRow label="Requisitos" value={requirements || '—'} />
+            <SummaryRow label={t('newProgram.summaryName')} value={name} />
+            {description && <SummaryRow label={t('newProgram.summaryDescription')} value={description} />}
+            <SummaryRow label={t('newProgram.summaryLogo')} value={logo && logoAccepted ? t('newProgram.logoGenerated') : t('newProgram.noLogo')} />
+            <SummaryRow label={t('newProgram.summaryObjectives')} value={objectives || t('newProgram.dash')} />
+            <SummaryRow label={t('newProgram.summaryRequirements')} value={requirements || t('newProgram.dash')} />
           </div>
 
           {submitError && (
@@ -219,7 +220,7 @@ export default function NewProgramPage() {
             onBack={() => setStep(2)}
             onNext={handleSubmit}
             nextDisabled={submitting}
-            nextLabel={submitting ? 'Creando...' : 'Crear programa'}
+            nextLabel={submitting ? t('newProgram.creating') : t('newProgram.createProgram')}
             nextIcon={GraduationCap}
           />
         </div>
@@ -251,7 +252,7 @@ function WizardNav({
   onBack,
   onNext,
   nextDisabled,
-  nextLabel = 'Continuar',
+  nextLabel,
   nextIcon: NextIcon = ArrowRight,
 }: {
   onBack?: () => void;
@@ -260,6 +261,8 @@ function WizardNav({
   nextLabel?: string;
   nextIcon?: typeof ArrowRight;
 }) {
+  const { t } = useTranslation();
+  const resolvedNextLabel = nextLabel ?? t('common.continue');
   return (
     <div className="flex items-center justify-between pt-4">
       {onBack ? (
@@ -269,7 +272,7 @@ function WizardNav({
           className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-400 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
-          Atrás
+          {t('common.back')}
         </button>
       ) : (
         <span />
@@ -280,7 +283,7 @@ function WizardNav({
         disabled={nextDisabled}
         className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform enabled:hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {nextLabel}
+        {resolvedNextLabel}
         <NextIcon className="h-4 w-4" />
       </button>
     </div>

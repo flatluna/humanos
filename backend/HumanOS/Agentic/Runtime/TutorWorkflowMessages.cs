@@ -18,6 +18,14 @@ public enum TutorInteractionMode
     /// hint/Socratic question if not yet mastered.</summary>
     Recall,
 
+    /// <summary>Student is working through the optional Deep Dive step's
+    /// example-card pool, ONE card at a time — Tutor quizzes them on the
+    /// CURRENT card only, scores THIS attempt (ephemeral, reuses
+    /// RecallScore), and gives the next question on the same card (not yet
+    /// mastered) or the NEXT card (mastered) — see
+    /// <see cref="DeepDiveLoopGate"/>.</summary>
+    DeepDive,
+
     /// <summary>Student is producing/applying something — Tutor asks
     /// Socratic questions, never solves the task.</summary>
     Production,
@@ -74,7 +82,7 @@ public sealed class TutorTurnRequest
     /// from LearningEvidence, ordered by CreatedDate.</summary>
     public List<TutorTurnHistoryEntry> History { get; set; } = [];
 
-    /// <summary>Only for Mode = Recall: the exact question/prompt the Tutor
+    /// <summary>Only for Mode = Recall or DeepDive: the exact question/prompt the Tutor
     /// showed the student right before THIS attempt (i.e. what
     /// StudentMessage is answering) — the previous turn's own
     /// <see cref="Agents.Runtime.TutorTurnResponse.Message"/>, NOT yet
@@ -155,4 +163,8 @@ public sealed class TutorIllustrationRef
     public string StoragePath { get; set; } = string.Empty;
 
     public string? Caption { get; set; }
+
+    /// <summary>Raw generation-model tag ("deterministic-skiasharp-v1" or a
+    /// generative image model name like "gpt-image-2").</summary>
+    public string ImageModel { get; set; } = string.Empty;
 }

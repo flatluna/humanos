@@ -302,6 +302,13 @@ namespace HumanOS.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("ContentLanguageCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("es");
+
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -310,6 +317,9 @@ namespace HumanOS.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IncludeExamplesStep")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -320,6 +330,10 @@ namespace HumanOS.Migrations
                         .IsRequired()
                         .HasMaxLength(400)
                         .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("PedagogicalAudience")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<Guid?>("SubjectId")
                         .HasColumnType("uniqueidentifier");
@@ -1063,6 +1077,39 @@ namespace HumanOS.Migrations
                     b.ToTable("CapabilityGraphEdges");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphLevel", b =>
+                {
+                    b.Property<Guid>("CapabilityGraphLevelId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("LevelIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CapabilityGraphLevelId");
+
+                    b.HasIndex("CapabilityGraphId", "LevelIndex")
+                        .IsUnique();
+
+                    b.ToTable("CapabilityGraphLevels");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", b =>
                 {
                     b.Property<Guid>("CapabilityGraphNodeId")
@@ -1295,6 +1342,9 @@ namespace HumanOS.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("ExampleCardsJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("NodeExperienceBlueprintId")
                         .HasColumnType("uniqueidentifier");
@@ -2190,6 +2240,13 @@ namespace HumanOS.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
 
+                    b.Property<int>("CurrentDeepDiveCardIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CurrentDeepDiveQuestion")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<string>("CurrentRecallPrompt")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
@@ -2896,6 +2953,36 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("UX_ProgramCapability_Program_SortOrder");
 
                     b.ToTable("ProgramCapability", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Programs.ProgramEnrollment", b =>
+                {
+                    b.Property<Guid>("ProgramEnrollmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("EnrolledDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProgramId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ProgramEnrollmentId")
+                        .HasName("PK_ProgramEnrollment");
+
+                    b.HasIndex("ProgramId");
+
+                    b.HasIndex("PersonId", "ProgramId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ProgramEnrollment_Person_Program");
+
+                    b.ToTable("ProgramEnrollment", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Programs.ProgramTranslation", b =>
@@ -3606,6 +3693,17 @@ namespace HumanOS.Migrations
                     b.Navigation("TargetNode");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphLevel", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraph", "CapabilityGraph")
+                        .WithMany("Levels")
+                        .HasForeignKey("CapabilityGraphId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CapabilityGraph");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraphNode", b =>
                 {
                     b.HasOne("HumanOS.Models.Capabilities.Graph.CapabilityGraph", "CapabilityGraph")
@@ -4187,6 +4285,25 @@ namespace HumanOS.Migrations
                     b.Navigation("Program");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Programs.ProgramEnrollment", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Programs.LearningProgram", "Program")
+                        .WithMany()
+                        .HasForeignKey("ProgramId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Person");
+
+                    b.Navigation("Program");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Programs.ProgramTranslation", b =>
                 {
                     b.HasOne("HumanOS.Models.Localization.Language", "Language")
@@ -4339,6 +4456,8 @@ namespace HumanOS.Migrations
             modelBuilder.Entity("HumanOS.Models.Capabilities.Graph.CapabilityGraph", b =>
                 {
                     b.Navigation("Edges");
+
+                    b.Navigation("Levels");
 
                     b.Navigation("Nodes");
                 });

@@ -1,4 +1,4 @@
-import { apiGet, apiDelete } from './httpClient';
+import { apiGet, apiDelete, apiPatch } from './httpClient';
 
 /** Real backend response shape (PascalCase) — see CapabilityResponse.cs. */
 export interface BackendCapability {
@@ -11,6 +11,19 @@ export interface BackendCapability {
   Name: string;
   Description: string | null;
   IsActive: boolean;
+  /** "es" or "en" — the language this capability's entire generated
+   * content was authored in. See Capability.ContentLanguageCode. */
+  ContentLanguageCode: string;
+  /** Optional tone/persona directive for ALL generated learner-facing
+   * content on this capability. Null means "Standard". The only other
+   * supported value today is "YoungLearner" (K-12 early-childhood
+   * courses). See Capability.PedagogicalAudience. */
+  PedagogicalAudience: string | null;
+  /** True when this capability's blueprints include the optional 6th
+   * "Examples" step (formal/school-track courses). See
+   * Capability.IncludeExamplesStep. Set only at creation time — no update
+   * endpoint exists for it today. */
+  IncludeExamplesStep: boolean;
   LevelCount: number;
   ModuleCount: number;
   NodeCount: number;
@@ -25,6 +38,10 @@ export interface GetCapabilitiesFilters {
   language?: string;
   domain?: string;
   subject?: string;
+  /** Filters by the language the capability's CONTENT was authored in
+   * ("es"/"en") — distinct from `language` above, which only picks a
+   * Translations row for Name/Description labels. */
+  contentLanguage?: string;
 }
 
 /** Real "Capability catalog" list, 100% DB-backed (GET /capabilities). */
@@ -32,6 +49,7 @@ export async function getCapabilities(filters: GetCapabilitiesFilters = {}): Pro
   const params = new URLSearchParams({ language: filters.language ?? 'es' });
   if (filters.domain) params.set('domain', filters.domain);
   if (filters.subject) params.set('subject', filters.subject);
+  if (filters.contentLanguage) params.set('contentLanguage', filters.contentLanguage);
 
   const capabilities = await apiGet<BackendCapability[]>(`/capabilities?${params.toString()}`);
   return capabilities.sort((a, b) => new Date(b.UpdatedDate).getTime() - new Date(a.UpdatedDate).getTime());
@@ -44,4 +62,17 @@ export async function getCapabilities(filters: GetCapabilitiesFilters = {}): Pro
  */
 export async function deleteCapability(capabilityId: string): Promise<void> {
   await apiDelete(`/capabilities/${capabilityId}`);
+}
+
+/**
+ * Changes an EXISTING capability's tone/persona directive. Only affects
+ * FUTURE generated content (new nodes added via the "add node" tool) —
+ * never rewrites already-persisted blueprint step text for existing
+ * nodes. Pass null to reset to "Standard".
+ */
+export async function updateCapabilityPedagogicalAudience(
+  capabilityId: string,
+  pedagogicalAudience: 'YoungLearner' | null,
+): Promise<void> {
+  await apiPatch(`/capabilities/${capabilityId}/pedagogical-audience`, { pedagogicalAudience });
 }

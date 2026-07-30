@@ -70,4 +70,8 @@ public class CapabilityGraph
 
     /// <summary>Colección de todas las aristas en este grafo.</summary>
     public virtual ICollection<CapabilityGraphEdge> Edges { get; set; } = new List<CapabilityGraphEdge>();
+
+    /// <summary>Nombres de "nivel" (opcionales) dados por el profesor a cada
+    /// tier computado del DAG — ver <see cref="CapabilityGraphLevel"/>.</summary>
+    public virtual ICollection<CapabilityGraphLevel> Levels { get; set; } = new List<CapabilityGraphLevel>();
 }

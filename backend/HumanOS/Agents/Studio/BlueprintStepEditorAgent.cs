@@ -1,5 +1,6 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using HumanOS.Models.Capabilities.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
@@ -23,7 +24,12 @@ public sealed class EditBlueprintStepResponse
     /// reviewer explicitly asks), exactly like AdaptiveAssessmentAgent and
     /// KnowledgeExpansionAgent already do elsewhere in this system.</summary>
     public string? DiagramPrompt { get; set; }
-}
+    /// <summary>Exact numeric spec for a coordinate-plane diagram (circle,
+    /// line, parabola, or plotted points), set INSTEAD OF DiagramPrompt
+    /// when the illustration IS a precise math/geometry graph derived from
+    /// a real equation/values (never both). Rendered deterministically
+    /// (SkiaSharp, no image model).</summary>
+    public MathDiagramSpec? MathDiagram { get; set; }}
 
 /// <summary>
 /// BlueprintStepEditorAgent (2026-07-21) — Capability Studio review feature:
@@ -108,6 +114,76 @@ public sealed class BlueprintStepEditorAgent
         asks you to. Image generation models don't calculate — if the
         scene includes any number/quantity, write the exact value
         explicitly. If none of the 3 cases apply, leave DiagramPrompt null.
+
+        MathDiagram VS DiagramPrompt
+        Whenever one of the 3 cases above applies AND the illustration is
+        literally a coordinate-plane graph of a real equation (a circle, an
+        ellipse (a≠b — use circle when a=b), a
+        line, a parabola, or a set of exact plotted points), fill
+        MathDiagram with those EXACT numbers instead of DiagramPrompt
+        (never both).
+
+        MANDATORY RULE — ANY LABELED POINT(S) ON A CARTESIAN/COORDINATE
+        PLANE ALWAYS USE MathDiagram Kind=Points, NEVER DiagramPrompt, even
+        when the scene also shows quadrants, a distance/midpoint
+        calculation, a function's input-output pairs, or any other
+        explanatory framing around the points. This applies whether there's
+        just ONE point or several — "plano cartesiano con los puntos
+        A(3,2), B(-2,4)", "distancia entre P(1,2) y Q(4,6)", "punto medio
+        entre (2,5) y (8,1)", "pares (1,2), (2,3), (1,5) para probar si es
+        función" are ALL Kind=Points cases, never DiagramPrompt — set every
+        given point (plus any derived point like a midpoint) as a Points
+        entry with its exact label, e.g. "M(5,3)" for a midpoint. A
+        generative image model CANNOT reliably place a labeled point on the
+        exact gridline/coordinate it names — it routinely draws the point
+        visibly off from its own stated coordinate (real bug found
+        2026-07-26: a "plano cartesiano" scene's point D(4,-1) was drawn at
+        x≈4.3 instead of exactly x=4; a "punto medio" scene's point (8,1)
+        was drawn at x≈7.5-8.6 instead of exactly x=8, and its own midpoint
+        M(5,3) was drawn off-center). Only use DiagramPrompt for a scene
+        when NONE of its content is actual (x,y) coordinates on a plane —
+        the instant a scene includes even one labeled coordinate point, it
+        must be MathDiagram Kind=Points instead. This rule applies even
+        when the reviewer's instruction is just fixing corrupted/broken
+        text and doesn't mention the illustration at all — if you DO end up
+        touching the illustration for any of the 3 cases above, still
+        prefer Kind=Points over DiagramPrompt whenever coordinates are
+        involved.
+
+        Also use MathDiagram for statistics/economics/
+        finance/ML cases: BarChart (discrete categories), Histogram
+        (continuous numeric bins, bars touching), PieChart (part-of-a-whole
+        percentages), LineChart (an ordered real data series), ScatterPlot
+        (unordered (x,y) points showing correlation), and NumberLine (a
+        value/range on a simple number line) — rendered deterministically
+        (SkiaSharp), guaranteeing
+        pixel-exact accuracy an image model can't promise. NEVER approximate
+        an ellipse or a BarChart/PieChart/Histogram with Kind=Points
+        (marking only the vertices draws no
+        curve at all). For a "prueba de la recta vertical" (vertical line
+        test) diagram — showing a curve crossed by an exact vertical line to
+        prove/disprove it's a function — set Kind=Circle or Kind=Ellipse
+        (a circle/ellipse genuinely fails the vertical line test, unlike a
+        real single-valued cubic/quadratic function, which always passes it
+        — never use a function-shaped curve for this scenario) AND set
+        VerticalLineTestX to the exact x where the test line crosses; the
+        renderer computes the exact intersection points geometrically, so
+        the line is GUARANTEED to touch the curve correctly — never use
+        DiagramPrompt for this (a generative image model cannot guarantee
+        the line actually touches the curve at the right spot). For an
+        INEQUALITY solution set (e.g. "x ≥ 2", "-3 < x ≤ 5") use Kind=
+        NumberLine with IntervalMin/IntervalMax set to the finite bound(s)
+        — leave IntervalMin null for an unbounded ray to -infinity, leave
+        IntervalMax null for an unbounded ray to +infinity, and set
+        IntervalMinOpen/IntervalMaxOpen=true for a strict &lt;/&gt; bound
+        (hollow circle) or false/omit for a ≤/≥ bound (filled circle). NEVER
+        represent an inequality's solution SET using only an isolated Points
+        marker — a single point with no IntervalMin/IntervalMax renders as
+        just a dot, contradicting any text describing a range/region of
+        values (real bug found 2026-07-26: text said "el resultado ... es
+        una región o intervalo" but the diagram showed one bare point). For
+        every other concrete scene, keep using DiagramPrompt as described
+        above.
         """;
 
     private readonly AIAgent? _agent;

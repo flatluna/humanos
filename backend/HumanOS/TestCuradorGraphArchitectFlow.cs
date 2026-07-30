@@ -361,7 +361,7 @@ public sealed class TestCuradorGraphArchitectFlow
                                             firstNode.CapabilityGraphNodeId,
                                             designResult.Blueprint,
                                             firstNode.Illustrations.ToList(),
-                                            CancellationToken.None);
+                                            cancellationToken: CancellationToken.None);
 
                                         sb.AppendLine($"\n✅ Blueprint persistido en SQL — NodeExperienceBlueprintId: {persistedBlueprint.NodeExperienceBlueprintId}");
                                         sb.AppendLine($"Steps persistidos: {persistedBlueprint.Steps.Count}\n");
@@ -838,7 +838,7 @@ public sealed class TestCuradorGraphArchitectFlow
                 node.CapabilityGraphNodeId,
                 designResult.Blueprint,
                 node.Illustrations.ToList(),
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             sb.AppendLine($"\n✅ Blueprint persistido en SQL — NodeExperienceBlueprintId: {persistedBlueprint.NodeExperienceBlueprintId}");
             sb.AppendLine($"Steps persistidos: {persistedBlueprint.Steps.Count}\n");

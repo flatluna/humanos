@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { GraduationCap, CalendarDays, Layers, ArrowRight, Sparkles, Star } from 'lucide-react';
+import { GraduationCap, CalendarDays, Layers, ArrowRight, Sparkles, Star, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
-import { getEnrolledPrograms, type EnrolledProgram } from '../api/enrolledProgramsApi';
+import { getEnrolledPrograms, peekEnrolledProgramsCache, type EnrolledProgram } from '../api/enrolledProgramsApi';
 
 /** Rotating gradient palette for card headers — purely cosmetic, cycles by index so
  * a page with several enrolled programs still reads as a varied, colorful grid. */
@@ -28,6 +28,26 @@ function programProgress(program: EnrolledProgram): { mastered: number; total: n
   return { mastered, total, percent };
 }
 
+/** Full-screen overlay shown ONLY on a true cold start (nothing cached yet
+ * for this person in this tab session) — GET /people/{id}/enrolled-programs
+ * is a genuinely expensive query on the backend (N+1 over every capability
+ * in every enrolled program), so a bare skeleton can feel like the page is
+ * stuck. Once data is cached, subsequent visits render instantly and this
+ * modal never reappears (see peekEnrolledProgramsCache). */
+function LoadingModal() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-2xl dark:border-white/10 dark:bg-slate-950">
+        <RefreshCw className="h-8 w-8 animate-spin text-brand-500" />
+        <p className="font-medium text-slate-900 dark:text-white">Cargando tus programas...</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          La primera vez puede tardar unos segundos mientras calculamos tu progreso. Las próximas veces será instantáneo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** "Mis Programas" — card grid of every Program the student is enrolled in
  * (via the Growth Plan's Starting Point step), each with its assigned date
  * and aggregate progress. Opening a card goes to its ProgramDetailPage,
@@ -38,44 +58,82 @@ export default function MyProgramsPage() {
 
   const [programs, setPrograms] = useState<EnrolledProgram[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+
+  const loadPrograms = useCallback(
+    (forceRefresh: boolean) => {
+      if (!personId) return () => {};
+      let cancelled = false;
+
+      const cached = forceRefresh ? null : peekEnrolledProgramsCache(personId);
+      if (cached) {
+        setPrograms(cached);
+        setLoading(false);
+        setRefreshing(true); // Data on screen, but still revalidating in the background.
+      } else {
+        setLoading(true);
+        setShowLoadingModal(true); // Nothing cached at all — true cold start.
+      }
+      setError(null);
+
+      getEnrolledPrograms(personId, { forceRefresh })
+        .then((data) => {
+          if (!cancelled) setPrograms(data);
+        })
+        .catch(() => {
+          if (!cancelled && !cached) {
+            setError('No pudimos cargar tus programas. Intenta de nuevo en unos minutos.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setLoading(false);
+            setRefreshing(false);
+            setShowLoadingModal(false);
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    },
+    [personId],
+  );
 
   useEffect(() => {
-    if (!personId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    getEnrolledPrograms(personId)
-      .then((data) => {
-        if (!cancelled) setPrograms(data);
-      })
-      .catch(() => {
-        if (!cancelled) setError('No pudimos cargar tus programas. Intenta de nuevo en unos minutos.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [personId]);
+    return loadPrograms(false);
+  }, [loadPrograms]);
 
   const isEmpty = useMemo(() => !loading && !error && programs.length === 0, [loading, error, programs]);
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-8">
-      <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-accent-500 text-white shadow-lg shadow-brand-500/30">
-          <GraduationCap className="h-6 w-6" />
+      {showLoadingModal && <LoadingModal />}
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-accent-500 text-white shadow-lg shadow-brand-500/30">
+            <GraduationCap className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mis Programas</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Los programas de aprendizaje a los que estás inscrito, con tu progreso en cada uno.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mis Programas</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Los programas de aprendizaje a los que estás inscrito, con tu progreso en cada uno.
-          </p>
-        </div>
+
+        <button
+          type="button"
+          onClick={() => loadPrograms(true)}
+          disabled={refreshing || loading}
+          className="flex flex-none items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Actualizando...' : 'Actualizar'}
+        </button>
       </div>
 
       {loading && (
@@ -100,13 +158,13 @@ export default function MyProgramsPage() {
           <Sparkles className="mx-auto h-8 w-8 text-brand-500" />
           <p className="mt-3 font-medium text-slate-700 dark:text-white">Todavía no tienes programas asignados</p>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Completa tu Plan de Crecimiento para recibir un programa recomendado para ti.
+            Explora el catálogo de Programas o completa tu Plan de Crecimiento para recibir uno recomendado.
           </p>
           <Link
-            to="/growth-plan/starting-point"
+            to="/programs/catalog"
             className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
           >
-            Ir a mi Plan de Crecimiento
+            Explorar Programas
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -177,6 +235,18 @@ export default function MyProgramsPage() {
               </Link>
             );
           })}
+        </div>
+      )}
+
+      {!loading && !error && programs.length > 0 && (
+        <div className="mt-6 flex justify-center">
+          <Link
+            to="/programs/catalog"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:gap-2 dark:text-brand-400"
+          >
+            <Sparkles className="h-4 w-4" />
+            Explorar más programas
+          </Link>
         </div>
       )}
     </div>

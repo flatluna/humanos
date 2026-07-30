@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Palette, Check } from 'lucide-react';
 import { THEMES, applyTheme, getStoredTheme, type ThemeName } from '../lib/theme';
 
@@ -10,6 +11,7 @@ const SWATCHES: Record<ThemeName, string> = {
 };
 
 export default function ThemeSwitcher() {
+  const { t } = useTranslation();
   const [theme, setTheme] = useState<ThemeName>(() => getStoredTheme());
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,7 +35,7 @@ export default function ThemeSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Cambiar tema"
+        aria-label={t('common.changeTheme')}
         className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
       >
         <Palette className="h-4.5 w-4.5" />
