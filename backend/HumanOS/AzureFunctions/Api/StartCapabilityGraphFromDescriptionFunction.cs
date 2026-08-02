@@ -79,6 +79,15 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
 
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public bool IncludeExamplesStep { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public string? Category { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public Guid? TargetJobRoleId { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public string? TargetSkill { get; set; }
     }
 
     [Function("StartCapabilityGraphFromDescription")]
@@ -122,7 +131,7 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 body.Description, body.CapabilityName, body.CapabilityDomainId, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
-                body.PedagogicalAudience, body.IncludeExamplesStep);
+                body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

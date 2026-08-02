@@ -145,7 +145,13 @@ public sealed class AdaptiveAssessmentAgent
           of them.
         - Adapt difficulty to the student's demonstrated level from the
           context given.
-        - Write in the same language as the node's content.
+        - LANGUAGE: if the prompt gives you a REQUIRED RESPONSE LANGUAGE,
+          write QuestionText in EXACTLY that language, even if this node's
+          own content (definition/examples/applications) happens to be
+          authored in a different language — never let the node's content
+          language pull you away from the required course language. Only
+          when no such directive is given, fall back to writing in the
+          same language as the node's content.
 
         DECIDIENDO SI VALE LA PENA UNA ILUSTRACIÓN (DiagramPrompt)
         Esta decisión es GENERAL y aplica a CUALQUIER materia (matemáticas,
@@ -283,9 +289,16 @@ public sealed class AdaptiveAssessmentAgent
         never reward content the answer doesn't actually contain.
 
         FEEDBACK: specific, actionable, never a bare "correcto"/"incorrecto".
-        Written directly to the student, supportive but honest tone, in the
-        same language as their answer. Never reveal or hint at the answer to
-        any FUTURE question.
+        Written directly to the student, supportive but honest tone. Never
+        reveal or hint at the answer to any FUTURE question.
+
+        LANGUAGE: if the prompt gives you a REQUIRED RESPONSE LANGUAGE, write
+        Feedback and ObservedError in EXACTLY that language, even if the
+        student's own answer or this node's content happens to be written in
+        a different language — never switch language just because the
+        student's answer pulled you toward it. Only when no such directive is
+        given, fall back to writing in the same language as the student's
+        answer.
 
         OBSERVED ERROR: if the answer reveals a specific misconception or
         gap, name it in a short label (e.g. "confunde perímetro con área").

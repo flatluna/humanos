@@ -772,9 +772,16 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
         {step.stepType === 'DeepDive' &&
           (pendingAdvance ? (
             <RewardBanner title={t('previewNode.deepDiveRewardTitle')} onContinue={handlePendingAdvanceContinue} />
-          ) : pendingCardAdvance ? (
-            <RewardBanner title={t('previewNode.deepDiveCardMasteredTitle')} onContinue={handlePendingCardAdvanceContinue} />
           ) : (
+            // BUG FIX (2026-07-30 — "the voice gets interrupted"): mastering
+            // a card used to swap this ENTIRE block out for a standalone
+            // <RewardBanner>, which unmounted the card's <VoiceTutorAgent>
+            // (and its live WebRTC connection) the instant the backend
+            // confirmed mastery — cutting off the voice mid-conversation.
+            // Now the same card (image/title/text + VoiceTutorAgent) stays
+            // mounted the whole time; only the bottom "answer" area swaps
+            // between the submit form and the reward message + Continue
+            // button, so the voice session is never interrupted.
             step.exampleCards &&
             step.exampleCards.length > 0 && (
               <div className="mt-4">
@@ -868,21 +875,61 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
                   );
                 })()}
 
-
-                <label className="mb-1 mt-4 block text-sm font-medium text-slate-300">{t('previewNode.yourAnswer')}</label>
-                <textarea
-                  value={responseText}
-                  onChange={(e) => setResponseText(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-                />
-                <button
-                  onClick={() => handleDeepDiveSubmit()}
-                  disabled={submitting || !responseText.trim()}
-                  className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 disabled:opacity-50"
-                >
-                  {t('previewNode.deepDiveSubmit')}
-                </button>
+                {pendingCardAdvance ? (
+                  // Same card stays on screen (see fix note above) — just
+                  // hide the submit form and show the reward message +
+                  // Continue button in its place, instead of tearing down
+                  // and replacing the whole block.
+                  <div className="mt-6 rounded-xl border border-emerald-400/30 bg-emerald-500/[0.08] p-5 text-center">
+                    <p className="text-sm font-semibold text-emerald-200">{t('previewNode.deepDiveCardMasteredTitle')}</p>
+                    <button
+                      onClick={handlePendingCardAdvanceContinue}
+                      className="mt-4 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25"
+                    >
+                      {t('previewNode.continue')}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <label className="mb-1 mt-4 block text-sm font-medium text-slate-300">{t('previewNode.yourAnswer')}</label>
+                    <textarea
+                      value={responseText}
+                      onChange={(e) => setResponseText(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
+                    />
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <button
+                        onClick={() => handleDeepDiveSubmit()}
+                        disabled={submitting || !responseText.trim()}
+                        className="rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 disabled:opacity-50"
+                      >
+                        {t('previewNode.deepDiveSubmit')}
+                      </button>
+                      {/* Reviewer-only bypass (2026-07-31, explicit user
+                          request): in "Revisión y aceptación" mode a reviewer
+                          just wants to browse through every card's content
+                          without having to satisfy the AI grader on each one.
+                          Purely client-side — never calls submitDeepDiveAttempt,
+                          never touches the real LearningSession/grading state.
+                          Once the last card is reached, further navigation
+                          happens via the already-unlocked step stepper above. */}
+                      {mode === 'demo' && deepDiveCardIndex < step.exampleCards.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeepDiveCardIndex((i) => Math.min(i + 1, step.exampleCards!.length - 1));
+                            setDeepDiveLastPrompt(undefined);
+                            setResponseText('');
+                          }}
+                          className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/[0.08]"
+                        >
+                          {t('previewNode.deepDiveSkip')}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )
           ))}

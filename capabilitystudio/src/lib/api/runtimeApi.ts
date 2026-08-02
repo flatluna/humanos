@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './httpClient';
+import { apiGet, apiPost, apiPut, apiDelete } from './httpClient';
 
 /**
  * Client for the real Human OS Learning Runtime API, ported from
@@ -87,6 +87,17 @@ export function addCapabilityGraphNode(
   request: AddGraphNodeRequest
 ): Promise<AddGraphNodeResponse> {
   return apiPost<AddGraphNodeResponse>(`/capabilities/${capabilityId}/graph/nodes`, request);
+}
+
+/**
+ * Permanently deletes ONE node from a capability's graph (edges,
+ * illustrations, blueprint(s), knowledge cache, per-node progress — see
+ * CapabilityGraphPersistenceService.DeleteNodeAsync). Irreversible — the
+ * caller must have already confirmed with the user (see
+ * DeleteGraphNodeModal).
+ */
+export function deleteCapabilityGraphNode(capabilityId: string, nodeId: string): Promise<void> {
+  return apiDelete(`/capabilities/${capabilityId}/graph/nodes/${nodeId}`);
 }
 
 // === Runtime session (5-step Memory Paradox) ===

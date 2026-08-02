@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, Link } from 'react-router-dom';
-import { FileText, MessageSquareText, Video, Link2, ArrowLeft, ArrowRight, Sparkles, Globe, Baby, LayoutGrid } from 'lucide-react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { FileText, MessageSquareText, Video, Link2, ArrowLeft, ArrowRight, Sparkles, Globe, Baby } from 'lucide-react';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getCapabilityDomains, type CapabilityDomain } from '../lib/api/domainsApi';
 import { getPrograms, getProgramById, type BackendProgram, type BackendProgramDetail } from '../lib/api/programsApi';
+import { getSkills, type SkillDto } from '../lib/api/skillsApi';
 import {
   DEFAULT_STUDIO_TENANT_ID,
   readFileAsBase64,
@@ -19,28 +20,60 @@ import { getSubjectIcon } from '../lib/subjectVisuals';
 
 type CapabilityType = 'pdf' | 'text' | 'video' | 'link';
 
+/// The 4 employer career-plan training tracks (2026-08-01 "cursos de
+/// empresa" feature) — same kebab-case ids used by the career-plan
+/// frontends (human-os-employee/human-os-enterprise) as their tab/category
+/// ids, and by the backend's Capability.Category /
+/// PersonCareerPlanService.AutoMatchCapabilitiesAsync matching logic.
+const CAREER_CATEGORIES = [
+  { value: 'job-skills' as const, labelKey: 'newCapability.careerCategoryJobSkills' },
+  { value: 'soft-skills' as const, labelKey: 'newCapability.careerCategorySoftSkills' },
+  { value: 'department-processes' as const, labelKey: 'newCapability.careerCategoryDepartmentProcesses' },
+  { value: 'hr-processes' as const, labelKey: 'newCapability.careerCategoryHrProcesses' },
+];
+
 export default function NewCapabilityPage() {
   const { t } = useTranslation();
   const STEPS = t('newCapability.steps', { returnObjects: true }) as string[];
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
+  // Optional prefill (2026-08-01) — lets an external link (e.g. the HR
+  // enterprise console's "Generar curso" button for a career-plan step
+  // that has no matching Program yet) open this wizard with the title/
+  // description already filled in, so HR just reviews and picks a domain
+  // instead of retyping. Read once on mount only.
+  const [searchParams] = useSearchParams();
+
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [domains, setDomains] = useState<CapabilityDomain[]>([]);
   const [programs, setPrograms] = useState<BackendProgram[]>([]);
+  const [catalogSkills, setCatalogSkills] = useState<SkillDto[]>([]);
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState(() => searchParams.get('name') ?? '');
+  const [description, setDescription] = useState(() => searchParams.get('description') ?? '');
   const [subjectId, setSubjectId] = useState<string>('');
   const [capabilityDomainId, setCapabilityDomainId] = useState<string>('');
   const [languageCode, setLanguageCode] = useState<'es' | 'en'>('es');
   const [pedagogicalAudience, setPedagogicalAudience] = useState<'Standard' | 'YoungLearner'>('Standard');
-  const [includeExamplesStep, setIncludeExamplesStep] = useState(false);
+  // Deep Dive (Examples) step is now ALWAYS generated for every course,
+  // regardless of subject/audience (cooking, carpentry, law, K-12, etc.) —
+  // no longer an optional toggle the designer has to remember to enable.
+  const includeExamplesStep = true;
   const [programId, setProgramId] = useState<string>('');
   const [programDetail, setProgramDetail] = useState<BackendProgramDetail | null>(null);
   const [programSequenceNumber, setProgramSequenceNumber] = useState<number | null>(null);
   const [capabilityObjectives, setCapabilityObjectives] = useState('');
   const [capabilityRequirements, setCapabilityRequirements] = useState('');
+
+  // Career-plan linking (2026-08-01): career category is a plain string,
+  // '' meaning "not an employer course" (Category stays null on the
+  // backend). targetSkill is only meaningful once a career category is
+  // chosen — HR picks it straight from the shared Skill catalog, which
+  // already knows every job role that requires it, so no separate
+  // job-role picker is needed here.
+  const [careerCategory, setCareerCategory] = useState<string>('');
+  const [targetSkill, setTargetSkill] = useState<string>('');
 
   const MAX_PROGRAM_SEQUENCE_SLOTS = 20;
 
@@ -63,6 +96,37 @@ export default function NewCapabilityPage() {
     () => programs.find((p) => p.ProgramId === programId) ?? null,
     [programs, programId],
   );
+
+  // As soon as HR picks a career category (e.g. "Soft Skills"), fetch the
+  // reusable Skill catalog for that category (2026-08-01 "cierra el
+  // ciclo" feature) — lists every skill/process HR has already authored
+  // across ALL job roles in this category, so picking one doesn't require
+  // choosing a specific job role first.
+  useEffect(() => {
+    if (!careerCategory) {
+      setCatalogSkills([]);
+      return;
+    }
+    let cancelled = false;
+    getSkills(DEFAULT_STUDIO_TENANT_ID, careerCategory)
+      .then((skills) => {
+        if (!cancelled) setCatalogSkills(skills);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogSkills([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [careerCategory]);
+
+  // Resetting career category clears any target skill that no longer
+  // makes sense (e.g. switching from "Mi Puesto" to "Ninguna").
+  useEffect(() => {
+    if (!careerCategory) {
+      setTargetSkill('');
+    }
+  }, [careerCategory]);
 
   // Map of occupied sequence slots (1..20) → the capability name already
   // sitting there, so the picker below can disable them without forcing
@@ -137,6 +201,8 @@ export default function NewCapabilityPage() {
           languageCode,
           pedagogicalAudience: pedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : null,
           includeExamplesStep,
+          category: careerCategory || null,
+          targetSkill: targetSkill || null,
         });
         navigate(`/runs/${run.RunId}`);
       } else if (capabilityType === 'text') {
@@ -155,6 +221,8 @@ export default function NewCapabilityPage() {
           languageCode,
           pedagogicalAudience: pedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : null,
           includeExamplesStep,
+          category: careerCategory || null,
+          targetSkill: targetSkill || null,
         });
         navigate(`/runs/${run.RunId}`);
       }
@@ -268,24 +336,6 @@ export default function NewCapabilityPage() {
             </div>
           </Field>
 
-          <Field
-            label={t('newCapability.includeExamplesStepLabel')}
-            hint={t('newCapability.includeExamplesStepHint')}
-          >
-            <button
-              type="button"
-              onClick={() => setIncludeExamplesStep((prev) => !prev)}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                includeExamplesStep
-                  ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                  : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-              }`}
-            >
-              <LayoutGrid className="h-4 w-4 shrink-0" />
-              {includeExamplesStep ? t('newCapability.includeExamplesStepOn') : t('newCapability.includeExamplesStepOff')}
-            </button>
-          </Field>
-
           <Field label={t('newCapability.domainLabel')}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {subjects.map((subject) => {
@@ -309,6 +359,59 @@ export default function NewCapabilityPage() {
               })}
             </div>
           </Field>
+
+          <Field label={t('newCapability.careerCategoryLabel')} hint={t('newCapability.careerCategoryHint')}>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => setCareerCategory('')}
+                className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                  careerCategory === ''
+                    ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                    : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                }`}
+              >
+                {t('newCapability.careerCategoryNone')}
+              </button>
+              {CAREER_CATEGORIES.map((option) => {
+                const active = careerCategory === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setCareerCategory(active ? '' : option.value)}
+                    className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                    }`}
+                  >
+                    {t(option.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          {careerCategory && (
+            <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+              <Field label={t('newCapability.targetSkillLabel')} hint={t('newCapability.targetSkillCatalogHint')}>
+                {catalogSkills.length > 0 ? (
+                  <select value={targetSkill} onChange={(e) => setTargetSkill(e.target.value)} className="input">
+                    <option value="">{t('newCapability.targetSkillPlaceholder')}</option>
+                    {catalogSkills.map((skill) => (
+                      <option key={skill.SkillId} value={skill.Name}>
+                        {skill.Name}
+                        {skill.JobRoles.length > 0 ? ` (${skill.JobRoles.length})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-slate-500">{t('newCapability.targetSkillNoOptions')}</p>
+                )}
+              </Field>
+            </div>
+          )}
 
           <Field label={t('newCapability.authoringCategoryLabel')} hint={t('newCapability.authoringCategoryHint')}>
             <select value={capabilityDomainId} onChange={(e) => setCapabilityDomainId(e.target.value)} className="input">
@@ -513,6 +616,15 @@ export default function NewCapabilityPage() {
               label={t('newCapability.summaryCategory')}
               value={domains.find((d) => d.CapabilityDomainId === capabilityDomainId)?.Name ?? t('newCapability.dash')}
             />
+            <SummaryRow
+              label={t('newCapability.summaryCareerCategory')}
+              value={
+                careerCategory
+                  ? t(CAREER_CATEGORIES.find((c) => c.value === careerCategory)?.labelKey ?? '')
+                  : t('newCapability.careerCategoryNone')
+              }
+            />
+            {targetSkill && <SummaryRow label={t('newCapability.summaryTargetSkill')} value={targetSkill} />}
             <SummaryRow label={t('newCapability.summaryContentLanguage')} value={languageCode === 'en' ? t('common.languageEnglish') : t('common.languageSpanish')} />
             <SummaryRow
               label={t('newCapability.summaryPedagogicalAudience')}

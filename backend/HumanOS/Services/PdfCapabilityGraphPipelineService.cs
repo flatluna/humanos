@@ -207,7 +207,10 @@ public sealed class PdfCapabilityGraphPipelineService
         string? capabilityDescription = null,
         string languageCode = "es",
         string? pedagogicalAudience = null,
-        bool includeExamplesStep = false)
+        bool includeExamplesStep = true,
+        string? category = null,
+        Guid? targetJobRoleId = null,
+        string? targetSkill = null)
     {
         // ==================== 1. EXTRACT TEXT + IMAGES, PER PAGE ====================
         reportProgress("Extrayendo texto del PDF");
@@ -337,7 +340,10 @@ public sealed class PdfCapabilityGraphPipelineService
             capabilityDescription,
             languageCode,
             pedagogicalAudience,
-            includeExamplesStep);
+            includeExamplesStep,
+            category,
+            targetJobRoleId,
+            targetSkill);
 
         result.DescribedImageCount = describedImageCount;
         return result;
@@ -375,7 +381,10 @@ public sealed class PdfCapabilityGraphPipelineService
         string? capabilityDescription = null,
         string languageCode = "es",
         string? pedagogicalAudience = null,
-        bool includeExamplesStep = false)
+        bool includeExamplesStep = true,
+        string? category = null,
+        Guid? targetJobRoleId = null,
+        string? targetSkill = null)
     {
         if (!_ideaToDocument.IsConfigured)
         {
@@ -408,7 +417,10 @@ public sealed class PdfCapabilityGraphPipelineService
             capabilityDescription ?? description,
             languageCode,
             pedagogicalAudience,
-            includeExamplesStep);
+            includeExamplesStep,
+            category,
+            targetJobRoleId,
+            targetSkill);
     }
 
     /// <summary>Shared continuation of both <see cref="RunAsync"/> (real
@@ -438,7 +450,10 @@ public sealed class PdfCapabilityGraphPipelineService
         string? capabilityDescription = null,
         string languageCode = "es",
         string? pedagogicalAudience = null,
-        bool includeExamplesStep = false)
+        bool includeExamplesStep = true,
+        string? category = null,
+        Guid? targetJobRoleId = null,
+        string? targetSkill = null)
     {
         // ==================== 2. DETECT CHAPTERS (best-effort) ====================
         reportProgress("Detectando capítulos/índice");
@@ -627,7 +642,7 @@ public sealed class PdfCapabilityGraphPipelineService
         await using (var setupDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
         {
             capabilityId = await EnsureCapabilityAsync(
-                setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, cancellationToken);
+                setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, category, targetJobRoleId, targetSkill, cancellationToken);
 
             // Top-down flow (2026-07-23): Programs are created empty first;
             // Capabilities are connected to them afterward. When the wizard
@@ -964,6 +979,9 @@ public sealed class PdfCapabilityGraphPipelineService
         string languageCode,
         string? pedagogicalAudience,
         bool includeExamplesStep,
+        string? category,
+        Guid? targetJobRoleId,
+        string? targetSkill,
         CancellationToken cancellationToken)
     {
         var domainExists = await dbContext.CapabilityDomains
@@ -999,6 +1017,9 @@ public sealed class PdfCapabilityGraphPipelineService
             ContentLanguageCode = string.IsNullOrWhiteSpace(languageCode) ? "es" : languageCode.Trim().ToLowerInvariant(),
             PedagogicalAudience = string.IsNullOrWhiteSpace(pedagogicalAudience) ? null : pedagogicalAudience.Trim(),
             IncludeExamplesStep = includeExamplesStep,
+            Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
+            TargetJobRoleId = targetJobRoleId,
+            TargetSkill = string.IsNullOrWhiteSpace(targetSkill) ? null : targetSkill.Trim(),
             CreatedDate = DateTime.UtcNow,
             UpdatedDate = DateTime.UtcNow
         };

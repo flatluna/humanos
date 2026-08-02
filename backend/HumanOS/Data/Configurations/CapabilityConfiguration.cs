@@ -43,6 +43,12 @@ public sealed class CapabilityConfiguration
         builder.Property(x => x.PedagogicalAudience)
             .HasMaxLength(30);
 
+        builder.Property(x => x.Category)
+            .HasMaxLength(30);
+
+        builder.Property(x => x.TargetSkill)
+            .HasMaxLength(400);
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")
@@ -67,6 +73,13 @@ public sealed class CapabilityConfiguration
             .HasConstraintName(
                 "FK_Capability_Subject");
 
+        builder.HasOne<HumanOS.Models.OrgStructure.JobRole>()
+            .WithMany()
+            .HasForeignKey(x => x.TargetJobRoleId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName(
+                "FK_Capability_TargetJobRole");
+
         builder.HasIndex(x => x.Code)
             .IsUnique()
             .HasDatabaseName("UX_Capability_Code");
@@ -78,5 +91,13 @@ public sealed class CapabilityConfiguration
         builder.HasIndex(x => x.SubjectId)
             .HasDatabaseName(
                 "IX_Capability_SubjectId");
+
+        builder.HasIndex(x => x.Category)
+            .HasDatabaseName(
+                "IX_Capability_Category");
+
+        builder.HasIndex(x => x.TargetJobRoleId)
+            .HasDatabaseName(
+                "IX_Capability_TargetJobRoleId");
     }
 }

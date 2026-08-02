@@ -2,6 +2,7 @@ using System.Text.Json;
 using HumanOS.Agents.Studio;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Graph;
+using Microsoft.EntityFrameworkCore;
 
 namespace HumanOS.Services;
 
@@ -244,5 +245,81 @@ public sealed class CapabilityGraphPersistenceService
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return nodeEntity;
+    }
+
+    /// <summary>
+    /// Permanently deletes ONE CapabilityGraphNode — Capability Studio's
+    /// "delete this node" tool (2026-07-31), for cleaning up nodes whose
+    /// content generation never completed (e.g. a backend crash mid-generation
+    /// left the node persisted with no NodeExperienceBlueprint) or any node
+    /// a professor simply wants gone. Irreversible — the caller must have
+    /// already confirmed with the user (see DeleteGraphNodeModal.tsx).
+    ///
+    /// Delete order matters because of FK constraints on CapabilityGraphNode:
+    /// 1. CapabilityGraphEdge — SourceNodeId/TargetNodeId are NoAction FKs
+    ///    (behave like Restrict at the DB level), so both directions must be
+    ///    removed explicitly first.
+    /// 2. LearningSessionNode — CapabilityGraphNodeId is a Restrict FK. Only
+    ///    the progress row(s) FOR THIS NODE are removed (cascading down to
+    ///    that node's Steps/AssessmentResults/AssessmentRounds); the owning
+    ///    LearningSession itself — and a student's progress on this
+    ///    capability's OTHER nodes — is left untouched.
+    /// 3. The node itself, which then DB-cascades to its Illustrations,
+    ///    ExperienceBlueprints (-> Steps/Validations), KnowledgeChunks, and
+    ///    KnowledgeExpansion cache row.
+    /// Returns false if no node with that id exists.
+    /// </summary>
+    public async Task<bool> DeleteNodeAsync(
+        HumanOsDbContext dbContext,
+        Guid capabilityGraphNodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dbContext);
+
+        var nodeExists = await dbContext.CapabilityGraphNodes
+            .AsNoTracking()
+            .AnyAsync(n => n.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
+
+        if (!nodeExists)
+        {
+            return false;
+        }
+
+        // SqlServerRetryingExecutionStrategy (EnableRetryOnFailure) refuses a
+        // user-managed transaction directly — the strategy itself must own
+        // and retry the whole atomic unit via ExecuteAsync (same pattern as
+        // CapabilityService.DeleteAsync).
+        var strategy = dbContext.Database.CreateExecutionStrategy();
+
+        var rowsDeleted = await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                await dbContext.CapabilityGraphEdges
+                    .Where(e => e.SourceNodeId == capabilityGraphNodeId || e.TargetNodeId == capabilityGraphNodeId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                await dbContext.LearningSessionNodes
+                    .Where(n => n.CapabilityGraphNodeId == capabilityGraphNodeId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                var deleted = await dbContext.CapabilityGraphNodes
+                    .Where(n => n.CapabilityGraphNodeId == capabilityGraphNodeId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+
+                return deleted;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        });
+
+        return rowsDeleted > 0;
     }
 }

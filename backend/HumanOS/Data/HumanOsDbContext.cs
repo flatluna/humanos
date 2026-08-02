@@ -9,6 +9,7 @@ using HumanOS.Models.JobDescriptions;
 using HumanOS.Models.Learning;
 using HumanOS.Models.Localization;
 using HumanOS.Models.Motivations;
+using HumanOS.Models.OrgStructure;
 using HumanOS.Models.People;
 using HumanOS.Models.Practice;
 using HumanOS.Models.Programs;
@@ -32,6 +33,18 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<Person> People => Set<Person>();
 
     public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
+
+    /// <summary>Per-Person résumé/CV (address, LinkedIn, objective,
+    /// skills, work experience, education, etc.), extracted by
+    /// <see cref="HumanOS.Agents.ResumeExtractionAgent"/> from pasted raw
+    /// text — see <see cref="PersonResume"/>.</summary>
+    public DbSet<PersonResume> PersonResumes => Set<PersonResume>();
+
+    /// <summary>The latest AI-generated career development plan (skill
+    /// gap vs. JobRole + recommended catalog Programs) for a Person — see
+    /// <see cref="PersonCareerPlan"/> and
+    /// <see cref="HumanOS.Agents.CareerDevelopmentPlanAgent"/>.</summary>
+    public DbSet<PersonCareerPlan> PersonCareerPlans => Set<PersonCareerPlan>();
 
     public DbSet<HumanProfile> HumanProfiles => Set<HumanProfile>();
 
@@ -248,6 +261,22 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<ProgramCapability> ProgramCapabilities =>
         Set<ProgramCapability>();
+
+    /// <summary>Tenant org-chart tree (Área/Departamento/Equipo, all the
+    /// same self-referencing node) — see <see cref="Department"/>.</summary>
+    public DbSet<Department> Departments => Set<Department>();
+
+    /// <summary>Org-authored "puesto" templates attached to a Department —
+    /// see <see cref="JobRole"/>.</summary>
+    public DbSet<JobRole> JobRoles => Set<JobRole>();
+
+    /// <summary>Reusable, catalog-level training requirements shareable
+    /// across many JobRoles — see <see cref="Skill"/>.</summary>
+    public DbSet<Skill> Skills => Set<Skill>();
+
+    /// <summary>JobRole↔Skill many-to-many join — see
+    /// <see cref="JobRoleSkill"/>.</summary>
+    public DbSet<JobRoleSkill> JobRoleSkills => Set<JobRoleSkill>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

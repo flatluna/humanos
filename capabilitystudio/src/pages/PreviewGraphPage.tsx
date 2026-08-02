@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Lock, PlayCircle, Star, ChevronDown, Plus, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, Lock, PlayCircle, Star, ChevronDown, Plus, Pencil, Check, X, Trash2 } from 'lucide-react';
 import {
   getCapabilityGraph,
   setCapabilityGraphLevelName,
+  deleteCapabilityGraphNode,
   PREVIEW_PERSON_ID,
   type BackendCapabilityGraph,
   type BackendCapabilityGraphNode,
@@ -14,6 +15,7 @@ import {
 import LoadingSpinner from '../components/LoadingSpinner';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
 import AddGraphNodeModal from '../components/AddGraphNodeModal';
+import DeleteGraphNodeModal from '../components/DeleteGraphNodeModal';
 import { usePreviewMode, withPreviewMode } from '../lib/previewMode';
 
 const STATE_STYLES: Record<
@@ -98,6 +100,7 @@ export default function PreviewGraphPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addNodeLevel, setAddNodeLevel] = useState<number | null>(null);
+  const [deletingNode, setDeletingNode] = useState<BackendCapabilityGraphNode | null>(null);
 
   // Inline editing of a level's professor-given display name (2026-07-30) —
   // see setCapabilityGraphLevelName. `editingLevelIndex` is the level
@@ -277,36 +280,50 @@ export default function PreviewGraphPage() {
                 const isNextUp = node.CapabilityGraphNodeId === nextUpNodeId;
 
                 return (
-                  <button
-                    key={node.CapabilityGraphNodeId}
-                    type="button"
-                    disabled={!clickable}
-                    onClick={() =>
-                      navigate(withPreviewMode(`/capabilities/${capabilityId}/preview/nodes/${node.CapabilityGraphNodeId}`, mode))
-                    }
-                    className={`group flex w-24 flex-col items-center gap-2 text-center transition ${
-                      clickable ? 'cursor-pointer' : 'cursor-not-allowed'
-                    }`}
-                  >
-                    <div className="relative">
-                      {isNextUp && (
-                        <span className="pointer-events-none absolute -top-7 left-1/2 z-0 -translate-x-1/2 whitespace-nowrap rounded-full bg-brand-500 px-2 py-0.5 text-[10px] font-semibold text-[#fff] shadow-md">
-                          {t('previewGraph.startHere')}
-                        </span>
-                      )}
-                      {isNextUp && (
-                        <span className="pointer-events-none absolute inset-0 -m-1.5 rounded-full border-2 border-brand-400 animate-ping" />
-                      )}
-                      <div
-                        className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 sm:h-20 sm:w-20 ${style.ring} ${style.bubble} ${
-                          clickable ? 'transition-transform group-hover:scale-110' : 'opacity-60'
-                        }`}
+                  <div key={node.CapabilityGraphNodeId} className="group relative flex w-24 flex-col items-center gap-2 text-center">
+                    {(mode === 'edit' || mode === 'demo') && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingNode(node);
+                        }}
+                        title={t('previewGraph.deleteNode')}
+                        className="absolute -top-1 -right-1 z-20 rounded-full border border-white/10 bg-slate-900/90 p-1 text-slate-400 opacity-0 transition-opacity hover:border-red-500 hover:text-red-400 group-hover:opacity-100"
                       >
-                        <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${style.icon}`} fill={node.State === 'Mastered' ? 'currentColor' : 'none'} />
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!clickable}
+                      onClick={() =>
+                        navigate(withPreviewMode(`/capabilities/${capabilityId}/preview/nodes/${node.CapabilityGraphNodeId}`, mode))
+                      }
+                      className={`flex w-24 flex-col items-center gap-2 text-center transition ${
+                        clickable ? 'cursor-pointer' : 'cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="relative">
+                        {isNextUp && (
+                          <span className="pointer-events-none absolute -top-7 left-1/2 z-0 -translate-x-1/2 whitespace-nowrap rounded-full bg-brand-500 px-2 py-0.5 text-[10px] font-semibold text-[#fff] shadow-md">
+                            {t('previewGraph.startHere')}
+                          </span>
+                        )}
+                        {isNextUp && (
+                          <span className="pointer-events-none absolute inset-0 -m-1.5 rounded-full border-2 border-brand-400 animate-ping" />
+                        )}
+                        <div
+                          className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 sm:h-20 sm:w-20 ${style.ring} ${style.bubble} ${
+                            clickable ? 'transition-transform group-hover:scale-110' : 'opacity-60'
+                          }`}
+                        >
+                          <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${style.icon}`} fill={node.State === 'Mastered' ? 'currentColor' : 'none'} />
+                        </div>
                       </div>
-                    </div>
-                    <p className={`line-clamp-2 text-xs leading-tight ${style.label}`}>{node.Name}</p>
-                  </button>
+                      <p className={`line-clamp-2 text-xs leading-tight ${style.label}`}>{node.Name}</p>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -353,6 +370,18 @@ export default function PreviewGraphPage() {
           onClose={() => setAddNodeLevel(null)}
           onCreated={() => {
             setAddNodeLevel(null);
+            loadGraph();
+          }}
+        />
+      )}
+
+      {deletingNode && capabilityId && (
+        <DeleteGraphNodeModal
+          nodeName={deletingNode.Name}
+          onCancel={() => setDeletingNode(null)}
+          onConfirm={async () => {
+            await deleteCapabilityGraphNode(capabilityId, deletingNode.CapabilityGraphNodeId);
+            setDeletingNode(null);
             loadGraph();
           }}
         />

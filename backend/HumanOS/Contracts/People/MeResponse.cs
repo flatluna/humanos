@@ -19,6 +19,11 @@ public sealed class MeResponse
     /// browser/localStorage detection. Null if the profile doesn't exist
     /// yet (shouldn't normally happen once onboarded).</summary>
     public string? PreferredLanguage { get; set; }
+
+    /// <summary>String name of PersonOrgRole ("Employee"/"Manager"/
+    /// "HRAdmin") — lets the frontend gate the enterprise admin console
+    /// (Departments/Job Roles) without a separate round-trip.</summary>
+    public string OrgRole { get; set; } = "Employee";
 }
 
 /// <summary>Response for POST /api/onboarding or /api/onboarding/individual —

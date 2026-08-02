@@ -297,6 +297,10 @@ namespace HumanOS.Migrations
                     b.Property<Guid>("CapabilityDomainId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Category")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -338,6 +342,13 @@ namespace HumanOS.Migrations
                     b.Property<Guid?>("SubjectId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("TargetJobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TargetSkill")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
                     b.Property<DateTime>("UpdatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -349,12 +360,18 @@ namespace HumanOS.Migrations
                     b.HasIndex("CapabilityDomainId")
                         .HasDatabaseName("IX_Capability_CapabilityDomainId");
 
+                    b.HasIndex("Category")
+                        .HasDatabaseName("IX_Capability_Category");
+
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("UX_Capability_Code");
 
                     b.HasIndex("SubjectId")
                         .HasDatabaseName("IX_Capability_SubjectId");
+
+                    b.HasIndex("TargetJobRoleId")
+                        .HasDatabaseName("IX_Capability_TargetJobRoleId");
 
                     b.ToTable("Capability", "dbo");
                 });
@@ -2407,6 +2424,295 @@ namespace HumanOS.Migrations
                     b.ToTable("PersonMotivation", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Department", b =>
+                {
+                    b.Property<Guid>("DepartmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("ParentDepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("DepartmentId")
+                        .HasName("PK_Department");
+
+                    b.HasIndex("ParentDepartmentId")
+                        .HasDatabaseName("IX_Department_ParentDepartmentId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_Department_TenantId");
+
+                    b.ToTable("Department", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRole", b =>
+                {
+                    b.Property<Guid>("JobRoleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("AvailabilityNotes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("BenefitsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("DailyActivitiesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DepartmentProcessesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("EmploymentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ExpectedOutcomesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("HrProcessesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("LevelLabel")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PerformanceIndicatorsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid?>("ReportsToJobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequiredCertificationsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("RequiredEducation")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("RequiredExperience")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("RequiredLanguagesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<bool>("RequiresTravel")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("ResponsibilitiesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("SalaryCurrency")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<decimal?>("SalaryRangeMax")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal?>("SalaryRangeMin")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("SoftSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("TechnicalSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ToolsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("WorkLocation")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("WorkModality")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("WorkSchedule")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("JobRoleId")
+                        .HasName("PK_JobRole");
+
+                    b.HasIndex("DepartmentId")
+                        .HasDatabaseName("IX_JobRole_DepartmentId");
+
+                    b.HasIndex("ReportsToJobRoleId")
+                        .HasDatabaseName("IX_JobRole_ReportsToJobRoleId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_JobRole_TenantId");
+
+                    b.ToTable("JobRole", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleSkill", b =>
+                {
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SkillId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("JobRoleId", "SkillId")
+                        .HasName("PK_JobRoleSkill");
+
+                    b.HasIndex("SkillId");
+
+                    b.ToTable("JobRoleSkill", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Skill", b =>
+                {
+                    b.Property<Guid>("SkillId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("SkillId")
+                        .HasName("PK_Skill");
+
+                    b.HasIndex("TenantId", "Category");
+
+                    b.ToTable("Skill", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
                 {
                     b.Property<Guid>("HumanProfileId")
@@ -2538,6 +2844,9 @@ namespace HumanOS.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Email")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
@@ -2547,8 +2856,19 @@ namespace HumanOS.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<Guid?>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("LastLoginDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ManagerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("OrgRole")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -2561,6 +2881,15 @@ namespace HumanOS.Migrations
                     b.HasKey("PersonId")
                         .HasName("PK_Person");
 
+                    b.HasIndex("DepartmentId")
+                        .HasDatabaseName("IX_Person_DepartmentId");
+
+                    b.HasIndex("JobRoleId")
+                        .HasDatabaseName("IX_Person_JobRoleId");
+
+                    b.HasIndex("ManagerId")
+                        .HasDatabaseName("IX_Person_ManagerId");
+
                     b.HasIndex("TenantId")
                         .HasDatabaseName("IX_Person_TenantId");
 
@@ -2569,6 +2898,89 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("UX_Person_AzureTid_AzureOid");
 
                     b.ToTable("Person", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonCareerPlan", b =>
+                {
+                    b.Property<Guid>("PersonCareerPlanId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime?>("AcceptedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("DepartmentProcessesRoadmapJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("GapSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("GeneratedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("GeneratedModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("HrProcessesRoadmapJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<bool>("IsAccepted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OverallRationale")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SoftSkillsRoadmapJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("TechnicalRoadmapJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("PersonCareerPlanId")
+                        .HasName("PK_PersonCareerPlan");
+
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PersonCareerPlan_PersonId");
+
+                    b.ToTable("PersonCareerPlan", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonCurrentSituation", b =>
@@ -2742,6 +3154,92 @@ namespace HumanOS.Migrations
                     b.HasIndex("PreferredLanguage");
 
                     b.ToTable("PersonProfile", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonResume", b =>
+                {
+                    b.Property<Guid>("PersonResumeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CertificationsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("EducationJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime?>("ExtractedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExtractionModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LanguagesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("LinkedInUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProfessionalObjective")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ProfessionalSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("RawResumeText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("WorkExperienceJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.HasKey("PersonResumeId")
+                        .HasName("PK_PersonResume");
+
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PersonResume_PersonId");
+
+                    b.ToTable("PersonResume", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonStartingPoint", b =>
@@ -3415,6 +3913,12 @@ namespace HumanOS.Migrations
                         .HasForeignKey("SubjectId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("FK_Capability_Subject");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", null)
+                        .WithMany()
+                        .HasForeignKey("TargetJobRoleId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Capability_TargetJobRole");
 
                     b.Navigation("CapabilityDomain");
 
@@ -4135,6 +4639,76 @@ namespace HumanOS.Migrations
                     b.Navigation("Person");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Department", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Department", "ParentDepartment")
+                        .WithMany("ChildDepartments")
+                        .HasForeignKey("ParentDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Department_ParentDepartment");
+
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Department_Tenant");
+
+                    b.Navigation("ParentDepartment");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRole", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Department", "Department")
+                        .WithMany("JobRoles")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRole_Department");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "ReportsToJobRole")
+                        .WithMany("DirectReportRoles")
+                        .HasForeignKey("ReportsToJobRoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_JobRole_ReportsToJobRole");
+
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRole_Tenant");
+
+                    b.Navigation("Department");
+
+                    b.Navigation("ReportsToJobRole");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleSkill", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleSkill_JobRole");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.Skill", "Skill")
+                        .WithMany("JobRoleSkills")
+                        .HasForeignKey("SkillId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleSkill_Skill");
+
+                    b.Navigation("JobRole");
+
+                    b.Navigation("Skill");
+                });
+
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
                 {
                     b.HasOne("HumanOS.Models.People.Person", "Person")
@@ -4169,13 +4743,49 @@ namespace HumanOS.Migrations
 
             modelBuilder.Entity("HumanOS.Models.People.Person", b =>
                 {
+                    b.HasOne("HumanOS.Models.OrgStructure.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Person_Department");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Person_JobRole");
+
+                    b.HasOne("HumanOS.Models.People.Person", "Manager")
+                        .WithMany("DirectReports")
+                        .HasForeignKey("ManagerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Person_Manager");
+
                     b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_Person_Tenant");
 
+                    b.Navigation("Department");
+
+                    b.Navigation("JobRole");
+
+                    b.Navigation("Manager");
+
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonCareerPlan", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_PersonCareerPlan_Person");
+
+                    b.Navigation("Person");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonCurrentSituation", b =>
@@ -4229,6 +4839,18 @@ namespace HumanOS.Migrations
                     b.Navigation("Person");
 
                     b.Navigation("PreferredLanguageData");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonResume", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_PersonResume_Person");
+
+                    b.Navigation("Person");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonStartingPoint", b =>
@@ -4558,6 +5180,28 @@ namespace HumanOS.Migrations
                     b.Navigation("PersonMotivations");
 
                     b.Navigation("Translations");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Department", b =>
+                {
+                    b.Navigation("ChildDepartments");
+
+                    b.Navigation("JobRoles");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRole", b =>
+                {
+                    b.Navigation("DirectReportRoles");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Skill", b =>
+                {
+                    b.Navigation("JobRoleSkills");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.Person", b =>
+                {
+                    b.Navigation("DirectReports");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Programs.LearningProgram", b =>

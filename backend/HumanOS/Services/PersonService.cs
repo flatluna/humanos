@@ -47,6 +47,11 @@ public sealed class PersonService
         _dbContext.People.Add(person);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        return ToResponse(person);
+    }
+
+    private static PersonResponse ToResponse(Person person)
+    {
         return new PersonResponse
         {
             PersonId = person.PersonId,
@@ -56,6 +61,7 @@ public sealed class PersonService
             LastLoginDate = person.LastLoginDate,
             CreatedDate = person.CreatedDate,
             UpdatedDate = person.UpdatedDate,
+            OrgRole = person.OrgRole.ToString(),
         };
     }
 
@@ -74,16 +80,7 @@ public sealed class PersonService
             return null;
         }
 
-        return new PersonResponse
-        {
-            PersonId = person.PersonId,
-            TenantId = person.TenantId,
-            Email = person.Email,
-            IsActive = person.IsActive,
-            LastLoginDate = person.LastLoginDate,
-            CreatedDate = person.CreatedDate,
-            UpdatedDate = person.UpdatedDate
-        };
+        return ToResponse(person);
     }
 
     public async Task<PersonResponse?> GetByAzureIdentityAsync(
@@ -105,16 +102,7 @@ public sealed class PersonService
             return null;
         }
 
-        return new PersonResponse
-        {
-            PersonId = person.PersonId,
-            TenantId = person.TenantId,
-            Email = person.Email,
-            IsActive = person.IsActive,
-            LastLoginDate = person.LastLoginDate,
-            CreatedDate = person.CreatedDate,
-            UpdatedDate = person.UpdatedDate
-        };
+        return ToResponse(person);
     }
 
     public async Task<PersonResponse?> UpdateLastLoginAsync(
@@ -136,16 +124,7 @@ public sealed class PersonService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new PersonResponse
-        {
-            PersonId = person.PersonId,
-            TenantId = person.TenantId,
-            Email = person.Email,
-            IsActive = person.IsActive,
-            LastLoginDate = person.LastLoginDate,
-            CreatedDate = person.CreatedDate,
-            UpdatedDate = person.UpdatedDate
-        };
+        return ToResponse(person);
     }
 
     public async Task<PersonResponse?> DeactivateAsync(
@@ -164,16 +143,7 @@ public sealed class PersonService
 
         if (!person.IsActive)
         {
-            return new PersonResponse
-            {
-                PersonId = person.PersonId,
-                TenantId = person.TenantId,
-                Email = person.Email,
-                IsActive = person.IsActive,
-                LastLoginDate = person.LastLoginDate,
-                CreatedDate = person.CreatedDate,
-                UpdatedDate = person.UpdatedDate
-            };
+            return ToResponse(person);
         }
 
         person.IsActive = false;
@@ -181,15 +151,134 @@ public sealed class PersonService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new PersonResponse
+        return ToResponse(person);
+    }
+
+    /// <summary>Full people directory for a Tenant (org-structure admin
+    /// console pickers/list) — includes Department/JobRole/Manager display
+    /// names via a left join against PersonProfile for DisplayName.</summary>
+    public async Task<IReadOnlyList<TenantPersonResponse>> GetTenantDirectoryAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var people = await _dbContext.People
+            .AsNoTracking()
+            .Where(p => p.TenantId == tenantId)
+            .Select(p => new
+            {
+                Person = p,
+                DepartmentName = p.Department != null ? p.Department.Name : null,
+                JobRoleTitle = p.JobRole != null ? p.JobRole.Title : null,
+                ManagerId = p.Manager != null ? p.Manager.PersonId : (Guid?)null,
+            })
+            .ToListAsync(cancellationToken);
+
+        if (people.Count == 0)
         {
-            PersonId = person.PersonId,
-            TenantId = person.TenantId,
-            Email = person.Email,
-            IsActive = person.IsActive,
-            LastLoginDate = person.LastLoginDate,
-            CreatedDate = person.CreatedDate,
-            UpdatedDate = person.UpdatedDate
-        };
+            return [];
+        }
+
+        var profiles = await _dbContext.PersonProfiles
+            .AsNoTracking()
+            .Where(pp => people.Select(x => x.Person.PersonId).Contains(pp.PersonId))
+            .ToDictionaryAsync(pp => pp.PersonId, cancellationToken);
+
+        string? DisplayNameFor(Guid personId, string? email) =>
+            profiles.TryGetValue(personId, out var profile)
+                ? (profile.DisplayName ?? $"{profile.FirstName} {profile.LastName}".Trim())
+                : email;
+
+        return people
+            .Select(x => new TenantPersonResponse
+            {
+                PersonId = x.Person.PersonId,
+                Email = x.Person.Email,
+                DisplayName = DisplayNameFor(x.Person.PersonId, x.Person.Email),
+                DepartmentId = x.Person.DepartmentId,
+                DepartmentName = x.DepartmentName,
+                JobRoleId = x.Person.JobRoleId,
+                JobRoleTitle = x.JobRoleTitle,
+                ManagerId = x.ManagerId,
+                ManagerDisplayName = x.ManagerId is Guid managerId
+                    ? DisplayNameFor(managerId, null)
+                    : null,
+                OrgRole = x.Person.OrgRole.ToString(),
+                IsActive = x.Person.IsActive,
+            })
+            .OrderBy(x => x.DisplayName)
+            .ToList();
+    }
+
+    /// <summary>Assigns/changes a person's Department, JobRole, Manager,
+    /// and/or permission tier (HRAdmin-only action, enforced by the
+    /// calling Function). Every field is a full replace — passing null for
+    /// Department/JobRole/Manager clears that assignment. Validates that
+    /// Department/JobRole/Manager (when provided) belong to the SAME
+    /// tenant as the person; throws <see cref="InvalidOperationException"/>
+    /// otherwise (mapped to 400 by the calling Function).</summary>
+    public async Task<TenantPersonResponse?> UpdateOrgAssignmentAsync(
+        Guid personId,
+        Guid? departmentId,
+        Guid? jobRoleId,
+        Guid? managerId,
+        PersonOrgRole? orgRole,
+        CancellationToken cancellationToken = default)
+    {
+        var person = await _dbContext.People
+            .SingleOrDefaultAsync(p => p.PersonId == personId, cancellationToken);
+
+        if (person is null)
+        {
+            return null;
+        }
+
+        if (departmentId is Guid deptId)
+        {
+            var departmentExists = await _dbContext.Departments
+                .AnyAsync(d => d.DepartmentId == deptId && d.TenantId == person.TenantId, cancellationToken);
+            if (!departmentExists)
+            {
+                throw new InvalidOperationException($"Department {deptId} does not belong to this person's tenant.");
+            }
+        }
+
+        if (jobRoleId is Guid roleId)
+        {
+            var jobRoleExists = await _dbContext.JobRoles
+                .AnyAsync(r => r.JobRoleId == roleId && r.TenantId == person.TenantId, cancellationToken);
+            if (!jobRoleExists)
+            {
+                throw new InvalidOperationException($"JobRole {roleId} does not belong to this person's tenant.");
+            }
+        }
+
+        if (managerId is Guid mgrId)
+        {
+            if (mgrId == personId)
+            {
+                throw new InvalidOperationException("A person cannot be their own manager.");
+            }
+
+            var managerExists = await _dbContext.People
+                .AnyAsync(p => p.PersonId == mgrId && p.TenantId == person.TenantId, cancellationToken);
+            if (!managerExists)
+            {
+                throw new InvalidOperationException($"Manager {mgrId} does not belong to this person's tenant.");
+            }
+        }
+
+        person.DepartmentId = departmentId;
+        person.JobRoleId = jobRoleId;
+        person.ManagerId = managerId;
+        if (orgRole is PersonOrgRole role)
+        {
+            person.OrgRole = role;
+        }
+        person.UpdatedDate = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var directory = await GetTenantDirectoryAsync(person.TenantId!.Value, cancellationToken);
+        return directory.Single(x => x.PersonId == personId);
     }
 }

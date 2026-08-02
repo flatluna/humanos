@@ -610,6 +610,26 @@ public sealed class TutorService
         var retrievedKnowledge = new List<RetrievedKnowledgeSnippet>();
         string? documentSummary = null;
         var keyEntities = new List<string>();
+        string? contentLanguageCode = null;
+
+        // Best-effort ContentLanguageCode lookup (2026-07-30 — see
+        // TutorTurnRequest.ContentLanguageCode's doc comment): needed for
+        // EVERY mode, including AssessmentFeedback, so it's resolved before
+        // the AssessmentFeedback-only early branch below.
+        try
+        {
+            var capabilityGraphNodeId = step.LearningSessionNode!.CapabilityGraphNodeId;
+            contentLanguageCode = await dbContext.CapabilityGraphNodes
+                .AsNoTracking()
+                .Where(n => n.CapabilityGraphNodeId == capabilityGraphNodeId)
+                .Select(n => n.CapabilityGraph!.Capability!.ContentLanguageCode)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort — see comment above.
+        }
+
         if (mode != TutorInteractionMode.AssessmentFeedback)
         {
             var nodeExperienceBlueprintId = step.LearningSessionNode!.NodeExperienceBlueprintId;
@@ -758,7 +778,8 @@ public sealed class TutorService
             DocumentSummary = documentSummary,
             KeyEntities = keyEntities,
             StudentMessage = studentMessage,
-            RawAssessmentFeedback = rawAssessmentFeedback
+            RawAssessmentFeedback = rawAssessmentFeedback,
+            ContentLanguageCode = contentLanguageCode
         };
     }
 

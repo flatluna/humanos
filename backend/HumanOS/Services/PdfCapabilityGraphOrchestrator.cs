@@ -115,7 +115,10 @@ public sealed class PdfCapabilityGraphOrchestrator
         string? capabilityDescription = null,
         string languageCode = "es",
         string? pedagogicalAudience = null,
-        bool includeExamplesStep = false)
+        bool includeExamplesStep = true,
+        string? category = null,
+        Guid? targetJobRoleId = null,
+        string? targetSkill = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -150,7 +153,10 @@ public sealed class PdfCapabilityGraphOrchestrator
                     capabilityDescription,
                     languageCode,
                     pedagogicalAudience,
-                    includeExamplesStep);
+                    includeExamplesStep,
+                    category,
+                    targetJobRoleId,
+                    targetSkill);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }
@@ -203,7 +209,10 @@ public sealed class PdfCapabilityGraphOrchestrator
         string? capabilityDescription = null,
         string languageCode = "es",
         string? pedagogicalAudience = null,
-        bool includeExamplesStep = false)
+        bool includeExamplesStep = true,
+        string? category = null,
+        Guid? targetJobRoleId = null,
+        string? targetSkill = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -233,7 +242,10 @@ public sealed class PdfCapabilityGraphOrchestrator
                     capabilityDescription,
                     languageCode,
                     pedagogicalAudience,
-                    includeExamplesStep);
+                    includeExamplesStep,
+                    category,
+                    targetJobRoleId,
+                    targetSkill);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }

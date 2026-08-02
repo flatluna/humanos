@@ -15,4 +15,7 @@ public sealed class PersonResponse
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }
+
+    /// <summary>String name of PersonOrgRole ("Employee"/"Manager"/"HRAdmin").</summary>
+    public string OrgRole { get; set; } = "Employee";
 }

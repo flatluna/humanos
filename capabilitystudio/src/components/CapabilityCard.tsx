@@ -6,9 +6,13 @@ import { apiImageUrl } from '../lib/api/httpClient';
 import { getSubjectGradient, getSubjectIcon } from '../lib/subjectVisuals';
 
 export default function CapabilityCard({ capability }: { capability: BackendCapability }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const SubjectIcon = getSubjectIcon(capability.SubjectCode);
   const gradient = getSubjectGradient(capability.SubjectCode);
+  const createdLabel = new Date(capability.CreatedDate).toLocaleString(i18n.language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 
   return (
     <Link
@@ -56,6 +60,10 @@ export default function CapabilityCard({ capability }: { capability: BackendCapa
         {capability.LearningSummary && (
           <p className="text-sm text-slate-400 line-clamp-2">{capability.LearningSummary}</p>
         )}
+
+        <span className="text-[11px] text-slate-500" title={t('capabilityCard.createdOn', { date: createdLabel })}>
+          {t('capabilityCard.createdOn', { date: createdLabel })}
+        </span>
 
         <div className="mt-auto flex items-center gap-4 pt-3 text-xs text-slate-500">
           <span className="flex items-center gap-1.5">

@@ -76,6 +76,18 @@ internal sealed class TutorTurnExecutor : Executor<TutorTurnRequest, TutorTurnRe
         promptBuilder.AppendLine($"MODE: {request.Mode}");
         promptBuilder.AppendLine();
 
+        if (!string.IsNullOrWhiteSpace(request.ContentLanguageCode))
+        {
+            promptBuilder.AppendLine(
+                $"REQUIRED RESPONSE LANGUAGE: {request.ContentLanguageCode} — write your ENTIRE Message in " +
+                "this language, no matter what language StudentMessage/History happen to be in (e.g. a bare " +
+                "number or short phrase from the student carries no language signal, and STEP CONTENT below " +
+                "may be internally drafted in yet another language). Never switch languages mid-loop just " +
+                "because a new question's wording pulled you toward STEP CONTENT's own language — this " +
+                "course's language is fixed for the whole session.");
+            promptBuilder.AppendLine();
+        }
+
         if (request.Mode == TutorInteractionMode.AssessmentFeedback)
         {
             promptBuilder.AppendLine("RAW ASSESSMENT FEEDBACK (translate this, do not re-judge):");

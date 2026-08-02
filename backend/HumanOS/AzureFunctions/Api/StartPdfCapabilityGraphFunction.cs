@@ -103,6 +103,23 @@ public sealed class StartPdfCapabilityGraphFunction
         /// blueprint identical to before this field existed. See
         /// Capability.IncludeExamplesStep.</summary>
         public bool IncludeExamplesStep { get; set; }
+
+        /// <summary>Optional (2026-08-01 "cursos de empresa" feature):
+        /// which employer training track this capability belongs to —
+        /// "job-skills" | "soft-skills" | "department-processes" |
+        /// "hr-processes". Null for capabilities not tied to any employer
+        /// training track. See Capability.Category.</summary>
+        public string? Category { get; set; }
+
+        /// <summary>Optional: when set together with <see cref="TargetSkill"/>,
+        /// HR is explicitly authoring this capability to close ONE specific
+        /// required skill/process gap on this JobRole. See
+        /// Capability.TargetJobRoleId.</summary>
+        public Guid? TargetJobRoleId { get; set; }
+
+        /// <summary>The exact required-skill/process string this capability
+        /// is meant to satisfy. See Capability.TargetSkill.</summary>
+        public string? TargetSkill { get; set; }
     }
 
     [Function("StartPdfCapabilityGraph")]
@@ -158,7 +175,7 @@ public sealed class StartPdfCapabilityGraphFunction
                 pdfBytes, body.FileName, body.CapabilityDomainId, body.CapabilityName, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
-                body.PedagogicalAudience, body.IncludeExamplesStep);
+                body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

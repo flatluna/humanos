@@ -37,6 +37,16 @@ public sealed class CapabilityResponse
     /// example cards. See Capability.IncludeExamplesStep.</summary>
     public bool IncludeExamplesStep { get; set; }
 
+    /// <summary>"job-skills" | "soft-skills" | "department-processes" |
+    /// "hr-processes" | null. See Capability.Category.</summary>
+    public string? Category { get; set; }
+
+    /// <summary>See Capability.TargetJobRoleId.</summary>
+    public Guid? TargetJobRoleId { get; set; }
+
+    /// <summary>See Capability.TargetSkill.</summary>
+    public string? TargetSkill { get; set; }
+
     public int LevelCount { get; set; }
 
     public int ModuleCount { get; set; }

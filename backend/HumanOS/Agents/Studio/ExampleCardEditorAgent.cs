@@ -91,6 +91,13 @@ public sealed class ExampleCardEditorAgent
           styles.
         - Title stays short (a few words), matching the style of the other
           existing card Titles you were given.
+        - LANGUAGE: if the prompt gives you a REQUIRED RESPONSE LANGUAGE,
+          write Title and Text in EXACTLY that language, even if the
+          reviewer's own free-text instruction is written in a different
+          language — never switch the course's content language just
+          because the instruction itself was typed in another language.
+          Only when no such directive is given, write in the same language
+          as the other existing card Titles you were given.
 
         DECIDING WHETHER TO ADD/REPLACE THE ILLUSTRATION (DiagramPrompt)
         Propose one (fill in DiagramPrompt) in ANY of these three cases:

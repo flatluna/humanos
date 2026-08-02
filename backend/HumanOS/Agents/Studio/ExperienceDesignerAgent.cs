@@ -529,7 +529,7 @@ public sealed class ExperienceDesignerAgent
         string? webFindings = null,
         string languageCode = "es",
         string? pedagogicalAudience = null,
-        bool includeExamplesStep = false,
+        bool includeExamplesStep = true,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)

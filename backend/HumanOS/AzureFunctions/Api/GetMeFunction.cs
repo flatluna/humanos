@@ -65,15 +65,19 @@ public sealed class GetMeFunction
 
         var profile = await _personProfileService.GetByPersonIdAsync(person.PersonId, cancellationToken);
 
-        var response = request.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new MeResponse
-        {
-            PersonId = person.PersonId,
-            TenantId = person.TenantId,
-            TenantName = tenant?.Name,
-            Email = person.Email,
-            PreferredLanguage = profile?.PreferredLanguage,
-        });
+        var response = await FunctionResponseFactory.SuccessResponseAsync(
+            request,
+            new MeResponse
+            {
+                PersonId = person.PersonId,
+                TenantId = person.TenantId,
+                TenantName = tenant?.Name,
+                Email = person.Email,
+                PreferredLanguage = profile?.PreferredLanguage,
+                OrgRole = person.OrgRole.ToString(),
+            },
+            cancellationToken: cancellationToken);
+        response.Headers.Add("Cache-Control", "no-store");
 
         return response;
     }

@@ -1,6 +1,33 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Tell the browser which palette to use for NATIVE form UI (select/option
+ * dropdown popups, checkboxes, date/time pickers, scrollbars, autofill).
+ * Without this, native widgets follow the OS's prefers-color-scheme instead
+ * of our manually-toggled `.dark` class, which can make some fields'
+ * text/background unreadable when the app theme and OS theme disagree. */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Belt-and-suspenders for the above: some browsers don't reliably apply
+ * `color-scheme` to the native <select> popup, which can leave its option
+ * list rendering white-on-white (or the reverse) regardless of our `.dark`
+ * class. Explicitly coloring <option> is well supported cross-browser. */
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.dark select option {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
 /* Brand/accent palette ported from humanlearn (see
  * /memories/repo/multi-frontend-app-landscape.md). The capabilities pages
  * now fully support both light and dark mode (see `dark:` variants

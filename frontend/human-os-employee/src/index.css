@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tell the browser which palette to use for NATIVE form UI (select/option
+ * dropdown popups, checkboxes, date/time pickers, scrollbars, autofill).
+ * Ported from human-os-web — the runtime pages (features/capabilities)
+ * rely on this so native widgets follow our manual `.dark` class instead
+ * of the OS's prefers-color-scheme. */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.dark select option {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+/* Same brand/accent palette as human-os-web and human-os-enterprise (see
+ * /memories/repo/multi-frontend-app-landscape.md) so all three apps feel
+ * like the same product family, even though this one has its own shell. */
+@theme {
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #e0ebff;
+  --color-brand-200: #c7d9ff;
+  --color-brand-300: #a4bfff;
+  --color-brand-400: #7a9bff;
+  --color-brand-500: #5a75ff;
+  --color-brand-600: #4152f2;
+  --color-brand-700: #3540d6;
+  --color-brand-800: #2c36ac;
+  --color-brand-900: #293489;
+  --color-brand-950: #171a4d;
+  --color-accent-50: #fdf2f8;
+  --color-accent-100: #fce7f3;
+  --color-accent-200: #fbcfe8;
+  --color-accent-300: #f9a8d4;
+  --color-accent-400: #f472b6;
+  --color-accent-500: #ec4899;
+  --color-accent-600: #db2777;
+  --color-accent-700: #be185d;
+  --color-accent-800: #9d174d;
+  --color-accent-900: #831843;
+  --color-accent-950: #500724;
+}
+
+@keyframes loadingBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(150%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-loadingBar {
+  animation: loadingBar 1.4s ease-in-out infinite;
+}
+
+.input {
+  @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-slate-500;
+}
+.input:focus {
+  border-color: rgb(122 155 255 / 0.5);
+  box-shadow: 0 0 0 2px rgb(90 117 255 / 0.3);
+}
+
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Tell the browser which palette to use for NATIVE form UI (select/option
+ * dropdown popups, checkboxes, date/time pickers, scrollbars, autofill).
+ * Without this, native widgets follow the OS's prefers-color-scheme instead
+ * of our manually-toggled `.dark` class, which is what caused some fields'
+ * text/background to become unreadable when the app theme and OS theme
+ * disagreed. */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Belt-and-suspenders for the above: some browsers don't reliably apply
+ * `color-scheme` to the native <select> popup, which can leave its option
+ * list rendering white-on-white (or the reverse) regardless of our `.dark`
+ * class. Explicitly coloring <option> is well supported cross-browser. */
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.dark select option {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+body {
+  font-family:
+    'Inter',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+}

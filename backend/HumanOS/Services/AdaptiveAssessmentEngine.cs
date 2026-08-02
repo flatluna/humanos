@@ -605,6 +605,17 @@ public sealed class AdaptiveAssessmentEngine
         /// null if the node has no illustrations yet (Assessment images are
         /// then skipped, same as KnowledgeExpansionService).</summary>
         public string? IllustrationPathSeed { get; set; }
+
+        /// <summary>The owning Capability's ContentLanguageCode (e.g. "es",
+        /// "en") — see <see cref="Models.Capabilities.Capability.ContentLanguageCode"/>.
+        /// BUG FIX (2026-07-30): AdaptiveAssessmentAgent previously had no
+        /// explicit language directive and only relied on "write in the
+        /// same language as the node's content"/"same language as their
+        /// answer", which drifted back to the node's OWN authored language
+        /// (often Spanish) even for an English-language course, since
+        /// AssessmentQuestion/grading has no direct student-message signal
+        /// like the Tutor does. Empty only if the lookup fails.</summary>
+        public string ContentLanguageCode { get; set; } = string.Empty;
     }
 
     private static async Task<NodeContext> LoadNodeContextAsync(HumanOsDbContext dbContext, Guid learningSessionNodeId, CancellationToken cancellationToken)
@@ -645,7 +656,8 @@ public sealed class AdaptiveAssessmentEngine
             Applications = DeserializeStringList(node.ApplicationsJson),
             IllustrationCaptions = node.Illustrations.Where(i => !string.IsNullOrWhiteSpace(i.Caption)).Select(i => i.Caption!).ToList(),
             PriorStepEvidence = priorStepEvidence,
-            IllustrationPathSeed = node.Illustrations.FirstOrDefault()?.StoragePath
+            IllustrationPathSeed = node.Illustrations.FirstOrDefault()?.StoragePath,
+            ContentLanguageCode = sessionNode.LearningSession?.Capability?.ContentLanguageCode ?? string.Empty
         };
     }
 
@@ -754,6 +766,17 @@ public sealed class AdaptiveAssessmentEngine
 
     private static void AppendNodeContext(StringBuilder builder, NodeContext context)
     {
+        if (!string.IsNullOrWhiteSpace(context.ContentLanguageCode))
+        {
+            builder.AppendLine(
+                $"REQUIRED RESPONSE LANGUAGE: {context.ContentLanguageCode} — write EVERYTHING (QuestionText, " +
+                "Feedback, ObservedError) in this language for the ENTIRE Assessment round, no matter what " +
+                "language this node's own content (ACADEMIC DEFINITION/INTERPRETATION/EXAMPLES below) or the " +
+                "student's own answer happen to be written in. This course's language is fixed and never " +
+                "changes mid-round.");
+            builder.AppendLine();
+        }
+
         builder.AppendLine($"CAPABILITY: {context.CapabilityName}");
         builder.AppendLine($"NODE: {context.NodeName}");
         if (!string.IsNullOrWhiteSpace(context.AcademicDefinition))

@@ -57,19 +57,44 @@ public sealed class Capability
 
     /// <summary>
     /// Orthogonal to <see cref="PedagogicalAudience"/> (that's TONE; this is
-    /// STRUCTURE). Default false — zero behavior change for every capability
-    /// created before this field existed and every traditional/continuing-
-    /// education capability (cooking, carpentry, certifications, Algebra,
-    /// etc.). When true (formal/official K-12-style school-track
-    /// capabilities), every node's NodeExperienceBlueprint gains an OPTIONAL
-    /// 6th step, <see cref="Graph.ExperienceStepType.DeepDive"/>, inserted
-    /// between Teaching and Recall: 3+ short "example cards" illustrated
-    /// with cheap emoji (never a generated image) — see
-    /// <see cref="Graph.ExampleCard"/>. Never changes the fixed 5-step
-    /// Hypothesis/Teaching/Recall/Production/Assessment order or content
-    /// rules (2026-07-29 feature).
+    /// STRUCTURE). Default true (2026-07-30) — every capability, regardless
+    /// of subject/audience (cooking, carpentry, law, certifications, Algebra,
+    /// K-12, etc.), gets a Deep Dive step; it proved valuable across every
+    /// domain it was tried on, not just formal/school-track courses, so it
+    /// is no longer an opt-in toggle. Every node's NodeExperienceBlueprint
+    /// gains an OPTIONAL 6th step, <see cref="Graph.ExperienceStepType.DeepDive"/>,
+    /// inserted between Teaching and Recall: a full coverage-pool set of
+    /// short "example cards" illustrated with cheap emoji (never a generated
+    /// image) — see <see cref="Graph.ExampleCard"/>. Never changes the fixed
+    /// 5-step Hypothesis/Teaching/Recall/Production/Assessment order or
+    /// content rules (2026-07-29 feature; default flipped 2026-07-30).
     /// </summary>
-    public bool IncludeExamplesStep { get; set; }
+    public bool IncludeExamplesStep { get; set; } = true;
+
+    /// <summary>Which of the employer-assigned career-plan training tracks
+    /// this capability belongs to (2026-08-01 — "cursos de empresa"
+    /// feature): "job-skills" | "soft-skills" | "department-processes" |
+    /// "hr-processes", copied verbatim from the same 4 ids the career-plan
+    /// frontends (human-os-employee/human-os-enterprise) already use as
+    /// their tab/category ids. Null for capabilities not tied to any
+    /// employer training track (e.g. personal/consumer courses).</summary>
+    [MaxLength(30)]
+    public string? Category { get; set; }
+
+    /// <summary>When set (together with <see cref="TargetSkill"/>), HR
+    /// explicitly authored this capability, in Capability Studio, to close
+    /// ONE specific required skill/process gap on this JobRole — lets
+    /// PersonCareerPlanService.AutoMatchCapabilitiesAsync link this
+    /// capability's id directly onto that JobRole's roadmap step, instead
+    /// of relying only on an exact Name/Title text match.</summary>
+    public Guid? TargetJobRoleId { get; set; }
+
+    /// <summary>The exact required-skill/process string (copied from the
+    /// target JobRole's Technical/Soft/DepartmentProcesses/HrProcesses
+    /// list) this capability is meant to satisfy. Null unless
+    /// <see cref="TargetJobRoleId"/> is set.</summary>
+    [MaxLength(400)]
+    public string? TargetSkill { get; set; }
 
     public DateTime CreatedDate { get; set; }
 

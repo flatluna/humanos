@@ -131,6 +131,12 @@ export default function CapabilityGraphMapPage() {
 
   const levels = useMemo(() => (graph ? groupIntoLevels(graph.nodes, graph.edges) : []), [graph]);
 
+  const levelNameByIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    graph?.levels?.forEach((l) => map.set(l.levelIndex, l.name));
+    return map;
+  }, [graph]);
+
   const nextUpNodeId = useMemo(() => {
     for (const level of levels) {
       const found = level.find((n) => n.state === 'Available');
@@ -160,7 +166,7 @@ export default function CapabilityGraphMapPage() {
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-8">
       <Link to={programId ? '/programs' : '/capabilities'} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
-        ← {programId ? 'Mis Programas' : t.backToSubjects}
+        ← {programId ? t.myPrograms : t.backToSubjects}
       </Link>
 
       {graph && (
@@ -231,12 +237,12 @@ export default function CapabilityGraphMapPage() {
                   : 'border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'
               }`}
             >
-              {reviewMode ? '✓ Modo revisión activo — todos los nodos abiertos' : 'Modo revisión: ver todos los nodos'}
+              {reviewMode ? t.graphReviewModeOn : t.graphReviewModeOff}
             </button>
             {averageScore !== null && (
               <span className="flex items-center gap-1.5 rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
                 <Star className="h-3.5 w-3.5" fill="currentColor" />
-                Promedio: {averageScore}/100
+                {t.graphAverageScoreLabel}: {averageScore}/100
               </span>
             )}
           </div>
@@ -245,7 +251,7 @@ export default function CapabilityGraphMapPage() {
             {levels.map((level, levelIndex) => (
               <div key={levelIndex} className="flex w-full flex-col items-center">
                 <span className="mb-4 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Nivel {levelIndex + 1}
+                  {levelNameByIndex.get(levelIndex) ?? `${t.graphLevelLabel} ${levelIndex + 1}`}
                 </span>
 
                 <div className="flex flex-wrap justify-center gap-x-6 gap-y-8">
@@ -268,7 +274,7 @@ export default function CapabilityGraphMapPage() {
                         <div className="relative">
                           {isNextUp && (
                             <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-brand-500 px-2 py-0.5 text-[10px] font-semibold text-[#fff] shadow-md">
-                              ¡Empieza aquí!
+                              {t.graphStartHere}
                             </span>
                           )}
                           {isNextUp && (
@@ -312,14 +318,18 @@ export default function CapabilityGraphMapPage() {
                 </div>
 
                 {levelIndex < levels.length - 1 && (
-                  <ChevronDown className="my-3 h-5 w-5 flex-none text-slate-600" />
+                  <div className="my-4 flex w-full max-w-xs items-center gap-3">
+                    <div className="h-px flex-1 bg-amber-400/40" />
+                    <ChevronDown className="h-4 w-4 flex-none text-amber-500 dark:text-amber-400/70" />
+                    <div className="h-px flex-1 bg-amber-400/40" />
+                  </div>
                 )}
               </div>
             ))}
 
             {levels.length === 0 && (
               <p className="w-full rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] p-12 text-center text-sm text-slate-500 dark:text-slate-400">
-                Este grafo todavía no tiene nodos.
+                {t.graphNoNodesYet}
               </p>
             )}
           </div>

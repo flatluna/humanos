@@ -40,6 +40,8 @@ const SUBJECT_ICONS: Record<string, LucideIcon> = {
   matematicas: Sigma,
 };
 
+type Translation = ReturnType<typeof useI18n>['t'];
+
 /**
  * Subject → Capabilities — Paso 3. Conectado a GET /capabilities real,
  * filtrado server-side por Subject (Capability.SubjectId, ver
@@ -81,9 +83,9 @@ function placeholderRatingFor(id: string): number {
   return 4.3 + (hash % 8) / 10;
 }
 
-function StarRating({ rating }: { rating: number }) {
+function StarRating({ rating, hint }: { rating: number; hint: string }) {
   return (
-    <div className="flex items-center gap-1" title="Calificación (placeholder)">
+    <div className="flex items-center gap-1" title={hint}>
       <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
       <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{rating.toFixed(1)}</span>
     </div>
@@ -102,13 +104,13 @@ function formatCreatedDate(createdDate?: string): string | null {
   return `${datePart}, ${timePart}`;
 }
 
-function CreatedDateBadge({ createdDate }: { createdDate?: string }) {
+function CreatedDateBadge({ createdDate, hint }: { createdDate?: string; hint: string }) {
   const formatted = formatCreatedDate(createdDate);
   if (!formatted) return null;
   return (
     <div
       className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400"
-      title="Fecha y hora de creación"
+      title={hint}
     >
       <Calendar className="h-3.5 w-3.5" />
       {formatted}
@@ -121,20 +123,20 @@ function CreatedDateBadge({ createdDate }: { createdDate?: string }) {
  * this reuses the same "HO" gradient badge + "Human OS" wordmark as the
  * TopBar, with a fixed caption crediting the AI generation pipeline
  * (TODO: revisit once the product/company name and branding are final). */
-function ProviderBadge() {
+function ProviderBadge({ caption }: { caption: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex h-5 w-5 flex-none items-center justify-center rounded bg-gradient-to-br from-brand-500 to-accent-500">
         <span className="text-[9px] font-bold text-[#fff]">HO</span>
       </div>
       <span className="truncate text-xs font-medium text-slate-500">
-        Human OS · Agente de IA Experto
+        {caption}
       </span>
     </div>
   );
 }
 
-function CoverImage({ capability }: { capability: BackendCapabilitySummary }) {
+function CoverImage({ capability, t }: { capability: BackendCapabilitySummary; t: Translation }) {
   const [failed, setFailed] = useState(false);
   const accent = accentFor(capability.capabilityId);
   const showPlaceholder = !capability.hasCoverImage || failed;
@@ -156,14 +158,14 @@ function CoverImage({ capability }: { capability: BackendCapabilitySummary }) {
       )}
       <div
         className="absolute left-2 top-2 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#fff] backdrop-blur-sm"
-        title={capability.contentLanguageCode === 'en' ? 'Contenido en inglés' : 'Contenido en español'}
+        title={capability.contentLanguageCode === 'en' ? t.contentInEnglishHint : t.contentInSpanishHint}
       >
         {capability.contentLanguageCode === 'en' ? 'EN' : 'ES'}
       </div>
       {typeof capability.nodeCount === 'number' && capability.nodeCount > 0 && (
         <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-[#fff] backdrop-blur-sm">
           <Layers className="h-3.5 w-3.5" />
-          {capability.nodeCount} nodos
+          {capability.nodeCount} {t.nodeCountSuffix}
         </div>
       )}
     </div>
@@ -173,9 +175,11 @@ function CoverImage({ capability }: { capability: BackendCapabilitySummary }) {
 function SummaryModal({
   capability,
   onClose,
+  t,
 }: {
   capability: BackendCapabilitySummary;
   onClose: () => void;
+  t: Translation;
 }) {
   const { user } = useAuth();
   const personId = user?.personId ?? '';
@@ -191,7 +195,7 @@ function SummaryModal({
         if (!cancelled) setGraph(data);
       })
       .catch(() => {
-        if (!cancelled) setError('No se pudo cargar el resumen de este curso.');
+        if (!cancelled) setError(t.summaryLoadError);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -199,7 +203,7 @@ function SummaryModal({
     return () => {
       cancelled = true;
     };
-  }, [capability.capabilityId, personId]);
+  }, [capability.capabilityId, personId, t.summaryLoadError]);
 
   return (
     <div
@@ -215,13 +219,13 @@ function SummaryModal({
           <button
             onClick={onClose}
             className="rounded-full p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
-            aria-label="Cerrar"
+            aria-label={t.closeButtonLabel}
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {loading && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Cargando resumen...</p>}
+        {loading && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">{t.summaryLoading}</p>}
         {error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
         {!loading && !error && graph && (
@@ -230,14 +234,14 @@ function SummaryModal({
               <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{graph.executiveSummary}</p>
             ) : (
               <p className="text-sm italic text-slate-500">
-                Este curso todavía no tiene un resumen ejecutivo generado.
+                {t.summaryNoExecutiveSummary}
               </p>
             )}
 
             {graph.keyEntities && graph.keyEntities.length > 0 && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Conceptos clave
+                  {t.summaryKeyConceptsTitle}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {graph.keyEntities.map((entity) => (
@@ -255,7 +259,7 @@ function SummaryModal({
 
             <div className="flex items-center gap-1.5 pt-1 text-xs font-medium text-slate-500">
               <Layers className="h-3.5 w-3.5" />
-              {graph.nodes.length} nodos de aprendizaje
+              {graph.nodes.length} {t.summaryLearningNodesSuffix}
             </div>
           </div>
         )}
@@ -271,7 +275,7 @@ function SummaryModal({
  * (`/capabilities/:id/nodes/:nodeId`) — no separate subject-filtered route,
  * per the "todo bajo /capabilities/*" structure decision. */
 export function CapabilitiesHomePage() {
-  const { language } = useI18n();
+  const { t, language } = useI18n();
   const { user } = useAuth();
   const personId = user?.personId ?? '';
   const [capabilities, setCapabilities] = useState<BackendCapabilitySummary[]>([]);
@@ -288,9 +292,9 @@ export function CapabilitiesHomePage() {
     setIsLoading(true);
     getCapabilities()
       .then(setCapabilities)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Error al cargar capabilities.'))
+      .catch((err) => setError(err instanceof Error ? err.message : t.loadCapabilitiesError))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [t.loadCapabilitiesError]);
 
   useEffect(() => {
     getSubjects(language).then(setSubjects).catch(() => setSubjects([]));
@@ -346,8 +350,8 @@ export function CapabilitiesHomePage() {
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Capacidades</h1>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Elige una capacidad para empezar a aprender.</p>
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{t.capabilitiesHomeTitle}</h1>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t.capabilitiesHomeSubtitle}</p>
 
       <div className="relative mt-4">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -355,7 +359,7 @@ export function CapabilitiesHomePage() {
           type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Buscar capacidades..."
+          placeholder={t.searchCapabilitiesPlaceholder}
           className="input pl-9"
         />
       </div>
@@ -370,7 +374,7 @@ export function CapabilitiesHomePage() {
                 : 'border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Todas
+            {t.allSubjectsFilter}
           </button>
           {subjectsWithCapabilities.map((subject) => {
             const Icon = SUBJECT_ICONS[subject.code] ?? Globe2;
@@ -393,13 +397,13 @@ export function CapabilitiesHomePage() {
         </div>
       )}
 
-      {isLoading && <p className="mt-4 text-slate-500 dark:text-slate-400">Cargando...</p>}
+      {isLoading && <p className="mt-4 text-slate-500 dark:text-slate-400">{t.loadingEllipsis}</p>}
       {error && <p className="mt-4 text-red-600 dark:text-red-400">{error}</p>}
       {!isLoading && !error && capabilities.length === 0 && (
-        <p className="mb-6 mt-4 text-sm text-slate-500">Todavía no hay capabilities publicadas.</p>
+        <p className="mb-6 mt-4 text-sm text-slate-500">{t.noCapabilitiesPublishedYet}</p>
       )}
       {!isLoading && !error && capabilities.length > 0 && filteredCapabilities.length === 0 && (
-        <p className="mb-6 mt-4 text-sm text-slate-500">Ninguna capacidad coincide con tu búsqueda.</p>
+        <p className="mb-6 mt-4 text-sm text-slate-500">{t.noCapabilitiesMatchSearch}</p>
       )}
 
       <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -409,20 +413,20 @@ export function CapabilitiesHomePage() {
             className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] transition-all hover:-translate-y-1 hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-brand-500/10"
           >
             <button type="button" onClick={() => setSummaryFor(capability)} className="block w-full text-left">
-              <CoverImage capability={capability} />
+              <CoverImage capability={capability} t={t} />
             </button>
 
             <div className="flex flex-1 flex-col gap-2 p-4">
-              <ProviderBadge />
+              <ProviderBadge caption={t.providerCaption} />
               <button type="button" onClick={() => setSummaryFor(capability)} className="group/title text-left">
                 <h3 className="font-semibold text-slate-900 dark:text-white group-hover/title:text-brand-700 dark:group-hover/title:text-brand-300">
                   {capability.name}
                 </h3>
               </button>
-              <StarRating rating={placeholderRatingFor(capability.capabilityId)} />
-              <CreatedDateBadge createdDate={capability.createdDate} />
+              <StarRating rating={placeholderRatingFor(capability.capabilityId)} hint={t.placeholderRatingHint} />
+              <CreatedDateBadge createdDate={capability.createdDate} hint={t.createdDateHint} />
               <p className="line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
-                {capability.learningSummary ?? 'Descubre los conceptos clave de este curso, paso a paso.'}
+                {capability.learningSummary ?? t.defaultLearningSummary}
               </p>
 
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
@@ -431,14 +435,14 @@ export function CapabilitiesHomePage() {
                   className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
                 >
                   <Info className="h-3.5 w-3.5" />
-                  Ver resumen
+                  {t.viewSummaryButton}
                 </button>
 
                 {personId && (
                   <button
                     onClick={() => handleToggleEnroll(capability)}
                     disabled={enrollingId === capability.capabilityId}
-                    title="Inscribirte no inicia el curso — sólo lleva estadísticas de tu progreso en 'Mis Capacidades'."
+                    title={t.enrollHint}
                     className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:opacity-60 ${
                       enrolledCapabilityIds.has(capability.capabilityId)
                         ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
@@ -448,12 +452,12 @@ export function CapabilitiesHomePage() {
                     {enrolledCapabilityIds.has(capability.capabilityId) ? (
                       <>
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        Inscrito
+                        {t.enrolledLabel}
                       </>
                     ) : (
                       <>
                         <UserPlus className="h-3.5 w-3.5" />
-                        Inscribirme
+                        {t.enrollButton}
                       </>
                     )}
                   </button>
@@ -464,7 +468,7 @@ export function CapabilitiesHomePage() {
         ))}
       </div>
 
-      {summaryFor && <SummaryModal capability={summaryFor} onClose={() => setSummaryFor(null)} />}
+      {summaryFor && <SummaryModal capability={summaryFor} onClose={() => setSummaryFor(null)} t={t} />}
     </div>
   );
 }

@@ -51,12 +51,25 @@ export interface BackendDocumentEntity {
   note?: string;
 }
 
+/** Professor-given name for one computed "climb level"/tier — only
+ * present for levels the professor has explicitly named. The client
+ * falls back to a generic "Level N" label for any level with no entry
+ * here (see backend GraphProgressionEngine.GraphLevelInfo). */
+export interface BackendCapabilityGraphLevel {
+  levelIndex: number;
+  name: string;
+}
+
 export interface BackendCapabilityGraph {
   capabilityGraphId: string;
   name: string;
   description?: string;
   nodes: BackendCapabilityGraphNode[];
   edges: BackendCapabilityGraphEdge[];
+  /** Professor-given names for computed graph levels, keyed by
+   * levelIndex — only present for levels the professor has explicitly
+   * named via Capability Studio. */
+  levels?: BackendCapabilityGraphLevel[];
   /** Document-wide executive summary (DocumentContextAgent, 2026-07-20).
    * Undefined/null for capabilities created before that agent existed. */
   executiveSummary?: string;

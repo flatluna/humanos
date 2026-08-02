@@ -112,6 +112,9 @@ var host = new HostBuilder()
 
         services.AddScoped<TenantService>();
         services.AddScoped<PersonService>();
+        services.AddScoped<DepartmentService>();
+        services.AddScoped<JobRoleService>();
+        services.AddScoped<SkillService>();
         services.AddScoped<PersonProfileService>();
         services.AddScoped<GrowthPlanService>();
         services.AddScoped<CapabilityEnrollmentService>();
@@ -149,6 +152,35 @@ var host = new HostBuilder()
         services.AddScoped<CapabilityMaterialStorageService>();
         services.AddScoped<JobDescriptionExtractionAgent>();
         services.AddScoped<HumanOS.Storage.CapabilityGraphIllustrationStorageService>();
+        // Enterprise console "Importar organigrama (IA)" (2026-07-31) —
+        // singleton, same rationale as every other Studio agent (no
+        // per-request state; holds only a configured AIAgent instance).
+        services.AddSingleton<OrgChartExtractionAgent>();
+        services.AddScoped<OrgChartImportService>();
+        // Roles y Puestos "Generar con IA" (2026-07-31) — drafts/improves a JobRole's
+        // full description from real company/department/title context, using a genuine
+        // Tools (function-calling) search_similar_job_roles call — see
+        // JobRoleDescriptionAgent's doc comment for why this is the one agent in this
+        // codebase with a real AITool instead of Harness. Singleton, same rationale as
+        // OrgChartExtractionAgent above (no per-request state; only holds a configured
+        // AzureOpenAIClient — its AIAgent wrapper and tools are rebuilt per request).
+        services.AddSingleton<HumanOS.Agents.JobRoleDescriptionAgent>();
+
+        // Enterprise console "Personal" employee dashboard — "Extraer con IA" from a
+        // pasted résumé/CV (2026-07-31). Purely extractive, no tools (see
+        // ResumeExtractionAgent's doc comment for why it differs from
+        // JobRoleDescriptionAgent). Singleton, same rationale as every other
+        // Studio/agent-framework agent (no per-request state).
+        services.AddSingleton<HumanOS.Agents.ResumeExtractionAgent>();
+        services.AddScoped<PersonResumeService>();
+
+        // Enterprise console "Rutas de Carrera" — per-employee AI career
+        // development plan (2026-08-01): compares a person's résumé skills
+        // against their JobRole's required skills and recommends real
+        // catalog Programs to close the gap. Singleton, same rationale as
+        // every other Studio/agent-framework agent (no per-request state).
+        services.AddSingleton<HumanOS.Agents.CareerDevelopmentPlanAgent>();
+        services.AddScoped<PersonCareerPlanService>();
 
         // Growth Plan Step 3 ("Planeemos Juntos tu Desarrollo", merged
         // Steps 3+4, 2026-07-22): recommends a Program or individual

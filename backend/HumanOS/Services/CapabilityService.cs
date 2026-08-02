@@ -81,6 +81,9 @@ public sealed class CapabilityService
             ContentLanguageCode = c.ContentLanguageCode,
             PedagogicalAudience = c.PedagogicalAudience,
             IncludeExamplesStep = c.IncludeExamplesStep,
+            Category = c.Category,
+            TargetJobRoleId = c.TargetJobRoleId,
+            TargetSkill = c.TargetSkill,
             // V1 capabilities (legacy course-authoring flow) have real
             // CapabilityLevel rows; V2 capabilities (the PDF/idea graph
             // pipeline — everything created today) have NONE, so this used

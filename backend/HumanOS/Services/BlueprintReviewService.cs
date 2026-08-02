@@ -131,6 +131,7 @@ public sealed class BlueprintReviewService
 
         var node = await dbContext.CapabilityGraphNodes
             .Include(n => n.Illustrations)
+            .Include(n => n.CapabilityGraph).ThenInclude(g => g!.Capability)
             .FirstOrDefaultAsync(n => n.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
 
         if (node is null)
@@ -321,6 +322,7 @@ public sealed class BlueprintReviewService
     {
         var node = await dbContext.CapabilityGraphNodes
             .Include(n => n.Illustrations)
+            .Include(n => n.CapabilityGraph).ThenInclude(g => g!.Capability)
             .FirstOrDefaultAsync(n => n.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
 
         if (node is null)
@@ -358,6 +360,7 @@ public sealed class BlueprintReviewService
         var applications = DeserializeStringList(node.ApplicationsJson);
 
         var builder = new StringBuilder();
+        AppendLanguageDirective(builder, node);
         builder.AppendLine($"Node Name: {node.Name}");
         builder.AppendLine($"Node Description: {node.Description}");
         builder.AppendLine();
@@ -426,6 +429,7 @@ public sealed class BlueprintReviewService
         var applications = DeserializeStringList(node.ApplicationsJson);
 
         var builder = new StringBuilder();
+        AppendLanguageDirective(builder, node);
         builder.AppendLine($"Node Name: {node.Name}");
         builder.AppendLine($"Node Description: {node.Description}");
         builder.AppendLine();
@@ -448,6 +452,31 @@ public sealed class BlueprintReviewService
         builder.AppendLine($"Reviewer's instruction: {instruction}");
 
         return builder.ToString();
+    }
+
+    /// <summary>Prepends a REQUIRED RESPONSE LANGUAGE directive to a
+    /// reviewer-instruction prompt, from the node's owning Capability's
+    /// ContentLanguageCode (e.g. "es", "en") — see
+    /// <see cref="Models.Capabilities.Capability.ContentLanguageCode"/>.
+    /// BUG FIX (2026-07-30): BlueprintStepEditorAgent/ExampleCardEditorAgent
+    /// previously had no explicit language signal at all and could drift to
+    /// whichever language the reviewer's own free-text instruction happened
+    /// to be written in (or the model's own default), producing course
+    /// content in the wrong language for the enrolled course. No-op
+    /// (writes nothing) if the Capability lookup fails/is unavailable.</summary>
+    private static void AppendLanguageDirective(StringBuilder builder, CapabilityGraphNode node)
+    {
+        var languageCode = node.CapabilityGraph?.Capability?.ContentLanguageCode;
+        if (string.IsNullOrWhiteSpace(languageCode))
+        {
+            return;
+        }
+
+        builder.AppendLine(
+            $"REQUIRED RESPONSE LANGUAGE: {languageCode} — write ALL generated text (Title, Text/UpdatedContentHtml, " +
+            "Feedback, etc.) in this language, no matter what language the reviewer's own instruction below happens " +
+            "to be written in. This course's content language is fixed and never changes.");
+        builder.AppendLine();
     }
 
     /// <summary>Best-effort illustration (re)generation for a reviewer's edit — never throws, logs and returns null on any failure (same contract as AdaptiveAssessmentEngine/KnowledgeExpansionService's illustration generation).</summary>

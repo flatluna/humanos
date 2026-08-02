@@ -71,7 +71,7 @@ public sealed class NodeExperienceBlueprintPersistenceService
         Guid capabilityGraphNodeId,
         NodeExperienceBlueprintResponse response,
         IReadOnlyList<CapabilityGraphNodeIllustration> availableIllustrations,
-        bool includeExamplesStep = false,
+        bool includeExamplesStep = true,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);

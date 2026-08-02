@@ -52,6 +52,18 @@ export interface StartPdfCapabilityGraphRequest {
    * (the default) leaves every generated blueprint identical to before
    * this field existed. */
   includeExamplesStep?: boolean;
+  /** Optional (2026-08-01 "cursos de empresa" feature): which employer
+   * training track this capability belongs to — "job-skills" |
+   * "soft-skills" | "department-processes" | "hr-processes". Omit for
+   * capabilities not tied to any employer training track. */
+  category?: string | null;
+  /** Optional: together with targetSkill, explicitly connects this new
+   * Capability to ONE specific required skill/process gap on a JobRole. */
+  targetJobRoleId?: string | null;
+  /** The exact required-skill/process string (from the target JobRole's
+   * list) this capability is meant to satisfy. Ignored when
+   * targetJobRoleId is null. */
+  targetSkill?: string | null;
 }
 
 export type PdfCapabilityGraphStage = 'Running' | 'Completed' | 'Failed';
@@ -164,6 +176,12 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   pedagogicalAudience?: 'YoungLearner' | null;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   includeExamplesStep?: boolean;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  category?: string | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  targetJobRoleId?: string | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  targetSkill?: string | null;
 }
 
 /** Starts a V2 run from a short idea/goal description instead of a PDF —

@@ -131,6 +131,19 @@ public sealed class TutorTurnRequest
     /// "about" it — complementary to, not a substitute for,
     /// <see cref="RetrievedKnowledge"/> (which retrieves specific facts).</summary>
     public List<string> KeyEntities { get; set; } = [];
+
+    /// <summary>The owning Capability's ContentLanguageCode (e.g. "es",
+    /// "en") — see <see cref="Models.Capabilities.Capability.ContentLanguageCode"/>.
+    /// BUG FIX (2026-07-30): TutorAgentV2 previously had NO explicit signal
+    /// for which language to respond in and only tried to mirror
+    /// StudentMessage/History's language — this drifted mid-Recall-loop
+    /// (a course's own StepContent/new-question generation would sometimes
+    /// pull the model back toward its OWN authored language instead of the
+    /// language already established with the student), producing a jarring
+    /// language switch the student never asked for. Null/empty only if the
+    /// lookup fails (best-effort) — the Tutor falls back to its old
+    /// student-matching heuristic in that case.</summary>
+    public string? ContentLanguageCode { get; set; }
 }
 
 /// <summary>

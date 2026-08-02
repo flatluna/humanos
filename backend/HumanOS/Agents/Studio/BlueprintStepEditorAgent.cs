@@ -77,6 +77,13 @@ public sealed class BlueprintStepEditorAgent
           blueprint. Only these tags are ever allowed: p, br, strong, em,
           ul, ol, li, a. Never headings, tables, images, scripts, or inline
           styles.
+        - LANGUAGE: if the prompt gives you a REQUIRED RESPONSE LANGUAGE,
+          write UpdatedContentHtml in EXACTLY that language, even if the
+          reviewer's own free-text instruction is written in a different
+          language — never switch the course's content language just
+          because the instruction itself was typed in another language.
+          Only when no such directive is given, write in the same language
+          as the step's current Content.
 
         DECIDING WHETHER TO ADD/REPLACE THE ILLUSTRATION (DiagramPrompt)
         ANY step type (Hypothesis, Teaching, Recall, Production, or

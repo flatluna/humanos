@@ -107,7 +107,7 @@ public sealed class AddCapabilityGraphNodeFunction
             .FirstOrDefaultAsync(cancellationToken);
         var languageCode = capabilityMeta?.ContentLanguageCode ?? "es";
         var pedagogicalAudience = capabilityMeta?.PedagogicalAudience;
-        var includeExamplesStep = capabilityMeta?.IncludeExamplesStep ?? false;
+        var includeExamplesStep = capabilityMeta?.IncludeExamplesStep ?? true;
 
         var nodesById = graph.Nodes.ToDictionary(n => n.CapabilityGraphNodeId);
 
