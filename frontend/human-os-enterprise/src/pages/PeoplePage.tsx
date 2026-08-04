@@ -1,9 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { Users, Pencil, Trash2, Search, GraduationCap } from 'lucide-react';
+import { Users, Pencil, Trash2, Search, GraduationCap, UserPlus } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
-import { deactivatePerson, getDepartments, getTenantPeople } from '@/api/orgStructureApi';
+import {
+  createTenantInvitation,
+  deactivatePerson,
+  deleteTenantInvitation,
+  getDepartments,
+  getTenantInvitations,
+  getTenantPeople,
+} from '@/api/orgStructureApi';
 
 const ORG_ROLE_LABELS: Record<string, string> = {
   Employee: 'Empleado',
@@ -11,15 +18,14 @@ const ORG_ROLE_LABELS: Record<string, string> = {
   HRAdmin: 'Administrador RRHH',
 };
 
-// PRIVACY: an employee's training plan/progress is their own private
-// learning data — HR should not be able to browse into any employee's
-// detailed course history from this directory. Until a real
-// permission model exists for this (e.g. only the employee's own
-// manager, or an explicit opt-in), the "Plan de capacitación" drill-down
-// is restricted to this single seeded demo account (Alejandro Díaz) for
-// testing/demo purposes. See /memories/repo for the real account behind
-// this id (CIAM-linked so it can be used for real end-to-end testing).
-const DEMO_CAREER_PLAN_PERSON_ID = '562cb73a-414b-47a8-957e-9f1950ae9622';
+// PRIVACY: an employee's training plan/progress is only visible to HR
+// (who administers the whole tenant) or to that employee's own direct
+// manager (person.managerId === current user's personId) — anyone else
+// (including other managers) sees the disabled icon below.
+function canViewCareerPlan(currentUserOrgRole: string, currentUserPersonId: string, person: { managerId: string | null }): boolean {
+  if (currentUserOrgRole === 'HRAdmin') return true;
+  return currentUserOrgRole === 'Manager' && person.managerId === currentUserPersonId;
+}
 
 export function PeoplePage() {
   const { user } = useAuth();
@@ -29,6 +35,10 @@ export function PeoplePage() {
 
   const [search, setSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFirstName, setInviteFirstName] = useState('');
+  const [inviteLastName, setInviteLastName] = useState('');
+  const [inviteOrgRole, setInviteOrgRole] = useState<'Employee' | 'Manager' | 'HRAdmin'>('Employee');
 
   const peopleQuery = useQuery({
     queryKey: ['tenant-people', tenantId],
@@ -38,6 +48,10 @@ export function PeoplePage() {
     queryKey: ['departments', tenantId],
     queryFn: () => getDepartments(tenantId),
   });
+  const invitationsQuery = useQuery({
+    queryKey: ['tenant-invitations', tenantId],
+    queryFn: () => getTenantInvitations(tenantId),
+  });
 
   const deactivateMutation = useMutation({
     mutationFn: (personId: string) => deactivatePerson(personId),
@@ -45,9 +59,31 @@ export function PeoplePage() {
       void queryClient.invalidateQueries({ queryKey: ['tenant-people', tenantId] });
     },
   });
+  const inviteMutation = useMutation({
+    mutationFn: () =>
+      createTenantInvitation(tenantId, {
+        email: inviteEmail,
+        firstName: inviteFirstName || null,
+        lastName: inviteLastName || null,
+        orgRole: inviteOrgRole,
+      }),
+    onSuccess: () => {
+      setInviteEmail('');
+      setInviteFirstName('');
+      setInviteLastName('');
+      setInviteOrgRole('Employee');
+      void queryClient.invalidateQueries({ queryKey: ['tenant-invitations', tenantId] });
+    },
+  });
+  const deleteInvitationMutation = useMutation({
+    mutationFn: (tenantInvitationId: string) => deleteTenantInvitation(tenantId, tenantInvitationId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tenant-invitations', tenantId] });
+    },
+  });
 
   const people = peopleQuery.data ?? [];
-  const combinedError = deactivateMutation.error;
+  const combinedError = deactivateMutation.error ?? inviteMutation.error ?? deleteInvitationMutation.error;
 
   const filteredPeople = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -70,6 +106,91 @@ export function PeoplePage() {
         <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
           Directorio de empleados: asigna departamento, puesto, gerente y nivel de permisos.
         </p>
+      </div>
+
+      <form
+        className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          inviteMutation.mutate();
+        }}
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <UserPlus className="h-4 w-4 text-brand-600 dark:text-brand-300" />
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Invitar empleado</h2>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <input
+            type="email"
+            required
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="email@empresa.com"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+          />
+          <input
+            type="text"
+            value={inviteFirstName}
+            onChange={(e) => setInviteFirstName(e.target.value)}
+            placeholder="Nombre"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+          />
+          <input
+            type="text"
+            value={inviteLastName}
+            onChange={(e) => setInviteLastName(e.target.value)}
+            placeholder="Apellido"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+          />
+          <div className="flex gap-2">
+            <select
+              value={inviteOrgRole}
+              onChange={(e) => setInviteOrgRole(e.target.value as 'Employee' | 'Manager' | 'HRAdmin')}
+              className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+            >
+              <option value="Employee">Empleado</option>
+              <option value="Manager">Gerente</option>
+              <option value="HRAdmin">Administrador RRHH</option>
+            </select>
+            <button
+              type="submit"
+              disabled={inviteMutation.isPending}
+              className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
+            >
+              {inviteMutation.isPending ? 'Enviando…' : 'Invitar'}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Invitaciones enviadas</h2>
+        {invitationsQuery.isLoading && <p className="mt-2 text-sm text-slate-400">Cargando invitaciones…</p>}
+        {invitationsQuery.isSuccess && invitationsQuery.data.length === 0 && (
+          <p className="mt-2 text-sm text-slate-500 dark:text-white/50">Aún no hay invitaciones.</p>
+        )}
+        {invitationsQuery.isSuccess && invitationsQuery.data.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {invitationsQuery.data.slice(0, 10).map((invite) => (
+              <div key={invite.tenantInvitationId} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-white/5">
+                <span className="text-slate-700 dark:text-white/80">{invite.email}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500 dark:text-white/50">{invite.status} · {ORG_ROLE_LABELS[invite.orgRole] ?? invite.orgRole}</span>
+                  {invite.status === 'Pending' && (
+                    <button
+                      type="button"
+                      onClick={() => deleteInvitationMutation.mutate(invite.tenantInvitationId)}
+                      disabled={deleteInvitationMutation.isPending}
+                      className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50 dark:border-white/15 dark:text-white/70 dark:hover:border-red-400/40 dark:hover:text-red-300"
+                    >
+                      Borrar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -145,7 +266,7 @@ export function PeoplePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                  {person.personId === DEMO_CAREER_PLAN_PERSON_ID ? (
+                  {canViewCareerPlan(user!.orgRole, user!.personId, person) ? (
                     <button
                       type="button"
                       title="Plan de capacitación"
@@ -157,7 +278,7 @@ export function PeoplePage() {
                   ) : (
                     <button
                       type="button"
-                      title="Datos privados del colaborador — no disponible desde este directorio"
+                      title="Datos privados del colaborador — solo su gerente directo o un Administrador RRHH pueden consultarlo"
                       disabled
                       className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-full text-slate-200 dark:text-white/10"
                     >

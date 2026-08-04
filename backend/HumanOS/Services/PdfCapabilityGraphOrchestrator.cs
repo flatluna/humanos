@@ -118,7 +118,9 @@ public sealed class PdfCapabilityGraphOrchestrator
         bool includeExamplesStep = true,
         string? category = null,
         Guid? targetJobRoleId = null,
-        string? targetSkill = null)
+        string? targetSkill = null,
+        int? maxDeepDiveCardsPerNode = null,
+        bool strictSyllabusMode = false)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -156,7 +158,9 @@ public sealed class PdfCapabilityGraphOrchestrator
                     includeExamplesStep,
                     category,
                     targetJobRoleId,
-                    targetSkill);
+                    targetSkill,
+                    maxDeepDiveCardsPerNode,
+                    strictSyllabusMode);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }
@@ -212,7 +216,9 @@ public sealed class PdfCapabilityGraphOrchestrator
         bool includeExamplesStep = true,
         string? category = null,
         Guid? targetJobRoleId = null,
-        string? targetSkill = null)
+        string? targetSkill = null,
+        int? maxDeepDiveCardsPerNode = null,
+        bool strictSyllabusMode = false)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -245,7 +251,9 @@ public sealed class PdfCapabilityGraphOrchestrator
                     includeExamplesStep,
                     category,
                     targetJobRoleId,
-                    targetSkill);
+                    targetSkill,
+                    maxDeepDiveCardsPerNode,
+                    strictSyllabusMode);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }

@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Plus, LayoutGrid, GraduationCap, Coins } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -15,12 +15,10 @@ export default function Layout() {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between gap-6">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105">
-              <Sparkles className="h-5 w-5 text-[#fff]" strokeWidth={2.25} />
-            </div>
+            <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-cover shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
             <div className="leading-tight">
               <div className="font-semibold tracking-tight text-white">Capability Studio</div>
-              <div className="text-[11px] text-slate-400">Human OS</div>
+              <div className="text-[11px] text-slate-400">Engram</div>
             </div>
           </Link>
 

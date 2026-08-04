@@ -64,10 +64,28 @@ const STATE_LABELS: Record<VoiceState, string> = {
 export default function EngramReviewAgent({
   personId,
   capabilityGraphNodeId,
+  exampleCardIndex,
+  focusCardTitle,
+  embedded = false,
   onExit,
 }: {
   personId: string;
   capabilityGraphNodeId: string;
+  /** Optional (2026-08-02) — 0-based index of one Deep Dive ExampleCard to
+   * focus this conversation on, from the Brain page's card browser, instead
+   * of the whole lesson. */
+  exampleCardIndex?: number;
+  /** Optional label shown in the modal header when exampleCardIndex is set,
+   * so the student sees which card they're about to have explained. Unused
+   * when `embedded` is true (the parent card view already shows the title). */
+  focusCardTitle?: string;
+  /** When true (2026-08-02), renders WITHOUT its own full-screen portal/
+   * backdrop/title chrome or illustration gallery — just the mic
+   * orb/state/exit controls plus any on-demand ephemeral visual aid, meant
+   * to be dropped directly inside an already-open card modal (e.g.
+   * DeepDiveCardModal) so activating the agent never opens a second modal
+   * window on top of the first. */
+  embedded?: boolean;
   onExit: () => void;
 }) {
   const [state, setState] = useState<VoiceState>('idle');
@@ -316,7 +334,7 @@ export default function EngramReviewAgent({
     setState('connecting');
     handledToolCallIdsRef.current.clear();
     try {
-      const session = await requestEngramReviewSession({ personId, capabilityGraphNodeId });
+      const session = await requestEngramReviewSession({ personId, capabilityGraphNodeId, exampleCardIndex });
 
       const illustrations: NodeIllustration[] = (session.Illustrations ?? []).map((i) => ({
         id: i.Id,
@@ -471,7 +489,7 @@ export default function EngramReviewAgent({
       teardown();
       setState('error');
     }
-  }, [personId, capabilityGraphNodeId, monitorRemoteAudioLevel, teardown, handleShowIllustration, handleShowEphemeralAid, handleGenerateImage]);
+  }, [personId, capabilityGraphNodeId, exampleCardIndex, monitorRemoteAudioLevel, teardown, handleShowIllustration, handleShowEphemeralAid, handleGenerateImage]);
 
   const isActive = state === 'connected' || state === 'listening' || state === 'speaking';
   const isBusy = state === 'connecting';
@@ -495,7 +513,7 @@ export default function EngramReviewAgent({
   }, [stopConversation, onExit]);
 
   // Auto-connect shortly after the modal opens — the student already
-  // expressed intent by clicking "Reactivar Engrama", so there's no need
+  // expressed intent by clicking the review button, so there's no need
   // for a separate manual "start" tap.
   const connectRef = useRef(connect);
   useEffect(() => {
@@ -510,6 +528,123 @@ export default function EngramReviewAgent({
     }, 600);
     return () => clearTimeout(timer);
   }, []);
+
+  const ephemeralAidContent = ephemeralAid ? (
+    <>
+      {ephemeralAid.kind === 'emoji' && (
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-5xl leading-none">{ephemeralAid.emoji}</p>
+          {ephemeralAid.caption && <p className="text-sm text-slate-300">{ephemeralAid.caption}</p>}
+        </div>
+      )}
+      {ephemeralAid.kind === 'chart' && (
+        <div className="flex flex-col gap-2">
+          {ephemeralAid.caption && <p className="mb-1 text-xs text-slate-400">{ephemeralAid.caption}</p>}
+          {(() => {
+            const max = Math.max(...ephemeralAid.items.map((it) => it.value), 1);
+            return ephemeralAid.items.map((item, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-left">
+                <span className="w-20 shrink-0 truncate text-xs text-slate-400">{item.label}</span>
+                <div className="h-3 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-brand-400 to-accent-400"
+                    style={{ width: `${Math.max((item.value / max) * 100, 4)}%` }}
+                  />
+                </div>
+                <span className="w-10 shrink-0 text-right text-xs text-slate-300">{item.value}</span>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+      {ephemeralAid.kind === 'text' && (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-white p-4 text-slate-900">
+          <p
+            className={`whitespace-pre-wrap break-words text-lg font-semibold ${
+              ephemeralAid.text.includes('\n') ? 'text-left' : 'text-center'
+            }`}
+          >
+            {ephemeralAid.text}
+          </p>
+          {ephemeralAid.caption && <p className="text-xs text-slate-500">{ephemeralAid.caption}</p>}
+        </div>
+      )}
+      {ephemeralAid.kind === 'generated_image' && ephemeralAid.loading && (
+        <div className="flex flex-col items-center gap-2 py-6">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-400/30 border-t-accent-400" />
+          <p className="text-xs text-slate-400">Dibujando…</p>
+        </div>
+      )}
+    </>
+  ) : null;
+
+  const controls = (
+    <>
+      <button
+        type="button"
+        onClick={isActive ? stopConversation : connect}
+        disabled={isBusy}
+        className="group relative mt-5 flex h-24 w-24 items-center justify-center rounded-full outline-none"
+        aria-label={isActive ? 'Detener al Agente Engrama' : 'Hablar con el Agente Engrama'}
+      >
+        {(state === 'listening' || state === 'speaking' || state === 'connecting') && (
+          <span className="absolute inset-0 animate-ping rounded-full bg-accent-400/30" />
+        )}
+        <span
+          className={`absolute inset-0 rounded-full bg-gradient-to-br from-brand-400 via-accent-400 to-brand-600 shadow-lg shadow-accent-500/30 transition-transform duration-300 ${
+            state === 'speaking' ? 'scale-110' : state === 'listening' ? 'scale-105' : 'scale-100'
+          }`}
+        />
+        <span className="relative flex h-[88px] w-[88px] items-center justify-center rounded-full border border-white/20 bg-slate-950/50">
+          {isBusy ? (
+            <Sparkles className="h-8 w-8 animate-spin text-white" />
+          ) : isActive ? (
+            <Mic className="h-8 w-8 text-white" />
+          ) : (
+            <Bot className="h-8 w-8 text-white/80" />
+          )}
+        </span>
+      </button>
+
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">{STATE_LABELS[state]}</p>
+      {errorMessage && <p className="text-xs text-red-400">{errorMessage}</p>}
+
+      <button
+        type="button"
+        onClick={handleExit}
+        className="mt-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/5"
+      >
+        Terminar repaso
+      </button>
+
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio ref={audioElementRef} autoPlay />
+    </>
+  );
+
+  // Embedded mode (2026-08-02): no portal, no backdrop, no title chrome, no
+  // illustration gallery — this is dropped directly inside an already-open
+  // card modal (DeepDiveCardModal) so the illustration/title the student is
+  // already looking at never changes and no second modal window appears.
+  // Only the on-demand ephemeral visual aid (emoji/chart/text/generated
+  // image the Agent triggers mid-conversation) is still shown here, since
+  // it's genuinely new content, not a duplicate of the card's own image.
+  if (embedded) {
+    return (
+      <div className="mt-2 flex w-full flex-col items-center gap-3">
+        {ephemeralAid && (
+          <div
+            className={`w-full overflow-hidden rounded-2xl border border-accent-400/30 bg-slate-950/60 p-4 shadow-lg shadow-black/40 transition-all duration-300 ease-out ${
+              ephemeralAidVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            }`}
+          >
+            {ephemeralAidContent}
+          </div>
+        )}
+        {controls}
+      </div>
+    );
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
@@ -528,6 +663,11 @@ export default function EngramReviewAgent({
           Agente Engrama
         </p>
         <h2 className="text-lg font-semibold text-white">Reactivar Engrama</h2>
+        {focusCardTitle && (
+          <p className="-mt-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-accent-300">
+            Tarjeta: {focusCardTitle}
+          </p>
+        )}
         <p className="text-sm text-slate-400">
           Repasemos juntos lo que ya aprendiste — sin examen, sin puntaje. Solo tú, tu memoria y una
           buena conversación.
@@ -551,52 +691,7 @@ export default function EngramReviewAgent({
           }`}
         >
           {ephemeralAid ? (
-            <>
-              {ephemeralAid.kind === 'emoji' && (
-                <div className="flex flex-col items-center gap-2">
-                  <p className="text-5xl leading-none">{ephemeralAid.emoji}</p>
-                  {ephemeralAid.caption && <p className="text-sm text-slate-300">{ephemeralAid.caption}</p>}
-                </div>
-              )}
-              {ephemeralAid.kind === 'chart' && (
-                <div className="flex flex-col gap-2">
-                  {ephemeralAid.caption && <p className="mb-1 text-xs text-slate-400">{ephemeralAid.caption}</p>}
-                  {(() => {
-                    const max = Math.max(...ephemeralAid.items.map((it) => it.value), 1);
-                    return ephemeralAid.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-left">
-                        <span className="w-20 shrink-0 truncate text-xs text-slate-400">{item.label}</span>
-                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-brand-400 to-accent-400"
-                            style={{ width: `${Math.max((item.value / max) * 100, 4)}%` }}
-                          />
-                        </div>
-                        <span className="w-10 shrink-0 text-right text-xs text-slate-300">{item.value}</span>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              )}
-              {ephemeralAid.kind === 'text' && (
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-white p-4 text-slate-900">
-                  <p
-                    className={`whitespace-pre-wrap break-words text-lg font-semibold ${
-                      ephemeralAid.text.includes('\n') ? 'text-left' : 'text-center'
-                    }`}
-                  >
-                    {ephemeralAid.text}
-                  </p>
-                  {ephemeralAid.caption && <p className="text-xs text-slate-500">{ephemeralAid.caption}</p>}
-                </div>
-              )}
-              {ephemeralAid.kind === 'generated_image' && ephemeralAid.loading && (
-                <div className="flex flex-col items-center gap-2 py-6">
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-400/30 border-t-accent-400" />
-                  <p className="text-xs text-slate-400">Dibujando…</p>
-                </div>
-              )}
-            </>
+            ephemeralAidContent
           ) : nodeIllustrations.length > 0 ? (
             <div>
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
@@ -649,46 +744,7 @@ export default function EngramReviewAgent({
           )}
         </div>
 
-
-        <button
-          type="button"
-          onClick={isActive ? stopConversation : connect}
-          disabled={isBusy}
-          className="group relative mt-5 flex h-24 w-24 items-center justify-center rounded-full outline-none"
-          aria-label={isActive ? 'Detener al Agente Engrama' : 'Hablar con el Agente Engrama'}
-        >
-          {(state === 'listening' || state === 'speaking' || state === 'connecting') && (
-            <span className="absolute inset-0 animate-ping rounded-full bg-accent-400/30" />
-          )}
-          <span
-            className={`absolute inset-0 rounded-full bg-gradient-to-br from-brand-400 via-accent-400 to-brand-600 shadow-lg shadow-accent-500/30 transition-transform duration-300 ${
-              state === 'speaking' ? 'scale-110' : state === 'listening' ? 'scale-105' : 'scale-100'
-            }`}
-          />
-          <span className="relative flex h-[88px] w-[88px] items-center justify-center rounded-full border border-white/20 bg-slate-950/50">
-            {isBusy ? (
-              <Sparkles className="h-8 w-8 animate-spin text-white" />
-            ) : isActive ? (
-              <Mic className="h-8 w-8 text-white" />
-            ) : (
-              <Bot className="h-8 w-8 text-white/80" />
-            )}
-          </span>
-        </button>
-
-        <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">{STATE_LABELS[state]}</p>
-        {errorMessage && <p className="text-xs text-red-400">{errorMessage}</p>}
-
-        <button
-          type="button"
-          onClick={handleExit}
-          className="mt-2 rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/5"
-        >
-          Terminar repaso
-        </button>
-
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <audio ref={audioElementRef} autoPlay />
+        {controls}
       </div>
     </div>,
     document.body

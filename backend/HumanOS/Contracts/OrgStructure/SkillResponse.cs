@@ -34,3 +34,20 @@ public sealed class SkillJobRoleLinkResponse
 
     public string DepartmentName { get; set; } = null!;
 }
+
+/// <summary>Lightweight projection of <see cref="SkillResponse"/> for
+/// callers that only need to let someone PICK a skill by name (e.g.
+/// Capability Studio's "target skill" combobox) — no Description,
+/// timestamps, or per-Job-Role title/department detail, just enough to
+/// render "{Name} ({JobRoleCount})". Returned by GET
+/// /tenants/{tenantId}/skills when called with ?summary=true (see
+/// GetSkillsFunction), instead of the full <see cref="SkillResponse"/>
+/// the enterprise console's Skill catalog management page needs.</summary>
+public sealed class SkillSummaryResponse
+{
+    public Guid SkillId { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public int JobRoleCount { get; set; }
+}

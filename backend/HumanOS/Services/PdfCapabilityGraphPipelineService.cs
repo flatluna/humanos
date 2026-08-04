@@ -54,6 +54,7 @@ namespace HumanOS.Services;
 public sealed class PdfCapabilityGraphPipelineService
 {
     private const int DefaultMaxPages = 100;
+    private const int MaxDeepDiveCardsPerNodeHardLimit = 10;
 
     /// <summary>Default cap on how many nodes' Paso 8 blueprint design
     /// (ExperienceDesigner + illustrations + validation + RAG indexing) run
@@ -142,6 +143,33 @@ public sealed class PdfCapabilityGraphPipelineService
         public int MaxPages { get; } = maxPages;
     }
 
+    /// <summary>
+    /// Thrown when the caller did NOT opt into "Estructurado" mode
+    /// (<c>strictSyllabusMode == false</c>, i.e. "Libre"/free-form
+    /// processing) and the document exceeds the agreed Libre-mode size cap
+    /// (2026-08-03 design decision — a single-shot LLM pass over the whole
+    /// document is only reliable up to a bounded size; larger documents
+    /// must use "Estructurado" mode's per-module index instead of silently
+    /// truncating/compressing content). Never thrown when
+    /// <c>strictSyllabusMode == true</c> — Estructurado mode has no size
+    /// cap since it relies on a validated module index rather than one
+    /// single pass over the whole text.
+    /// </summary>
+    public sealed class FreeformDocumentTooLargeException(int pageCount, int estimatedTokens, int maxPages, int maxTokens) : Exception(
+        $"El documento es demasiado grande para el modo Libre ({(pageCount > 0 ? $"{pageCount} páginas, " : string.Empty)}" +
+        $"~{estimatedTokens} tokens estimados; el máximo es {maxPages} páginas / ~{maxTokens} tokens). " +
+        "Para documentos más grandes, agrega un índice numerado de módulos/unidades y usa el modo Estructurado, " +
+        "o divide el contenido en secciones más cortas.")
+    {
+        public int PageCount { get; } = pageCount;
+
+        public int EstimatedTokens { get; } = estimatedTokens;
+
+        public int MaxPages { get; } = maxPages;
+
+        public int MaxTokens { get; } = maxTokens;
+    }
+
     private const int DefaultMaxImagesToDescribe = 60;
     private const int DefaultMaxImagesPerPage = 8;
 
@@ -190,6 +218,44 @@ public sealed class PdfCapabilityGraphPipelineService
         }
     }
 
+    private const int DefaultMaxFreeformPages = 20;
+    private const int DefaultMaxFreeformEstimatedTokens = 20_000;
+
+    /// <summary>Configurable via the 'MaxFreeformCapabilitySourcePages' app
+    /// setting — the page cap for "Libre" (non-strict) mode ONLY, agreed
+    /// with the user as ~20 pages (2026-08-03) so a single-shot LLM pass
+    /// stays reliable. Distinct from (and stricter than) the general
+    /// <see cref="MaxSourcePdfPages"/> limit, which still applies to
+    /// "Estructurado" mode. Defaults to 20 when unset or invalid.</summary>
+    public int MaxFreeformPages
+    {
+        get
+        {
+            var raw = _configuration["MaxFreeformCapabilitySourcePages"];
+            return int.TryParse(raw, out var value) && value > 0 ? value : DefaultMaxFreeformPages;
+        }
+    }
+
+    /// <summary>Configurable via the 'MaxFreeformCapabilitySourceTokens' app
+    /// setting — the estimated-token cap for "Libre" mode (2026-08-03),
+    /// agreed as ~20,000 tokens. Applies to BOTH real PDF text and
+    /// user-pasted description text (unlike <see cref="MaxFreeformPages"/>,
+    /// which only makes sense for a real PDF with a known page count).
+    /// Defaults to 20,000 when unset or invalid.</summary>
+    public int MaxFreeformEstimatedTokens
+    {
+        get
+        {
+            var raw = _configuration["MaxFreeformCapabilitySourceTokens"];
+            return int.TryParse(raw, out var value) && value > 0 ? value : DefaultMaxFreeformEstimatedTokens;
+        }
+    }
+
+    /// <summary>Rough, dependency-free token-count heuristic (~4 characters
+    /// per token for Spanish/English prose) — good enough for a size-cap
+    /// guard, not meant to match a real tokenizer exactly.</summary>
+    private static int EstimateTokenCount(string text) => text.Length / 4;
+
     public async Task<PdfCapabilityGraphResult> RunAsync(
         byte[] pdfBytes,
         string fileName,
@@ -210,7 +276,9 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeExamplesStep = true,
         string? category = null,
         Guid? targetJobRoleId = null,
-        string? targetSkill = null)
+        string? targetSkill = null,
+        int? maxDeepDiveCardsPerNode = null,
+        bool strictSyllabusMode = false)
     {
         // ==================== 1. EXTRACT TEXT + IMAGES, PER PAGE ====================
         reportProgress("Extrayendo texto del PDF");
@@ -343,7 +411,9 @@ public sealed class PdfCapabilityGraphPipelineService
             includeExamplesStep,
             category,
             targetJobRoleId,
-            targetSkill);
+            targetSkill,
+            maxDeepDiveCardsPerNode,
+            strictSyllabusMode);
 
         result.DescribedImageCount = describedImageCount;
         return result;
@@ -384,7 +454,9 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeExamplesStep = true,
         string? category = null,
         Guid? targetJobRoleId = null,
-        string? targetSkill = null)
+        string? targetSkill = null,
+        int? maxDeepDiveCardsPerNode = null,
+        bool strictSyllabusMode = false)
     {
         if (!_ideaToDocument.IsConfigured)
         {
@@ -394,7 +466,7 @@ public sealed class PdfCapabilityGraphPipelineService
         }
 
         reportProgress("Expandiendo la idea en material de curso");
-        var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, languageCode, cancellationToken);
+        var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, languageCode, strictSyllabusMode, cancellationToken);
 
         return await RunFromDocumentTextAsync(
             expansion.DocumentText,
@@ -420,7 +492,9 @@ public sealed class PdfCapabilityGraphPipelineService
             includeExamplesStep,
             category,
             targetJobRoleId,
-            targetSkill);
+            targetSkill,
+            maxDeepDiveCardsPerNode,
+            strictSyllabusMode);
     }
 
     /// <summary>Shared continuation of both <see cref="RunAsync"/> (real
@@ -453,10 +527,39 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeExamplesStep = true,
         string? category = null,
         Guid? targetJobRoleId = null,
-        string? targetSkill = null)
+        string? targetSkill = null,
+        int? maxDeepDiveCardsPerNode = null,
+        bool strictSyllabusMode = false)
     {
+        // Never allow more than 10 Deep Dive cards per node for a course,
+        // regardless of client input.
+        int? normalizedMaxDeepDiveCardsPerNode = null;
+        if (maxDeepDiveCardsPerNode.HasValue)
+        {
+            normalizedMaxDeepDiveCardsPerNode = Math.Clamp(maxDeepDiveCardsPerNode.Value, 1, MaxDeepDiveCardsPerNodeHardLimit);
+        }
+
         // ==================== 2. DETECT CHAPTERS (best-effort) ====================
         reportProgress("Detectando capítulos/índice");
+
+        // "Libre" mode size cap (2026-08-03 design decision): only applies
+        // when the caller did NOT opt into "Estructurado" (strictSyllabusMode
+        // == false) — a single-shot LLM pass over the whole document is
+        // only reliable up to a bounded size. "Estructurado" mode has no
+        // cap here since it relies on a validated module index (Tier 0/1)
+        // rather than one pass over the whole text. Rejects rather than
+        // silently truncating/compressing the document.
+        if (!strictSyllabusMode)
+        {
+            var maxFreeformPages = MaxFreeformPages;
+            var maxFreeformTokens = MaxFreeformEstimatedTokens;
+            var estimatedTokens = EstimateTokenCount(documentText);
+
+            if ((pageCount > 0 && pageCount > maxFreeformPages) || estimatedTokens > maxFreeformTokens)
+            {
+                throw new FreeformDocumentTooLargeException(pageCount, estimatedTokens, maxFreeformPages, maxFreeformTokens);
+            }
+        }
 
         var sourceMaterial = new RawMaterialItem
         {
@@ -466,22 +569,24 @@ public sealed class PdfCapabilityGraphPipelineService
         };
 
         List<RawMaterialItem> chapterMaterials;
-        if (_tocExtraction.IsConfigured)
+        try
         {
-            try
-            {
-                chapterMaterials = await DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(
-                    sourceMaterial, _tocExtraction, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // TocExtraction is best-effort — fall back to the whole
-                // document as a single chapter rather than failing the run.
-                chapterMaterials = [sourceMaterial];
-            }
+            chapterMaterials = await DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(
+                sourceMaterial, _tocExtraction, strictSyllabusMode, cancellationToken);
         }
-        else
+        catch (SyllabusStructureNotFoundException)
         {
+            // Tier 2 hard reject (2026-08-03) — the caller explicitly opted
+            // into "Estructurado" mode and neither the deterministic (Tier 0)
+            // nor the LLM-based (Tier 1) detector found a confident module
+            // structure. Must propagate as a real run failure, never be
+            // silently downgraded to a single-chapter/unstructured run.
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // TocExtraction is best-effort — fall back to the whole
+            // document as a single chapter rather than failing the run.
             chapterMaterials = [sourceMaterial];
         }
 
@@ -499,6 +604,15 @@ public sealed class PdfCapabilityGraphPipelineService
         var chapterOrderLines = new List<string>();
         var hasRealChapters = chapterMaterials.Count > 1;
 
+        // Feeds CapabilityGraphLevelAutoNamer (2026-08-03): maps each
+        // merged chunk's final Tag back to the chapter/module it came from,
+        // plus that chapter's own raw heading (e.g. "Módulo 1: Introducción
+        // al Marketing Digital", NOT the combined Label), so computed graph
+        // "levels" can be auto-named after the whole chapter/module they
+        // mostly draw from instead of a generic "Nivel N".
+        var chunkTagToChapterNumber = new Dictionary<string, int>();
+        var chapterTitleByNumber = new Dictionary<int, string>();
+
         for (var i = 0; i < chapterMaterials.Count; i++)
         {
             var chapterNumber = i + 1;
@@ -509,6 +623,11 @@ public sealed class PdfCapabilityGraphPipelineService
                 chapterOrderLines.Add($"{chapterNumber}. {chapterLabel}");
             }
 
+            if (!string.IsNullOrWhiteSpace(chapterMaterials[i].ChapterTitle))
+            {
+                chapterTitleByNumber[chapterNumber] = chapterMaterials[i].ChapterTitle!;
+            }
+
             var chapterBatch = new List<RawMaterialItem> { chapterMaterials[i] };
 
             reportProgress($"Curando capítulo {chapterNumber} de {chapterMaterials.Count}");
@@ -517,15 +636,21 @@ public sealed class PdfCapabilityGraphPipelineService
 
             foreach (var chunk in curationResult.Corpus.Chunks)
             {
+                var mergedTag = hasRealChapters ? $"Cap.{chapterNumber} {chapterLabel} — {chunk.Tag}" : chunk.Tag;
                 allChunks.Add(new CuratedChunk
                 {
                     // Chapter order/title baked into the Tag itself so it
                     // travels naturally into GraphArchitectAgent's
                     // "[{Tag}] {Content}" prompt line — no agent-prompt
                     // change needed for this part of the ordering signal.
-                    Tag = hasRealChapters ? $"Cap.{chapterNumber} {chapterLabel} — {chunk.Tag}" : chunk.Tag,
+                    Tag = mergedTag,
                     Content = chunk.Content
                 });
+
+                if (hasRealChapters)
+                {
+                    chunkTagToChapterNumber[mergedTag] = chapterNumber;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(curationResult.Corpus.Summary))
@@ -585,10 +710,18 @@ public sealed class PdfCapabilityGraphPipelineService
 
         var documentChapterOrder = hasRealChapters ? string.Join("\n", chapterOrderLines) : null;
         var graphResult = await _graphArchitect.ExtractGraphAsync(
-            capabilityName, mergedCorpus, documentChapterOrder, programContext, languageCode, cancellationToken);
+            capabilityName, mergedCorpus, documentChapterOrder, programContext, languageCode, strictSyllabusMode, cancellationToken);
 
         var graph = graphResult.Graph;
         tokenUsage.Add(WithModuleId(graphResult.TokenUsage, capabilityName));
+
+        // Best-effort, deterministic (no extra LLM call) attempt to give
+        // each computed graph "level" a real title drawn from the source
+        // document's own chapter/module headings, instead of leaving every
+        // level to the generic "Nivel N" fallback (2026-08-03). See
+        // CapabilityGraphLevelAutoNamer for the algorithm.
+        var autoLevelNames = CapabilityGraphLevelAutoNamer.ComputeLevelNames(
+            graph.Nodes, graph.Edges, chunkTagToChapterNumber, chapterTitleByNumber);
 
         // Document-wide executive summary + key entities (2026-07-20 — see
         // Agents/Studio/DocumentContextAgent.cs and
@@ -789,6 +922,37 @@ public sealed class PdfCapabilityGraphPipelineService
                 executiveSummary, keyEntitiesJson, coverImageStoragePath);
         }
 
+        // Auto-name computed graph levels from the source document's own
+        // chapter/module headings (2026-08-03) — best-effort, never blocks
+        // an otherwise-successful Capability creation. Only levels
+        // CapabilityGraphLevelAutoNamer could confidently trace to ONE
+        // dominant chapter get a row here; every other level simply keeps
+        // showing the generic "Nivel N" fallback until a professor names
+        // it by hand (same PreviewGraphPage.tsx pencil-icon flow as today).
+        if (autoLevelNames.Count > 0)
+        {
+            try
+            {
+                await using var levelNamingDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+                foreach (var (levelIndex, name) in autoLevelNames)
+                {
+                    levelNamingDbContext.CapabilityGraphLevels.Add(new Models.Capabilities.Graph.CapabilityGraphLevel
+                    {
+                        CapabilityGraphId = persistedGraph.CapabilityGraphId,
+                        LevelIndex = levelIndex,
+                        Name = name.Length > 200 ? name[..200] : name,
+                    });
+                }
+
+                await levelNamingDbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Best-effort — a failed auto-name shouldn't abort the run;
+                // the professor can always name the level by hand instead.
+            }
+        }
+
         // Cost dashboard (2026-07-23): persist every LLM call's token usage
         // gathered so far (chapters' Curador calls, GraphArchitect,
         // DocumentContext) so it survives past this run's in-memory
@@ -842,7 +1006,7 @@ public sealed class PdfCapabilityGraphPipelineService
             var nodeBlueprintTasks = reloadedNodes.Select(node => ProcessNodeBlueprintStageAsync(
                 node, nodesNeedingCurrentInfo, effectiveEnableWebEnrichment, capabilityName, languageCode,
                 pedagogicalAudience, includeExamplesStep, tenantId, capabilityId, allChunks, reportProgress,
-                nodeBlueprintSemaphore, cancellationToken)).ToList();
+                normalizedMaxDeepDiveCardsPerNode, nodeBlueprintSemaphore, cancellationToken)).ToList();
 
             var nodeBlueprintResults = await Task.WhenAll(nodeBlueprintTasks);
 
@@ -1071,6 +1235,7 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid capabilityId,
         List<CuratedChunk> allChunks,
         Action<string> reportProgress,
+        int? maxDeepDiveCardsPerNode,
         SemaphoreSlim semaphore,
         CancellationToken cancellationToken)
     {
@@ -1123,7 +1288,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
             reportProgress($"Diseñando experiencia de aprendizaje: {node.Name}");
             var (blueprintPersisted, exampleIllustrationsForNode) = await TryDesignPersistValidateBlueprintAsync(
-                node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, tenantId, capabilityId, result.TokenUsage, cancellationToken);
+                node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, maxDeepDiveCardsPerNode, tenantId, capabilityId, result.TokenUsage, cancellationToken);
             result.BlueprintPersisted = blueprintPersisted;
             result.ExampleCardIllustrationsGenerated = exampleIllustrationsForNode;
 
@@ -1157,6 +1322,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
     private async Task<(bool Success, int ExampleCardIllustrationsGenerated)> TryDesignPersistValidateBlueprintAsync(
         CapabilityGraphNode node, string? webFindings, string languageCode, string? pedagogicalAudience, bool includeExamplesStep,
+        int? maxDeepDiveCardsPerNode,
         Guid tenantId, Guid capabilityId, List<AgentTokenUsage> tokenUsage, CancellationToken cancellationToken)
     {
         try
@@ -1173,7 +1339,8 @@ public sealed class PdfCapabilityGraphPipelineService
 
             LogPipelineEvent($"DESIGN-START node={node.CapabilityGraphNodeId}");
             var designResult = await _experienceDesigner.DesignBlueprintAsync(
-                node, availableIllustrations, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, cancellationToken: cancellationToken);
+                node, availableIllustrations, webFindings, languageCode, pedagogicalAudience, includeExamplesStep,
+                maxDeepDiveCardsPerNode, cancellationToken: cancellationToken);
             tokenUsage.Add(WithModuleId(designResult.TokenUsage, node.Name));
             LogPipelineEvent($"DESIGN-OK node={node.CapabilityGraphNodeId}");
 

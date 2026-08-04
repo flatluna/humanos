@@ -62,6 +62,8 @@ public sealed class PersonService
             CreatedDate = person.CreatedDate,
             UpdatedDate = person.UpdatedDate,
             OrgRole = person.OrgRole.ToString(),
+            DepartmentId = person.DepartmentId,
+            JobRoleId = person.JobRoleId,
         };
     }
 

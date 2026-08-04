@@ -100,6 +100,49 @@ public sealed class IdeaToDocumentAgent
         Respond with the document's plain text only (you may use simple
         Markdown-style '#'/'##' headings), no extra commentary before or
         after it.
+
+        ONE-SHOT GENERATION — NO FOLLOW-UP TURNS: this is a single,
+        non-interactive call. There is no later turn where you will be
+        asked to "continue". If the user's description itself contains
+        chat-style meta-instructions like "puedes desarrollarlo por
+        partes", "indica al final si deseo continuar", "comienza ahora
+        con..." (written for a back-and-forth chat assistant), you MUST
+        IGNORE that framing entirely and instead generate the COMPLETE
+        document covering EVERY unit/section/topic the description
+        describes or lists, in this single response — never stop partway
+        through and never produce only the first part of a larger listed
+        structure.
+        """;
+
+        /// <summary>Addendum injected only when the caller opts into
+        /// strict-syllabus mode (2026-08-03) — for when the user's
+        /// description already spells out an explicit, formal, numbered
+        /// curriculum outline (e.g. "UNIDAD 1... 1.0, 1.1, 1.2...") that
+        /// must be mirrored verbatim rather than redesigned into
+        /// concept-only headings. Suspends the default anti-scaffolding
+        /// heading rule for exactly this case.</summary>
+        private const string StrictSyllabusModeAddendum = """
+
+        STRICT SYLLABUS MODE — ACTIVE FOR THIS REQUEST: the user's
+        description already contains an explicit, pre-defined outline/
+        table of contents (e.g. numbered "Unidades"/sections/subsections).
+        For THIS request only, that outline is MANDATORY and overrides the
+        default "no generic scaffolding headings" and "no default heading
+        count" guidance above:
+        - Create ONE heading per listed unit/section/subsection, in the
+          EXACT SAME ORDER as given, none skipped, none merged together —
+          including items that would normally be considered scaffolding
+          (e.g. "Introducción, competencias y objetivos", "Actividad
+          complementaria", "Criterios de evaluación"). Every one of them
+          becomes its own heading with real, substantial content under it.
+        - Keep the heading text close to what the user listed (you may
+          drop bare numbering like "1.0"/"1.7" from the heading text itself
+          if you prefer, but the concept/title MUST stay recognizably the
+          same item — never rename, combine, or reinterpret it as a
+          different concept).
+        - This applies to ALL units/sections listed in the description, not
+          just the first one — generate real, substantial content (per the
+          depth guidance above) for every single one in this one response.
         """;
 
     private readonly AIAgent? _agent;
@@ -144,6 +187,7 @@ public sealed class IdeaToDocumentAgent
         string capabilityName,
         string description,
         string languageCode = "es",
+        bool strictSyllabusMode = false,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -160,7 +204,8 @@ public sealed class IdeaToDocumentAgent
             $"Target output language: {targetLanguageName}. Write the ENTIRE document — every " +
             "heading and all body text — in this language, regardless of what language the " +
             "capability name/description above happen to be written in.\n\n" +
-            "Write the full source document as described in your instructions.";
+            "Write the full source document as described in your instructions." +
+            (strictSyllabusMode ? StrictSyllabusModeAddendum : string.Empty);
 
         var response = await _agent.RunAsync(prompt, cancellationToken: cancellationToken);
 

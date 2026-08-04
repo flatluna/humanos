@@ -289,6 +289,23 @@ export function completeNode(
   });
 }
 
+// === Dev/demo-only "Aprobar (temporal)" (2026-08-02) — Capability Studio
+// ONLY, see previewMode.ts's useAutoApprove and
+// StudioForceAdvanceStepFunction.cs. Force-completes whatever gated step
+// (DeepDive/Recall/Production/Assessment) is currently Active, WITHOUT
+// requiring a real mastered answer — purely for demo/pilot walkthroughs.
+// The backend endpoint itself is also gated behind AllowStudioAutoApprove;
+// this call 403s in any environment where that isn't explicitly enabled. ===
+
+export interface ForceAdvanceStepResponseDto {
+  NextStep?: BackendRuntimeStep | null;
+  NodeCompleted: boolean;
+}
+
+export function forceAdvanceStep(learningSessionNodeId: string): Promise<ForceAdvanceStepResponseDto> {
+  return apiPost<ForceAdvanceStepResponseDto>(`/studio/runtime/nodes/${learningSessionNodeId}/force-advance`);
+}
+
 // === Read-only node/step review (2026-07-30) — ported from
 // frontend/human-os-web/src/features/capabilities/api/runtimeSessionApi.ts
 // so Capability Studio's "Probar como estudiante" (real mode) shows the

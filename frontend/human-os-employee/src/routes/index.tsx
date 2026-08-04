@@ -52,6 +52,15 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/brain').then((m) => ({ Component: m.BrainPage })),
       },
       {
+        // "Mi Perfil" (2026-08-02) — self-service profile view/edit, ported
+        // pattern-wise from human-os-enterprise's EmployeeDetailPage resume
+        // section, but scoped to only the signed-in employee's own
+        // PersonProfile (contact info/bio), never the HR-only org
+        // assignment fields (Department/JobRole/OrgRole).
+        path: 'profile',
+        lazy: () => import('@/features/profile').then((m) => ({ Component: m.ProfilePage })),
+      },
+      {
         path: 'capabilities',
         loader: () => redirect('/capabilities/job-skills'),
       },

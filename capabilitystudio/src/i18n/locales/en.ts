@@ -50,6 +50,13 @@ const en: StudioTranslations = {
       'Controls the VOICE all generated content is written in — never the graph structure. "Young learners" writes every step directly to the child in a warm, playful, classroom-teacher tone (e.g. K-1/K-2 courses). Leave "Standard" for teens/adults and professional/traditional courses.',
     audienceStandard: 'Standard',
     audienceYoungLearner: 'Young learners (K-1/K-2)',
+    maxDeepDiveCardsLabel: 'Max Deep Dive cards per node',
+    maxDeepDiveCardsHint:
+      'Sets the maximum number of Deep Dive cards the AI can generate for each node in this course. Range: 1-10 (hard backend limit).',
+    strictSyllabusModeLabel: 'Strictly follow the document\'s index',
+    strictSyllabusModeHint:
+      'For formal courses with a fixed, numbered syllabus/index (e.g. "Unit 1" with subsections 1.0-1.8): forces exactly one node to be created per detected subsection of the document, in the same order, none skipped or merged. Leave off to let the AI design the graph by its own cognitive-complexity judgment (recommended for most courses).',
+    strictSyllabusModeToggle: 'Create one node per index subsection, in order',
     includeExamplesStepLabel: 'Deep Dive step',
     includeExamplesStepHint:
       'Adds an OPTIONAL 6th step to every node\'s blueprint, between Teaching and Recall: 3+ short "example cards" (title + short text + emoji) the student must sequentially master, card-by-card, in a guided quiz loop before moving on. For formal/school-track capabilities. Leave off for continuing-education courses (cooking, trades, certifications) — zero change either way to the existing 5-step flow.',
@@ -123,6 +130,7 @@ const en: StudioTranslations = {
     summaryTargetSkill: 'Covered requirement',
     summaryContentLanguage: 'Content language',
     summaryPedagogicalAudience: 'Audience / tone',
+    summaryMaxDeepDiveCards: 'Max Deep Dive cards per node',
     summaryFile: 'File',
     summaryIdea: 'Idea',
     summaryWebEnrichment: 'Web enrichment',
@@ -274,6 +282,10 @@ const en: StudioTranslations = {
     experienceLoadErrorFallback: 'Could not load this node\'s experience.',
     backToMap: '← Back to map',
     demoModeBadge: 'Review & acceptance · no locks',
+    autoApproveLabel: 'Auto-approve (temporary, demos only)',
+    autoApproveNotice: 'Demo mode: you can approve this step without answering.',
+    autoApproveButton: 'Approve (temporary)',
+    autoApproving: 'Approving...',
     nodeCompleted: 'Node completed!',
     newlyUnlocked: 'Newly unlocked nodes:',
     backToMapButton: 'Back to map',

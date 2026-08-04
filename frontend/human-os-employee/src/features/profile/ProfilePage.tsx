@@ -1,0 +1,560 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Briefcase, CheckCircle2, User } from 'lucide-react';
+import { useAuth } from '@/auth/AuthContext';
+import { Card } from '@/components/ui/Card';
+import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
+import {
+  createMyProfile,
+  getMyProfile,
+  updateMyProfile,
+  type PersonProfileDto,
+  type UpsertPersonProfileRequest,
+} from './api/personProfileApi';
+import { getJobRole } from './api/jobRoleApi';
+
+const ORG_ROLE_LABELS: Record<string, string> = {
+  Employee: 'Empleado',
+  Manager: 'Gerente',
+  HRAdmin: 'Administrador RRHH',
+};
+
+const LANGUAGE_OPTIONS = [
+  { code: 'es', label: 'Español' },
+  { code: 'en', label: 'English' },
+];
+
+// Todos los países del continente americano (ISO 3166-1 alpha-2), de norte
+// a sur incluyendo el Caribe — combobox en vez de texto libre (2026-08-02).
+const COUNTRY_OPTIONS = [
+  { code: 'CA', label: 'Canadá' },
+  { code: 'US', label: 'Estados Unidos' },
+  { code: 'MX', label: 'México' },
+  { code: 'BZ', label: 'Belice' },
+  { code: 'CR', label: 'Costa Rica' },
+  { code: 'SV', label: 'El Salvador' },
+  { code: 'GT', label: 'Guatemala' },
+  { code: 'HN', label: 'Honduras' },
+  { code: 'NI', label: 'Nicaragua' },
+  { code: 'PA', label: 'Panamá' },
+  { code: 'AG', label: 'Antigua y Barbuda' },
+  { code: 'BS', label: 'Bahamas' },
+  { code: 'BB', label: 'Barbados' },
+  { code: 'CU', label: 'Cuba' },
+  { code: 'DM', label: 'Dominica' },
+  { code: 'DO', label: 'República Dominicana' },
+  { code: 'GD', label: 'Granada' },
+  { code: 'HT', label: 'Haití' },
+  { code: 'JM', label: 'Jamaica' },
+  { code: 'KN', label: 'San Cristóbal y Nieves' },
+  { code: 'LC', label: 'Santa Lucía' },
+  { code: 'VC', label: 'San Vicente y las Granadinas' },
+  { code: 'TT', label: 'Trinidad y Tobago' },
+  { code: 'AR', label: 'Argentina' },
+  { code: 'BO', label: 'Bolivia' },
+  { code: 'BR', label: 'Brasil' },
+  { code: 'CL', label: 'Chile' },
+  { code: 'CO', label: 'Colombia' },
+  { code: 'EC', label: 'Ecuador' },
+  { code: 'GY', label: 'Guyana' },
+  { code: 'PY', label: 'Paraguay' },
+  { code: 'PE', label: 'Perú' },
+  { code: 'SR', label: 'Surinam' },
+  { code: 'UY', label: 'Uruguay' },
+  { code: 'VE', label: 'Venezuela' },
+];
+
+// ~20 most relevant IANA time zones for this user base (México/USA-heavy,
+// per the phone area-code list above, plus the other major LatAm/EU/Asia
+// hubs) — shown as a combobox instead of free text (2026-08-02).
+const TIME_ZONE_OPTIONS = [
+  { value: 'America/Tijuana', label: 'Tijuana (Pacífico, México)' },
+  { value: 'America/Hermosillo', label: 'Hermosillo (México)' },
+  { value: 'America/Chihuahua', label: 'Chihuahua (México)' },
+  { value: 'America/Mexico_City', label: 'Ciudad de México' },
+  { value: 'America/Cancun', label: 'Cancún (México)' },
+  { value: 'America/Los_Angeles', label: 'Los Ángeles (EE. UU., PT)' },
+  { value: 'America/Denver', label: 'Denver (EE. UU., MT)' },
+  { value: 'America/Chicago', label: 'Chicago (EE. UU., CT)' },
+  { value: 'America/New_York', label: 'Nueva York (EE. UU., ET)' },
+  { value: 'America/Bogota', label: 'Bogotá' },
+  { value: 'America/Lima', label: 'Lima' },
+  { value: 'America/Santiago', label: 'Santiago de Chile' },
+  { value: 'America/Argentina/Buenos_Aires', label: 'Buenos Aires' },
+  { value: 'America/Sao_Paulo', label: 'São Paulo' },
+  { value: 'Europe/Madrid', label: 'Madrid' },
+  { value: 'Europe/London', label: 'Londres' },
+  { value: 'Europe/Paris', label: 'París' },
+  { value: 'Europe/Berlin', label: 'Berlín' },
+  { value: 'Asia/Dubai', label: 'Dubái' },
+  { value: 'Asia/Shanghai', label: 'Shangái' },
+  { value: 'Asia/Tokyo', label: 'Tokio' },
+  { value: 'Australia/Sydney', label: 'Sídney' },
+];
+
+// Phone area code — only USA and México for now, per explicit request
+// (2026-08-02). `PersonProfile.PhoneNumber` is a single string on the
+// backend, so the code is stored as a "+52 5512345678"-style prefix and
+// parsed back out on load — no separate backend field needed for this.
+const PHONE_AREA_CODES = [
+  { code: '+52', label: 'México (+52)' },
+  { code: '+1', label: 'EE. UU. (+1)' },
+];
+
+function parsePhoneNumber(stored: string | null): { areaCode: string; number: string } {
+  const trimmed = (stored ?? '').trim();
+  for (const { code } of PHONE_AREA_CODES) {
+    if (trimmed.startsWith(`${code} `)) {
+      return { areaCode: code, number: trimmed.slice(code.length + 1).trim() };
+    }
+    if (trimmed.startsWith(code)) {
+      return { areaCode: code, number: trimmed.slice(code.length).trim() };
+    }
+  }
+  return { areaCode: PHONE_AREA_CODES[0]!.code, number: trimmed };
+}
+
+const emptyForm = {
+  firstName: '',
+  lastName: '',
+  displayName: '',
+  phoneAreaCode: PHONE_AREA_CODES[0]!.code,
+  phoneNumber: '',
+  preferredLanguage: 'es',
+  countryCode: '',
+  timeZone: '',
+  dateOfBirth: '',
+  biography: '',
+};
+
+type ProfileFormState = typeof emptyForm;
+
+function toFormState(profile: PersonProfileDto | null): ProfileFormState {
+  if (!profile) return emptyForm;
+  const { areaCode, number } = parsePhoneNumber(profile.PhoneNumber);
+  return {
+    firstName: profile.FirstName ?? '',
+    lastName: profile.LastName ?? '',
+    displayName: profile.DisplayName ?? '',
+    phoneAreaCode: areaCode,
+    phoneNumber: number,
+    preferredLanguage: profile.PreferredLanguage || 'es',
+    countryCode: profile.CountryCode ?? '',
+    timeZone: profile.TimeZone ?? '',
+    dateOfBirth: profile.DateOfBirth ?? '',
+    biography: profile.Biography ?? '',
+  };
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+}
+
+const inputClass =
+  'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white';
+const labelClass = 'block text-xs font-medium text-slate-500 dark:text-white/50';
+
+/** "Mi Perfil" — the employee's own self-service profile (name, contact
+ *  info, occupation/biography, etc. — the PersonProfile entity). This is
+ *  deliberately separate from the HR-only org-assignment fields
+ *  (Department/JobRole/Manager/OrgRole), which stay editable only from
+ *  human-os-enterprise's EmployeeDetailPage — every employee can view and
+ *  edit their OWN contact/personal details here, but nothing that affects
+ *  the org chart or their permission tier. Uses the same GET/POST/PUT
+ *  /people/{personId}/profile endpoints as EmployeeDetailPage's résumé
+ *  section relies on indirectly (PersonProfileService). */
+export function ProfilePage() {
+  const { user } = useAuth();
+  const personId = user?.personId ?? '';
+  const queryClient = useQueryClient();
+
+  const [form, setForm] = useState<ProfileFormState>(emptyForm);
+  const [savedMessage, setSavedMessage] = useState(false);
+
+  const profileQuery = useQuery({
+    queryKey: ['my-profile', personId],
+    queryFn: () => getMyProfile(personId),
+    enabled: !!personId,
+  });
+
+  // Full job description (title/purpose/skills/etc.) for "Mi Puesto y
+  // Desarrollo" below — read-only here, HR-managed data (2026-08-02).
+  const jobRoleQuery = useQuery({
+    queryKey: ['my-job-role', user?.jobRoleId],
+    queryFn: () => getJobRole(user!.jobRoleId!),
+    enabled: !!user?.jobRoleId,
+  });
+
+  // Seed the form from the loaded profile exactly once per fetch — after
+  // that the form is fully user-controlled so an in-flight edit never
+  // gets clobbered by a background refetch.
+  useEffect(() => {
+    if (profileQuery.isSuccess) {
+      setForm(toFormState(profileQuery.data));
+    }
+  }, [profileQuery.isSuccess, profileQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: (body: UpsertPersonProfileRequest) =>
+      profileQuery.data ? updateMyProfile(personId, body) : createMyProfile(personId, body),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(['my-profile', personId], profile);
+      setSavedMessage(true);
+      setTimeout(() => setSavedMessage(false), 3000);
+    },
+  });
+
+  function handleChange(key: keyof ProfileFormState, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const trimmedPhone = form.phoneNumber.trim();
+    saveMutation.mutate({
+      firstName: form.firstName || null,
+      lastName: form.lastName || null,
+      displayName: form.displayName || null,
+      phoneNumber: trimmedPhone ? `${form.phoneAreaCode} ${trimmedPhone}` : null,
+      preferredLanguage: form.preferredLanguage,
+      countryCode: form.countryCode || null,
+      timeZone: form.timeZone || null,
+      dateOfBirth: form.dateOfBirth || null,
+      // Occupation is never manually typed here either — it always
+      // mirrors the real Job Role title HR assigned (see the read-only
+      // field below and "Mi Puesto y Desarrollo"), same rationale as
+      // Company mirroring the tenant.
+      occupation: user?.jobRoleTitle ?? null,
+      // Company is never manually typed here — this app only serves
+      // tenant-linked employees, so it always mirrors the real company
+      // they logged in under (see EmployeeAppLayout's notEnterpriseAccount
+      // gate), instead of letting it drift out of sync via free text.
+      company: user?.tenantName ?? null,
+      biography: form.biography || null,
+    });
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6 pb-16">
+      {profileQuery.isLoading && (
+        <LoadingBackdrop title="Cargando tu perfil..." description="Preparando tu información personal." icon={User} />
+      )}
+
+      {/* Gradient header banner — same visual family as CareerPlanPage's. */}
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 p-6 text-white shadow-lg shadow-indigo-500/20 dark:border-white/10 sm:p-8">
+        <div className="flex items-center gap-4">
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold ring-1 ring-white/25 backdrop-blur">
+            {initialsOf(user?.name ?? 'Empleado')}
+          </span>
+          <div>
+            <p className="text-lg font-semibold">{user?.name}</p>
+            <p className="text-sm text-white/80">{user?.email}</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              {user?.tenantName && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">{user.tenantName}</span>
+              )}
+              {user?.orgRole && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">
+                  {ORG_ROLE_LABELS[user.orgRole] ?? user.orgRole}
+                </span>
+              )}
+              {user?.jobRoleTitle && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">{user.jobRoleTitle}</span>
+              )}
+              {user?.departmentName && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">{user.departmentName}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Card className="p-6 sm:p-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Información personal</h2>
+          {savedMessage && (
+            <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" />
+              Guardado
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label>
+              <span className={labelClass}>Nombre(s)</span>
+              <input
+                className={inputClass}
+                value={form.firstName}
+                onChange={(e) => handleChange('firstName', e.target.value)}
+              />
+            </label>
+            <label>
+              <span className={labelClass}>Apellido(s)</span>
+              <input
+                className={inputClass}
+                value={form.lastName}
+                onChange={(e) => handleChange('lastName', e.target.value)}
+              />
+            </label>
+            <label>
+              <span className={labelClass}>Nombre para mostrar</span>
+              <input
+                className={inputClass}
+                value={form.displayName}
+                onChange={(e) => handleChange('displayName', e.target.value)}
+              />
+            </label>
+            <label>
+              <span className={labelClass}>Teléfono</span>
+              <div className="mt-1 flex gap-2">
+                <select
+                  className="w-32 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                  value={form.phoneAreaCode}
+                  onChange={(e) => handleChange('phoneAreaCode', e.target.value)}
+                >
+                  {PHONE_AREA_CODES.map((area) => (
+                    <option key={area.code} value={area.code}>
+                      {area.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                  placeholder="5512345678"
+                  inputMode="tel"
+                  value={form.phoneNumber}
+                  onChange={(e) => handleChange('phoneNumber', e.target.value)}
+                />
+              </div>
+            </label>
+            <label>
+              <span className={labelClass}>Idioma preferido</span>
+              <select
+                className={inputClass}
+                value={form.preferredLanguage}
+                onChange={(e) => handleChange('preferredLanguage', e.target.value)}
+              >
+                {LANGUAGE_OPTIONS.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className={labelClass}>País</span>
+              <select
+                className={inputClass}
+                value={form.countryCode}
+                onChange={(e) => handleChange('countryCode', e.target.value)}
+              >
+                <option value="">Selecciona un país...</option>
+                {/* Si el valor guardado no está en la lista (un registro
+                    previo fuera del continente americano), lo mantenemos
+                    seleccionable en vez de descartarlo silenciosamente. */}
+                {form.countryCode && !COUNTRY_OPTIONS.some((c) => c.code === form.countryCode) && (
+                  <option value={form.countryCode}>{form.countryCode}</option>
+                )}
+                {COUNTRY_OPTIONS.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className={labelClass}>Zona horaria</span>
+              <select
+                className={inputClass}
+                value={form.timeZone}
+                onChange={(e) => handleChange('timeZone', e.target.value)}
+              >
+                <option value="">Selecciona una zona horaria...</option>
+                {/* If the stored value doesn't match any option below (an
+                    older/custom entry), keep it selectable instead of
+                    silently discarding it on next save. */}
+                {form.timeZone && !TIME_ZONE_OPTIONS.some((tz) => tz.value === form.timeZone) && (
+                  <option value={form.timeZone}>{form.timeZone}</option>
+                )}
+                {TIME_ZONE_OPTIONS.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className={labelClass}>Fecha de nacimiento</span>
+              <input
+                type="date"
+                className={inputClass}
+                value={form.dateOfBirth}
+                onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+              />
+            </label>
+            <label>
+              <span className={labelClass}>Ocupación</span>
+              <input
+                className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-white/[0.02] dark:text-white/40`}
+                value={user?.jobRoleTitle ?? 'Sin puesto asignado'}
+                readOnly
+                disabled
+                title="Tu ocupación se toma de tu Puesto asignado por RRHH — ver 'Mi Puesto y Desarrollo' abajo."
+              />
+            </label>
+            <label>
+              <span className={labelClass}>Empresa</span>
+              <input
+                className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-white/[0.02] dark:text-white/40`}
+                value={user?.tenantName ?? 'Sin empresa asignada'}
+                readOnly
+                disabled
+                title="La empresa se toma de tu cuenta de acceso y no se puede editar aquí."
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className={labelClass}>Biografía</span>
+            <textarea
+              className={`${inputClass} min-h-[100px] resize-y`}
+              value={form.biography}
+              onChange={(e) => handleChange('biography', e.target.value)}
+            />
+          </label>
+
+          {saveMutation.isError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              No se pudo guardar tu perfil. Intenta de nuevo.
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saveMutation.isPending}
+              className="rounded-full bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+            >
+              {saveMutation.isPending ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
+      </Card>
+
+      {/* "Mi Puesto y Desarrollo" (2026-08-02) — the employee's real job
+          description/required skills, already captured by HR in
+          human-os-enterprise (Department/JobRole), surfaced here read-only
+          so they can see exactly what's expected of them and identify
+          where to grow — this is the whole point of "Mi Perfil": a single
+          place to see everything relevant to their training and personal
+          development. Nothing here is editable from this app (HR-only,
+          same as Department/JobRole/OrgRole assignment). */}
+      {user?.jobRoleId && (
+        <Card className="p-6 sm:p-8">
+          <div className="mb-6 flex items-center gap-2">
+            <Briefcase className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Mi Puesto y Desarrollo</h2>
+          </div>
+
+          {jobRoleQuery.isLoading && (
+            <p className="text-sm text-slate-500 dark:text-white/50">Cargando la descripción de tu puesto...</p>
+          )}
+
+          {jobRoleQuery.isError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              No se pudo cargar la descripción de tu puesto.
+            </p>
+          )}
+
+          {jobRoleQuery.data && (
+            <div className="space-y-6">
+              <div>
+                <p className="text-base font-semibold text-slate-900 dark:text-white">
+                  {jobRoleQuery.data.title}
+                  {jobRoleQuery.data.levelLabel && (
+                    <span className="ml-2 text-sm font-normal text-slate-500 dark:text-white/50">
+                      ({jobRoleQuery.data.levelLabel})
+                    </span>
+                  )}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-white/50">{jobRoleQuery.data.departmentName}</p>
+              </div>
+
+              {jobRoleQuery.data.purpose && (
+                <JobRoleField label="Propósito del puesto" value={jobRoleQuery.data.purpose} />
+              )}
+              {jobRoleQuery.data.summary && <JobRoleField label="Resumen" value={jobRoleQuery.data.summary} />}
+              <JobRoleListField label="Responsabilidades" items={jobRoleQuery.data.responsibilities} />
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <JobRoleListField
+                  label="Habilidades técnicas requeridas"
+                  items={jobRoleQuery.data.technicalSkills}
+                  pills
+                />
+                <JobRoleListField label="Habilidades blandas requeridas" items={jobRoleQuery.data.softSkills} pills />
+              </div>
+
+              {jobRoleQuery.data.requiredExperience && (
+                <JobRoleField label="Experiencia requerida" value={jobRoleQuery.data.requiredExperience} />
+              )}
+              {jobRoleQuery.data.requiredEducation && (
+                <JobRoleField label="Educación requerida" value={jobRoleQuery.data.requiredEducation} />
+              )}
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <JobRoleListField
+                  label="Certificaciones requeridas"
+                  items={jobRoleQuery.data.requiredCertifications}
+                  pills
+                />
+                <JobRoleListField label="Idiomas requeridos" items={jobRoleQuery.data.requiredLanguages} pills />
+              </div>
+              <JobRoleListField label="Herramientas que utilizas" items={jobRoleQuery.data.tools} pills />
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function JobRoleField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className={labelClass}>{label}</span>
+      <p className="mt-1 whitespace-pre-line text-sm text-slate-700 dark:text-white/70">{value}</p>
+    </div>
+  );
+}
+
+function JobRoleListField({ label, items, pills }: { label: string; items: string[]; pills?: boolean }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <span className={labelClass}>{label}</span>
+      {pills ? (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {items.map((item) => (
+            <span
+              key={item}
+              className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-slate-700 dark:text-white/70">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

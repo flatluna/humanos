@@ -264,4 +264,18 @@ public sealed class RawMaterialItem
     /// reaches the Curador agent.
     /// </summary>
     public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The raw chapter/module heading (e.g. "Módulo 1: Introducción al
+    /// Marketing Digital") this item was split from, WITHOUT the
+    /// "{source.Label} — " prefix <see cref="Label"/> carries — set only by
+    /// <see cref="HumanOS.Agents.Studio.DocumentChapterSplitter"/> when a
+    /// real TOC-detected chapter boundary produced this item (null for the
+    /// whole-document fallback or the length-based split, since those
+    /// aren't real authored headings). Used by
+    /// <see cref="HumanOS.Services.CapabilityGraphLevelAutoNamer"/> to give
+    /// computed graph "levels" a real title instead of the generic
+    /// "Nivel N" fallback.
+    /// </summary>
+    public string? ChapterTitle { get; set; }
 }

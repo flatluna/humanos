@@ -34,6 +34,8 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
 
+    public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
+
     /// <summary>Per-Person résumé/CV (address, LinkedIn, objective,
     /// skills, work experience, education, etc.), extracted by
     /// <see cref="HumanOS.Agents.ResumeExtractionAgent"/> from pasted raw

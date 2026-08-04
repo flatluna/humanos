@@ -47,3 +47,34 @@ export function usePreviewMode(): [PreviewMode, (mode: PreviewMode) => void] {
 export function withPreviewMode(path: string, mode: PreviewMode): string {
   return mode === 'real' ? path : `${path}?mode=${mode}`;
 }
+
+/**
+ * Dev/demo-only "Aprobación automática (temporal)" toggle (2026-08-02) —
+ * Capability Studio ONLY, never present in the real student app. When on,
+ * PreviewNodePage shows an "Aprobar (temporal)" button next to gated steps
+ * (DeepDive/Recall/Production/Assessment) that calls
+ * StudioForceAdvanceStepFunction instead of the real submit endpoints, so a
+ * demo/pilot walkthrough can skip past them without answering. Persisted as
+ * its own `autoApprove=1` query param (same pattern as `mode` above) so it
+ * survives navigation within a preview session but never leaks anywhere
+ * else. The backend endpoint itself is ALSO gated behind its own
+ * `AllowStudioAutoApprove` app setting — this toggle only controls whether
+ * the UI shows the button, it is not itself a security boundary.
+ */
+export function useAutoApprove(): [boolean, (next: boolean) => void] {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoApprove = searchParams.get('autoApprove') === '1';
+
+  const setAutoApprove = (next: boolean) => {
+    const params = new URLSearchParams(searchParams);
+    if (next) {
+      params.set('autoApprove', '1');
+    } else {
+      params.delete('autoApprove');
+    }
+    setSearchParams(params, { replace: true });
+  };
+
+  return [autoApprove, setAutoApprove];
+}
+

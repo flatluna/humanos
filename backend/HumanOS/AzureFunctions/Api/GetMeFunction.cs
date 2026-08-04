@@ -22,12 +22,24 @@ public sealed class GetMeFunction
     private readonly PersonService _personService;
     private readonly TenantService _tenantService;
     private readonly PersonProfileService _personProfileService;
+    private readonly DepartmentService _departmentService;
+    private readonly JobRoleService _jobRoleService;
+    private readonly TenantInvitationService _tenantInvitationService;
 
-    public GetMeFunction(PersonService personService, TenantService tenantService, PersonProfileService personProfileService)
+    public GetMeFunction(
+        PersonService personService,
+        TenantService tenantService,
+        PersonProfileService personProfileService,
+        DepartmentService departmentService,
+        JobRoleService jobRoleService,
+        TenantInvitationService tenantInvitationService)
     {
         _personService = personService;
         _tenantService = tenantService;
         _personProfileService = personProfileService;
+        _departmentService = departmentService;
+        _jobRoleService = jobRoleService;
+        _tenantInvitationService = tenantInvitationService;
     }
 
     [Function("GetMe")]
@@ -50,8 +62,25 @@ public sealed class GetMeFunction
 
         var azureOid = oidValues.First();
         var azureTid = tidValues.First();
+        var email = request.Headers.TryGetValues("X-Azure-Email", out var emailValues)
+            ? emailValues.FirstOrDefault()
+            : null;
 
         var person = await _personService.GetByAzureIdentityAsync(azureOid, azureTid, cancellationToken);
+
+        // Reconcile a pending invitation by email on first enterprise login,
+        // so invited accounts can be auto-linked to their tenant.
+        if (!string.IsNullOrWhiteSpace(email)
+            && (person is null || person.TenantId is null))
+        {
+            await _tenantInvitationService.TryClaimPendingInvitationAsync(
+                azureOid,
+                azureTid,
+                email,
+                cancellationToken);
+
+            person = await _personService.GetByAzureIdentityAsync(azureOid, azureTid, cancellationToken);
+        }
 
         if (person is null)
         {
@@ -65,6 +94,14 @@ public sealed class GetMeFunction
 
         var profile = await _personProfileService.GetByPersonIdAsync(person.PersonId, cancellationToken);
 
+        var department = person.DepartmentId is Guid departmentId
+            ? await _departmentService.GetByIdAsync(departmentId, cancellationToken)
+            : null;
+
+        var jobRole = person.JobRoleId is Guid jobRoleId
+            ? await _jobRoleService.GetResponseByIdAsync(jobRoleId, cancellationToken)
+            : null;
+
         var response = await FunctionResponseFactory.SuccessResponseAsync(
             request,
             new MeResponse
@@ -75,6 +112,10 @@ public sealed class GetMeFunction
                 Email = person.Email,
                 PreferredLanguage = profile?.PreferredLanguage,
                 OrgRole = person.OrgRole.ToString(),
+                DepartmentId = person.DepartmentId,
+                DepartmentName = department?.Name,
+                JobRoleId = person.JobRoleId,
+                JobRoleTitle = jobRole?.Title,
             },
             cancellationToken: cancellationToken);
         response.Headers.Add("Cache-Control", "no-store");

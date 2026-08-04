@@ -579,6 +579,65 @@ public sealed class GraphArchitectAgent
         never a proxy for how the source material was formatted.
         """;
 
+    /// <summary>
+    /// Appended to the prompt ONLY when the caller explicitly opts into
+    /// "strict syllabus mode" (2026-08-03) AND a real chapter order is
+    /// available — for a formal academic course whose source document has
+    /// its own fixed, externally-mandated syllabus (numbered "Unidades"/
+    /// subsections), the designer needs the graph to mirror that syllabus
+    /// EXACTLY rather than trust this agent's own judgment of "cognitive
+    /// complexity" (Rule 4 above), which otherwise freely merges/omits
+    /// subsections it judges as not being real standalone capabilities
+    /// (e.g. a short "Introducción y objetivos" or "Actividad
+    /// complementaria" subsection) — the correct behavior for an informal/
+    /// K-12 course, but a real defect for a mandated university-style
+    /// syllabus where every listed subsection must be covered 1:1.
+    /// </summary>
+    private const string StrictSyllabusModeAddendum = """
+
+        STRICT SYLLABUS MODE — THIS RUN OVERRIDES RULE 4 ABOVE
+        The designer explicitly requested that this course mirror its
+        source document's own chapter/subsection structure EXACTLY — this
+        is a formal, externally-mandated curriculum/syllabus (e.g. a
+        university subject with numbered "Unidades" and numbered
+        subsections), where the syllabus itself — not your own judgment of
+        "cognitive complexity" — defines the required scope. For THIS run
+        ONLY:
+        - Rule 4 above (no minimum/target node count, always prefer the
+          smaller graph, merging is usually more correct) is SUSPENDED.
+          Instead: create EXACTLY ONE node per line of the "Source
+          document's own chapter order" list below, in the SAME order,
+          with NONE skipped, merged, or combined into another line's node
+          — not even a short introductory/objectives subsection or a
+          "complementary activity" subsection. Every single line MUST
+          produce its own node.
+        - Frame even a thin/procedural subsection as the real capability it
+          represents rather than dropping it: an introductory/objectives
+          subsection becomes a node about the unit's foundational
+          orientation/goal; a "complementary activity" subsection becomes a
+          node about applying/practicing everything the unit just covered.
+          Never invent a reason to discard a line from the list.
+        - Each node's Name should still be a short (2-5 word), human/
+          knowledge-centered label (never the literal numbering like "1.1"
+          verbatim) but must clearly and traceably correspond to EXACTLY
+          ONE line from the list — never fold two lines' worth of content
+          into one node, and never split one line's content across two
+          nodes.
+        - Each such node's References MUST cite the corpus chunk Tag(s)
+          that came from that specific line's chapter, so its source is
+          unambiguous and level/module auto-naming can attribute it
+          correctly.
+        - The "COURSE COMPLETENESS" section above (adding well-established
+          topics beyond the corpus) still applies normally IN ADDITION to
+          this — the syllabus is a FLOOR here, never a ceiling. You may
+          still add genuinely necessary prerequisite nodes not in the list
+          (e.g. a basic concept the syllabus assumes but never states) —
+          those are additions, not substitutes for any list line.
+        - The "always choose the smaller graph" guidance no longer applies
+          to nodes covered by this list — under-covering the given
+          syllabus is the failure mode to avoid here, not over-covering.
+        """;
+
     private readonly AIAgent? _agent;
     private readonly string _modelName;
 
@@ -632,7 +691,9 @@ public sealed class GraphArchitectAgent
     /// the graph's node granularity and structure are still entirely the
     /// agent's own decision, never forced to mirror the document's
     /// chapters 1:1. Null/empty when there is no real chapter structure to
-    /// signal (e.g. a short note, or a single-chapter document).
+    /// signal (e.g. a short note, or a single-chapter document). EXCEPTION:
+    /// when <paramref name="strictSyllabusMode"/> is true, this instead
+    /// becomes a RIGID, mandatory 1:1 list — see that parameter.
     /// </param>
     /// <param name="programContext">
     /// Optional: extra grounding context when this Capability is being
@@ -664,6 +725,7 @@ public sealed class GraphArchitectAgent
         string? documentChapterOrder = null,
         string? programContext = null,
         string languageCode = "es",
+        bool strictSyllabusMode = false,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -683,20 +745,29 @@ public sealed class GraphArchitectAgent
             "\n\n---\n\n",
             curatedCorpus.Chunks.Select(c => $"[{c.Tag}] {c.Content}"));
 
+        var useStrictSyllabusMode = strictSyllabusMode && !string.IsNullOrWhiteSpace(documentChapterOrder);
+
         var chapterOrderSection = string.IsNullOrWhiteSpace(documentChapterOrder)
             ? string.Empty
-            : $"\n\nSource document's own chapter order (for reference only — a STRONG " +
-              $"SIGNAL for prerequisite/SortOrder decisions, since an earlier chapter " +
-              $"usually introduces concepts that are prerequisite to later chapters, but " +
-              $"NOT a rigid rule — you still decide the real node structure and " +
-              $"dependencies from the actual content, and chapters never become nodes " +
-              $"themselves):\n{documentChapterOrder}";
+            : useStrictSyllabusMode
+                ? $"\n\nSource document's own chapter order (STRICT SYLLABUS MODE — see " +
+                  $"instructions above, this list is now MANDATORY, one node per line, " +
+                  $"none skipped or merged):\n{documentChapterOrder}"
+                : $"\n\nSource document's own chapter order (for reference only — a STRONG " +
+                  $"SIGNAL for prerequisite/SortOrder decisions, since an earlier chapter " +
+                  $"usually introduces concepts that are prerequisite to later chapters, but " +
+                  $"NOT a rigid rule — you still decide the real node structure and " +
+                  $"dependencies from the actual content, and chapters never become nodes " +
+                  $"themselves):\n{documentChapterOrder}";
+
+        var strictSyllabusSection = useStrictSyllabusMode ? StrictSyllabusModeAddendum : string.Empty;
 
         var prompt =
             $"Capability: {capabilityName}\n\n" +
             $"Curated Corpus Summary:\n{curatedCorpus.Summary}\n\n" +
             $"Curated Corpus Chunks:\n{corpusText}" +
             chapterOrderSection +
+            strictSyllabusSection +
             (string.IsNullOrWhiteSpace(programContext)
                 ? string.Empty
                 : $"\n\n{programContext}") +

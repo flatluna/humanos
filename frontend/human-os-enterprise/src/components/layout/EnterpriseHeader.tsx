@@ -17,9 +17,7 @@ export function EnterpriseHeader() {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur dark:border-white/10 dark:bg-[#05060a]/80">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-bold text-white shadow-md shadow-brand-500/30">
-          HE
-        </div>
+        <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-cover shadow-md shadow-brand-500/30" />
         <div className="leading-tight">
           <p className="text-sm font-semibold text-slate-900 dark:text-white">Human OS Enterprise</p>
           <p className="text-xs text-slate-400 dark:text-white/40">{user?.tenantName ?? 'Consola RRHH'}</p>

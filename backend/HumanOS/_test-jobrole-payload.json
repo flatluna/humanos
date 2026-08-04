@@ -1,0 +1,22 @@
+{
+  "DepartmentId": "780965df-fb6f-426b-833f-d22eb80278d1",
+  "Title": "Marketing",
+  "LevelLabel": "Coordinador",
+  "Summary": "El puesto de Marketing es responsable de coordinar campanas.",
+  "Purpose": "Coordinar e implementar iniciativas de marketing.",
+  "Responsibilities": ["Coordinar la ejecucion de campanas de marketing digital."],
+  "RequiredExperience": "2 a 4 anos de experiencia en marketing.",
+  "RequiredEducation": "Licenciatura en Marketing.",
+  "RequiredCertifications": [],
+  "RequiredLanguages": ["Espanol fluido", "Ingles intermedio o avanzado"],
+  "TechnicalSkills": ["Marketing digital", "Gestion de campanas"],
+  "SoftSkills": ["Sexual Harassment Prevention (compliance training)", "Comunicacion efectiva"],
+  "DepartmentProcesses": [],
+  "HrProcesses": [],
+  "Tools": ["Google Analytics", "Meta Business Suite"],
+  "DailyActivities": ["Programar y revisar publicaciones en canales digitales."],
+  "PerformanceIndicators": [],
+  "ExpectedOutcomes": [],
+  "ReportsToJobRoleId": null,
+  "RequiresTravel": false
+}

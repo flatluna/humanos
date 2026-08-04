@@ -88,6 +88,12 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
 
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public string? TargetSkill { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public int? MaxDeepDiveCardsPerNode { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public bool StrictSyllabusMode { get; set; }
     }
 
     [Function("StartCapabilityGraphFromDescription")]
@@ -125,13 +131,24 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 cancellationToken);
         }
 
+            if (body.MaxDeepDiveCardsPerNode is < 1 or > 10)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'maxDeepDiveCardsPerNode' must be between 1 and 10.",
+                cancellationToken);
+            }
+
         try
         {
             var status = _orchestrator.StartFromDescription(
                 body.Description, body.CapabilityName, body.CapabilityDomainId, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
-                body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill);
+                body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
+                body.StrictSyllabusMode);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

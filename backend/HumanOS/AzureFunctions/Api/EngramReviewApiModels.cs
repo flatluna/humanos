@@ -23,4 +23,13 @@ public sealed class EngramReviewSessionRequest
     /// precondition as the "node summary" recap screen this feature is
     /// launched from.</summary>
     public Guid CapabilityGraphNodeId { get; set; }
+
+    /// <summary>Optional (2026-08-02) — 0-based index into this node's Deep
+    /// Dive <c>ExampleCards</c> pool. When provided (and valid), the Agent's
+    /// conversation is focused specifically on explaining/telling stories
+    /// about THAT ONE card instead of the whole lesson — lets a student
+    /// browse the generated cards on the Brain page and ask to have one
+    /// explained, rather than always starting a whole-lesson review. Out of
+    /// range or omitted falls back to the original whole-lesson behavior.</summary>
+    public int? ExampleCardIndex { get; set; }
 }

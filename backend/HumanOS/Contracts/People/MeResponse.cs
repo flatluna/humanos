@@ -24,6 +24,20 @@ public sealed class MeResponse
     /// "HRAdmin") — lets the frontend gate the enterprise admin console
     /// (Departments/Job Roles) without a separate round-trip.</summary>
     public string OrgRole { get; set; } = "Employee";
+
+    /// <summary>Org chart Department/Job Role assignment for the
+    /// signed-in Person (2026-08-02, "Mi Perfil" self-service page) —
+    /// null until an HRAdmin assigns them. Lets the frontend show/derive
+    /// "Ocupación" from the real assignment instead of free text, and
+    /// fetch the full job description (GET /job-roles/{jobRoleId}) for a
+    /// "my role & development" section.</summary>
+    public Guid? DepartmentId { get; set; }
+
+    public string? DepartmentName { get; set; }
+
+    public Guid? JobRoleId { get; set; }
+
+    public string? JobRoleTitle { get; set; }
 }
 
 /// <summary>Response for POST /api/onboarding or /api/onboarding/individual —

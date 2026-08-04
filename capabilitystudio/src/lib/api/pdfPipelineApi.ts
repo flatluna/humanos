@@ -64,6 +64,16 @@ export interface StartPdfCapabilityGraphRequest {
    * list) this capability is meant to satisfy. Ignored when
    * targetJobRoleId is null. */
   targetSkill?: string | null;
+  /** Optional: maximum number of Deep Dive example cards the AI may
+   * generate per node for this course. Backend hard-caps to 10. */
+  maxDeepDiveCardsPerNode?: number | null;
+  /** Opt-in (2026-08-03): when true, and the source PDF has a real
+   * detected chapter/subsection structure (a formal syllabus with
+   * numbered "Unidades"/subsections), forces the graph designer to
+   * create EXACTLY one node per detected chapter/subsection, in order,
+   * none skipped or merged — for courses that must mirror an
+   * externally-mandated curriculum exactly. */
+  strictSyllabusMode?: boolean;
 }
 
 export type PdfCapabilityGraphStage = 'Running' | 'Completed' | 'Failed';
@@ -182,6 +192,10 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   targetJobRoleId?: string | null;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   targetSkill?: string | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  maxDeepDiveCardsPerNode?: number | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  strictSyllabusMode?: boolean;
 }
 
 /** Starts a V2 run from a short idea/goal description instead of a PDF —

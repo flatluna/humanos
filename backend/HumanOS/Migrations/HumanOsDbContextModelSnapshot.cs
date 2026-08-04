@@ -3291,6 +3291,87 @@ namespace HumanOS.Migrations
                     b.ToTable("PersonStartingPoint", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.People.TenantInvitation", b =>
+                {
+                    b.Property<Guid>("TenantInvitationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime?>("AcceptedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("ManagerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("OrgRole")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("RevokedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("TenantInvitationId")
+                        .HasName("PK_TenantInvitation");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("JobRoleId");
+
+                    b.HasIndex("ManagerId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_TenantInvitation_TenantId");
+
+                    b.HasIndex("TenantId", "NormalizedEmail", "Status")
+                        .HasDatabaseName("IX_TenantInvitation_Tenant_NormalizedEmail_Status");
+
+                    b.ToTable("TenantInvitation", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Practice.CapabilityPractice", b =>
                 {
                     b.Property<Guid>("CapabilityPracticeId")
@@ -4863,6 +4944,34 @@ namespace HumanOS.Migrations
                         .HasConstraintName("FK_PersonStartingPoint_Person");
 
                     b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.TenantInvitation", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_TenantInvitation_Department");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", null)
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_TenantInvitation_JobRole");
+
+                    b.HasOne("HumanOS.Models.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("ManagerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_TenantInvitation_Manager");
+
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_TenantInvitation_Tenant");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Practice.CapabilityPractice", b =>

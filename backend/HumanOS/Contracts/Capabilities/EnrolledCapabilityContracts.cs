@@ -17,6 +17,11 @@ public sealed class EnrolledCapabilityResponse
     public string? SubjectCode { get; set; }
     public string? SubjectName { get; set; }
 
+    /// <summary>"job-skills" | "soft-skills" | "department-processes" |
+    /// "hr-processes" | null. See Capability.Category. Powers the "tipo de
+    /// curso" filter on the employee portal's /brain page (2026-08-02).</summary>
+    public string? Category { get; set; }
+
     /// <summary>When the person enrolled — shown on the card as the
     /// "assigned"/enrollment date, same role as EnrolledProgramResponse's
     /// AcceptedDate.</summary>

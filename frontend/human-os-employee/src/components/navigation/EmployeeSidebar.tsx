@@ -1,4 +1,4 @@
-import { GraduationCap, Home, Brain } from 'lucide-react';
+import { GraduationCap, Home, Brain, UserCircle } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { clsx } from 'clsx';
 
@@ -77,6 +77,12 @@ export function EmployeeSidebar() {
             <NavLink to="/brain" className={navItemClass}>
               <Brain className="h-4 w-4" />
               Mi Cerebro
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/profile" className={navItemClass}>
+              <UserCircle className="h-4 w-4" />
+              Mi Perfil
             </NavLink>
           </li>
         </ul>

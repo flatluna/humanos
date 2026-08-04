@@ -14,6 +14,11 @@ export interface NeuronCluster {
    * the subject badge + filter chips in BrainRecallGrid. */
   subjectCode?: string;
   subjectName?: string;
+  /** "job-skills" | "soft-skills" | "department-processes" |
+   * "hr-processes" | undefined — which employer career-plan training
+   * track this capability belongs to, if any. Powers the "tipo de curso"
+   * filter chips in BrainPage (2026-08-02). */
+  category?: string;
 }
 
 /** One "area" of the brain map — a real enrolled Program (e.g. "Matemáticas"),

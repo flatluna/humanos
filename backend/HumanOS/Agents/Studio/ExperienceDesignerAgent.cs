@@ -137,6 +137,8 @@ public sealed class NodeExperienceBlueprintResponse
 /// </summary>
 public sealed class ExperienceDesignerAgent
 {
+  private const int MaxDeepDiveCardsPerNodeHardLimit = 10;
+
     private const string Instructions = """
         You are the Experience Designer agent in Human OS Studio's
         capability-creation pipeline (Paso 3). Your task is to turn ONE
@@ -530,6 +532,7 @@ public sealed class ExperienceDesignerAgent
         string languageCode = "es",
         string? pedagogicalAudience = null,
         bool includeExamplesStep = true,
+      int? maxDeepDiveCardsPerNode = null,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -562,6 +565,14 @@ public sealed class ExperienceDesignerAgent
             ? "\n\n" + ExamplesStepAddendum
             : string.Empty;
 
+        var normalizedMaxDeepDiveCardsPerNode = maxDeepDiveCardsPerNode.HasValue
+          ? Math.Clamp(maxDeepDiveCardsPerNode.Value, 1, MaxDeepDiveCardsPerNodeHardLimit)
+          : (int?)null;
+
+        var maxCardsSection = includeExamplesStep && normalizedMaxDeepDiveCardsPerNode.HasValue
+          ? $"\n\nHARD LIMIT FOR THIS COURSE: generate at most {normalizedMaxDeepDiveCardsPerNode.Value} Deep Dive cards for this node. Never return more than this limit."
+          : string.Empty;
+
         var prompt =
             $"Node Name: {node.Name}\n" +
             $"NodeType: {node.NodeType}\n" +
@@ -574,6 +585,7 @@ public sealed class ExperienceDesignerAgent
             webFindingsSection +
             personaSection +
             examplesStepSection +
+            maxCardsSection +
             $"\n\nTarget output language: {(languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish")}. " +
             "Write every step's Content field in this language, regardless of what language the " +
             "node context above is written in.";
@@ -585,6 +597,15 @@ public sealed class ExperienceDesignerAgent
         if (string.IsNullOrWhiteSpace(blueprint.Name))
         {
             blueprint.Name = $"{node.Name} - Standard Learning Blueprint";
+        }
+
+        if (includeExamplesStep && normalizedMaxDeepDiveCardsPerNode is int maxCards)
+        {
+          var deepDiveStep = blueprint.Steps.FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+          if (deepDiveStep?.ExampleCards is { Count: > 0 } cards && cards.Count > maxCards)
+          {
+            deepDiveStep.ExampleCards = cards.Take(maxCards).ToList();
+          }
         }
 
         blueprint.CapabilityGraphNodeId = node.CapabilityGraphNodeId;

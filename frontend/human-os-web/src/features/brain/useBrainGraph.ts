@@ -62,6 +62,7 @@ async function fetchBrainGraph(personId: string, language: string): Promise<Root
       edges,
       subjectCode: result.graph.subjectCode,
       subjectName: result.graph.subjectName,
+      category: result.graph.category,
     };
 
     const root = capabilityRoot.get(result.capabilityId) ?? {

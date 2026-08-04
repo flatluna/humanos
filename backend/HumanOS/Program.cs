@@ -69,6 +69,9 @@ var host = new HostBuilder()
     })
     .ConfigureServices(services =>
     {
+        services.AddOptions<EntraInvitationOptions>()
+            .BindConfiguration(EntraInvitationOptions.SectionName);
+
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING")) ||
             !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("APPINSIGHTS_INSTRUMENTATIONKEY")))
         {
@@ -112,6 +115,8 @@ var host = new HostBuilder()
 
         services.AddScoped<TenantService>();
         services.AddScoped<PersonService>();
+        services.AddSingleton<EntraInvitationProvisioningService>();
+        services.AddScoped<TenantInvitationService>();
         services.AddScoped<DepartmentService>();
         services.AddScoped<JobRoleService>();
         services.AddScoped<SkillService>();

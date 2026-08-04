@@ -120,6 +120,22 @@ public sealed class StartPdfCapabilityGraphFunction
         /// <summary>The exact required-skill/process string this capability
         /// is meant to satisfy. See Capability.TargetSkill.</summary>
         public string? TargetSkill { get; set; }
+
+        /// <summary>Optional maximum number of Deep Dive example cards the
+        /// AI may generate per node for this course. Must be between 1 and
+        /// 10 when provided.</summary>
+        public int? MaxDeepDiveCardsPerNode { get; set; }
+
+        /// <summary>Opt-in (2026-08-03): when true, and the source PDF has
+        /// a real detected chapter/subsection structure (e.g. a formal
+        /// syllabus with numbered "Unidades"/subsections), forces the
+        /// GraphArchitect to create EXACTLY one node per detected chapter/
+        /// subsection, in the same order, with none skipped or merged —
+        /// instead of its normal judgment-based node count. Use this for
+        /// courses that must mirror an externally-mandated curriculum
+        /// exactly. False (default) leaves the existing "design the graph
+        /// from real cognitive complexity" behavior unchanged.</summary>
+        public bool StrictSyllabusMode { get; set; }
     }
 
     [Function("StartPdfCapabilityGraph")]
@@ -158,6 +174,16 @@ public sealed class StartPdfCapabilityGraphFunction
                 cancellationToken);
         }
 
+            if (body.MaxDeepDiveCardsPerNode is < 1 or > 10)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'maxDeepDiveCardsPerNode' must be between 1 and 10.",
+                cancellationToken);
+            }
+
         byte[] pdfBytes;
         try
         {
@@ -175,7 +201,8 @@ public sealed class StartPdfCapabilityGraphFunction
                 pdfBytes, body.FileName, body.CapabilityDomainId, body.CapabilityName, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
-                body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill);
+                body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
+                body.StrictSyllabusMode);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

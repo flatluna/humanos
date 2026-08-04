@@ -1,9 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { Outlet } from 'react-router';
+import { InteractionStatus } from '@azure/msal-browser';
+import { useMsal } from '@azure/msal-react';
 import { useAuth } from '@/auth/AuthContext';
 import { EmployeeHeader } from '@/components/layout/EmployeeHeader';
 import { EmployeeSidebar } from '@/components/navigation/EmployeeSidebar';
 import { AccessDenied } from '@/components/AccessDenied';
+
+const REDIRECT_GUARD_KEY = 'humanos.employee.loginRedirect.startedAt';
+const REDIRECT_GUARD_MAX_AGE_MS = 30_000;
 
 /** Shell for the whole Employee Portal: real MSAL session gate, then a
  *  "belongs to a company tenant" gate (same as human-os-enterprise), but
@@ -13,14 +18,36 @@ import { AccessDenied } from '@/components/AccessDenied';
  *  students) and human-os-enterprise (HR admin console). */
 export function EmployeeAppLayout() {
   const { isAuthenticated, isLoading, backendError, notEnterpriseAccount, user, login, refreshUser } = useAuth();
+  const { inProgress } = useMsal();
   const redirectStarted = useRef(false);
 
   useEffect(() => {
-    if (!isAuthenticated && !isLoading && !redirectStarted.current) {
-      redirectStarted.current = true;
-      void login();
+    if (isAuthenticated) {
+      sessionStorage.removeItem(REDIRECT_GUARD_KEY);
+      redirectStarted.current = false;
+      return;
     }
-  }, [isAuthenticated, isLoading, login]);
+
+    if (isLoading || inProgress !== InteractionStatus.None || redirectStarted.current) {
+      return;
+    }
+
+    const now = Date.now();
+    const startedAtRaw = sessionStorage.getItem(REDIRECT_GUARD_KEY);
+    const startedAt = startedAtRaw ? Number.parseInt(startedAtRaw, 10) : 0;
+    const guardActive = Number.isFinite(startedAt) && now - startedAt < REDIRECT_GUARD_MAX_AGE_MS;
+
+    if (guardActive) {
+      return;
+    }
+
+    sessionStorage.setItem(REDIRECT_GUARD_KEY, now.toString());
+    redirectStarted.current = true;
+    void login().catch(() => {
+      sessionStorage.removeItem(REDIRECT_GUARD_KEY);
+      redirectStarted.current = false;
+    });
+  }, [inProgress, isAuthenticated, isLoading, login]);
 
   if (!isAuthenticated || isLoading) {
     return (

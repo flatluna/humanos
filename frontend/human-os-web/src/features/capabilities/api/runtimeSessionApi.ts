@@ -174,11 +174,12 @@ export function requestVoiceTutorSession(
 // as the Voice Tutor (VoiceTutorSessionDto) since it's the same kind of
 // Azure OpenAI Realtime session, just with a different system prompt.
 export function requestEngramReviewSession(
-  target: { personId: string; capabilityGraphNodeId: string }
+  target: { personId: string; capabilityGraphNodeId: string; exampleCardIndex?: number }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/engram-review-session', {
     PersonId: target.personId,
     CapabilityGraphNodeId: target.capabilityGraphNodeId,
+    ExampleCardIndex: target.exampleCardIndex,
   });
 }
 

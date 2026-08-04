@@ -22,6 +22,8 @@ namespace HumanOS.Services;
 /// </summary>
 public sealed class NodeExperienceBlueprintPersistenceService
 {
+    private const int MaxDeepDiveCardsPerNodeHardLimit = 10;
+
     private static readonly ExperienceStepType[] CanonicalStepOrder =
     [
         ExperienceStepType.Hypothesis,
@@ -108,6 +110,10 @@ public sealed class NodeExperienceBlueprintPersistenceService
                 .Select(illustration => illustration.CapabilityGraphNodeIllustrationId)
                 .ToList();
 
+            var deepDiveCards = stepType == ExperienceStepType.DeepDive && stepDto.ExampleCards is { Count: > 0 }
+                ? stepDto.ExampleCards.Take(MaxDeepDiveCardsPerNodeHardLimit).ToList()
+                : null;
+
             blueprintEntity.Steps.Add(new NodeExperienceBlueprintStep
             {
                 NodeExperienceBlueprintStepId = Guid.NewGuid(),
@@ -115,8 +121,8 @@ public sealed class NodeExperienceBlueprintPersistenceService
                 StepType = stepType,
                 Content = stepDto.Content,
                 ReferencedIllustrationIdsJson = JsonSerializer.Serialize(referencedIllustrationIds),
-                ExampleCardsJson = stepType == ExperienceStepType.DeepDive && stepDto.ExampleCards is { Count: > 0 }
-                    ? JsonSerializer.Serialize(stepDto.ExampleCards.Select(c => new ExampleCard { Title = c.Title, Text = c.Text, Emoji = c.Emoji, SuggestedForIllustration = c.SuggestedForIllustration, IllustrationId = c.IllustrationId }))
+                ExampleCardsJson = deepDiveCards is { Count: > 0 }
+                    ? JsonSerializer.Serialize(deepDiveCards.Select(c => new ExampleCard { Title = c.Title, Text = c.Text, Emoji = c.Emoji, SuggestedForIllustration = c.SuggestedForIllustration, IllustrationId = c.IllustrationId }))
                     : null,
                 SortOrder = sortOrder,
                 CreatedDate = DateTime.UtcNow

@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './httpClient';
+import { apiClient } from '@/api';
 
 /**
  * Client for the Runtime V1 "instructor-runtime" HTTP API — drives a
@@ -129,6 +130,35 @@ export function advanceStep(learningSessionNodeId: string): Promise<BackendRunti
   });
 }
 
+// === "Aprobar (demo HR)" (2026-08-02) — HRAdmin-only, real per-caller
+// server-side check (see HrForceAdvanceStepFunction.cs), unlike Capability
+// Studio's blanket AllowStudioAutoApprove flag. Lets an HRAdmin
+// force-complete the currently Active gated step (DeepDive/Recall/
+// Production/Assessment) of a REAL employee's session, to demo/advance a
+// course live without waiting for real mastery. Explicit user request:
+// "esto es solo para usuarios que tienen admin HR ... esto no es para
+// todos" — the UI only renders this for user.orgRole === 'HRAdmin'
+// (NodeWorkflowPage.tsx), and the backend independently re-checks the
+// SAME thing from the real signed-in identity, not just the UI's say-so. ===
+
+export interface ForceAdvanceStepResponseDto {
+  NextStep?: BackendRuntimeStep | null;
+  NodeCompleted: boolean;
+}
+
+// This ONE call deliberately bypasses rPost/apiPost (the bare fetch
+// wrapper this file otherwise uses, which sends NO auth headers at all —
+// every other runtime call here just passes personId explicitly in the
+// body/query instead). HrForceAdvanceStepFunction.cs re-verifies the
+// REAL signed-in identity server-side via the X-Azure-OID/X-Azure-TID
+// headers, so it must go through the shared axios `apiClient` (see
+// src/api/index.ts), whose interceptor actually attaches those headers
+// (plus a bearer token) from the live MSAL session.
+export async function forceAdvanceStep(learningSessionNodeId: string): Promise<ForceAdvanceStepResponseDto> {
+  const { data } = await apiClient.post(`/instructor-runtime/nodes/${learningSessionNodeId}/hr-force-advance`);
+  return toPascalCaseDeep(data) as ForceAdvanceStepResponseDto;
+}
+
 export interface TutorTurnDto {
   Message: string;
   RecallScore?: number;
@@ -174,11 +204,12 @@ export function requestVoiceTutorSession(
 // as the Voice Tutor (VoiceTutorSessionDto) since it's the same kind of
 // Azure OpenAI Realtime session, just with a different system prompt.
 export function requestEngramReviewSession(
-  target: { personId: string; capabilityGraphNodeId: string }
+  target: { personId: string; capabilityGraphNodeId: string; exampleCardIndex?: number }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/engram-review-session', {
     PersonId: target.personId,
     CapabilityGraphNodeId: target.capabilityGraphNodeId,
+    ExampleCardIndex: target.exampleCardIndex,
   });
 }
 

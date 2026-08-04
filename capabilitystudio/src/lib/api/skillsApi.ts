@@ -35,7 +35,25 @@ export interface SkillDto {
   UpdatedDate: string;
 }
 
+/// Lightweight projection — SkillId/Name/JobRoleCount only — for the
+/// target-skill picker below, which just needs to render "{Name} ({N})"
+/// and doesn't manage the catalog (2026-08-03: the full SkillDto payload,
+/// with every linked Job Role's title/department plus Description/
+/// timestamps, was overkill for a combobox). See backend's
+/// GetSkillsFunction/SkillSummaryResponse.
+export interface SkillSummaryDto {
+  SkillId: string;
+  Name: string;
+  JobRoleCount: number;
+}
+
 export function getSkills(tenantId: string, category?: string): Promise<SkillDto[]> {
   const query = category ? `?category=${encodeURIComponent(category)}` : '';
   return apiGet<SkillDto[]>(`/tenants/${tenantId}/skills${query}`);
+}
+
+export function getSkillsSummary(tenantId: string, category?: string): Promise<SkillSummaryDto[]> {
+  const params = new URLSearchParams({ summary: 'true' });
+  if (category) params.set('category', category);
+  return apiGet<SkillSummaryDto[]>(`/tenants/${tenantId}/skills?${params.toString()}`);
 }

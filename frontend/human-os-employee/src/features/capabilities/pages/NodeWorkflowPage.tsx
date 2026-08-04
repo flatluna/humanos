@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import DOMPurify from 'dompurify';
-import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp, Images } from 'lucide-react';
+import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp, Images, ShieldCheck } from 'lucide-react';
 import { useI18n } from '../i18n/useI18n';
 import { useAuth } from '@/auth/AuthContext';
 import { API_BASE_URL } from '../api/httpClient';
@@ -25,6 +25,7 @@ import {
   getStepReview,
   getNodeSummary,
   expandNodeKnowledge,
+  forceAdvanceStep,
   type ExperienceStepType,
   type BackendRuntimeStep,
   type BackendRuntimeSessionInfo,
@@ -203,6 +204,12 @@ export default function NodeWorkflowPage() {
   const [assessmentLastResult, setAssessmentLastResult] = useState<SubmitAssessmentAnswerResponse | null>(null);
   const [completing, setCompleting] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<GraphNodeInfoDto[] | null>(null);
+  // "Aprobar (demo HR)" (2026-08-02) — HRAdmin-only, real backend-checked
+  // (see HrForceAdvanceStepFunction.cs), lets an HRAdmin force-complete the
+  // active gated step live during a demo with an employee. User request:
+  // "esto es solo para usuarios que tienen admin HR ... esto no es para
+  // todos" — button only renders when user?.orgRole === 'HRAdmin' below.
+  const [forceApproving, setForceApproving] = useState(false);
   // Memory Paradox reward pause: after a correct Recall attempt or a
   // Production submission, hold the already-fetched next step here and show
   // a small celebratory banner instead of jumping straight to the next step
@@ -600,6 +607,31 @@ export default function NodeWorkflowPage() {
     }
   }, [sessionNodeId, t.nodeError]);
 
+  // "Aprobar (demo HR)" — force-completes whatever gated step is Active
+  // right now, without answering it, so an HRAdmin can advance/demo a
+  // course live with an employee. The backend endpoint independently
+  // re-verifies the caller is HRAdmin (see HrForceAdvanceStepFunction.cs)
+  // — this button is a convenience, not the security boundary.
+  const handleForceApprove = useCallback(async () => {
+    if (!sessionNodeId || advancingRef.current) return;
+    advancingRef.current = true;
+    setForceApproving(true);
+    setErrorMessage(null);
+    try {
+      const result = await forceAdvanceStep(sessionNodeId);
+      if (result.NodeCompleted) {
+        setNewlyUnlocked([]);
+      } else if (result.NextStep) {
+        resetStepUiState(normalizeStep(result.NextStep));
+      }
+    } catch {
+      setErrorMessage(t.nodeError);
+    } finally {
+      setForceApproving(false);
+      advancingRef.current = false;
+    }
+  }, [sessionNodeId, resetStepUiState, t.nodeError]);
+
   if (phase === 'loading') {
     return (
       <div className="mx-auto max-w-3xl p-8">
@@ -695,6 +727,26 @@ export default function NodeWorkflowPage() {
       )}
 
       <StepperBar currentIndex={currentIndex} t={t} onStepClick={handleStepIconClick} />
+
+      {/* "Aprobar (demo HR)" — HRAdmin-only, only shown on a gated step
+          (Hypothesis/Teaching never need approval, they just Continue).
+          Backend independently re-verifies OrgRole=HRAdmin on every call
+          (see HrForceAdvanceStepFunction.cs) — hiding this button is only
+          a convenience for everyone else, not the actual security check. */}
+      {user?.orgRole === 'HRAdmin' && step.stepType !== 'Hypothesis' && step.stepType !== 'Teaching' && (
+        <div className="mt-4 flex items-center justify-end gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-2.5">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="text-xs text-amber-700 dark:text-amber-300">Modo demo HR: puedes aprobar este paso sin responderlo.</span>
+          <button
+            type="button"
+            onClick={handleForceApprove}
+            disabled={forceApproving}
+            className="whitespace-nowrap rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600 disabled:opacity-60"
+          >
+            {forceApproving ? '...' : 'Aprobar (temporal)'}
+          </button>
+        </div>
+      )}
 
       {stepReview && (
         <StepReviewModal review={stepReview} onClose={closeStepReview} t={t} language={language} />

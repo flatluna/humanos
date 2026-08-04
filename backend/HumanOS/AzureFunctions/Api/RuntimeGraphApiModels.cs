@@ -52,6 +52,19 @@ public sealed class CompleteRuntimeNodeRequest
     public Guid LearningSessionNodeId { get; set; }
 }
 
+/// <summary>
+/// Output of Capability Studio's dev-only "Aprobar (temporal)" force-advance
+/// (2026-08-02) — see StudioForceAdvanceStepFunction. Exactly one of the two
+/// fields is populated: <see cref="NextStep"/> for every step type except
+/// Assessment (which has no next step — the node is Completed instead, so
+/// <see cref="NodeCompleted"/> is true and NextStep stays null).
+/// </summary>
+public sealed class ForceAdvanceStepResponse
+{
+    public RuntimeStepDto? NextStep { get; set; }
+    public bool NodeCompleted { get; set; }
+}
+
 public sealed class RuntimeIllustrationDto
 {
     public Guid IllustrationId { get; set; }

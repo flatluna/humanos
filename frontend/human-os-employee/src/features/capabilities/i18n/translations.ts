@@ -1,7 +1,7 @@
-// Bilingual strings for the student app (Human OS Learn).
+// Bilingual strings for the student app (Engram Learn).
 export const translations = {
   en: {
-    appName: 'Human OS',
+    appName: 'Engram',
     tagline: 'What are you capable of becoming?',
     home: 'Home',
     subjects: 'Subjects',
@@ -128,7 +128,7 @@ export const translations = {
     myPrograms: 'My Programs',
     placeholderRatingHint: 'Rating (placeholder)',
     createdDateHint: 'Created on',
-    providerCaption: 'Human OS · Expert AI Agent',
+    providerCaption: 'Engram · Expert AI Agent',
     contentInEnglishHint: 'Content in English',
     contentInSpanishHint: 'Content in Spanish',
     nodeCountSuffix: 'nodes',
@@ -153,7 +153,7 @@ export const translations = {
     enrollButton: 'Enroll',
   },
   es: {
-    appName: 'Human OS',
+    appName: 'Engram',
     tagline: '¿En qué te quieres convertir?',
     home: 'Inicio',
     subjects: 'Temas',
@@ -204,7 +204,7 @@ export const translations = {
     myPrograms: 'Mis Programas',
     placeholderRatingHint: 'Calificación (placeholder)',
     createdDateHint: 'Fecha y hora de creación',
-    providerCaption: 'Human OS · Agente de IA Experto',
+    providerCaption: 'Engram · Agente de IA Experto',
     contentInEnglishHint: 'Contenido en inglés',
     contentInSpanishHint: 'Contenido en español',
     nodeCountSuffix: 'nodos',

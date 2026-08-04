@@ -175,6 +175,33 @@ export interface PersonOrgAssignmentRequest {
   orgRole?: string | null;
 }
 
+export interface TenantInvitationDto {
+  tenantInvitationId: string;
+  tenantId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  departmentId: string | null;
+  jobRoleId: string | null;
+  managerId: string | null;
+  orgRole: string;
+  status: string;
+  createdDate: string;
+  updatedDate: string;
+  acceptedDate: string | null;
+  revokedDate: string | null;
+}
+
+export interface CreateTenantInvitationRequest {
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  departmentId?: string | null;
+  jobRoleId?: string | null;
+  managerId?: string | null;
+  orgRole?: string | null;
+}
+
 export interface PersonResumeDto {
   personId: string;
   address: string | null;
@@ -295,6 +322,23 @@ export async function updatePersonOrgAssignment(
 
 export async function deactivatePerson(personId: string): Promise<void> {
   await apiClient.delete(`/people/${personId}`);
+}
+
+export async function getTenantInvitations(tenantId: string): Promise<TenantInvitationDto[]> {
+  const { data } = await apiClient.get<TenantInvitationDto[]>(`/tenants/${tenantId}/invitations`);
+  return data;
+}
+
+export async function createTenantInvitation(
+  tenantId: string,
+  body: CreateTenantInvitationRequest,
+): Promise<TenantInvitationDto> {
+  const { data } = await apiClient.post<TenantInvitationDto>(`/tenants/${tenantId}/invitations`, body);
+  return data;
+}
+
+export async function deleteTenantInvitation(tenantId: string, tenantInvitationId: string): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/invitations/${tenantInvitationId}`);
 }
 
 // ── Employee résumé/CV dashboard (Personal tab detail page) ────────────

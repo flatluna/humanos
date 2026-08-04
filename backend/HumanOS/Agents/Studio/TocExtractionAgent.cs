@@ -82,6 +82,41 @@ public sealed class TocExtractionAgent
         chapter-style headings — look at actual topic boundaries instead.
         """;
 
+    /// <summary>Addendum injected only when the caller opts into
+    /// strict-syllabus mode (2026-08-03) — for when the source document
+    /// has its own explicit, formal, numbered curriculum outline (e.g.
+    /// "UNIDAD 1" with numbered subsections "1.0", "1.1", "1.2"...) that
+    /// must be mirrored 1:1 downstream by GraphArchitectAgent's own strict
+    /// mode (one graph node per detected chapter here). Without this,
+    /// this agent's default heuristics ("every 1-3 pages", "distinct topic
+    /// shift") tend to detect only the top-level units as chapters, which
+    /// silently under-splits a formal syllabus and causes entire numbered
+    /// subsections to be merged away before GraphArchitectAgent ever sees
+    /// them.</summary>
+    private const string StrictSyllabusModeAddendum = """
+
+        STRICT SYLLABUS MODE — ACTIVE FOR THIS DOCUMENT: this document has
+        its own explicit, formal, numbered curriculum outline (e.g.
+        numbered "Unidades"/sections with numbered subsections like "1.0",
+        "1.1", "1.2"...). For THIS document, do NOT stop at the top-level
+        unit/section headings — you MUST detect EVERY numbered subsection
+        as its OWN separate chapter entry, in the exact same order they
+        appear:
+        - One chapter per numbered subsection line (e.g. "1.0", "1.1",
+          "1.2", ... "1.8"), never one chapter per top-level unit covering
+          several subsections at once.
+        - Include every subsection, even short/procedural ones that might
+          otherwise seem like scaffolding (e.g. "Introducción, competencias
+          y objetivos", "Actividad complementaria", "Criterios de
+          evaluación") — each one is its own mandatory chapter, never
+          merged into a neighboring subsection or dropped.
+        - Title each detected chapter after that subsection's own heading
+          text (numbering may be included or dropped, your choice, but the
+          Title must clearly correspond to exactly that one subsection).
+        - This applies uniformly to every unit/section in the document, not
+          just the first one.
+        """;
+
     private readonly AIAgent? _agent;
 
     public TocExtractionAgent(IConfiguration configuration)
@@ -109,7 +144,10 @@ public sealed class TocExtractionAgent
 
     public bool IsConfigured => _agent is not null;
 
-    public async Task<TableOfContents> ExtractAsync(string documentText, CancellationToken cancellationToken = default)
+    public async Task<TableOfContents> ExtractAsync(
+        string documentText,
+        bool strictSyllabusMode = false,
+        CancellationToken cancellationToken = default)
     {
         if (_agent is null)
         {
@@ -118,9 +156,10 @@ public sealed class TocExtractionAgent
                 "'AzureOpenAIDeploymentName' application settings.");
         }
 
-        var prompt = "Detect the chapter/section structure of the following document:\n\n" + documentText;
+        var prompt = "Detect the chapter/section structure of the following document:\n\n" + documentText +
+            (strictSyllabusMode ? StrictSyllabusModeAddendum : string.Empty);
 
-        var response = await _agent.RunAsync<TableOfContents>(prompt);
+        var response = await _agent.RunAsync<TableOfContents>(prompt, cancellationToken: cancellationToken);
 
         return response.Result;
     }

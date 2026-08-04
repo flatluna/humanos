@@ -21,6 +21,7 @@ import {
   getNodeBlueprint,
   getNodeSummary,
   getStepReview,
+  forceAdvanceStep,
   PREVIEW_PERSON_ID,
   type ExperienceStepType,
   type BackendRuntimeStep,
@@ -38,7 +39,7 @@ import {
 } from '../lib/api/runtimeApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
-import { usePreviewMode, type PreviewMode } from '../lib/previewMode';
+import { usePreviewMode, useAutoApprove, type PreviewMode } from '../lib/previewMode';
 import { getGeneratedByLabel } from '../lib/illustrationLabel';
 import PreviewNodeBlueprintView from './PreviewNodeBlueprintView';
 
@@ -119,6 +120,8 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
   const { t } = useTranslation();
   const { capabilityId, nodeId } = useParams<{ capabilityId: string; nodeId: string }>();
   const navigate = useNavigate();
+  const [autoApprove, setAutoApprove] = useAutoApprove();
+  const [forceApproving, setForceApproving] = useState(false);
 
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error' | 'summary'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -550,6 +553,36 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
     }
   }, [sessionNodeId]);
 
+  // Dev/demo-only "Aprobar (temporal)" (2026-08-02) — Capability Studio
+  // ONLY, see previewMode.ts's useAutoApprove. Force-completes whatever
+  // gated step is Active right now, WITHOUT requiring a real mastered
+  // answer, via StudioForceAdvanceStepFunction — never touches
+  // submitRecallAttempt/submitDeepDiveAttempt/evaluateProduction/
+  // submitAssessmentAnswer, so the real grading logic students depend on
+  // is completely untouched. For Assessment, the backend directly
+  // completes the node (there is no "next step"); reuse the EXISTING
+  // completeNode call afterward purely to fetch newlyUnlockedNodes for the
+  // same completion screen a real Passed round would show — CompleteNodeAsync
+  // is idempotent, so calling it twice is harmless.
+  const handleForceApprove = useCallback(async () => {
+    if (!sessionNodeId || forceApproving) return;
+    setForceApproving(true);
+    setErrorMessage(null);
+    try {
+      const result = await forceAdvanceStep(sessionNodeId);
+      if (result.NodeCompleted) {
+        const completion = await completeNode(sessionNodeId);
+        setNewlyUnlocked(completion.newlyUnlockedNodes);
+      } else if (result.NextStep) {
+        resetStepUiState(normalizeStep(result.NextStep));
+      }
+    } catch {
+      setErrorMessage(t('previewNode.genericErrorFallback'));
+    } finally {
+      setForceApproving(false);
+    }
+  }, [sessionNodeId, forceApproving, resetStepUiState]);
+
   const backLink = `/capabilities/${capabilityId}/preview`;
 
   if (phase === 'loading') {
@@ -613,6 +646,11 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
 
   const currentIndex = STEP_ORDER.indexOf(step.stepType);
   const showsTutorChat = step.stepType === 'Teaching' || step.stepType === 'Production';
+  const isGatedStepType =
+    step.stepType === 'DeepDive' || step.stepType === 'Recall' || step.stepType === 'Production' || step.stepType === 'Assessment';
+  const showingRewardScreen = Boolean(
+    pendingAdvance || recallReview || pendingCardAdvance || (step.stepType === 'Production' && productionEvaluation?.IsCorrect)
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
@@ -631,10 +669,33 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
             )}
           </div>
           {nodeInfo.description && <p className="mt-2 text-sm leading-relaxed text-slate-400">{nodeInfo.description}</p>}
+          <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={autoApprove}
+              onChange={(e) => setAutoApprove(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.03] accent-amber-400"
+            />
+            {t('previewNode.autoApproveLabel')}
+          </label>
         </div>
       )}
 
       <StepperBar currentIndex={currentIndex} mode={mode} viewingStepType={viewingStepType} onSelectStep={handleSelectStep} />
+
+      {autoApprove && isGatedStepType && viewingStepType === null && !showingRewardScreen && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3">
+          <p className="text-xs text-amber-200">{t('previewNode.autoApproveNotice')}</p>
+          <button
+            type="button"
+            onClick={handleForceApprove}
+            disabled={forceApproving}
+            className="rounded-lg border border-amber-400/40 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/30 disabled:opacity-50"
+          >
+            {forceApproving ? t('previewNode.autoApproving') : t('previewNode.autoApproveButton')}
+          </button>
+        </div>
+      )}
 
       {viewingStepType === null && step.stepType !== 'Recall' && step.stepType !== 'DeepDive' && (
         <VoiceTutorAgent learningSessionStepId={step.learningSessionStepId} />
@@ -906,15 +967,20 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
                       >
                         {t('previewNode.deepDiveSubmit')}
                       </button>
-                      {/* Reviewer-only bypass (2026-07-31, explicit user
-                          request): in "Revisión y aceptación" mode a reviewer
-                          just wants to browse through every card's content
-                          without having to satisfy the AI grader on each one.
-                          Purely client-side — never calls submitDeepDiveAttempt,
+                      {/* Reviewer-only bypass (2026-07-31, revised 2026-08-02
+                          per explicit user request: gate on the `autoApprove`
+                          switch itself, not on `mode === 'demo'` — the button
+                          must appear ONLY when "Auto-approve (temporary,
+                          demos only)" is checked, regardless of Real/Demo/Edit
+                          mode, matching the same switch that drives the
+                          force-approve banner for other gated steps). Lets a
+                          reviewer browse through every card's content without
+                          having to satisfy the AI grader on each one. Purely
+                          client-side — never calls submitDeepDiveAttempt,
                           never touches the real LearningSession/grading state.
                           Once the last card is reached, further navigation
                           happens via the already-unlocked step stepper above. */}
-                      {mode === 'demo' && deepDiveCardIndex < step.exampleCards.length - 1 && (
+                      {autoApprove && deepDiveCardIndex < step.exampleCards.length - 1 && (
                         <button
                           type="button"
                           onClick={() => {

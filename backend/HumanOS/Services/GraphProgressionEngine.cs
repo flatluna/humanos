@@ -99,6 +99,7 @@ public sealed class GraphProgressionEngine
 
         var graph = await dbContext.CapabilityGraphs
             .AsNoTracking()
+            .AsSplitQuery() // Nodes/Edges are sibling collections — avoids a cartesian join (see GetFullGraphAsync's comment).
             .Include(g => g.Nodes)
             .Include(g => g.Edges)
             .FirstOrDefaultAsync(g => g.CapabilityId == capabilityId, cancellationToken);
@@ -175,6 +176,7 @@ public sealed class GraphProgressionEngine
 
         var graph = await dbContext.CapabilityGraphs
             .AsNoTracking()
+            .AsSplitQuery() // Nodes/Edges are sibling collections — avoids a cartesian join (see GetFullGraphAsync's comment).
             .Include(g => g.Nodes)
             .Include(g => g.Edges)
             .FirstOrDefaultAsync(g => g.CapabilityId == capabilityId, cancellationToken);
@@ -304,6 +306,12 @@ public sealed class GraphProgressionEngine
         /// the Brain recall grid to group/filter by subject.</summary>
         public string? SubjectCode { get; set; }
         public string? SubjectName { get; set; }
+
+        /// <summary>"job-skills" | "soft-skills" | "department-processes" |
+        /// "hr-processes" | null — see <see cref="Models.Capabilities.Capability.Category"/>.
+        /// Powers the "tipo de curso" filter on the Brain recall grid
+        /// (2026-08-02).</summary>
+        public string? Category { get; set; }
     }
 
     /// <summary>
@@ -323,8 +331,18 @@ public sealed class GraphProgressionEngine
 
         var normalizedLanguageCode = languageCode.Trim();
 
+        // AsSplitQuery() is required here: Nodes.Illustrations, Edges, Levels and
+        // Capability.Subject.Translations are sibling collections off the same
+        // CapabilityGraph root. Without it, EF Core's default single-query behavior
+        // joins all of them together in one SQL statement, producing a cartesian
+        // product (illustration rows × edge rows × level rows) that grows
+        // multiplicatively — not linearly — with graph size. Measured impact: a
+        // 20-node graph (139 illustrations × 19 edges ≈ 2,641 joined rows) took
+        // ~10.4s vs a 12-node graph (77 × 12 ≈ 924 rows) at ~3s. AsSplitQuery
+        // issues one SQL query per collection instead.
         var graph = await dbContext.CapabilityGraphs
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(g => g.Nodes).ThenInclude(n => n.Illustrations)
             .Include(g => g.Edges)
             .Include(g => g.Levels)
@@ -411,7 +429,8 @@ public sealed class GraphProgressionEngine
             SubjectCode = graph.Capability?.Subject?.Code,
             SubjectName = graph.Capability?.Subject?.Translations?.FirstOrDefault(t => t.LanguageCode == normalizedLanguageCode)?.Name
                 ?? graph.Capability?.Subject?.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Name
-                ?? graph.Capability?.Subject?.Name
+                ?? graph.Capability?.Subject?.Name,
+            Category = graph.Capability?.Category
         };
     }
 

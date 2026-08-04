@@ -19,6 +19,15 @@ export interface EmployeePortalUser {
    *  NOT gate access by role — Employee/Manager/HRAdmin can all log in here
    *  to take their own assigned courses; it's purely informational. */
   orgRole: OrgRole;
+  /** Org chart assignment (2026-08-02, "Mi Perfil") — null until an
+   *  HRAdmin assigns them. Lets the profile page show/derive "Ocupación"
+   *  from the real Job Role instead of free text, and fetch the full job
+   *  description (skills/responsibilities) for a "my role & development"
+   *  section. */
+  departmentId: string | null;
+  departmentName: string | null;
+  jobRoleId: string | null;
+  jobRoleTitle: string | null;
 }
 
 interface AuthContextValue {
@@ -69,6 +78,10 @@ interface MeResponse {
   email: string | null;
   preferredLanguage: string | null;
   orgRole: string;
+  departmentId: string | null;
+  departmentName: string | null;
+  jobRoleId: string | null;
+  jobRoleTitle: string | null;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -153,6 +166,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tenantId: data.tenantId,
           tenantName: data.tenantName,
           orgRole: (data.orgRole as OrgRole) ?? 'Employee',
+          departmentId: data.departmentId,
+          departmentName: data.departmentName,
+          jobRoleId: data.jobRoleId,
+          jobRoleTitle: data.jobRoleTitle,
         });
       } else if (res.status === 404) {
         // No Human OS account at all yet — must onboard via human-os-web

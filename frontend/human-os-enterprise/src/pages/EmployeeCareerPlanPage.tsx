@@ -65,12 +65,14 @@ const ORG_ROLE_LABELS: Record<string, string> = {
   HRAdmin: 'Administrador RRHH',
 };
 
-// PRIVACY: mirrors the same restriction applied to the "Plan de
-// capacitación" button in PeoplePage.tsx — an employee's training
-// progress is private, so this detail route is only allowed for the
-// seeded demo account until a real permission model exists. Guarded here
+// PRIVACY: mirrors the same permission rule applied to the "Plan de
+// capacitación" button in PeoplePage.tsx — HRAdmin can view anyone in the
+// tenant; a Manager can only view their own direct reports. Guarded here
 // too (not just by hiding the button) so a direct URL visit can't bypass it.
-const DEMO_CAREER_PLAN_PERSON_ID = '562cb73a-414b-47a8-957e-9f1950ae9622';
+function canViewCareerPlan(currentUserOrgRole: string, currentUserPersonId: string, person: { managerId: string | null }): boolean {
+  if (currentUserOrgRole === 'HRAdmin') return true;
+  return currentUserOrgRole === 'Manager' && person.managerId === currentUserPersonId;
+}
 
 type Track = 'technical' | 'soft' | 'department' | 'hr';
 
@@ -164,24 +166,37 @@ export function EmployeeCareerPlanPage() {
 
   const displayName = person?.displayName || person?.email || 'Empleado';
 
-  if (personId !== DEMO_CAREER_PLAN_PERSON_ID) {
+  const backButton = (
+    <button
+      type="button"
+      onClick={() => navigate('/personal')}
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-white/50 dark:hover:text-white"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Volver a Personal
+    </button>
+  );
+
+  if (peopleQuery.isLoading) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 pb-16">
-        <button
-          type="button"
-          onClick={() => navigate('/personal')}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-white/50 dark:hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Volver a Personal
-        </button>
+        {backButton}
+        <p className="text-sm text-slate-400">Cargando…</p>
+      </div>
+    );
+  }
+
+  if (!person || !canViewCareerPlan(user!.orgRole, user!.personId, person)) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 pb-16">
+        {backButton}
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center dark:border-white/10 dark:bg-white/5">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-white/60">
             <GraduationCap className="h-6 w-6" />
           </span>
           <p className="text-sm text-slate-500 dark:text-white/40">
-            El plan de capacitación de un colaborador es información privada. Este directorio no permite consultar el
-            de otros empleados.
+            El plan de capacitación de un colaborador es información privada. Solo un Administrador RRHH o su
+            gerente directo pueden consultarlo.
           </p>
         </div>
       </div>
@@ -190,14 +205,7 @@ export function EmployeeCareerPlanPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-16">
-      <button
-        type="button"
-        onClick={() => navigate('/personal')}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-white/50 dark:hover:text-white"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Volver a Personal
-      </button>
+      {backButton}
 
       {/* Header */}
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 p-6 text-white shadow-lg shadow-indigo-500/20 dark:border-white/10 sm:p-8">

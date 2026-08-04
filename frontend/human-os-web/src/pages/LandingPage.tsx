@@ -22,7 +22,7 @@ export default function LandingPage() {
     <main className="bg-slate-50 text-slate-900">
       <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex items-center justify-between p-4 sm:p-6">
         <div className="pointer-events-auto flex items-center gap-2">
-          <img src="/LogoEngram.png" alt="Engram Academy" className="h-24 w-24 rounded-full sm:h-36 sm:w-36" />
+          <img src="/engramslogo.png" alt="Engram Academy" className="h-24 w-24 rounded-full sm:h-36 sm:w-36" />
         </div>
         <div className="pointer-events-auto flex items-center gap-3">
           <div className="rounded-full bg-white/90 backdrop-blur shadow-sm">

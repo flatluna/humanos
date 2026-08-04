@@ -32,6 +32,38 @@ public sealed class SkillService
         _dbContext = dbContext;
     }
 
+    /// <summary>Lightweight projection for callers that only need to let
+    /// someone pick a skill by name (2026-08-03 — Capability Studio's
+    /// target-skill combobox was pulling the FULL catalog payload,
+    /// Description/timestamps/per-Job-Role title+department included,
+    /// just to render a name and a count). Single query, no
+    /// JobRoleSkills join needed beyond a count.</summary>
+    public async Task<IReadOnlyList<SkillSummaryResponse>> GetSummaryByTenantAsync(
+        Guid tenantId,
+        string? category = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.Skills
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            query = query.Where(s => s.Category == category);
+        }
+
+        return await query
+            .OrderBy(s => s.Category)
+            .ThenBy(s => s.Name)
+            .Select(s => new SkillSummaryResponse
+            {
+                SkillId = s.SkillId,
+                Name = s.Name,
+                JobRoleCount = s.JobRoleSkills.Count,
+            })
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<SkillResponse>> GetByTenantAsync(
         Guid tenantId,
         string? category = null,
@@ -246,7 +278,13 @@ public sealed class SkillService
                     continue;
                 }
 
-                var skill = await _dbContext.Skills.SingleOrDefaultAsync(
+                // FirstOrDefault (not SingleOrDefault): the catalog can already contain
+                // more than one Skill row for the same tenant+category+name (legacy
+                // duplicates with no unique constraint enforcing this) — picking the
+                // first match keeps saves working instead of throwing "Sequence
+                // contains more than one element" on every job role that references one
+                // of those already-duplicated names.
+                var skill = await _dbContext.Skills.FirstOrDefaultAsync(
                     s => s.TenantId == jobRole.TenantId && s.Category == category && s.Name.ToLower() == name.ToLower(),
                     cancellationToken);
 

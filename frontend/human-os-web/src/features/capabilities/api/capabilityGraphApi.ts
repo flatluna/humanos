@@ -82,6 +82,11 @@ export interface BackendCapabilityGraph {
    * Capability hasn't been categorized yet. */
   subjectCode?: string;
   subjectName?: string;
+  /** "job-skills" | "soft-skills" | "department-processes" |
+   * "hr-processes" | undefined — which employer career-plan training
+   * track this Capability belongs to, if any. Powers the "tipo de curso"
+   * filter on the Brain recall grid (2026-08-02). */
+  category?: string;
 }
 
 /**

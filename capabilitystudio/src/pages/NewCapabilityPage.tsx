@@ -5,7 +5,7 @@ import { FileText, MessageSquareText, Video, Link2, ArrowLeft, ArrowRight, Spark
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getCapabilityDomains, type CapabilityDomain } from '../lib/api/domainsApi';
 import { getPrograms, getProgramById, type BackendProgram, type BackendProgramDetail } from '../lib/api/programsApi';
-import { getSkills, type SkillDto } from '../lib/api/skillsApi';
+import { getSkillsSummary, type SkillSummaryDto } from '../lib/api/skillsApi';
 import {
   DEFAULT_STUDIO_TENANT_ID,
   readFileAsBase64,
@@ -48,7 +48,7 @@ export default function NewCapabilityPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [domains, setDomains] = useState<CapabilityDomain[]>([]);
   const [programs, setPrograms] = useState<BackendProgram[]>([]);
-  const [catalogSkills, setCatalogSkills] = useState<SkillDto[]>([]);
+  const [catalogSkills, setCatalogSkills] = useState<SkillSummaryDto[]>([]);
 
   const [name, setName] = useState(() => searchParams.get('name') ?? '');
   const [description, setDescription] = useState(() => searchParams.get('description') ?? '');
@@ -60,6 +60,18 @@ export default function NewCapabilityPage() {
   // regardless of subject/audience (cooking, carpentry, law, K-12, etc.) —
   // no longer an optional toggle the designer has to remember to enable.
   const includeExamplesStep = true;
+  // Defaults to 3 (not 1) so a designer who never touches this stepper
+  // still gets the feature's originally-intended "3+ example cards" per
+  // node (see includeExamplesStepHint) instead of silently capping every
+  // course to a single Deep Dive card (2026-08-03 bug fix).
+  const [maxDeepDiveCardsPerNode, setMaxDeepDiveCardsPerNode] = useState<number>(3);
+  // Strict syllabus mode (2026-08-03): for a formal course whose source
+  // PDF has its own fixed, numbered curriculum (e.g. "Unidad 1" with
+  // subsections 1.0-1.8), forces one graph node per detected chapter/
+  // subsection instead of letting the AI merge/omit some based on its own
+  // judgment. Off by default — most courses want the AI's own concept-
+  // based graph design.
+  const [strictSyllabusMode, setStrictSyllabusMode] = useState(false);
   const [programId, setProgramId] = useState<string>('');
   const [programDetail, setProgramDetail] = useState<BackendProgramDetail | null>(null);
   const [programSequenceNumber, setProgramSequenceNumber] = useState<number | null>(null);
@@ -108,7 +120,7 @@ export default function NewCapabilityPage() {
       return;
     }
     let cancelled = false;
-    getSkills(DEFAULT_STUDIO_TENANT_ID, careerCategory)
+    getSkillsSummary(DEFAULT_STUDIO_TENANT_ID, careerCategory)
       .then((skills) => {
         if (!cancelled) setCatalogSkills(skills);
       })
@@ -182,6 +194,7 @@ export default function NewCapabilityPage() {
     setSubmitError(null);
     setConflictingRunId(null);
     try {
+      const normalizedMaxDeepDiveCardsPerNode = Math.max(1, Math.min(10, maxDeepDiveCardsPerNode));
       if (capabilityType === 'pdf') {
         if (!file) return;
         const contentBase64 = await readFileAsBase64(file);
@@ -203,6 +216,8 @@ export default function NewCapabilityPage() {
           includeExamplesStep,
           category: careerCategory || null,
           targetSkill: targetSkill || null,
+          maxDeepDiveCardsPerNode: normalizedMaxDeepDiveCardsPerNode,
+          strictSyllabusMode,
         });
         navigate(`/runs/${run.RunId}`);
       } else if (capabilityType === 'text') {
@@ -223,6 +238,8 @@ export default function NewCapabilityPage() {
           includeExamplesStep,
           category: careerCategory || null,
           targetSkill: targetSkill || null,
+          maxDeepDiveCardsPerNode: normalizedMaxDeepDiveCardsPerNode,
+          strictSyllabusMode,
         });
         navigate(`/runs/${run.RunId}`);
       }
@@ -336,6 +353,43 @@ export default function NewCapabilityPage() {
             </div>
           </Field>
 
+          <Field
+            label={t('newCapability.maxDeepDiveCardsLabel')}
+            hint={t('newCapability.maxDeepDiveCardsHint')}
+          >
+            <input
+              type="number"
+              min={1}
+              max={10}
+              step={1}
+              value={maxDeepDiveCardsPerNode}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                if (Number.isNaN(parsed)) {
+                  setMaxDeepDiveCardsPerNode(1);
+                  return;
+                }
+                setMaxDeepDiveCardsPerNode(Math.max(1, Math.min(10, parsed)));
+              }}
+              className="input"
+            />
+          </Field>
+
+          <Field
+            label={t('newCapability.strictSyllabusModeLabel')}
+            hint={t('newCapability.strictSyllabusModeHint')}
+          >
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={strictSyllabusMode}
+                onChange={(e) => setStrictSyllabusMode(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
+              />
+              {t('newCapability.strictSyllabusModeToggle')}
+            </label>
+          </Field>
+
           <Field label={t('newCapability.domainLabel')}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {subjects.map((subject) => {
@@ -402,7 +456,7 @@ export default function NewCapabilityPage() {
                     {catalogSkills.map((skill) => (
                       <option key={skill.SkillId} value={skill.Name}>
                         {skill.Name}
-                        {skill.JobRoles.length > 0 ? ` (${skill.JobRoles.length})` : ''}
+                        {skill.JobRoleCount > 0 ? ` (${skill.JobRoleCount})` : ''}
                       </option>
                     ))}
                   </select>
@@ -629,6 +683,10 @@ export default function NewCapabilityPage() {
             <SummaryRow
               label={t('newCapability.summaryPedagogicalAudience')}
               value={pedagogicalAudience === 'YoungLearner' ? t('newCapability.audienceYoungLearner') : t('newCapability.audienceStandard')}
+            />
+            <SummaryRow
+              label={t('newCapability.summaryMaxDeepDiveCards')}
+              value={String(Math.max(1, Math.min(10, maxDeepDiveCardsPerNode)))}
             />
             {capabilityType === 'pdf' ? (
               <SummaryRow label={t('newCapability.summaryFile')} value={file?.name ?? t('newCapability.dash')} />

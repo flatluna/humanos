@@ -48,6 +48,13 @@ const es = {
       'Controla la VOZ en que se escribe todo el contenido generado — nunca la estructura del grafo. "Niños pequeños" hace que cada paso le hable directamente al niño, con un tono cálido, divertido y de maestra de salón (ej. cursos de K-1/K-2). Deja "Estándar" para adolescentes/adultos y cursos profesionales/tradicionales.',
     audienceStandard: 'Estándar',
     audienceYoungLearner: 'Niños pequeños (K-1/K-2)',
+    maxDeepDiveCardsLabel: 'Máximo de tarjetas Deep Dive por nodo',
+    maxDeepDiveCardsHint:
+      'Define el máximo de tarjetas Deep Dive que la IA puede generar por cada nodo de este curso. Rango: 1-10 (límite duro en backend).',
+    strictSyllabusModeLabel: 'Seguir el índice del documento estrictamente',
+    strictSyllabusModeHint:
+      'Para cursos formales con un temario/índice numerado fijo (ej. "Unidad 1" con subtemas 1.0-1.8): fuerza a que se cree exactamente un nodo por cada subtema detectado del documento, en el mismo orden, sin omitir ni fusionar ninguno. Déjalo apagado para que la IA diseñe el grafo según su propio criterio de complejidad cognitiva (recomendado para la mayoría de los cursos).',
+    strictSyllabusModeToggle: 'Crear un nodo por cada subtema del índice, en orden',
     includeExamplesStepLabel: 'Paso de Profundización',
     includeExamplesStepHint:
       'Agrega un 6to paso OPCIONAL al blueprint de cada nodo, entre Enseñanza y Recordar: 3 o más "tarjetas de ejemplo" cortas (título + texto breve + emoji) que el estudiante debe dominar en orden, tarjeta por tarjeta, en un ciclo guiado de preguntas antes de continuar. Pensado para capabilities de educación formal/escolar. Déjalo apagado para cursos de educación continua (cocina, oficios, certificaciones) — no cambia nada del flujo estándar de 5 pasos.',
@@ -121,6 +128,7 @@ const es = {
     summaryTargetSkill: 'Requisito cubierto',
     summaryContentLanguage: 'Idioma del contenido',
     summaryPedagogicalAudience: 'Audiencia / tono',
+    summaryMaxDeepDiveCards: 'Máximo de tarjetas Deep Dive por nodo',
     summaryFile: 'Archivo',
     summaryIdea: 'Idea',
     summaryWebEnrichment: 'Enriquecimiento web',
@@ -272,6 +280,10 @@ const es = {
     experienceLoadErrorFallback: 'No se pudo cargar la experiencia de este nodo.',
     backToMap: '← Volver al mapa',
     demoModeBadge: 'Revisión y aceptación · sin candados',
+    autoApproveLabel: 'Aprobación automática (temporal, solo demos)',
+    autoApproveNotice: 'Modo demo: puedes aprobar este paso sin responder.',
+    autoApproveButton: 'Aprobar (temporal)',
+    autoApproving: 'Aprobando...',
     nodeCompleted: '¡Nodo completado!',
     newlyUnlocked: 'Nodos recién desbloqueados:',
     backToMapButton: 'Volver al mapa',

@@ -133,7 +133,22 @@ public sealed class EngramReviewSessionFunction
             .Select(g => g.First())
             .ToList();
 
-        var instructions = BuildInstructions(summary, node, profile, latestAssessment, latestAttempt, illustrations);
+        // Optional per-card focus (2026-08-02) — lets the Brain page's card
+        // browser ask the Agent to explain one specific Deep Dive
+        // ExampleCard instead of the whole lesson. Silently falls back to
+        // the original whole-lesson review when the index is missing/out
+        // of range, so this stays fully backward compatible.
+        ExampleCard? focusCard = null;
+        if (body.ExampleCardIndex is int cardIndex)
+        {
+            var deepDiveStep = summary.Steps.FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+            if (deepDiveStep?.ExampleCards is { } exampleCards && cardIndex >= 0 && cardIndex < exampleCards.Count)
+            {
+                focusCard = exampleCards[cardIndex];
+            }
+        }
+
+        var instructions = BuildInstructions(summary, node, profile, latestAssessment, latestAttempt, illustrations, focusCard);
         var tools = BuildVisualAidTools(illustrations);
 
         try
@@ -308,7 +323,8 @@ public sealed class EngramReviewSessionFunction
         PersonProfile? profile,
         LearningAssessmentResult? latestAssessment,
         InstructorRuntimeOrchestrator.NodeAttemptSummary? latestAttempt,
-        List<InstructorRuntimeOrchestrator.IllustrationRef> illustrations)
+        List<InstructorRuntimeOrchestrator.IllustrationRef> illustrations,
+        ExampleCard? focusCard = null)
     {
         var lesson = new StringBuilder();
         foreach (var step in summary.Steps)
@@ -346,6 +362,60 @@ public sealed class EngramReviewSessionFunction
                 "\n",
                 illustrations.Select(i => $"- id \"{i.CapabilityGraphNodeIllustrationId}\": {(string.IsNullOrWhiteSpace(i.Caption) ? "(sin descripcion)" : i.Caption)}"));
 
+        // Per-card focus (2026-08-02) — when the student picked a specific
+        // Deep Dive ExampleCard from the Brain page's card browser instead
+        // of asking for a whole-lesson review, steer the conversation to
+        // anchor on THAT card while the full lesson material further below
+        // still stays available as background context (so the agent can
+        // still connect it to the rest of the lesson if organically
+        // relevant, it just shouldn't march through every other card).
+        var cardFocus = focusCard is null
+            ? string.Empty
+            : $"""
+
+                FOCO DE ESTA CONVERSACIÓN: el estudiante eligió repasar específicamente esta tarjeta:
+                - Título: "{focusCard.Title}"
+                - Contenido: {StripHtml(focusCard.Text)}
+                {(string.IsNullOrWhiteSpace(focusCard.Emoji) ? "" : $"- Emoji asociado: {focusCard.Emoji}")}
+                Concéntrate en explicar y contar historias/ejemplos sobre ESTA tarjeta específicamente —
+                no marches por el resto de la lección de forma genérica. Puedes conectar brevemente con
+                el resto del material de abajo si surge de forma natural, pero el ancla de la
+                conversación es esta tarjeta.
+                """;
+
+        // These two guidance strings previously hardcoded a "review the whole
+        // lesson in general" instruction unconditionally, which conflicted
+        // with cardFocus above and made the agent ignore the chosen card
+        // (2026-08-02 bug: picking a card and asking to be explained it sent
+        // the student back into a whole-lesson review instead). Now the
+        // opening turn and the overall scope both explicitly anchor on
+        // focusCard when one was chosen.
+        var scopeGuidance = focusCard is null
+            ? """
+                No sigas una estructura rígida de 5 pasos ni le pidas explícitamente que recuerde la
+                "Hipótesis" -- trata todo el material de abajo como una sola lección a repasar,
+                priorizando las partes donde su retroalimentación previa indica que le costó más.
+                """
+            : $"""
+                El estudiante ya eligió repasar específicamente la tarjeta "{focusCard.Title}" (ver FOCO
+                DE ESTA CONVERSACIÓN más abajo) -- toda la conversación debe girar en torno a ESA
+                tarjeta, no marches por el resto de la lección ni la trates como un repaso general.
+                """;
+
+        var openingGuidance = focusCard is null
+            ? """
+                salúdalo por su nombre, menciona el nombre de la lección, y arranca
+                directo preguntándole qué recuerda de la lección en general (no le pidas
+                específicamente que recuerde la "Hipótesis" — ese fue solo el punto de partida
+                motivacional, no contenido real; enfócate en las ideas y habilidades enseñadas).
+                """
+            : $"""
+                salúdalo por su nombre y menciona que hoy van a repasar juntos la tarjeta
+                "{focusCard.Title}" en particular. Arranca directo contándole un breve ejemplo o
+                historia relacionado con ESA tarjeta específica, o preguntándole qué recuerda sobre
+                ella -- NUNCA le preguntes por la lección en general ni menciones otras tarjetas.
+                """;
+
         var studentContext = $"""
             CONTEXTO DEL ESTUDIANTE (información de fondo para TI, el agente — úsala para personalizar
             el tono y saber en qué apoyarte más, pero NO la recites como si fuera una lista o un
@@ -359,7 +429,7 @@ public sealed class EngramReviewSessionFunction
               ideas con otras palabras): {weaknesses}
             """;
 
-        const string hardBoundaries = """
+        var hardBoundaries = $"""
             REGLAS OBLIGATORIAS (nunca las rompas):
             - Esto NO es un examen ni un cuestionario de preguntas y respuestas — nunca digas que
               el estudiante "aprobó", "reprobó", ni le des una puntuación o nota de ningún tipo.
@@ -374,10 +444,7 @@ public sealed class EngramReviewSessionFunction
               que te ayuda a repasar antes de dormir, no como un evaluador.
             - Empieza a hablar TÚ MISMO de inmediato en cuanto se conecte, sin esperar a que el
               estudiante diga algo primero. NUNCA abras con un saludo genérico de asistente. En
-              vez de eso, salúdalo por su nombre, menciona el nombre de la lección, y arranca
-              directo preguntándole qué recuerda de la lección en general (no le pidas
-              específicamente que recuerde la "Hipótesis" — ese fue solo el punto de partida
-              motivacional, no contenido real; enfócate en las ideas y habilidades enseñadas).
+              vez de eso, {openingGuidance}
             - Ese primer turno es el PRIMERO de la conversación: el estudiante todavía no ha dicho
               nada. Por eso, en tu primer turno JAMÁS uses frases que den a entender que él ya
               respondió algo.
@@ -407,11 +474,9 @@ public sealed class EngramReviewSessionFunction
             directamente "¿qué recuerdas de...?" o "¿cómo explicarías...?" -- varía el ritmo, no lo
             conviertas en una entrevista. Cuando él responda o le falte algo, ayúdalo a reconstruirlo
             con pistas e historias que disparen su memoria -- nunca resolviéndoselo tú de entrada de
-            forma seca, nunca calificándolo. No sigas una estructura rígida de 5 pasos ni le pidas
-            explícitamente que recuerde la "Hipótesis" -- trata todo el material de abajo como una
-            sola lección a repasar, priorizando las partes donde su retroalimentación previa indica
-            que le costó más. Cuando sientas que ya cubrieron lo esencial, cierra con un resumen
-            breve y alentador de todo lo que logró recordar, sin dar ninguna nota ni puntaje.
+            forma seca, nunca calificándolo. {scopeGuidance} Cuando sientas que ya cubrieron lo
+            esencial, cierra con un resumen breve y alentador de todo lo que logró recordar, sin dar
+            ninguna nota ni puntaje.
 
             AYUDAS VISUALES (OPCIONAL): cuando estés contando una historia o dando un ejemplo de la
             vida real, puedes llamar a la función show_visual_aid para mostrar algo en pantalla justo
@@ -442,7 +507,7 @@ public sealed class EngramReviewSessionFunction
 
             CATÁLOGO DE ILUSTRACIONES DISPONIBLES PARA ESTA LECCIÓN (para kind="illustration"):
             {illustrationCatalog}
-
+            {cardFocus}
             {studentContext}
 
             MATERIAL COMPLETO DE LA LECCIÓN (tu única fuente de verdad -- no inventes nada fuera de

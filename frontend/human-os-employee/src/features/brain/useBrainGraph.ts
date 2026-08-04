@@ -37,6 +37,7 @@ async function fetchBrainGraph(personId: string): Promise<RootGroup[]> {
       edges,
       subjectCode: result.graph.subjectCode,
       subjectName: result.graph.subjectName,
+      category: result.graph.category,
     };
 
     rootGroups.push({

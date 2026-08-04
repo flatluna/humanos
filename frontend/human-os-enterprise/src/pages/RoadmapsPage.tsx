@@ -87,7 +87,17 @@ export function RoadmapsPage() {
   const requiredTechnicalSkills = jobRoleQuery.data?.technicalSkills ?? [];
   const requiredSoftSkills = jobRoleQuery.data?.softSkills ?? [];
 
-  const plan = generateMutation.data ?? planQuery.data;
+  // planQuery.data must win: both generateMutation and acceptMutation write
+  // their result into the SAME shared query cache key
+  // (['person-career-plan', selectedPersonId]) via setQueryData, which
+  // planQuery is subscribed to. Preferring generateMutation.data here (the
+  // mutation's own local result, not the shared cache) meant that once a
+  // plan had been generated once, the UI would keep showing that stale
+  // snapshot forever — so clicking "Aceptar plan" afterwards updated the
+  // cache correctly but the screen never reflected it (looked like the
+  // button did nothing). generateMutation.data is kept only as a fallback
+  // for the instant before planQuery has any cached data at all.
+  const plan = planQuery.data ?? generateMutation.data;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">

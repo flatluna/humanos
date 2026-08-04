@@ -157,5 +157,5 @@ internal sealed class CuradorExecutor : Executor<RawMaterialBatch, CuratorOutput
     /// now only owns the Pdf-specific call site.</summary>
     private Task<List<RawMaterialItem>> SplitPdfIntoChapterMaterialsAsync(
         RawMaterialItem pdf, CancellationToken cancellationToken) =>
-        DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(pdf, _tocExtraction, cancellationToken);
+        DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(pdf, _tocExtraction, cancellationToken: cancellationToken);
 }

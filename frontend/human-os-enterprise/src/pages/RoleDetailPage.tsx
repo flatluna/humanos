@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Briefcase, Sparkles } from 'lucide-react';
@@ -212,8 +212,15 @@ export function RoleDetailPage() {
     enabled: isEditing,
   });
 
+  // Seeds the form from the fetched role exactly once per jobRoleId — after that, the
+  // form is fully user-controlled so a background refetch (e.g. window refocus, or the
+  // invalidation triggered by updateMutation's own onSuccess) never clobbers an in-flight
+  // edit with stale/duplicate data. Same pattern as EmployeeDetailPage's orgForm guard.
+  const seededJobRoleIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (roleQuery.data) {
+    if (roleQuery.data && seededJobRoleIdRef.current !== jobRoleId) {
+      seededJobRoleIdRef.current = jobRoleId ?? null;
       const r = roleQuery.data;
       setForm({
         departmentId: r.departmentId,
@@ -249,7 +256,7 @@ export function RoleDetailPage() {
     } else if (!isEditing && departmentsQuery.data?.length) {
       setForm((f) => (f.departmentId ? f : { ...f, departmentId: departmentsQuery.data![0].departmentId }));
     }
-  }, [roleQuery.data, isEditing, departmentsQuery.data]);
+  }, [roleQuery.data, isEditing, departmentsQuery.data, jobRoleId]);
 
   const otherJobRoles = useMemo(
     () => (jobRolesQuery.data ?? []).filter((r) => r.jobRoleId !== jobRoleId),
