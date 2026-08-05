@@ -17,11 +17,63 @@ public sealed class TocChapter
     /// locate the chapter boundary via ordinal string search — must match
     /// the source text exactly, never paraphrased.</summary>
     public string StartMarker { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Set ONLY in strict-syllabus mode (2026-08-04 "Chapter = Level,
+    /// Subsection = Node" design): when this detected chapter is actually
+    /// a numbered SUBSECTION (e.g. "1.1") of a bigger top-level Unit/Module
+    /// in the source document, this carries that parent Unit/Module's own
+    /// heading text (e.g. "Introducción a la Álgebra") — used purely for
+    /// grouping several subsection-level chapters under one graph "level"
+    /// name (see <see cref="HumanOS.Services.CapabilityGraphLevelAutoNamer"/>).
+    /// Null/empty for a genuine top-level chapter with no such parent, or
+    /// whenever the document has no 2-level nesting at all.
+    /// </summary>
+    public string? ParentModuleTitle { get; set; }
 }
 
 public sealed class TableOfContents
 {
     public List<TocChapter> Chapters { get; set; } = [];
+}
+
+/// <summary>One node (fine-grained topic) proposed under an inferred
+/// chapter — see <see cref="TocExtractionAgent.InferOutlineAsync"/>.</summary>
+public sealed class InferredOutlineNode
+{
+    /// <summary>Short (2-6 word), human/knowledge-centered title for this
+    /// sub-topic.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Short (8-15 words), EXACT, verbatim copy of text from the
+    /// point in the source where this sub-topic's discussion begins — same
+    /// exact-match contract as <see cref="TocChapter.StartMarker"/>.</summary>
+    public string StartMarker { get; set; } = string.Empty;
+}
+
+/// <summary>One inferred top-level chapter (becomes a graph "level") —
+/// see <see cref="TocExtractionAgent.InferOutlineAsync"/>.</summary>
+public sealed class InferredOutlineChapter
+{
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Same exact-match contract as <see cref="TocChapter.StartMarker"/>.</summary>
+    public string StartMarker { get; set; } = string.Empty;
+
+    /// <summary>2-6 proposed nodes (concrete sub-topics) under this
+    /// chapter, in reading order.</summary>
+    public List<InferredOutlineNode> Nodes { get; set; } = [];
+}
+
+/// <summary>Result of <see cref="TocExtractionAgent.InferOutlineAsync"/> —
+/// a FULL two-level (chapter/level -> node) outline proposed by the model
+/// for a document that has no explicit numbered index of its own (e.g. a
+/// business process document, a law, or a contract) — see
+/// /memories/repo (2026-08-04 design discussion: "Modo B" for documents
+/// without a clear índice).</summary>
+public sealed class InferredOutline
+{
+    public List<InferredOutlineChapter> Chapters { get; set; } = [];
 }
 
 /// <summary>
@@ -80,6 +132,20 @@ public sealed class TocExtractionAgent
         (e.g. one short article, one short note, a single narrow how-to).
         Do not default to one chapter just because there are no explicit
         chapter-style headings — look at actual topic boundaries instead.
+
+        SKIP TABLE-OF-CONTENTS / INDEX LISTINGS — NEVER A DUPLICATE ENTRY
+        Some documents contain their own table of contents or index near
+        the start (a block that just lists heading titles one after
+        another, with little or no body prose between them, often under a
+        heading like 'Table of Contents', 'Índice', or 'Contenido'). That
+        listing is NOT a chapter boundary and must NOT be used as a
+        StartMarker source — always pick the StartMarker from where the
+        chapter's REAL discussion begins (the occurrence immediately
+        followed by substantive body text), never from the index/TOC
+        occurrence of that same title. Each distinct chapter/subsection
+        title must appear EXACTLY ONCE in your returned list — if a title
+        seems to occur more than once in the source, it is almost always
+        the TOC listing plus the real heading; return only the real one.
         """;
 
     /// <summary>Addendum injected only when the caller opts into
@@ -114,10 +180,59 @@ public sealed class TocExtractionAgent
           text (numbering may be included or dropped, your choice, but the
           Title must clearly correspond to exactly that one subsection).
         - This applies uniformly to every unit/section in the document, not
-          just the first one.
+          just the first one. Before finishing, re-scan your own numbering
+          sequence end-to-end (1.1, 1.2, 1.3, 2.1, 2.2, ...) and confirm no
+          number is missing — a gap almost always means you skipped a real
+          subsection rather than the document actually lacking one.
+        - Set ParentModuleTitle on EVERY subsection-level chapter entry to
+          that subsection's own parent Unit/Module's heading text (e.g.
+          "Introducción a la Álgebra"), exactly as it appears in the
+          source — this groups subsections back under their shared level.
+          Leave ParentModuleTitle null ONLY for a genuine top-level chapter
+          that has no such parent (e.g. this document turns out to have no
+          real 2-level nesting after all).
+        """;
+
+    /// <summary>Instructions for <see cref="InferOutlineAsync"/> — a
+    /// SEPARATE agent call used only for "Modo B" documents (2026-08-04):
+    /// the source has NO explicit numbered index of its own at all (e.g. a
+    /// business process write-up, a law, or a contract) but the caller
+    /// still wants a two-level chapter/level -> node outline for the
+    /// designer to review/approve before generation. Unlike
+    /// <see cref="Instructions"/> above (which only detects EXISTING
+    /// boundaries), this explicitly asks the model to PROPOSE a logical
+    /// pedagogical breakdown from its own reading of the content.</summary>
+    private const string InferOutlineInstructions = """
+        The following document has NO explicit numbered index/table of
+        contents of its own (no "Capítulo 1", "Unidad 2", etc.). Your job is
+        to READ it and PROPOSE a logical two-level pedagogical outline for
+        turning it into a training course:
+
+        - Group the content into an ordered list of top-level CHAPTERS
+          (each chapter becomes one "level" of the course).
+        - Under EACH chapter, propose 2-6 NODES — concrete, learnable
+          sub-topics that together cover that chapter's content. Never
+          propose a chapter with zero nodes.
+        - Follow the document's own natural reading order — do not reorder
+          or reorganize content around your own taxonomy if the source
+          text already progresses through it in a sensible sequence.
+        - Both chapters AND nodes need a StartMarker: a short (8-15 words),
+          EXACT, VERBATIM copy of text taken directly from the source, from
+          the point where that chapter/node's own discussion begins. This
+          MUST match the source text exactly (same spelling, spacing,
+          punctuation) — never paraphrase or summarize it. A node's
+          StartMarker must fall AFTER its own chapter's StartMarker.
+        - Titles (both chapter and node) should be short (2-6 words),
+          human/knowledge-centered labels — never a literal copy of a long
+          sentence, never a page/section number by itself.
+        - Prefer 3-8 chapters total for a typical document; scale up for
+          a genuinely long/broad document, down for a short one — never
+          collapse a substantial, multi-topic document into just one
+          chapter.
         """;
 
     private readonly AIAgent? _agent;
+    private readonly AIAgent? _inferOutlineAgent;
 
     public TocExtractionAgent(IConfiguration configuration)
     {
@@ -130,6 +245,7 @@ public sealed class TocExtractionAgent
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
             _agent = null;
+            _inferOutlineAgent = null;
             return;
         }
 
@@ -140,9 +256,46 @@ public sealed class TocExtractionAgent
         _agent = client
             .GetChatClient(deploymentName)
             .AsAIAgent(instructions: Instructions, name: "TocExtractionAgent");
+
+        // Main (non-economy) deployment for inference — this call requires
+        // genuine reading comprehension/judgment (proposing a pedagogical
+        // breakdown), not mechanical boundary detection.
+        var inferDeploymentName = configuration["AzureOpenAIDeploymentName"];
+        _inferOutlineAgent = string.IsNullOrWhiteSpace(inferDeploymentName)
+            ? null
+            : client.GetChatClient(inferDeploymentName).AsAIAgent(instructions: InferOutlineInstructions, name: "TocInferOutlineAgent");
     }
 
     public bool IsConfigured => _agent is not null;
+
+    /// <summary>Whether <see cref="InferOutlineAsync"/> can be called (needs
+    /// the main, non-economy Azure OpenAI deployment configured).</summary>
+    public bool IsInferenceConfigured => _inferOutlineAgent is not null;
+
+    /// <summary>
+    /// "Modo B" / Tier 2 (2026-08-04): proposes a full two-level chapter/
+    /// level -> node outline for a document that has NO explicit numbered
+    /// index of its own (see <see cref="InferOutlineInstructions"/>) — used
+    /// only when <see cref="HumanOS.Agents.Studio.SyllabusOutlineParser"/>
+    /// (Tier 0) found nothing AND <see cref="ExtractAsync"/> (Tier 1) also
+    /// returned too few chapters to be useful. This is a genuinely
+    /// different, more expensive operation than <see cref="ExtractAsync"/>:
+    /// it reads and semantically segments the WHOLE document rather than
+    /// just locating existing headings.
+    /// </summary>
+    public async Task<InferredOutline> InferOutlineAsync(string documentText, CancellationToken cancellationToken = default)
+    {
+        if (_inferOutlineAgent is null)
+        {
+            throw new InvalidOperationException(
+                "The TocExtraction inference agent is not configured. Set the 'AzureOpenAIEndpoint' and " +
+                "'AzureOpenAIDeploymentName' application settings.");
+        }
+
+        var prompt = "Propose a two-level chapter/node outline for the following document:\n\n" + documentText;
+        var response = await _inferOutlineAgent.RunAsync<InferredOutline>(prompt, cancellationToken: cancellationToken);
+        return response.Result;
+    }
 
     public async Task<TableOfContents> ExtractAsync(
         string documentText,

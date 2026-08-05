@@ -136,6 +136,48 @@ public sealed class StartPdfCapabilityGraphFunction
         /// exactly. False (default) leaves the existing "design the graph
         /// from real cognitive complexity" behavior unchanged.</summary>
         public bool StrictSyllabusMode { get; set; }
+
+        /// <summary>Optional (2026-08-04 "Paso 5: Capability Design"): the
+        /// designer's reviewed/approved (possibly hand-edited) chapter/node
+        /// outline, as returned by PreviewCapabilityOutlineFunction. When
+        /// provided, the pipeline uses it VERBATIM instead of re-running
+        /// chapter/subsection detection, guaranteeing the generation loop
+        /// respects exactly these chapter and node names.</summary>
+        public List<CapabilityOutlineChapterDto>? ApprovedOutline { get; set; }
+
+        /// <summary>Opt-out (2026-08-04): when false, every generated node
+        /// blueprint OMITS the Production ("Aplícalo") step entirely. True
+        /// (default) keeps the existing 5-step Memory Paradox order. See
+        /// Capability.IncludeProductionStep.</summary>
+        public bool IncludeProductionStep { get; set; } = true;
+
+        /// <summary>Optional (2026-08-04): how many successful Recall items
+        /// a learner must complete before advancing past the Recall step
+        /// for every node in this course. Must be between 1 and 10 when
+        /// provided; null keeps the runtime default. See
+        /// Capability.RecallItemsRequired.</summary>
+        public int? RecallItemsRequired { get; set; }
+
+        /// <summary>Optional (2026-08-04): how many questions make up one
+        /// Assessment round for every node in this course. Must be between
+        /// 1 and 10 when provided; null keeps the runtime default. See
+        /// Capability.AssessmentQuestionsPerRound.</summary>
+        public int? AssessmentQuestionsPerRound { get; set; }
+
+        /// <summary>Optional (2026-08-04 "logo en las ilustraciones"
+        /// feature): the company/brand's real logo image, base64-encoded,
+        /// MUST be a valid PNG (the frontend upload control only accepts
+        /// .png files, since the image-edit endpoint that consumes this
+        /// validates the format from the file extension). When provided,
+        /// it's uploaded once and used as a visual reference for EVERY
+        /// illustration generated for this capability — at creation time
+        /// and for any later on-demand generation (Assessment/Tutor/
+        /// BlueprintReview/AddNode) — via
+        /// GraphIllustrationImageService's image-edit path, so the model
+        /// can actually see and reuse the real logo instead of
+        /// guessing/hallucinating one from a text description. Null/omitted
+        /// means no logo is used, same as before this feature existed.</summary>
+        public string? LogoImageBase64 { get; set; }
     }
 
     [Function("StartPdfCapabilityGraph")]
@@ -184,6 +226,26 @@ public sealed class StartPdfCapabilityGraphFunction
                 cancellationToken);
             }
 
+            if (body.RecallItemsRequired is < 1 or > 10)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'recallItemsRequired' must be between 1 and 10.",
+                cancellationToken);
+            }
+
+            if (body.AssessmentQuestionsPerRound is < 1 or > 10)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'assessmentQuestionsPerRound' must be between 1 and 10.",
+                cancellationToken);
+            }
+
         byte[] pdfBytes;
         try
         {
@@ -195,6 +257,20 @@ public sealed class StartPdfCapabilityGraphFunction
                 request, HttpStatusCode.BadRequest, "InvalidBase64", "'contentBase64' is not valid base64.", cancellationToken);
         }
 
+        byte[]? brandLogoBytes = null;
+        if (!string.IsNullOrWhiteSpace(body.LogoImageBase64))
+        {
+            try
+            {
+                brandLogoBytes = Convert.FromBase64String(body.LogoImageBase64);
+            }
+            catch (FormatException)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "InvalidBase64", "'logoImageBase64' is not valid base64.", cancellationToken);
+            }
+        }
+
         try
         {
             var status = _orchestrator.Start(
@@ -202,7 +278,7 @@ public sealed class StartPdfCapabilityGraphFunction
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
                 body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
-                body.StrictSyllabusMode);
+                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

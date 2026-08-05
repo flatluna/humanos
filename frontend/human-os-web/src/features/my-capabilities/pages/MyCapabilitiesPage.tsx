@@ -53,7 +53,7 @@ export default function MyCapabilitiesPage() {
         if (!cancelled) setCapabilities(data);
       })
       .catch(() => {
-        if (!cancelled) setError('No pudimos cargar tus capacidades. Intenta de nuevo en unos minutos.');
+        if (!cancelled) setError('No pudimos cargar tus Engramas. Intenta de nuevo en unos minutos.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -73,9 +73,9 @@ export default function MyCapabilitiesPage() {
           <Layers className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mis Capacidades</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mis Engramas</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Las capacidades sueltas en las que te inscribiste, con tu progreso real en cada una.
+            Los Engramas sueltos en los que te inscribiste, con tu progreso real en cada uno.
           </p>
         </div>
       </div>
@@ -100,15 +100,15 @@ export default function MyCapabilitiesPage() {
       {isEmpty && (
         <div className="mt-10 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center dark:border-white/15 dark:bg-white/[0.02]">
           <BookOpen className="mx-auto h-8 w-8 text-emerald-500" />
-          <p className="mt-3 font-medium text-slate-700 dark:text-white">Todavía no te has inscrito en ninguna capacidad</p>
+          <p className="mt-3 font-medium text-slate-700 dark:text-white">Todavía no te has inscrito en ningún Engrama</p>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Explora el catálogo y dale "Inscribirme" a la que quieras seguir de cerca.
+            Explora el catálogo y dale "Inscribirme" al que quieras seguir de cerca.
           </p>
           <Link
             to="/capabilities"
             className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
           >
-            Explorar Capacidades
+            Explorar Engramas
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -131,7 +131,7 @@ export default function MyCapabilitiesPage() {
                   <div className="relative flex items-center gap-2 text-white/90">
                     <Layers className="h-4 w-4" />
                     <span className="text-xs font-semibold uppercase tracking-wide">
-                      {capability.subjectName ?? 'Capacidad independiente'}
+                      {capability.subjectName ?? 'Engrama independiente'}
                     </span>
                   </div>
                   <h2 className="relative mt-2 line-clamp-1 text-lg font-bold text-white drop-shadow-sm">
@@ -189,7 +189,7 @@ export default function MyCapabilitiesPage() {
             className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:gap-2 dark:text-brand-400"
           >
             <Sparkles className="h-4 w-4" />
-            Explorar más capacidades
+            Explorar más Engramas
           </Link>
         </div>
       )}

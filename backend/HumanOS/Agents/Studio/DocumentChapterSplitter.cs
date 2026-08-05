@@ -1,5 +1,7 @@
 namespace HumanOS.Agents.Studio;
 
+using HumanOS.Services;
+
 /// <summary>
 /// Shared chapter-splitting logic: given a document's raw text, uses
 /// <see cref="TocExtractionAgent"/> to detect chapter boundaries and splits
@@ -18,6 +20,78 @@ namespace HumanOS.Agents.Studio;
 /// </summary>
 public static class DocumentChapterSplitter
 {
+    /// <summary>
+    /// 2026-08-04 "Paso 5" design: builds the chapter materials DIRECTLY
+    /// from a designer-APPROVED outline (see
+    /// <see cref="CapabilityOutlinePreviewService"/>) instead of re-running
+    /// any detection tier — every chapter/node StartMarker was already
+    /// located and shown (implicitly) to the designer via the preview
+    /// endpoint, so this purely re-locates those same markers via ordinal
+    /// search and slices the text accordingly. This is what guarantees the
+    /// generation loop downstream respects EXACTLY the chapter/node titles
+    /// the designer approved (possibly hand-edited), never re-inventing or
+    /// re-detecting them.
+    /// </summary>
+    public static List<RawMaterialItem> BuildMaterialsFromApprovedOutline(
+        RawMaterialItem source, List<CapabilityOutlineChapterDto> approvedOutline)
+    {
+        var boundaries = new List<(string NodeTitle, string ChapterTitle, int Index)>();
+        foreach (var chapter in approvedOutline)
+        {
+            foreach (var node in chapter.Nodes)
+            {
+                if (string.IsNullOrWhiteSpace(node.StartMarker))
+                {
+                    continue;
+                }
+
+                var index = source.Content.IndexOf(node.StartMarker, StringComparison.Ordinal);
+                if (index >= 0)
+                {
+                    boundaries.Add((node.Title, chapter.Title, index));
+                }
+            }
+        }
+
+        if (boundaries.Count == 0)
+        {
+            throw new SyllabusStructureNotFoundException(
+                "No se pudo localizar el contenido aprobado dentro del texto del documento (es posible que el documento haya cambiado).");
+        }
+
+        boundaries = [.. boundaries.OrderBy(b => b.Index)];
+
+        var result = new List<RawMaterialItem>();
+        for (var i = 0; i < boundaries.Count; i++)
+        {
+            var start = boundaries[i].Index;
+            var end = i + 1 < boundaries.Count ? boundaries[i + 1].Index : source.Content.Length;
+            var nodeText = source.Content[start..end];
+
+            if (string.IsNullOrWhiteSpace(nodeText))
+            {
+                continue;
+            }
+
+            result.Add(new RawMaterialItem
+            {
+                Type = source.Type,
+                Label = $"{source.Label} — {boundaries[i].ChapterTitle} — {boundaries[i].NodeTitle}",
+                ChapterTitle = boundaries[i].NodeTitle,
+                LevelTitle = boundaries[i].ChapterTitle,
+                Content = nodeText
+            });
+        }
+
+        if (result.Count == 0)
+        {
+            throw new SyllabusStructureNotFoundException(
+                "No se pudo localizar el contenido aprobado dentro del texto del documento (es posible que el documento haya cambiado).");
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Runs <see cref="TocExtractionAgent"/> on one document's text and
     /// splits it into one <see cref="RawMaterialItem"/> per detected
@@ -80,7 +154,7 @@ public static class DocumentChapterSplitter
             return FallbackToLengthSplitIfLarge(source);
         }
 
-        var boundaries = new List<(string Title, int Index)>();
+        var boundaries = new List<(string Title, string? ParentModuleTitle, int Index)>();
         foreach (var chapter in toc.Chapters)
         {
             if (string.IsNullOrWhiteSpace(chapter.StartMarker))
@@ -91,7 +165,7 @@ public static class DocumentChapterSplitter
             var index = source.Content.IndexOf(chapter.StartMarker, StringComparison.Ordinal);
             if (index >= 0)
             {
-                boundaries.Add((chapter.Title, index));
+                boundaries.Add((chapter.Title, chapter.ParentModuleTitle, index));
             }
         }
 
@@ -125,6 +199,7 @@ public static class DocumentChapterSplitter
                 Type = source.Type,
                 Label = $"{source.Label} — {boundaries[i].Title}",
                 ChapterTitle = boundaries[i].Title,
+                LevelTitle = boundaries[i].ParentModuleTitle,
                 Content = chapterText
             });
         }
@@ -152,6 +227,18 @@ public static class DocumentChapterSplitter
     /// Pure code, no LLM call — mirrors the ordinal-slicing mechanics of
     /// the Tier 1 path below but driven by <see cref="SyllabusOutlineParser"/>'s
     /// own offsets instead of re-locating a StartMarker string.
+    ///
+    /// 2026-08-04 "Chapter = Level, Subsection = Node" design: when a
+    /// module HAS its own detected <see cref="SyllabusModule.Subsections"/>
+    /// (e.g. "1.1", "1.2"...), this now emits one item PER SUBSECTION
+    /// instead of one item for the whole module — each subsection-item's
+    /// <see cref="RawMaterialItem.ChapterTitle"/> is its own heading, while
+    /// <see cref="RawMaterialItem.LevelTitle"/> carries the parent module's
+    /// title so <see cref="HumanOS.Services.CapabilityGraphLevelAutoNamer"/>
+    /// groups them back under one graph "level". Modules with NO detected
+    /// subsections keep the original whole-module behavior unchanged
+    /// (LevelTitle left null — that whole chapter IS both the level and
+    /// the only node under it).
     /// </summary>
     private static List<RawMaterialItem> BuildMaterialsFromParsedModules(
         RawMaterialItem source, List<SyllabusModule> modules)
@@ -159,31 +246,72 @@ public static class DocumentChapterSplitter
         var result = new List<RawMaterialItem>();
         for (var i = 0; i < modules.Count; i++)
         {
-            var start = modules[i].StartOffset;
-            var end = i + 1 < modules.Count ? modules[i + 1].StartOffset : source.Content.Length;
-            if (end <= start)
+            var module = modules[i];
+            var moduleStart = module.StartOffset;
+            var moduleEnd = i + 1 < modules.Count ? modules[i + 1].StartOffset : source.Content.Length;
+            if (moduleEnd <= moduleStart)
             {
                 continue;
             }
 
-            var moduleText = source.Content[start..end];
-            if (string.IsNullOrWhiteSpace(moduleText))
+            var moduleTitle = string.IsNullOrWhiteSpace(module.Title)
+                ? $"{module.Keyword} {module.Number}"
+                : module.Title;
+            // Bare-numeric convention (no keyword, e.g. "1.0 Introduction")
+            // already carries its own full display title verbatim.
+            var moduleChapterTitle = string.IsNullOrEmpty(module.Keyword)
+                ? moduleTitle
+                : $"{module.Keyword} {module.Number}: {moduleTitle}";
+
+            if (module.Subsections.Count == 0)
             {
+                var moduleText = source.Content[moduleStart..moduleEnd];
+                if (string.IsNullOrWhiteSpace(moduleText))
+                {
+                    continue;
+                }
+
+                result.Add(new RawMaterialItem
+                {
+                    Type = source.Type,
+                    Label = $"{source.Label} — {moduleChapterTitle}",
+                    ChapterTitle = moduleChapterTitle,
+                    Content = moduleText
+                });
                 continue;
             }
 
-            var title = string.IsNullOrWhiteSpace(modules[i].Title)
-                ? $"{modules[i].Keyword} {modules[i].Number}"
-                : modules[i].Title;
-            var chapterTitle = $"{modules[i].Keyword} {modules[i].Number}: {title}";
-
-            result.Add(new RawMaterialItem
+            for (var j = 0; j < module.Subsections.Count; j++)
             {
-                Type = source.Type,
-                Label = $"{source.Label} — {chapterTitle}",
-                ChapterTitle = chapterTitle,
-                Content = moduleText
-            });
+                var subsection = module.Subsections[j];
+                var subsectionStart = subsection.StartOffset;
+                var subsectionEnd = j + 1 < module.Subsections.Count
+                    ? module.Subsections[j + 1].StartOffset
+                    : moduleEnd;
+                if (subsectionEnd <= subsectionStart)
+                {
+                    continue;
+                }
+
+                var subsectionText = source.Content[subsectionStart..subsectionEnd];
+                if (string.IsNullOrWhiteSpace(subsectionText))
+                {
+                    continue;
+                }
+
+                var subsectionTitle = string.IsNullOrWhiteSpace(subsection.Title)
+                    ? subsection.Number
+                    : $"{subsection.Number} {subsection.Title}";
+
+                result.Add(new RawMaterialItem
+                {
+                    Type = source.Type,
+                    Label = $"{source.Label} — {moduleChapterTitle} — {subsectionTitle}",
+                    ChapterTitle = subsectionTitle,
+                    LevelTitle = moduleChapterTitle,
+                    Content = subsectionText
+                });
+            }
         }
 
         return result;

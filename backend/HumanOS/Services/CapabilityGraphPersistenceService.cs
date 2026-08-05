@@ -50,6 +50,14 @@ public sealed class CapabilityGraphPersistenceService
     /// <param name="coverImageStoragePath">Optional blob StoragePath of the
     /// course-level cover image (2026-07-21), null when generation wasn't
     /// configured or failed (best-effort).</param>
+    /// <param name="brandLogoStoragePath">Optional blob StoragePath of the
+    /// company/brand logo the designer attached at creation time (2026-08-04),
+    /// null when no logo was attached.</param>
+    /// <param name="chapterIndexByNodeId">Optional per-node source-chapter
+    /// grouping (2026-08-04, keyed by <see cref="GraphNodeDto.NodeId"/>) —
+    /// see <see cref="CapabilityGraphLevelAutoNamer"/> and
+    /// <see cref="Models.Capabilities.Graph.CapabilityGraphNode.ChapterIndex"/>.
+    /// Nodes absent from this map are persisted with a null ChapterIndex.</param>
     public async Task<CapabilityGraph> PersistAsync(
         HumanOsDbContext dbContext,
         Guid capabilityId,
@@ -58,7 +66,9 @@ public sealed class CapabilityGraphPersistenceService
         CancellationToken cancellationToken = default,
         string? executiveSummary = null,
         string? keyEntitiesJson = null,
-        string? coverImageStoragePath = null)
+        string? coverImageStoragePath = null,
+        string? brandLogoStoragePath = null,
+        IReadOnlyDictionary<Guid, int>? chapterIndexByNodeId = null)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(graph);
@@ -72,6 +82,7 @@ public sealed class CapabilityGraphPersistenceService
             ExecutiveSummary = executiveSummary,
             KeyEntitiesJson = keyEntitiesJson,
             CoverImageStoragePath = coverImageStoragePath,
+            BrandLogoStoragePath = brandLogoStoragePath,
             CreatedDate = DateTime.UtcNow
         };
 
@@ -93,6 +104,7 @@ public sealed class CapabilityGraphPersistenceService
                 ExamplesJson = JsonSerializer.Serialize(node.Examples),
                 ApplicationsJson = JsonSerializer.Serialize(node.Applications),
                 ReferencesJson = JsonSerializer.Serialize(node.References),
+                ChapterIndex = chapterIndexByNodeId is not null && chapterIndexByNodeId.TryGetValue(node.NodeId, out var chapterIndex) ? chapterIndex : null,
                 CreatedDate = DateTime.UtcNow
             };
 

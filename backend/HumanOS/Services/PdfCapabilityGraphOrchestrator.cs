@@ -120,7 +120,12 @@ public sealed class PdfCapabilityGraphOrchestrator
         Guid? targetJobRoleId = null,
         string? targetSkill = null,
         int? maxDeepDiveCardsPerNode = null,
-        bool strictSyllabusMode = false)
+        bool strictSyllabusMode = false,
+        List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        bool includeProductionStep = true,
+        int? recallItemsRequired = null,
+        int? assessmentQuestionsPerRound = null,
+        byte[]? brandLogoBytes = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -160,7 +165,12 @@ public sealed class PdfCapabilityGraphOrchestrator
                     targetJobRoleId,
                     targetSkill,
                     maxDeepDiveCardsPerNode,
-                    strictSyllabusMode);
+                    strictSyllabusMode,
+                    approvedOutline,
+                    includeProductionStep,
+                    recallItemsRequired,
+                    assessmentQuestionsPerRound,
+                    brandLogoBytes);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }
@@ -218,7 +228,12 @@ public sealed class PdfCapabilityGraphOrchestrator
         Guid? targetJobRoleId = null,
         string? targetSkill = null,
         int? maxDeepDiveCardsPerNode = null,
-        bool strictSyllabusMode = false)
+        bool strictSyllabusMode = false,
+        List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        bool includeProductionStep = true,
+        int? recallItemsRequired = null,
+        int? assessmentQuestionsPerRound = null,
+        byte[]? brandLogoBytes = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -253,7 +268,12 @@ public sealed class PdfCapabilityGraphOrchestrator
                     targetJobRoleId,
                     targetSkill,
                     maxDeepDiveCardsPerNode,
-                    strictSyllabusMode);
+                    strictSyllabusMode,
+                    approvedOutline,
+                    includeProductionStep,
+                    recallItemsRequired,
+                    assessmentQuestionsPerRound,
+                    brandLogoBytes);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }

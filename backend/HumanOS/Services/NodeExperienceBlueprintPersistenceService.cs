@@ -52,6 +52,35 @@ public sealed class NodeExperienceBlueprintPersistenceService
     ];
 
     /// <summary>
+    /// Used ONLY when <c>includeProductionStep</c> is false (2026-08-04,
+    /// client-facing course-configuration feature) and <c>includeExamplesStep</c>
+    /// is also false — omits <see cref="ExperienceStepType.Production"/> from
+    /// <see cref="CanonicalStepOrder"/>.
+    /// </summary>
+    private static readonly ExperienceStepType[] NoProductionStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Assessment
+    ];
+
+    /// <summary>
+    /// Used ONLY when <c>includeProductionStep</c> is false AND
+    /// <c>includeExamplesStep</c> is true — omits
+    /// <see cref="ExperienceStepType.Production"/> from
+    /// <see cref="FormalEducationStepOrder"/>.
+    /// </summary>
+    private static readonly ExperienceStepType[] FormalEducationNoProductionStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.DeepDive,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Assessment
+    ];
+
+    /// <summary>
     /// Persists a NodeExperienceBlueprint (with its 5 or 6 steps) for the given node.
     /// </summary>
     /// <param name="dbContext">DbContext to write with (caller owns its lifetime).</param>
@@ -68,12 +97,19 @@ public sealed class NodeExperienceBlueprintPersistenceService
     /// False (default) persists exactly the same 5 steps as before this
     /// parameter existed.
     /// </param>
+    /// <param name="includeProductionStep">
+    /// Copied from the owning Capability's
+    /// <see cref="HumanOS.Models.Capabilities.Capability.IncludeProductionStep"/>.
+    /// True (default) persists exactly the same steps as before this
+    /// parameter existed. False omits the Production step (2026-08-04).
+    /// </param>
     public async Task<NodeExperienceBlueprint> PersistAsync(
         HumanOsDbContext dbContext,
         Guid capabilityGraphNodeId,
         NodeExperienceBlueprintResponse response,
         IReadOnlyList<CapabilityGraphNodeIllustration> availableIllustrations,
         bool includeExamplesStep = true,
+        bool includeProductionStep = true,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
@@ -89,7 +125,13 @@ public sealed class NodeExperienceBlueprintPersistenceService
             CreatedDate = DateTime.UtcNow
         };
 
-        var stepOrder = includeExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+        var stepOrder = (includeExamplesStep, includeProductionStep) switch
+        {
+            (true, true) => FormalEducationStepOrder,
+            (true, false) => FormalEducationNoProductionStepOrder,
+            (false, true) => CanonicalStepOrder,
+            (false, false) => NoProductionStepOrder
+        };
 
         for (var sortOrder = 0; sortOrder < stepOrder.Length; sortOrder++)
         {

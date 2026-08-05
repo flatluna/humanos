@@ -20,11 +20,15 @@ namespace HumanOS.Services;
 /// cutoff, round chaining), same "LLM proposes, code decides" rule as
 /// <see cref="AssessmentEvaluator"/>.
 ///
-/// A round always has exactly 5 questions. FinalScore = average of the 5
-/// questions' ScoreContribution. Passed = FinalScore &gt;= 80. A Failed
-/// round automatically starts a brand-new round (new RoundNumber, 5 new
-/// questions) in the SAME call that closes out the failed one — the
-/// frontend never has to separately trigger a retry.
+/// A round has <see cref="DefaultQuestionsPerRound"/> questions by default
+/// (5) — or the owning Capability's own override (2026-08-04, see
+/// <see cref="Models.Capabilities.Capability.AssessmentQuestionsPerRound"/>),
+/// clamped to [<see cref="MinQuestionsPerRound"/>, <see cref="MaxQuestionsPerRound"/>].
+/// FinalScore = average of the round's questions' ScoreContribution.
+/// Passed = FinalScore &gt;= 80. A Failed round automatically starts a
+/// brand-new round (new RoundNumber, same question count) in the SAME
+/// call that closes out the failed one — the frontend never has to
+/// separately trigger a retry.
 ///
 /// On a Passed round, this engine ALSO writes a
 /// <see cref="LearningAssessmentResult"/> row (Score=FinalScore,
@@ -35,7 +39,16 @@ namespace HumanOS.Services;
 /// </summary>
 public sealed class AdaptiveAssessmentEngine
 {
-    private const int QuestionsPerRound = 5;
+    /// <summary>Default number of questions per round — used when the
+    /// owning Capability has no <see cref="Models.Capabilities.Capability.AssessmentQuestionsPerRound"/>
+    /// override.</summary>
+    private const int DefaultQuestionsPerRound = 5;
+
+    /// <summary>Hard bounds enforced on any per-Capability override of
+    /// <see cref="DefaultQuestionsPerRound"/>.</summary>
+    private const int MinQuestionsPerRound = 1;
+    private const int MaxQuestionsPerRound = 10;
+
     private const int PassThreshold = 80;
 
     /// <summary>Base offset for per-question Assessment illustration blob
@@ -86,6 +99,11 @@ public sealed class AdaptiveAssessmentEngine
         public int RoundNumber { get; set; }
         public AssessmentRoundStatus Status { get; set; }
         public int? FinalScore { get; set; }
+
+        /// <summary>Effective number of questions for this round — the owning
+        /// Capability's <see cref="Models.Capabilities.Capability.AssessmentQuestionsPerRound"/>
+        /// override (clamped) when set, otherwise <see cref="DefaultQuestionsPerRound"/>.</summary>
+        public int TotalQuestions { get; set; } = DefaultQuestionsPerRound;
 
         /// <summary>Null once the round is Passed/Failed (nothing left to answer).</summary>
         public QuestionInfo? CurrentQuestion { get; set; }
@@ -179,6 +197,7 @@ public sealed class AdaptiveAssessmentEngine
             RoundNumber = round.RoundNumber,
             Status = round.Status,
             FinalScore = null,
+            TotalQuestions = context.QuestionsPerRound,
             CurrentQuestion = new QuestionInfo
             {
                 AssessmentQuestionId = questionRow.AssessmentQuestionId,
@@ -211,6 +230,8 @@ public sealed class AdaptiveAssessmentEngine
             return null;
         }
 
+        var context = await LoadNodeContextAsync(dbContext, learningSessionNodeId, cancellationToken);
+
         var currentQuestion = round.Questions
             .Where(q => q.StudentAnswer is null)
             .OrderBy(q => q.QuestionIndex)
@@ -222,6 +243,7 @@ public sealed class AdaptiveAssessmentEngine
             RoundNumber = round.RoundNumber,
             Status = round.Status,
             FinalScore = round.FinalScore,
+            TotalQuestions = context.QuestionsPerRound,
             CurrentQuestion = currentQuestion is null ? null : new QuestionInfo
             {
                 AssessmentQuestionId = currentQuestion.AssessmentQuestionId,
@@ -286,7 +308,7 @@ public sealed class AdaptiveAssessmentEngine
             Grade = new AnswerGrade { Correctness = correctness, Score = score, Feedback = graded.Feedback }
         };
 
-        if (question.QuestionIndex < QuestionsPerRound)
+        if (question.QuestionIndex < context.QuestionsPerRound)
         {
             // Still questions left this round — generate the next one, adapting to errors observed so far.
             var errorsSoFar = alreadyAnsweredThisRound
@@ -533,6 +555,11 @@ public sealed class AdaptiveAssessmentEngine
                 .CountAsync(i => i.CapabilityGraphNodeId == context.NodeId, cancellationToken);
             var imageIndex = AssessmentIllustrationBaseIndex + existingCount;
 
+            // Brand logo reference (2026-08-04), if one was attached at
+            // capability-creation time — see GraphIllustrationImageService's
+            // LogoReferenceInstruction for what the model is told to do with it.
+            var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(dbContext, capabilityId, cancellationToken);
+
             // Two mutually-exclusive rendering paths, decided by
             // AdaptiveAssessmentAgent (LLM proposes, code just dispatches):
             // precise coordinate-plane graphs go through the deterministic
@@ -540,7 +567,7 @@ public sealed class AdaptiveAssessmentEngine
             // image model as before. See MathDiagramRenderService's doc comment.
             object generated = mathDiagram is not null
                 ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
-                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+                : await _imageService.GenerateAsync(diagramPrompt!, brandLogoBytes, cancellationToken);
             var (imageBytes, imageModel, width, height) = generated switch
             {
                 MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),
@@ -616,6 +643,12 @@ public sealed class AdaptiveAssessmentEngine
         /// AssessmentQuestion/grading has no direct student-message signal
         /// like the Tutor does. Empty only if the lookup fails.</summary>
         public string ContentLanguageCode { get; set; } = string.Empty;
+
+        /// <summary>Resolved effective number of questions per Assessment
+        /// round for this node's owning Capability — its
+        /// <see cref="Models.Capabilities.Capability.AssessmentQuestionsPerRound"/>
+        /// override (clamped) when set, otherwise <see cref="DefaultQuestionsPerRound"/>.</summary>
+        public int QuestionsPerRound { get; set; } = DefaultQuestionsPerRound;
     }
 
     private static async Task<NodeContext> LoadNodeContextAsync(HumanOsDbContext dbContext, Guid learningSessionNodeId, CancellationToken cancellationToken)
@@ -633,6 +666,11 @@ public sealed class AdaptiveAssessmentEngine
 
         var node = sessionNode.CapabilityGraphNode
             ?? throw new InvalidOperationException($"LearningSessionNode {learningSessionNodeId} has no CapabilityGraphNode loaded.");
+
+        var configuredQuestionsPerRound = sessionNode.LearningSession?.Capability?.AssessmentQuestionsPerRound;
+        var questionsPerRound = configuredQuestionsPerRound.HasValue
+            ? Math.Clamp(configuredQuestionsPerRound.Value, MinQuestionsPerRound, MaxQuestionsPerRound)
+            : DefaultQuestionsPerRound;
 
         var priorStepEvidence = new Dictionary<string, string>();
         foreach (var stepType in new[] { ExperienceStepType.Hypothesis, ExperienceStepType.Teaching, ExperienceStepType.Recall, ExperienceStepType.Production })
@@ -657,7 +695,8 @@ public sealed class AdaptiveAssessmentEngine
             IllustrationCaptions = node.Illustrations.Where(i => !string.IsNullOrWhiteSpace(i.Caption)).Select(i => i.Caption!).ToList(),
             PriorStepEvidence = priorStepEvidence,
             IllustrationPathSeed = node.Illustrations.FirstOrDefault()?.StoragePath,
-            ContentLanguageCode = sessionNode.LearningSession?.Capability?.ContentLanguageCode ?? string.Empty
+            ContentLanguageCode = sessionNode.LearningSession?.Capability?.ContentLanguageCode ?? string.Empty,
+            QuestionsPerRound = questionsPerRound
         };
     }
 
@@ -683,7 +722,7 @@ public sealed class AdaptiveAssessmentEngine
         IReadOnlyList<string> errorsObserved, AssessmentQuestionType requiredType, bool allowMultipleChoiceSubstitute)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"Question {questionIndex} of 5 for this Assessment round.");
+        builder.AppendLine($"Question {questionIndex} of {context.QuestionsPerRound} for this Assessment round.");
         builder.AppendLine();
         AppendNodeContext(builder, context);
 

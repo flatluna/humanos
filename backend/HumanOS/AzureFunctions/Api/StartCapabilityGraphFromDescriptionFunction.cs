@@ -94,6 +94,21 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
 
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public bool StrictSyllabusMode { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public List<CapabilityOutlineChapterDto>? ApprovedOutline { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public bool IncludeProductionStep { get; set; } = true;
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public int? RecallItemsRequired { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public int? AssessmentQuestionsPerRound { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public string? LogoImageBase64 { get; set; }
     }
 
     [Function("StartCapabilityGraphFromDescription")]
@@ -141,6 +156,40 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 cancellationToken);
             }
 
+            if (body.RecallItemsRequired is < 1 or > 10)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'recallItemsRequired' must be between 1 and 10.",
+                cancellationToken);
+            }
+
+            if (body.AssessmentQuestionsPerRound is < 1 or > 10)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'assessmentQuestionsPerRound' must be between 1 and 10.",
+                cancellationToken);
+            }
+
+        byte[]? brandLogoBytes = null;
+        if (!string.IsNullOrWhiteSpace(body.LogoImageBase64))
+        {
+            try
+            {
+                brandLogoBytes = Convert.FromBase64String(body.LogoImageBase64);
+            }
+            catch (FormatException)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "InvalidBase64", "'logoImageBase64' is not valid base64.", cancellationToken);
+            }
+        }
+
         try
         {
             var status = _orchestrator.StartFromDescription(
@@ -148,7 +197,7 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
                 body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
-                body.StrictSyllabusMode);
+                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

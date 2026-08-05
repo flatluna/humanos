@@ -1,16 +1,15 @@
 import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Building2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { NAV_GROUPS } from './navItems';
 import { useSidebarStore } from '@/store/useSidebarStore';
-import { useEnterpriseContext } from '@/features/enterprise-context/hooks/useEnterpriseContext';
+import { useAuth } from '@/auth/AuthContext';
 import { ProfileMenu } from '@/components/layout/ProfileMenu';
 
 export function AppSidebar() {
   const { t } = useTranslation();
   const collapsed = useSidebarStore((state) => state.collapsed);
-  const { data: enterpriseContext } = useEnterpriseContext();
+  const { user } = useAuth();
 
   return (
     <aside
@@ -67,28 +66,7 @@ export function AppSidebar() {
       </nav>
 
       <div className="space-y-3 border-t border-slate-100 pt-4 dark:border-white/10">
-        {enterpriseContext && (
-          <div
-            aria-label={t('nav.organizationContext')}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-slate-500 dark:text-white/50"
-          >
-            <Building2 className="h-4 w-4 shrink-0" />
-            <span className={collapsed ? 'hidden' : 'hidden lg:block'}>
-              <span className="block text-sm font-medium text-slate-700 dark:text-white/80">
-                {enterpriseContext.organizationName}
-              </span>
-              <span className="block text-xs text-slate-400 dark:text-white/40">{enterpriseContext.roleName}</span>
-            </span>
-          </div>
-        )}
-
-        <ProfileMenu
-          userName="Jorge Pérez Luna"
-          roleName={enterpriseContext?.roleName}
-          organizationName={enterpriseContext?.organizationName}
-          variant="full"
-          collapsed={collapsed}
-        />
+        <ProfileMenu userName={user?.name ?? ''} variant="full" collapsed={collapsed} />
       </div>
     </aside>
   );

@@ -230,6 +230,14 @@ public sealed class GraphProgressionEngine
         public string State { get; set; } = "Locked";
         public Guid? IllustrationId { get; set; }
 
+        /// <summary>0-based index of the source document chapter/module this
+        /// node belongs to (see <see cref="Models.Capabilities.Graph.CapabilityGraphNode.ChapterIndex"/>) —
+        /// what the "climb" preview now groups nodes by. Null for nodes
+        /// whose chapter couldn't be traced, or capabilities created before
+        /// this field existed — the client falls back to edge-tier grouping
+        /// in that case.</summary>
+        public int? ChapterIndex { get; set; }
+
         /// <summary>Best passed assessment score (0-100) of this person's MOST RECENT
         /// completed attempt at this node — same semantics as NodeSummaryResult.FinalScore.
         /// Null while the node isn't Mastered yet.</summary>
@@ -388,7 +396,8 @@ public sealed class GraphProgressionEngine
                 FinalScore = nodeScores.TryGetValue(node.CapabilityGraphNodeId, out var score) ? score : null,
                 LastCompletedDate = nodeLastCompletedDates.TryGetValue(node.CapabilityGraphNodeId, out var lastCompleted) ? lastCompleted : null,
                 ReviewCount = nodeReviewCounts.TryGetValue(node.CapabilityGraphNodeId, out var reviewCount) ? reviewCount : 0,
-                DeepDiveMastered = deepDiveMasteredNodeIds.Contains(node.CapabilityGraphNodeId)
+                DeepDiveMastered = deepDiveMasteredNodeIds.Contains(node.CapabilityGraphNodeId),
+                ChapterIndex = node.ChapterIndex
             });
         }
 

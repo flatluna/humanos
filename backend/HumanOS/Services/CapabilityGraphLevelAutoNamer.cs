@@ -3,83 +3,58 @@ using HumanOS.Agents.Studio;
 namespace HumanOS.Services;
 
 /// <summary>
-/// Best-effort, deterministic (no extra LLM call) attempt to give each
-/// computed "climb level" (tier) of a freshly-designed CapabilityGraph a
-/// real, human title drawn from the source document's own module/chapter
-/// headings (e.g. "Introducción al Marketing Digital") — 2026-08-03,
-/// "levels should have a real title, not just Level 0/Level 1".
+/// Best-effort, deterministic (no extra LLM call) attempt to group each
+/// freshly-designed CapabilityGraph's nodes into "climb levels" that match
+/// the SOURCE DOCUMENT's own chapter/module structure (e.g. all of chapter
+/// "1. Introducción"'s nodes sit together in one level, however many there
+/// are), and give each level a real title drawn from that chapter's own
+/// heading — 2026-08-04, replacing an earlier version of this class that
+/// grouped nodes by the graph's prerequisite-edge DEPTH instead. That
+/// edge-depth approach put sibling nodes from the very same chapter into
+/// DIFFERENT rows whenever one had a "Requires" edge onto the other (a
+/// common, legitimate authoring choice for e.g. "purpose" before
+/// "importance" within the same intro chapter) — both rows would then be
+/// auto-named identically after that one shared chapter, which visually
+/// read as a duplicated/broken level. Grouping by chapter instead means a
+/// level's name is 1:1 chapter title, so this scenario simply can't recur.
 ///
-/// Levels are NOT a first-class concept for GraphArchitectAgent — they are
-/// computed client-side (see capabilitystudio/PreviewGraphPage.tsx's
-/// groupIntoLevels) as tiers of the node prerequisite DAG, and only get a
-/// real name when a professor manually types one in via that page's pencil
-/// icon (see <see cref="Models.Capabilities.Graph.CapabilityGraphLevel"/>).
-/// This class mirrors that EXACT tiering algorithm server-side so the
-/// computed LevelIndex here lines up with what the UI shows, then maps
-/// each tier to whichever source chapter most of its nodes came from (via
-/// each node's own <see cref="GraphNodeDto.References"/>), so the pipeline
-/// can pre-populate a sensible <see cref="Models.Capabilities.Graph.CapabilityGraphLevel"/>
-/// row right after creation instead of leaving every level generic.
-///
-/// Tiers that can't be confidently traced back to one dominant chapter
-/// (e.g. no chapter data at all, or a tier whose nodes are evenly mixed
-/// across several chapters) are simply absent from the result — the
-/// caller leaves those to the existing "Nivel N" fallback, and the
-/// professor can always name/rename any level by hand afterward.
+/// Levels are NOT a first-class concept for GraphArchitectAgent — this
+/// class computes each node's chapter (via its own
+/// <see cref="GraphNodeDto.References"/>, fuzzy-matched against the
+/// document's own chunk tags) and persists the result on
+/// <see cref="Models.Capabilities.Graph.CapabilityGraphNode.ChapterIndex"/>
+/// right after graph creation, which is what
+/// capabilitystudio/PreviewGraphPage.tsx's groupIntoLevels groups nodes by
+/// (falling back to the old edge-depth tiering only for graphs created
+/// before this field existed, where every node's ChapterIndex is null).
 /// </summary>
 internal static class CapabilityGraphLevelAutoNamer
 {
-    public static List<(int LevelIndex, string Name)> ComputeLevelNames(
+    public sealed class Result
+    {
+        /// <summary>One entry per distinct chapter that could be traced,
+        /// in document order — LevelIndex is 0-based and sequential.</summary>
+        public List<(int LevelIndex, string Name)> Levels { get; init; } = [];
+
+        /// <summary>Every node whose source chapter could be determined
+        /// (directly or inherited from a neighboring node — see below),
+        /// mapped to the SAME 0-based LevelIndex used in <see cref="Levels"/>.
+        /// Nodes absent from this map (should be rare) get a null
+        /// ChapterIndex and fall back to the old edge-tier grouping.</summary>
+        public Dictionary<Guid, int> LevelIndexByNodeId { get; init; } = [];
+    }
+
+    public static Result ComputeLevelNames(
         List<GraphNodeDto> nodes,
-        List<GraphEdgeDto> edges,
         Dictionary<string, int> chunkTagToChapterNumber,
         Dictionary<int, string> chapterTitleByNumber)
     {
         if (nodes.Count == 0 || chapterTitleByNumber.Count == 0)
         {
-            return [];
+            return new Result();
         }
 
-        // ---- 1. Assign each node to a tier — identical algorithm to
-        // PreviewGraphPage.tsx's groupIntoLevels: a node's tier is 1 + the
-        // deepest tier among its prerequisites (nodes with no prerequisites
-        // sit at tier 0). ----
-        var prerequisitesOf = nodes.ToDictionary(n => n.NodeId, _ => new List<Guid>());
-        foreach (var edge in edges)
-        {
-            if (edge.TargetNodeId != Guid.Empty && prerequisitesOf.TryGetValue(edge.SourceNodeId, out var prereqs))
-            {
-                prereqs.Add(edge.TargetNodeId);
-            }
-        }
-
-        var tierByNodeId = new Dictionary<Guid, int>();
-
-        int TierOf(Guid nodeId, HashSet<Guid> visiting)
-        {
-            if (tierByNodeId.TryGetValue(nodeId, out var cached))
-            {
-                return cached;
-            }
-
-            if (!visiting.Add(nodeId))
-            {
-                return 0; // guards against an accidental cycle
-            }
-
-            var prereqs = prerequisitesOf.TryGetValue(nodeId, out var list) ? list : [];
-            var tier = prereqs.Count == 0 ? 0 : 1 + prereqs.Max(p => TierOf(p, visiting));
-            visiting.Remove(nodeId);
-            tierByNodeId[nodeId] = tier;
-            return tier;
-        }
-
-        foreach (var node in nodes)
-        {
-            TierOf(node.NodeId, []);
-        }
-
-        // ---- 2. Assign each node to its most-likely source chapter, from
+        // ---- 1. Assign each node to its most-likely source chapter, from
         // its own References — fuzzy-matched the same way
         // NodeKnowledgeIndexService.ChunkTagMatchesReference already does
         // for RAG indexing/coverage checks, reused here for consistency
@@ -109,35 +84,70 @@ internal static class CapabilityGraphLevelAutoNamer
             }
         }
 
-        // ---- 3. For each tier, take the majority chapter among its nodes
-        // (skip tiers where no node could be traced to any chapter). ----
-        var results = new List<(int LevelIndex, string Name)>();
-        foreach (var tierGroup in tierByNodeId.GroupBy(kv => kv.Value))
+        // ---- 2. Nodes that couldn't be traced to any chapter (rare — only
+        // ever expected for manually-added nodes with no References)
+        // inherit whichever chapter the nearest PRECEDING node (by
+        // SortOrder, the document's own reading order) belongs to, so they
+        // still land in a sensible level instead of getting dropped. Any
+        // still-untraced LEADING nodes fall back to the first known
+        // chapter instead. ----
+        var orderedNodes = nodes.OrderBy(n => n.SortOrder).ToList();
+        int? lastKnownChapter = null;
+        foreach (var node in orderedNodes)
         {
-            var chapterVotes = tierGroup
-                .Select(kv => chapterByNodeId.TryGetValue(kv.Key, out var chapter) ? chapter : (int?)null)
-                .Where(c => c.HasValue)
-                .Select(c => c!.Value)
-                .ToList();
-
-            if (chapterVotes.Count == 0)
+            if (chapterByNodeId.TryGetValue(node.NodeId, out var chapter))
             {
-                continue;
+                lastKnownChapter = chapter;
             }
-
-            var dominantChapter = chapterVotes
-                .GroupBy(c => c)
-                .OrderByDescending(g => g.Count())
-                .ThenBy(g => g.Key)
-                .First()
-                .Key;
-
-            if (chapterTitleByNumber.TryGetValue(dominantChapter, out var title) && !string.IsNullOrWhiteSpace(title))
+            else if (lastKnownChapter is int fallbackChapter)
             {
-                results.Add((tierGroup.Key, title.Trim()));
+                chapterByNodeId[node.NodeId] = fallbackChapter;
             }
         }
 
-        return results;
+        var firstKnownChapter = orderedNodes
+            .Select(n => chapterByNodeId.TryGetValue(n.NodeId, out var c) ? c : (int?)null)
+            .FirstOrDefault(c => c.HasValue);
+        if (firstKnownChapter.HasValue)
+        {
+            foreach (var node in orderedNodes.Where(n => !chapterByNodeId.ContainsKey(n.NodeId)))
+            {
+                chapterByNodeId[node.NodeId] = firstKnownChapter.Value;
+            }
+        }
+
+        // ---- 3. Group nodes by their assigned chapter, in the order that
+        // chapter first appears in the document's own node ordering — this
+        // becomes each chapter's sequential 0-based LevelIndex. ----
+        var chapterOrder = orderedNodes
+            .Select(n => chapterByNodeId.TryGetValue(n.NodeId, out var c) ? c : (int?)null)
+            .Where(c => c.HasValue)
+            .Select(c => c!.Value)
+            .Distinct()
+            .ToList();
+
+        var levelIndexByChapter = chapterOrder
+            .Select((chapter, index) => (chapter, index))
+            .ToDictionary(x => x.chapter, x => x.index);
+
+        var levelIndexByNodeId = chapterByNodeId
+            .Where(kv => levelIndexByChapter.ContainsKey(kv.Value))
+            .ToDictionary(kv => kv.Key, kv => levelIndexByChapter[kv.Value]);
+
+        var levels = new List<(int LevelIndex, string Name)>();
+        foreach (var chapter in chapterOrder)
+        {
+            if (chapterTitleByNumber.TryGetValue(chapter, out var title) && !string.IsNullOrWhiteSpace(title))
+            {
+                levels.Add((levelIndexByChapter[chapter], title.Trim()));
+            }
+        }
+
+        return new Result
+        {
+            Levels = levels,
+            LevelIndexByNodeId = levelIndexByNodeId
+        };
     }
 }
+

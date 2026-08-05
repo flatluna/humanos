@@ -39,12 +39,50 @@ public sealed class ExampleCardIllustrationService
     /// </summary>
     private const int MaxIllustratedCardsPerNode = 10;
 
+    /// <summary>
+    /// Style guidance used ONLY when the owning Capability's
+    /// PedagogicalAudience is "YoungLearner" (K-12/early-childhood courses)
+    /// — see <see cref="Models.Capabilities.Capability.PedagogicalAudience"/>.
+    /// Children may appear in the scene when the card's own content actually
+    /// calls for it (e.g. a classroom, counting kids), but the overall style
+    /// stays a warm, cartoon-style children's-book illustration either way.
+    /// </summary>
+    private const string KidsIllustrationStyle =
+        "A simple, warm, child-friendly educational illustration for a K-12 learning app. " +
+        "Flat design, soft cheerful colors, single clear focal scene, friendly and age-appropriate, " +
+        "professional children's book illustration style. Children may appear in the scene only if " +
+        "the content described below genuinely calls for it.";
+
+    /// <summary>
+    /// Default style for every other capability (2026-08-05 fix — every
+    /// card illustration used to be forced into the cartoon/children's-book
+    /// style above regardless of subject/audience, which was wrong for
+    /// adult/professional courses). Deliberately does NOT force a person
+    /// into the scene (2026-08-05 follow-up fix — the old wording forced
+    /// "real adult people" into EVERY card, so a card about a complex
+    /// number or a country's flag rendered as a generic photo of someone
+    /// gesturing at a whiteboard instead of the actual content). The real
+    /// subject accuracy comes from the card's own DiagramPrompt/MathDiagram
+    /// (see ExperienceDesignerAgent) — this constant only sets rendering
+    /// quality/realism, not WHO/WHAT appears in the scene.
+    /// </summary>
+    private const string RealisticAdultIllustrationStyle =
+        "A realistic, professional educational illustration/photo for an adult learning app. " +
+        "Photorealistic or clean diagrammatic style as appropriate to the subject, natural lighting when a real " +
+        "scene is depicted, single clear focal composition. If people appear, they must be real adults, never a " +
+        "cartoon and never a child.";
+
     private readonly GraphIllustrationImageService _imageService;
+    private readonly MathDiagramRenderService _mathDiagramRenderService;
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
 
-    public ExampleCardIllustrationService(GraphIllustrationImageService imageService, IConfiguration configuration)
+    public ExampleCardIllustrationService(
+        GraphIllustrationImageService imageService,
+        MathDiagramRenderService mathDiagramRenderService,
+        IConfiguration configuration)
     {
         _imageService = imageService;
+        _mathDiagramRenderService = mathDiagramRenderService;
         _illustrationStorage = new CapabilityGraphIllustrationStorageService(configuration);
     }
 
@@ -65,7 +103,9 @@ public sealed class ExampleCardIllustrationService
         Guid capabilityGraphNodeId,
         int existingIllustrationCount,
         List<ExampleCardDto> exampleCards,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        byte[]? brandLogoBytes = null,
+        string? pedagogicalAudience = null)
     {
         if (!IsConfigured || exampleCards.Count == 0)
         {
@@ -73,6 +113,7 @@ public sealed class ExampleCardIllustrationService
         }
 
         var generatedCount = 0;
+        var styleGuidance = pedagogicalAudience == "YoungLearner" ? KidsIllustrationStyle : RealisticAdultIllustrationStyle;
 
         var cardsToIllustrate = exampleCards
             .Where(c => c.SuggestedForIllustration)
@@ -83,16 +124,36 @@ public sealed class ExampleCardIllustrationService
         {
             try
             {
-                var plainText = Regex.Replace(card.Text, "<[^>]+>", " ").Trim();
-                var prompt =
-                    "A simple, warm, child-friendly educational illustration for a K-12 learning app. " +
-                    $"Scene: {card.Title} — {plainText}. " +
-                    "Flat design, soft cheerful colors, no text, no letters, no numbers, no words, " +
-                    "single clear focal scene, friendly and age-appropriate, professional children's " +
-                    "book illustration style.";
+                // Prefer the agent's own DiagramPrompt/MathDiagram (2026-08-05
+                // fix — content-accurate illustrations, e.g. an actual Argand-
+                // plane point for a complex number) over the old fallback of
+                // synthesizing a generic prompt from Title/Text, which forced
+                // every card into the same "person explaining" stock-photo
+                // shape regardless of subject matter.
+                string? diagramPrompt = card.DiagramPrompt;
+                if (card.MathDiagram is null && string.IsNullOrWhiteSpace(diagramPrompt))
+                {
+                    var plainText = Regex.Replace(card.Text, "<[^>]+>", " ").Trim();
+                    diagramPrompt =
+                        $"{styleGuidance} " +
+                        $"Scene: {card.Title} — {plainText}. " +
+                        "No text, no letters, no numbers, no words in the image.";
+                }
+                else if (diagramPrompt is not null)
+                {
+                    diagramPrompt = $"{styleGuidance} {diagramPrompt}";
+                }
 
-                var generated = await _imageService.GenerateAsync(prompt, cancellationToken);
-                using var stream = generated.ImageBytes.ToStream();
+                object generated = card.MathDiagram is not null
+                    ? await _mathDiagramRenderService.RenderAsync(card.MathDiagram, cancellationToken)
+                    : await _imageService.GenerateAsync(diagramPrompt!, brandLogoBytes, cancellationToken);
+                var (imageBytes, imageModel, width, height) = generated switch
+                {
+                    MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),
+                    GraphIllustrationImageService.GeneratedIllustration g => (g.ImageBytes, g.ImageModel, g.Width, g.Height),
+                    _ => throw new InvalidOperationException("Unreachable")
+                };
+                using var stream = imageBytes.ToStream();
                 var imageIndex = existingIllustrationCount + generatedCount + 1;
                 var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                     tenantId, capabilityId, capabilityGraphNodeId, imageIndex, stream, cancellationToken: cancellationToken);
@@ -102,12 +163,14 @@ public sealed class ExampleCardIllustrationService
                     CapabilityGraphNodeIllustrationId = Guid.NewGuid(),
                     CapabilityGraphNodeId = capabilityGraphNodeId,
                     StoragePath = storagePath,
-                    Prompt = prompt,
+                    Prompt = card.MathDiagram is not null
+                        ? (card.MathDiagram.EquationLabel ?? "MathDiagram")
+                        : diagramPrompt!,
                     Caption = card.Title,
                     Purpose = IllustrationPurpose.Example,
-                    ImageModel = generated.ImageModel,
-                    Width = generated.Width,
-                    Height = generated.Height,
+                    ImageModel = imageModel,
+                    Width = width,
+                    Height = height,
                     CreatedDate = DateTime.UtcNow
                 };
 

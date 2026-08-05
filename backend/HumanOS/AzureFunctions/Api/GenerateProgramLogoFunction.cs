@@ -71,7 +71,7 @@ public sealed class GenerateProgramLogoFunction
             $"'{body.Name}'. {body.Description}. " +
             "Flat design, no text, no letters, no words, centered composition on a simple background, soft color palette, square format.";
 
-        var generated = await _imageService.GenerateAsync(prompt, cancellationToken);
+        var generated = await _imageService.GenerateAsync(prompt, cancellationToken: cancellationToken);
 
         var response = new GenerateResponse
         {

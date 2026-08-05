@@ -19,6 +19,11 @@ export interface BackendCapabilityGraphNode {
   SortOrder: number;
   State: CapabilityGraphNodeState;
   IllustrationId?: string;
+  /** 0-based index of the source document chapter/module this node belongs
+   * to (2026-08-04) — what groupIntoLevels now groups nodes by. Null/undefined
+   * for nodes whose chapter couldn't be traced, or capabilities created
+   * before this field existed — falls back to edge-tier grouping. */
+  ChapterIndex?: number | null;
 }
 
 export type BackendRelationshipType = 0 | 1;
@@ -283,7 +288,7 @@ export interface GraphNodeInfoDto {
 
 export function completeNode(
   learningSessionNodeId: string
-): Promise<{ success: boolean; newlyUnlockedNodes: GraphNodeInfoDto[] }> {
+): Promise<{ Success: boolean; NewlyUnlockedNodes: GraphNodeInfoDto[] }> {
   return apiPost('/instructor-runtime/nodes/complete', {
     LearningSessionNodeId: learningSessionNodeId,
   });

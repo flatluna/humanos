@@ -7,17 +7,18 @@ await connection.OpenAsync();
 
 await using var cmd = new SqlCommand(
     """
-    SELECT p.PersonId, p.Email, pp.DisplayName, p.OrgRole, p.IsActive,
-           p.DepartmentId, d.Name AS DepartmentName,
-           p.JobRoleId, jr.Title AS JobRoleTitle,
-           p.ManagerId, mpp.DisplayName AS ManagerDisplayName
-    FROM dbo.Person p
-    LEFT JOIN dbo.PersonProfile pp ON pp.PersonId = p.PersonId
-    LEFT JOIN dbo.Department d ON d.DepartmentId = p.DepartmentId
-    LEFT JOIN dbo.JobRole jr ON jr.JobRoleId = p.JobRoleId
-    LEFT JOIN dbo.Person m ON m.PersonId = p.ManagerId
-    LEFT JOIN dbo.PersonProfile mpp ON mpp.PersonId = m.PersonId
-    WHERE p.Email = 'jorgeruizagent@gmail.com';
+    SELECT c.CapabilityId, c.Name, c.IncludeProductionStep, c.CreatedDate
+    FROM dbo.Capability c
+    WHERE c.CapabilityId = '9BB1BBF6-9044-4E64-9A02-54EC37E41C44'
+        OR c.CapabilityId = 'b1bbf623-9044-4e64-9a02-54ec37e41c44';
+
+    SELECT n.Name AS NodeName, s.StepType, s.SortOrder
+    FROM dbo.NodeExperienceBlueprints neb
+    JOIN dbo.CapabilityGraphNodes n ON n.CapabilityGraphNodeId = neb.CapabilityGraphNodeId
+    JOIN dbo.CapabilityGraphs g ON g.CapabilityGraphId = n.CapabilityGraphId
+    JOIN dbo.NodeExperienceBlueprintSteps s ON s.NodeExperienceBlueprintId = neb.NodeExperienceBlueprintId
+    WHERE g.CapabilityId = 'b1bbf623-9044-4e64-9a02-54ec37e41c44'
+    ORDER BY n.Name, s.SortOrder;
     """,
     connection);
 

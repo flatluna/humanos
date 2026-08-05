@@ -29,6 +29,9 @@ public class CapabilityGraphConfiguration : IEntityTypeConfiguration<CapabilityG
         builder.Property(g => g.CoverImageStoragePath)
             .HasMaxLength(1000);
 
+        builder.Property(g => g.BrandLogoStoragePath)
+            .HasMaxLength(1000);
+
         builder.Property(g => g.CreatedDate)
             .HasDefaultValueSql("GETUTCDATE()")
             .IsRequired();

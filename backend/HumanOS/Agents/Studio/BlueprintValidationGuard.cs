@@ -42,6 +42,28 @@ public static class BlueprintValidationGuard
         ExperienceStepType.Assessment
     ];
 
+    /// <summary>Used when the blueprint omits the optional Production step
+    /// (2026-08-04, see <see cref="HumanOS.Models.Capabilities.Capability.IncludeProductionStep"/>)
+    /// and has no Deep Dive step either.</summary>
+    private static readonly ExperienceStepType[] NoProductionStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Assessment
+    ];
+
+    /// <summary>Used when the blueprint omits the optional Production step
+    /// but DOES have a Deep Dive step.</summary>
+    private static readonly ExperienceStepType[] FormalEducationNoProductionStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.DeepDive,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Assessment
+    ];
+
     private static readonly string[] PlaceholderMarkers =
     [
         "lorem ipsum", "todo", "[...]", "placeholder"
@@ -61,7 +83,14 @@ public static class BlueprintValidationGuard
         ArgumentNullException.ThrowIfNull(response);
 
         var hasExamplesStep = blueprint.Steps.Any(s => s.StepType == ExperienceStepType.DeepDive);
-        var stepOrder = hasExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+        var hasProductionStep = blueprint.Steps.Any(s => s.StepType == ExperienceStepType.Production);
+        var stepOrder = (hasExamplesStep, hasProductionStep) switch
+        {
+            (true, true) => FormalEducationStepOrder,
+            (true, false) => FormalEducationNoProductionStepOrder,
+            (false, true) => CanonicalStepOrder,
+            (false, false) => NoProductionStepOrder
+        };
 
         var orderedSteps = blueprint.Steps.OrderBy(s => s.SortOrder).ToList();
         var structuralFailure = false;

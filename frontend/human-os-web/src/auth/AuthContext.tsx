@@ -33,6 +33,11 @@ export interface HumanOsUser {
    *  override it for the session and persists that back via
    *  updatePreferredLanguage. */
   preferredLanguage: string | null;
+  /** Person.OrgRole from /api/me ("Employee"/"Manager"/"HRAdmin") — an
+   *  HRAdmin gets the "Aprobar (demo HR)" force-advance control on a
+   *  gated runtime step (see NodeWorkflowPage.tsx). Defaults to
+   *  'Employee' until onboarded/looked up. */
+  orgRole: 'Employee' | 'Manager' | 'HRAdmin';
 }
 
 interface AuthContextValue {
@@ -80,11 +85,12 @@ function extractTid(claims: Record<string, unknown> | undefined, homeAccountId: 
 }
 
 interface MeResponse {
-  PersonId: string;
-  TenantId: string | null;
-  TenantName: string | null;
-  Email: string | null;
-  PreferredLanguage: string | null;
+  personId: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  email: string | null;
+  preferredLanguage: string | null;
+  orgRole: 'Employee' | 'Manager' | 'HRAdmin';
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -140,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/me', {
         headers: { 'X-Azure-OID': oid, 'X-Azure-TID': tid },
+        cache: 'no-store',
       });
 
       if (res.ok) {
@@ -149,18 +156,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           oid,
           tid,
           name,
-          email: data.Email ?? email,
-          personId: data.PersonId,
-          tenantId: data.TenantId,
-          tenantName: data.TenantName,
+          email: data.email ?? email,
+          personId: data.personId,
+          tenantId: data.tenantId,
+          tenantName: data.tenantName,
           onboarded: true,
           lastLogin,
-          preferredLanguage: data.PreferredLanguage,
+          preferredLanguage: data.preferredLanguage,
+          orgRole: data.orgRole ?? 'Employee',
         });
         // Start the app in the language saved on the account, not just
         // whatever localStorage/browser detection guessed before login.
-        if (data.PreferredLanguage) {
-          void i18n.changeLanguage(data.PreferredLanguage);
+        if (data.preferredLanguage) {
+          void i18n.changeLanguage(data.preferredLanguage);
         }
       } else if (res.status === 404) {
         // First time — needs to complete onboarding (create the company + admin).
@@ -176,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           onboarded: false,
           lastLogin,
           preferredLanguage: null,
+          orgRole: 'Employee',
         });
       } else {
         // Any other status (5xx, wrong-proxy 4xx, etc.) means we couldn't

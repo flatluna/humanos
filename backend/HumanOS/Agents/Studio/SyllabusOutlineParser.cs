@@ -116,6 +116,16 @@ public static class SyllabusOutlineParser
         @"^[\-\*•\s]*\**\s*(?<major>\d+)\.(?<minor>\d+)\.?\s*[:\-–]?\s*(?<title>.+?)\**\s*$",
         RegexOptions.Compiled);
 
+    /// <summary>Bare numeric heading with no keyword prefix at all, e.g.
+    /// "1.0 Introduction" (chapter, minor "0") or "3.2 General
+    /// Responsibilities" (subsection of chapter 3) — the convention many
+    /// real policy/HR/legal documents use instead of "Módulo"/"Unit".
+    /// Requires the title to start with a letter to avoid matching stray
+    /// numeric text (dates, page numbers, money amounts) as a heading.</summary>
+    private static readonly Regex BareNumericHeaderRegex = new(
+        @"^(?<major>\d{1,2})\.(?<minor>\d{1,2})\s+(?<title>[A-Za-zÀ-ÿ].{1,90})$",
+        RegexOptions.Compiled);
+
     /// <summary>Minimum number of top-level modules required to consider
     /// the document confidently structured — a single detected "module"
     /// is never enough signal to trust over the document's own free-form
@@ -134,7 +144,12 @@ public static class SyllabusOutlineParser
     /// syllabus structure in <paramref name="documentText"/>. Returns a
     /// result with <see cref="SyllabusOutlineParseResult.IsConfidentStructure"/>
     /// = false (never a partial/best-effort structure) whenever the
-    /// detected pattern doesn't clear every quality gate below.
+    /// detected pattern doesn't clear every quality gate below. Tries the
+    /// keyword-prefixed convention ("Módulo 1", "Unit 2") first, then the
+    /// bare-numeric convention ("1.0 Introduction", "3.2 General
+    /// Responsibilities") — both are zero-cost, no-LLM detections, so
+    /// trying both is cheap and keeps genuinely numbered documents out of
+    /// the LLM-based Tier 1 fallback entirely.
     /// </summary>
     public static SyllabusOutlineParseResult Parse(string documentText)
     {
@@ -143,6 +158,18 @@ public static class SyllabusOutlineParser
             return Rejected("El documento está vacío.");
         }
 
+        var keywordResult = ParseKeywordHeadings(documentText);
+        if (keywordResult.IsConfidentStructure)
+        {
+            return keywordResult;
+        }
+
+        var numericResult = ParseBareNumericHeadings(documentText);
+        return numericResult.IsConfidentStructure ? numericResult : keywordResult;
+    }
+
+    private static SyllabusOutlineParseResult ParseKeywordHeadings(string documentText)
+    {
         var lines = documentText.Replace("\r\n", "\n").Split('\n');
         var modules = new List<SyllabusModule>();
         SyllabusModule? currentModule = null;
@@ -217,6 +244,131 @@ public static class SyllabusOutlineParser
             return Rejected(
                 "Solo algunos módulos tienen subsecciones numeradas detectadas — la estructura no es " +
                 "consistente en todo el documento.");
+        }
+
+        return new SyllabusOutlineParseResult
+        {
+            IsConfidentStructure = true,
+            Modules = modules
+        };
+    }
+
+    /// <summary>
+    /// Detects the "N.0 Title" (chapter) / "N.M Title" (subsection of
+    /// chapter N) convention with no keyword prefix at all (e.g. a policy
+    /// document's own "1.0 Introduction" / "1.1 Purpose of the Policy" /
+    /// "3.2 General Responsibilities" numbering). Purely arithmetic —
+    /// groups every match by its own major number, in the order chapters
+    /// first appear, no LLM judgment involved. Handles documents that
+    /// repeat their own numbered index twice (a "Table of Contents" page
+    /// followed by the real body repeating every heading): when the same
+    /// (major, minor) pair is matched more than once, keeps whichever
+    /// occurrence sits LATER in the text — a TOC listing always precedes
+    /// the real content it summarizes.
+    /// </summary>
+    private static SyllabusOutlineParseResult ParseBareNumericHeadings(string documentText)
+    {
+        var lines = documentText.Replace("\r\n", "\n").Split('\n');
+        var offset = 0;
+        var bestByNumber = new Dictionary<(int Major, int Minor), (string Title, int Offset)>();
+        var numberOrder = new List<(int Major, int Minor)>();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            var match = trimmed.Length > 0 ? BareNumericHeaderRegex.Match(trimmed) : Match.Empty;
+            if (match.Success
+                && int.TryParse(match.Groups["major"].Value, out var major)
+                && int.TryParse(match.Groups["minor"].Value, out var minor))
+            {
+                var key = (major, minor);
+                var title = match.Groups["title"].Value.Trim();
+                if (!bestByNumber.TryGetValue(key, out var existing))
+                {
+                    numberOrder.Add(key);
+                    bestByNumber[key] = (title, offset);
+                }
+                else if (offset > existing.Offset)
+                {
+                    bestByNumber[key] = (title, offset);
+                }
+            }
+
+            offset += line.Length + 1;
+        }
+
+        if (numberOrder.Count == 0)
+        {
+            return Rejected("No se detectaron encabezados numerados del tipo '1.0', '1.1', etc.");
+        }
+
+        var modules = new List<SyllabusModule>();
+        var moduleByMajor = new Dictionary<int, SyllabusModule>();
+
+        foreach (var (major, minor) in numberOrder.OrderBy(key => bestByNumber[key].Offset))
+        {
+            var (title, matchOffset) = bestByNumber[(major, minor)];
+            if (minor == 0)
+            {
+                var module = new SyllabusModule
+                {
+                    Number = major,
+                    Keyword = string.Empty,
+                    Title = $"{major}.0 {title}",
+                    StartOffset = matchOffset
+                };
+                modules.Add(module);
+                moduleByMajor[major] = module;
+                continue;
+            }
+
+            if (!moduleByMajor.TryGetValue(major, out var parentModule))
+            {
+                parentModule = new SyllabusModule
+                {
+                    Number = major,
+                    Keyword = string.Empty,
+                    Title = $"{major}.0",
+                    StartOffset = matchOffset
+                };
+                modules.Add(parentModule);
+                moduleByMajor[major] = parentModule;
+            }
+
+            parentModule.Subsections.Add(new SyllabusSubsection
+            {
+                Number = $"{major}.{minor}",
+                Title = title,
+                StartOffset = matchOffset
+            });
+        }
+
+        modules = modules.OrderBy(m => m.StartOffset).ToList();
+
+        if (modules.Count < MinModules)
+        {
+            return Rejected(
+                $"Solo se detectaron {modules.Count} capítulo(s) numerado(s) — se requieren al menos " +
+                $"{MinModules} (ej. '1.0', '2.0') para considerar el documento estructurado.");
+        }
+
+        for (var i = 1; i < modules.Count; i++)
+        {
+            if (modules[i].Number <= modules[i - 1].Number)
+            {
+                return Rejected(
+                    $"La numeración de los capítulos no es consistente/creciente (Capítulo {modules[i - 1].Number} " +
+                    $"seguido de Capítulo {modules[i].Number}).");
+            }
+        }
+
+        var firstModuleOffset = modules[0].StartOffset;
+        var coverage = 1.0 - (double)firstModuleOffset / documentText.Length;
+        if (coverage < MinLeadingTextCoverage)
+        {
+            return Rejected(
+                $"El primer capítulo numerado aparece muy tarde en el documento (cobertura {coverage:P0}) — " +
+                "es probable que sea una coincidencia incidental, no un índice real.");
         }
 
         return new SyllabusOutlineParseResult

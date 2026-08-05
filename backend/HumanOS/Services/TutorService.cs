@@ -82,11 +82,11 @@ public sealed class TutorService
         /// each mastered item, and after a regression-to-Teaching cycle).</summary>
         public int AttemptsUsedForItem { get; set; }
 
-        /// <summary>How many of the <see cref="RecallLoopGate.ItemsRequiredToAdvance"/>
+        /// <summary>How many of the <see cref="ItemsRequired"/>
         /// distinct items the student has mastered so far on this step.</summary>
         public int ItemsMastered { get; set; }
 
-        public int ItemsRequired { get; set; } = RecallLoopGate.ItemsRequiredToAdvance;
+        public int ItemsRequired { get; set; } = RecallLoopGate.DefaultItemsRequiredToAdvance;
 
         /// <summary>True if THIS specific attempt was scored as mastery of
         /// its item (RecallScore &gt;= MasteryThreshold).</summary>
@@ -190,7 +190,7 @@ public sealed class TutorService
     /// row's TutorPrompt, the freshly-computed score becomes its
     /// TutorScore), and — per <see cref="RecallLoopGate"/> — either: (a)
     /// keeps the loop going on the current or next item, (b) advances the
-    /// step to Production once <see cref="RecallLoopGate.ItemsRequiredToAdvance"/>
+    /// step to Production once <see cref="RecallLoopGate.DefaultItemsRequiredToAdvance"/> (or the owning Capability's override)
     /// distinct items have been mastered, or (c) regresses the whole node
     /// back to Teaching if the student exhausted
     /// <see cref="RecallLoopGate.MaxAttemptsPerItem"/> attempts on one item
@@ -293,7 +293,8 @@ public sealed class TutorService
         // blueprint content (see LearningSessionStep.CurrentRecallPrompt).
         step.CurrentRecallPrompt = turn.Response.Message;
 
-        var verdict = RecallLoopGate.Evaluate(priorScoresThisActivation, score);
+        var itemsRequiredToAdvance = await ResolveRecallItemsRequiredAsync(dbContext, step.LearningSessionNode!.CapabilityGraphNodeId, cancellationToken);
+        var verdict = RecallLoopGate.Evaluate(priorScoresThisActivation, score, itemsRequiredToAdvance);
 
         InstructorRuntimeOrchestrator.CurrentStepResult? nextStep = null;
         if (verdict.StepComplete)
@@ -311,11 +312,29 @@ public sealed class TutorService
             LearningEvidenceId = evidenceId,
             AttemptsUsedForItem = verdict.AttemptsUsedForCurrentItem,
             ItemsMastered = verdict.ItemsMasteredSoFar,
+            ItemsRequired = itemsRequiredToAdvance,
             Mastered = verdict.ItemMasteredThisAttempt,
             Advanced = verdict.StepComplete,
             RegressedToTeaching = verdict.ItemFailed,
             NextStep = nextStep
         };
+    }
+
+    /// <summary>Resolves the effective RecallLoopGate.Evaluate itemsRequiredToAdvance
+    /// for a given node's owning Capability — its <see cref="HumanOS.Models.Capabilities.Capability.RecallItemsRequired"/>
+    /// override when set (clamped to RecallLoopGate's hard bounds), otherwise
+    /// RecallLoopGate.DefaultItemsRequiredToAdvance.</summary>
+    private static async Task<int> ResolveRecallItemsRequiredAsync(HumanOsDbContext dbContext, Guid capabilityGraphNodeId, CancellationToken cancellationToken)
+    {
+        var configuredValue = await dbContext.CapabilityGraphNodes
+            .AsNoTracking()
+            .Where(n => n.CapabilityGraphNodeId == capabilityGraphNodeId)
+            .Select(n => n.CapabilityGraph!.Capability!.RecallItemsRequired)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return configuredValue.HasValue
+            ? Math.Clamp(configuredValue.Value, RecallLoopGate.MinItemsRequiredToAdvance, RecallLoopGate.MaxItemsRequiredToAdvance)
+            : RecallLoopGate.DefaultItemsRequiredToAdvance;
     }
 
     /// <summary>
@@ -514,6 +533,11 @@ public sealed class TutorService
             var existingCount = await dbContext.CapabilityGraphNodeIllustrations.CountAsync(i => i.CapabilityGraphNodeId == capabilityGraphNodeId, cancellationToken);
             var imageIndex = 300 + existingCount; // Base offset for Tutor-Recall-turn illustrations — never collides with the pipeline's low sequential indexes, KnowledgeExpansion's fixed 99, Assessment's 100+, or BlueprintReviewEdit's 200+ ranges.
 
+            // Brand logo reference (2026-08-04), if one was attached at
+            // capability-creation time — see GraphIllustrationImageService's
+            // LogoReferenceInstruction for what the model is told to do with it.
+            var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(dbContext, capabilityId, cancellationToken);
+
             // Two mutually-exclusive rendering paths, decided by
             // TutorAgentV2 (LLM proposes, code just dispatches): precise
             // coordinate-plane graphs go through the deterministic SkiaSharp
@@ -521,7 +545,7 @@ public sealed class TutorService
             // as before. See MathDiagramRenderService's doc comment.
             object generated = mathDiagram is not null
                 ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
-                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+                : await _imageService.GenerateAsync(diagramPrompt!, brandLogoBytes, cancellationToken);
             var (imageBytes, imageModel, width, height) = generated switch
             {
                 MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),

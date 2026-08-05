@@ -46,6 +46,29 @@ public sealed class InstructorRuntimeOrchestrator
         ExperienceStepType.Assessment
     ];
 
+    /// <summary>Used ONLY when the node's blueprint omits the optional
+    /// Production step (2026-08-04, see
+    /// <see cref="HumanOS.Models.Capabilities.Capability.IncludeProductionStep"/>)
+    /// and has no Deep Dive step either.</summary>
+    private static readonly ExperienceStepType[] NoProductionStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Assessment
+    ];
+
+    /// <summary>Used ONLY when the node's blueprint omits the optional
+    /// Production step but DOES have a Deep Dive step.</summary>
+    private static readonly ExperienceStepType[] FormalEducationNoProductionStepOrder =
+    [
+        ExperienceStepType.Hypothesis,
+        ExperienceStepType.Teaching,
+        ExperienceStepType.DeepDive,
+        ExperienceStepType.Recall,
+        ExperienceStepType.Assessment
+    ];
+
     /// <summary>One illustration resolved from Data Lake metadata (never the image bytes themselves).</summary>
     public sealed class IllustrationRef
     {
@@ -376,10 +399,23 @@ public sealed class InstructorRuntimeOrchestrator
         // detect its presence directly from THIS blueprint (not from the
         // Capability flag, which could theoretically change after the
         // blueprint was generated) and advance through the matching order.
+        // Same detection approach for the OPTIONAL Production step
+        // (Capability.IncludeProductionStep, 2026-08-04) — a blueprint
+        // persisted with it omitted has no Production row at all, so
+        // advancing must skip straight from Recall to Assessment.
         var hasExamplesStep = await dbContext.NodeExperienceBlueprintSteps
             .AsNoTracking()
             .AnyAsync(s => s.NodeExperienceBlueprintId == sessionNode.NodeExperienceBlueprintId && s.StepType == ExperienceStepType.DeepDive, cancellationToken);
-        var stepOrder = hasExamplesStep ? FormalEducationStepOrder : CanonicalStepOrder;
+        var hasProductionStep = await dbContext.NodeExperienceBlueprintSteps
+            .AsNoTracking()
+            .AnyAsync(s => s.NodeExperienceBlueprintId == sessionNode.NodeExperienceBlueprintId && s.StepType == ExperienceStepType.Production, cancellationToken);
+        var stepOrder = (hasExamplesStep, hasProductionStep) switch
+        {
+            (true, true) => FormalEducationStepOrder,
+            (true, false) => FormalEducationNoProductionStepOrder,
+            (false, true) => CanonicalStepOrder,
+            (false, false) => NoProductionStepOrder
+        };
 
         var currentIndex = Array.IndexOf(stepOrder, activeStep.StepType);
         var nextStepType = stepOrder[currentIndex + 1];

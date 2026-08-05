@@ -57,6 +57,19 @@ public class CapabilityGraph
     /// GenerateCapabilityCoverImageFunction.</summary>
     public string? CoverImageStoragePath { get; set; }
 
+    /// <summary>Blob StoragePath (same "capability-graphs" container, see
+    /// <see cref="Storage.CapabilityGraphIllustrationStorageService.UploadBrandLogoAsync"/>)
+    /// of the company/brand logo the designer attached at capability-creation
+    /// time (2026-08-04 "logo en las ilustraciones" feature). When set, every
+    /// illustration generated for this capability (node illustrations, cover
+    /// image, example cards, and later on-demand images from Assessment/
+    /// Tutor/BlueprintReview/AddNode) is generated via
+    /// <see cref="Agents.Studio.GraphIllustrationImageService"/>'s image-edit
+    /// path using this logo as a visual reference, instead of plain
+    /// text-to-image. Null when no logo was attached — behavior is then
+    /// unchanged from before this feature existed.</summary>
+    public string? BrandLogoStoragePath { get; set; }
+
     /// <summary>Fecha UTC de creación del grafo.</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

@@ -5,7 +5,7 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { ProfileMenu } from './ProfileMenu';
 import { useSidebarStore } from '@/store/useSidebarStore';
-import { useEnterpriseContext } from '@/features/enterprise-context/hooks/useEnterpriseContext';
+import { useAuth } from '@/auth/AuthContext';
 import { ALL_NAV_ITEMS } from '@/components/navigation/navItems';
 
 /** Known Growth Plan sub-steps that don't have their own top-level nav
@@ -32,7 +32,7 @@ export function AppHeader() {
   const { t } = useTranslation();
   const collapsed = useSidebarStore((state) => state.collapsed);
   const toggleSidebar = useSidebarStore((state) => state.toggle);
-  const { data: enterpriseContext } = useEnterpriseContext();
+  const { user } = useAuth();
   const { pageLabelKey, pageTo, subLabelKey } = useBreadcrumbLabelKeys();
 
   return (
@@ -50,9 +50,14 @@ export function AppHeader() {
 
           <div className="flex items-center gap-2.5">
             <span className="h-6 w-6 shrink-0 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500" aria-hidden="true" />
-            <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
-              {t('common.appName')}
-            </span>
+            <div className="flex flex-col leading-tight">
+              <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
+                {t('common.appName')}
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-white/40">
+                {t('common.appEdition')}
+              </span>
+            </div>
           </div>
 
           {pageLabelKey && (
@@ -87,12 +92,7 @@ export function AppHeader() {
             <Bell className="h-4 w-4" />
           </button>
 
-          <ProfileMenu
-            userName="Jorge Pérez Luna"
-            roleName={enterpriseContext?.roleName}
-            organizationName={enterpriseContext?.organizationName}
-            variant="compact"
-          />
+          <ProfileMenu userName={user?.name ?? ''} variant="compact" />
         </div>
       </div>
     </header>

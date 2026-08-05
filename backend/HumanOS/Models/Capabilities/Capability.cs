@@ -71,6 +71,44 @@ public sealed class Capability
     /// </summary>
     public bool IncludeExamplesStep { get; set; } = true;
 
+    /// <summary>
+    /// Orthogonal to <see cref="IncludeExamplesStep"/> — this toggles the
+    /// FIXED Memory Paradox's own Production ("Aplícalo"/"Aplicación")
+    /// step, not the optional Deep Dive one (2026-08-04, client-facing
+    /// course-configuration feature: some clients don't want an open-ended
+    /// "apply it" step for every node). Default true (every capability
+    /// created before this field existed keeps the Production step,
+    /// zero behavior change). When false, every node's blueprint is
+    /// designed/persisted/validated with only 4 steps — Hypothesis,
+    /// Teaching, Recall, Assessment (plus the optional Deep Dive, if
+    /// <see cref="IncludeExamplesStep"/> is also true) — and the Runtime
+    /// simply never creates a Production LearningSessionStep for this
+    /// capability's nodes.
+    /// </summary>
+    public bool IncludeProductionStep { get; set; } = true;
+
+    /// <summary>
+    /// How many DISTINCT Recall items a learner must master before the
+    /// Recall step advances to Production/Assessment (2026-08-04, client-
+    /// facing course-configuration feature — some clients find the default
+    /// too demanding for every node). Null (the default, and every
+    /// capability created before this field existed) means "use
+    /// RecallLoopGate's own built-in default (3)". When set, must be
+    /// between 1 and 10 — see RecallLoopGate.Evaluate's itemsRequiredToAdvance
+    /// parameter.
+    /// </summary>
+    public int? RecallItemsRequired { get; set; }
+
+    /// <summary>
+    /// How many questions make up one Assessment ("cuestionario") round
+    /// for this capability's nodes (2026-08-04, client-facing course-
+    /// configuration feature — some clients find the default too long).
+    /// Null (the default, and every capability created before this field
+    /// existed) means "use AdaptiveAssessmentEngine's own built-in default
+    /// (5)". When set, must be between 1 and 10.
+    /// </summary>
+    public int? AssessmentQuestionsPerRound { get; set; }
+
     /// <summary>Which of the employer-assigned career-plan training tracks
     /// this capability belongs to (2026-08-01 — "cursos de empresa"
     /// feature): "job-skills" | "soft-skills" | "department-processes" |

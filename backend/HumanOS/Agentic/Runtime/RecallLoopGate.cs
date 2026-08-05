@@ -9,8 +9,10 @@ namespace HumanOS.Agentic.Runtime;
 /// (Studio) and the Score&gt;=70 Assessment cutoff.
 ///
 /// Product decision (confirmed 2026-07-19): Recall now requires
-/// genuinely recalling <see cref="ItemsRequiredToAdvance"/> DIFFERENT
-/// things (not just one) before the step advances to Production — each
+/// genuinely recalling <see cref="DefaultItemsRequiredToAdvance"/> DIFFERENT
+/// things (not just one, unless the owning Capability overrides this —
+/// see <see cref="HumanOS.Models.Capabilities.Capability.RecallItemsRequired"/>,
+/// 2026-08-04) before the step advances to Production — each
 /// item gets its own budget of <see cref="MaxAttemptsPerItem"/> attempts.
 /// If the student exhausts that budget on ANY item without mastering it,
 /// the step no longer advances anyway with a low score — instead the
@@ -28,8 +30,16 @@ public static class RecallLoopGate
     public const int MaxAttemptsPerItem = 5;
 
     /// <summary>How many distinct items the student must master before the
-    /// Recall step advances to Production.</summary>
-    public const int ItemsRequiredToAdvance = 3;
+    /// Recall step advances to Production — this is the DEFAULT used when
+    /// the owning Capability has no explicit override (see
+    /// <see cref="HumanOS.Models.Capabilities.Capability.RecallItemsRequired"/>,
+    /// 2026-08-04).</summary>
+    public const int DefaultItemsRequiredToAdvance = 3;
+
+    /// <summary>Hard bounds enforced on any per-Capability override of
+    /// <see cref="DefaultItemsRequiredToAdvance"/>.</summary>
+    public const int MinItemsRequiredToAdvance = 1;
+    public const int MaxItemsRequiredToAdvance = 10;
 
     public static bool IsMastered(int recallScore) => recallScore >= MasteryThreshold;
 
@@ -48,7 +58,11 @@ public static class RecallLoopGate
     /// RecallScore during the step's current activation, in chronological
     /// order (does NOT include <paramref name="latestScore"/>).</param>
     /// <param name="latestScore">The RecallScore of the attempt just made.</param>
-    public static Verdict Evaluate(IReadOnlyList<int> priorScoresThisActivation, int latestScore)
+    /// <param name="itemsRequiredToAdvance">Per-Capability override of
+    /// <see cref="DefaultItemsRequiredToAdvance"/> — caller is responsible
+    /// for clamping to [<see cref="MinItemsRequiredToAdvance"/>,
+    /// <see cref="MaxItemsRequiredToAdvance"/>].</param>
+    public static Verdict Evaluate(IReadOnlyList<int> priorScoresThisActivation, int latestScore, int itemsRequiredToAdvance = DefaultItemsRequiredToAdvance)
     {
         var itemsMastered = 0;
         var attemptsForCurrentItem = 0;
@@ -71,7 +85,7 @@ public static class RecallLoopGate
             attemptsForCurrentItem = 0;
         }
 
-        var stepComplete = itemsMastered >= ItemsRequiredToAdvance;
+        var stepComplete = itemsMastered >= itemsRequiredToAdvance;
         var itemFailed = !stepComplete && !masteredThisAttempt && attemptsForCurrentItem >= MaxAttemptsPerItem;
 
         return new Verdict(masteredThisAttempt, itemsMastered, attemptsForCurrentItem, stepComplete, itemFailed);

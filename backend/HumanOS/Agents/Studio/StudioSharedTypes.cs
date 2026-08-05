@@ -278,4 +278,23 @@ public sealed class RawMaterialItem
     /// "Nivel N" fallback.
     /// </summary>
     public string? ChapterTitle { get; set; }
+
+    /// <summary>
+    /// The title of the ANCESTOR chapter/module/unit this item belongs
+    /// under, when this item itself represents a finer-grained node
+    /// (numbered subsection, e.g. "1.1") rather than a whole top-level
+    /// chapter (2026-08-04 "Chapter = Level, Subsection = Node" design —
+    /// see <see cref="HumanOS.Agents.Studio.SyllabusModule"/>/<see
+    /// cref="HumanOS.Agents.Studio.SyllabusSubsection"/>). Used by
+    /// <see cref="HumanOS.Services.CapabilityGraphLevelAutoNamer"/> INSTEAD
+    /// OF <see cref="ChapterTitle"/> when set, so every subsection-level
+    /// item belonging to the same parent chapter/module collapses onto
+    /// ONE graph "level" name (the module's own title), while
+    /// <see cref="ChapterTitle"/> keeps identifying this item's own
+    /// (node-level) place in GraphArchitectAgent's chapter-order list.
+    /// Null when this item already represents a whole top-level chapter
+    /// with no further subsection split (LevelTitle == ChapterTitle in
+    /// that case, so callers should fall back to ChapterTitle).
+    /// </summary>
+    public string? LevelTitle { get; set; }
 }

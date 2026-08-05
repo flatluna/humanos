@@ -74,6 +74,34 @@ export interface StartPdfCapabilityGraphRequest {
    * none skipped or merged — for courses that must mirror an
    * externally-mandated curriculum exactly. */
   strictSyllabusMode?: boolean;
+  /** Optional (2026-08-04 "Paso 5: Diseño de la Capability"): the
+   * designer's reviewed/approved (possibly hand-edited) chapter/node
+   * outline, as returned by previewCapabilityOutline. When provided, the
+   * backend uses it VERBATIM instead of re-running detection — the
+   * generation loop then respects exactly these chapter/node names. */
+  approvedOutline?: CapabilityOutlineChapter[] | null;
+  /** Opt-out (2026-08-04): when false, every generated node blueprint
+   * OMITS the Production ("Aplícalo") step entirely. True/omitted (the
+   * default) keeps the existing 5-step Memory Paradox order. */
+  includeProductionStep?: boolean;
+  /** Optional (2026-08-04): how many successful Recall items a learner
+   * must complete before advancing past Recall, for every node in this
+   * course. Must be between 1 and 10 when provided; omit/null keeps the
+   * runtime default (3). */
+  recallItemsRequired?: number | null;
+  /** Optional (2026-08-04): how many questions make up one Assessment
+   * round, for every node in this course. Must be between 1 and 10 when
+   * provided; omit/null keeps the runtime default (5). */
+  assessmentQuestionsPerRound?: number | null;
+  /** Optional (2026-08-04 "logo en las ilustraciones" feature): the
+   * company/brand's real logo image, base64-encoded (no data: URL
+   * prefix — see readFileAsBase64), MUST be a PNG file. When provided,
+   * it's used as a visual reference for EVERY illustration generated for
+   * this capability (at creation time and later, e.g. Assessment/Tutor/
+   * BlueprintReview/AddNode illustrations) so the AI can actually see and
+   * reuse the real logo instead of guessing/hallucinating one. Omit/null
+   * for capabilities with no logo. */
+  logoImageBase64?: string | null;
 }
 
 export type PdfCapabilityGraphStage = 'Running' | 'Completed' | 'Failed';
@@ -196,6 +224,16 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   maxDeepDiveCardsPerNode?: number | null;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   strictSyllabusMode?: boolean;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  approvedOutline?: CapabilityOutlineChapter[] | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  includeProductionStep?: boolean;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  recallItemsRequired?: number | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  assessmentQuestionsPerRound?: number | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  logoImageBase64?: string | null;
 }
 
 /** Starts a V2 run from a short idea/goal description instead of a PDF —
@@ -206,4 +244,48 @@ export function startCapabilityGraphFromDescription(
   request: StartCapabilityGraphFromDescriptionRequest
 ): Promise<PdfCapabilityGraphRunStatus> {
   return apiPost<PdfCapabilityGraphRunStatus>('/studio/capability-graph/create-from-description', request);
+}
+
+/** One proposed NODE (fine-grained topic) under a chapter/level — see
+ * {@link CapabilityOutlinePreviewResult}. `startMarker` is round-tripped
+ * back to the backend unchanged (even if the designer edits `title`) so a
+ * subsequent real run can locate this node's text without re-running
+ * detection — never shown in the UI. */
+export interface CapabilityOutlineNode {
+  Title: string;
+  StartMarker: string;
+}
+
+/** One proposed CHAPTER (becomes a graph "level") — see
+ * {@link CapabilityOutlinePreviewResult}. */
+export interface CapabilityOutlineChapter {
+  Title: string;
+  StartMarker: string;
+  Nodes: CapabilityOutlineNode[];
+}
+
+/** How the outline was obtained (2026-08-04 "Modo A" vs "Modo B"):
+ * - 'Detected': the document already has its own explicit chapter/section
+ *   structure and it was located — low risk of inventing content.
+ * - 'InferredByAI': the document has NO explicit index of its own — the
+ *   model read the whole document and proposed a breakdown from scratch.
+ *   Higher cost; review more carefully before approving.
+ * - 'None': no usable structure could be detected or inferred at all. */
+export type CapabilityOutlineSource = 'Detected' | 'InferredByAI' | 'None';
+
+export interface CapabilityOutlinePreviewResult {
+  Source: CapabilityOutlineSource;
+  Chapters: CapabilityOutlineChapter[];
+  RejectionReason: string | null;
+}
+
+/** Cheap, detection-only preview of a document's chapter/node structure —
+ * runs ONLY text extraction + detection, WITHOUT the expensive
+ * Curador/GraphArchitect/illustrations pipeline, so the designer can
+ * review/approve the plan (Paso 5) before any real generation happens.
+ * Pass either a PDF (fileName + contentBase64) or plain text. */
+export function previewCapabilityOutline(
+  request: { fileName: string; contentBase64: string } | { text: string }
+): Promise<CapabilityOutlinePreviewResult> {
+  return apiPost<CapabilityOutlinePreviewResult>('/studio/capability-graph/preview-outline', request);
 }

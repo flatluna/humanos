@@ -89,7 +89,8 @@ public sealed class GenerateCapabilityCoverImageFunction
             $"'{capability.Name}'. {capability.CapabilityGraph.ExecutiveSummary ?? capability.Description}. " +
             "Flat design, no text, no letters, no words, wide banner composition, soft color palette.";
 
-        var generatedCover = await _imageService.GenerateAsync(coverPrompt, cancellationToken);
+        var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken);
+        var generatedCover = await _imageService.GenerateAsync(coverPrompt, brandLogoBytes, cancellationToken);
         using var coverStream = generatedCover.ImageBytes.ToStream();
         var storagePath = await _illustrationStorage.UploadCoverImageAsync(
             body.TenantId, capabilityId, coverStream, cancellationToken: cancellationToken);

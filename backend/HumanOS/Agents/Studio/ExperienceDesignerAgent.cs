@@ -57,6 +57,24 @@ public sealed class ExampleCardDto
     /// </summary>
     public bool SuggestedForIllustration { get; set; }
 
+    /// <summary>Only set when SuggestedForIllustration=true and the scene
+    /// ISN'T a coordinate-plane/chart diagram (mutually exclusive with
+    /// <see cref="MathDiagram"/>, same decision rule as
+    /// <see cref="GraphArchitectAgent"/>'s IllustrationPromptDto.Prompt) —
+    /// a concrete, content-accurate description of what THIS card's real
+    /// worked example actually depicts (a diagram, real object/scene, map,
+    /// historical illustration, process, etc.), not a generic restatement
+    /// of Title/Text.</summary>
+    public string? DiagramPrompt { get; set; }
+
+    /// <summary>Only set when SuggestedForIllustration=true and the card's
+    /// worked example IS a coordinate-plane/chart diagram (mutually
+    /// exclusive with <see cref="DiagramPrompt"/>) — same exact rules as
+    /// <see cref="GraphArchitectAgent"/>'s IllustrationPromptDto.MathDiagram.
+    /// Rendered deterministically (SkiaSharp), never by the generative
+    /// image model.</summary>
+    public MathDiagramSpec? MathDiagram { get; set; }
+
     /// <summary>
     /// NOT part of the agent's structured-output schema (the model never
     /// invents this) — set in code AFTER the agent responds, by
@@ -270,6 +288,41 @@ public sealed class ExperienceDesignerAgent
         into vague prose ("this rule covers an exemption...") when the
         source field already names precisely which article/entity it is.
 
+        NORMATIVE/POLICY STATEMENTS: QUOTE, DO NOT PARAPHRASE
+        When AcademicDefinition or Examples states an actual rule,
+        requirement, or obligation (not just background explanation) — this
+        is common in legal, compliance, HR, or safeguarding-policy
+        capabilities — the Teaching step's Content must reproduce that
+        governing sentence VERBATIM (quoted exactly as written), not a
+        reworded version of it. You may still add your own plain-language
+        framing/explanation AROUND the quoted rule, but the quote itself
+        must never drift from the source's exact wording, and you must
+        never state a requirement, threshold, or obligation that isn't
+        literally present in AcademicDefinition/Examples.
+
+        WORKED DERIVATION SEQUENCES MUST BE WALKED THROUGH IN FULL, NEVER
+        JUST GESTURED AT (2026-08-05 fix — a real production bug: a
+        "Números imaginarios" node whose Examples already contained the
+        full step-by-step chain i¹=√-1, i²=-1, i³=-i, i⁴=1, i⁵=i, i⁶=-1 and
+        the general periodicity formula iⁿ=i^(4m+q) got a Teaching step
+        that only vaguely mentioned "the powers of i repeat in a cycle" —
+        none of the actual computed values or the formula survived into
+        the student-facing Content, even though they were RIGHT THERE in
+        Examples). When AcademicDefinition/Examples contains a sequence of
+        concrete computed steps (a derivation, a table of values, a cycle/
+        pattern spelled out step-by-step, a formula), Teaching's Content
+        MUST reproduce that ENTIRE sequence explicitly and in order — every
+        intermediate value, not just the first and last — using a <ul>/<ol>
+        list, exactly as it appears in the source field, plus your own
+        plain-language explanation of WHY the pattern holds. Never
+        compress a multi-step derivation the node already spells out into
+        a single generic sentence like "sigue un patrón cíclico" — that
+        throws away the exact content this node was given specifically so
+        it wouldn't have to be re-derived generically. The same applies to
+        any explicit general formula/theorem stated in AcademicDefinition
+        or Examples (e.g. "iⁿ = i^(4m+q)") — state it verbatim and then
+        show it applied to at least one concrete value from Examples.
+
         CONTENT FORMAT — SIMPLE SEMANTIC HTML, NOT A PLAIN-TEXT WALL
         Each step's Content is rendered directly as sanitized HTML to the
         student (not as raw/plain text), so use a SMALL set of semantic
@@ -412,6 +465,13 @@ public sealed class ExperienceDesignerAgent
         - Never fall back to a tiny fixed count "for simplicity" — a course
           this thin does not achieve real learning, which defeats the whole
           purpose of this step existing.
+        - If Examples/AcademicDefinition contains a step-by-step derivation
+          sequence or table of computed values (e.g. i¹, i², i³, i⁴, i⁵,
+          i⁶), that sequence IS a finite, enumerable scope — generate ONE
+          card per step/value (never one card vaguely summarizing the
+          whole sequence), plus at least one more card applying the
+          general formula/theorem the node states to a NEW value beyond
+          what was already shown.
         Every card must still be grounded strictly in this node's own
         AcademicDefinition/Interpretation/Examples/Applications (never an
         invented fact the node doesn't already contain), and each card must
@@ -450,6 +510,38 @@ public sealed class ExperienceDesignerAgent
           other card — those still teach fully via Title/Text/Emoji, just
           without a generated image.
 
+        WHENEVER SuggestedForIllustration=true, ALSO SET DiagramPrompt OR
+        MathDiagram (never both, never neither) — DO NOT leave the
+        illustration's content to be guessed from Title/Text alone.
+        REAL EDUCATIONAL CONTENT, NOT GENERIC "PERSON TEACHING" PHOTOS: each
+        image must show the card's actual subject matter as concretely and
+        accurately as a real course would — a labeled diagram, a chart, an
+        equation worked out visually, a map, a historical scene/figure, a
+        real object, an anatomical illustration, a process diagram — never
+        a generic stock-photo scene of an unspecified person gesturing at a
+        whiteboard/screen. Only depict a person performing an action when
+        the node's content is ACTUALLY about a human procedure, interaction,
+        or soft skill (e.g. "cómo dar retroalimentación a un colega",
+        "postura correcta al levantar peso") — for every other subject
+        (math, science, geography, history, finance, biology, etc.) the
+        illustration must be about the CONCEPT ITSELF, not a person
+        explaining it.
+          - MathDiagram: use this when the card's worked example IS a
+            coordinate-plane/chart diagram — a circle, ellipse, line,
+            parabola, labeled (x,y) point(s) (including any point on a
+            complex/Argand plane, treating the real part as x and the
+            imaginary part as y), BarChart, Histogram, PieChart, LineChart,
+            ScatterPlot, or NumberLine. Same exact rules as
+            GraphArchitectAgent's IllustrationPrompts MathDiagram case
+            above (exact numbers grounded in this card's own content,
+            never invented, never approximated with the wrong Kind).
+          - DiagramPrompt: use this for every other kind of scene (a
+            concrete real-world object/scenario, a labeled anatomical or
+            process diagram, a map, a historical illustration). Spell out
+            the exact resolved values/labels the scene must show — Deep
+            Dive cards are worked examples, so the illustration must depict
+            the concept fully resolved, never a withheld-answer scene.
+
         Also fill this step's own Content field with a short (1-2 sentence)
         HTML introduction framing what the cards below are about — Content
         must never be empty, even though the real substance lives in
@@ -458,6 +550,24 @@ public sealed class ExperienceDesignerAgent
         marked SuggestedForIllustration=true get a real generated
         illustration assigned by code after your response; every other
         card's illustration is its own Emoji field.
+        """;
+
+    /// <summary>
+    /// Prompt addendum appended ONLY when the owning Capability has
+    /// IncludeProductionStep=false (2026-08-04, client-facing course-
+    /// configuration feature — some clients don't want an open-ended
+    /// "apply it" step for every node). Overrides the "EXACTLY 5 steps,
+    /// never skip" rule above for THIS capability specifically; every
+    /// other step's own rules (source fields, content) are unchanged.
+    /// </summary>
+    private const string OmitProductionStepAddendum = """
+        OVERRIDE FOR THIS CAPABILITY: OMIT THE PRODUCTION STEP
+        This specific capability has disabled the Production ("Aplícalo")
+        step (client configuration). Do NOT produce a step with
+        StepType="Production" — produce only Hypothesis, Teaching, Recall,
+        and Assessment (plus DeepDive too, when that optional step is also
+        requested elsewhere in this prompt). Every other step's own rules
+        above (source fields, content requirements) are unchanged.
         """;
 
     public ExperienceDesignerAgent(IConfiguration configuration)
@@ -525,6 +635,13 @@ public sealed class ExperienceDesignerAgent
     /// before this parameter existed. True requests an OPTIONAL 6th step,
     /// Examples, with 3+ example cards (2026-07-29 feature).
     /// </param>
+    /// <param name="includeProductionStep">
+    /// Copied from the owning Capability's
+    /// <see cref="HumanOS.Models.Capabilities.Capability.IncludeProductionStep"/>.
+    /// True (the default) leaves the prompt byte-for-byte identical to
+    /// before this parameter existed. False omits the Production
+    /// ("Aplícalo") step entirely (2026-08-04 feature).
+    /// </param>
     public async Task<DesignResult> DesignBlueprintAsync(
         CapabilityGraphNode node,
         IReadOnlyList<AvailableIllustrationDto> availableIllustrations,
@@ -533,6 +650,7 @@ public sealed class ExperienceDesignerAgent
         string? pedagogicalAudience = null,
         bool includeExamplesStep = true,
       int? maxDeepDiveCardsPerNode = null,
+        bool includeProductionStep = true,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -565,6 +683,10 @@ public sealed class ExperienceDesignerAgent
             ? "\n\n" + ExamplesStepAddendum
             : string.Empty;
 
+        var omitProductionSection = includeProductionStep
+            ? string.Empty
+            : "\n\n" + OmitProductionStepAddendum;
+
         var normalizedMaxDeepDiveCardsPerNode = maxDeepDiveCardsPerNode.HasValue
           ? Math.Clamp(maxDeepDiveCardsPerNode.Value, 1, MaxDeepDiveCardsPerNodeHardLimit)
           : (int?)null;
@@ -585,6 +707,7 @@ public sealed class ExperienceDesignerAgent
             webFindingsSection +
             personaSection +
             examplesStepSection +
+            omitProductionSection +
             maxCardsSection +
             $"\n\nTarget output language: {(languageCode.Trim().ToLowerInvariant() == "en" ? "English" : "Spanish")}. " +
             "Write every step's Content field in this language, regardless of what language the " +
@@ -597,6 +720,15 @@ public sealed class ExperienceDesignerAgent
         if (string.IsNullOrWhiteSpace(blueprint.Name))
         {
             blueprint.Name = $"{node.Name} - Standard Learning Blueprint";
+        }
+
+        // Deterministic safety net (code has final say, same "LLM proposes,
+        // code decides" discipline as everywhere else) — strip a
+        // Production step if the model generated one anyway despite
+        // OmitProductionStepAddendum.
+        if (!includeProductionStep)
+        {
+            blueprint.Steps.RemoveAll(s => s.StepType == ExperienceStepType.Production);
         }
 
         if (includeExamplesStep && normalizedMaxDeepDiveCardsPerNode is int maxCards)

@@ -103,11 +103,12 @@ public sealed class AddCapabilityGraphNodeFunction
         // PedagogicalAudience (2026-07-26 fix, K-12 lesson course feature).
         var capabilityMeta = await _dbContext.Capabilities
             .Where(c => c.CapabilityId == capabilityId)
-            .Select(c => new { c.ContentLanguageCode, c.PedagogicalAudience, c.IncludeExamplesStep })
+            .Select(c => new { c.ContentLanguageCode, c.PedagogicalAudience, c.IncludeExamplesStep, c.IncludeProductionStep })
             .FirstOrDefaultAsync(cancellationToken);
         var languageCode = capabilityMeta?.ContentLanguageCode ?? "es";
         var pedagogicalAudience = capabilityMeta?.PedagogicalAudience;
         var includeExamplesStep = capabilityMeta?.IncludeExamplesStep ?? true;
+        var includeProductionStep = capabilityMeta?.IncludeProductionStep ?? true;
 
         var nodesById = graph.Nodes.ToDictionary(n => n.CapabilityGraphNodeId);
 
@@ -177,11 +178,16 @@ public sealed class AddCapabilityGraphNodeFunction
             var tenantId = TryParseTenantIdFromExistingIllustration(graph.Nodes);
             if (tenantId is not null)
             {
+                // Brand logo reference (2026-08-04), if one was attached at
+                // capability-creation time — see GraphIllustrationImageService's
+                // LogoReferenceInstruction for what the model is told to do with it.
+                var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken);
+
                 foreach (var illustrationPrompt in node.IllustrationPrompts)
                 {
                     try
                     {
-                        var generated = await _imageService.GenerateAsync(illustrationPrompt.Prompt, cancellationToken);
+                        var generated = await _imageService.GenerateAsync(illustrationPrompt.Prompt, brandLogoBytes, cancellationToken);
                         using var stream = generated.ImageBytes.ToStream();
                         var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                             tenantId.Value, capabilityId, node.NodeId, illustrationRecords.Count + 1, stream,
@@ -239,7 +245,8 @@ public sealed class AddCapabilityGraphNodeFunction
 
             var designResult = await _experienceDesignerAgent.DesignBlueprintAsync(
                 savedNode, availableIllustrations, webFindings: null, languageCode: languageCode,
-                pedagogicalAudience: pedagogicalAudience, includeExamplesStep: includeExamplesStep, cancellationToken: cancellationToken);
+                pedagogicalAudience: pedagogicalAudience, includeExamplesStep: includeExamplesStep,
+                includeProductionStep: includeProductionStep, cancellationToken: cancellationToken);
 
             // Real illustrations for the Examples step's cards (2026-07-29):
             // must happen AFTER the agent invents the cards' Title/Text, and
@@ -255,16 +262,18 @@ public sealed class AddCapabilityGraphNodeFunction
                     var exampleTenantId = TryParseTenantIdFromExistingIllustration(graph.Nodes);
                     if (exampleTenantId is not null)
                     {
+                        var exampleBrandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken);
                         exampleIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
                             _dbContext, exampleTenantId.Value, capabilityId, savedNode.CapabilityGraphNodeId,
-                            savedIllustrations.Count, examplesStepDto.ExampleCards, cancellationToken);
+                            savedIllustrations.Count, examplesStepDto.ExampleCards, cancellationToken, exampleBrandLogoBytes,
+                            pedagogicalAudience);
                     }
                 }
             }
 
             var blueprintEntity = await _blueprintPersistenceService.PersistAsync(
                 _dbContext, savedNode.CapabilityGraphNodeId, designResult.Blueprint, savedIllustrations,
-                includeExamplesStep: includeExamplesStep, cancellationToken: cancellationToken);
+                includeExamplesStep: includeExamplesStep, includeProductionStep: includeProductionStep, cancellationToken: cancellationToken);
 
             blueprintGenerated = true;
 

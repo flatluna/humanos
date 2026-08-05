@@ -104,6 +104,7 @@ internal static class AdaptiveAssessmentApiMappers
     {
         AssessmentRoundId = round.AssessmentRoundId,
         RoundNumber = round.RoundNumber,
+        TotalQuestions = round.TotalQuestions,
         Status = round.Status.ToString(),
         FinalScore = round.FinalScore,
         CurrentQuestion = ToQuestionDto(round.CurrentQuestion)

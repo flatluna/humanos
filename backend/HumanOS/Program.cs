@@ -12,6 +12,7 @@ using Microsoft.Agents.AI.Workflows.Checkpointing;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -145,6 +146,7 @@ var host = new HostBuilder()
         services.AddScoped<ProgramEnrollmentService>();
         services.AddScoped<CapabilityCostService>();
         services.AddScoped<HumanOS.Storage.ProgramLogoStorageService>();
+        services.AddScoped<HumanOS.Storage.PersonProfilePhotoStorageService>();
         services.AddScoped<GoalService>();
         services.AddScoped<MotivationService>();
         services.AddScoped<ProjectService>();
@@ -259,6 +261,12 @@ var host = new HostBuilder()
         // Curador/GraphArchitect with real content (2026-07-23) — see
         // /memories/repo/pdf-to-capability-graph-v2-pipeline.md.
         services.AddSingleton<HumanOS.Agents.Studio.PdfImageDescriptionAgent>();
+        // Caches extraction (text + described images) by content hash so a
+        // real run doesn't re-describe images already described during the
+        // Paso 5 preview of the SAME upload (2026-08-05) — see
+        // PdfContentExtractionService's doc comment.
+        services.AddMemoryCache();
+        services.AddSingleton<PdfContentExtractionService>();
         services.AddSingleton<PdfCapabilityGraphPipelineService>();
         services.AddSingleton<PdfCapabilityGraphOrchestrator>();
 

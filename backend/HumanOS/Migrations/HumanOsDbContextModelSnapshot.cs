@@ -294,6 +294,9 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
+                    b.Property<int?>("AssessmentQuestionsPerRound")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("CapabilityDomainId")
                         .HasColumnType("uniqueidentifier");
 
@@ -325,6 +328,9 @@ namespace HumanOS.Migrations
                     b.Property<bool>("IncludeExamplesStep")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IncludeProductionStep")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -338,6 +344,9 @@ namespace HumanOS.Migrations
                     b.Property<string>("PedagogicalAudience")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<int?>("RecallItemsRequired")
+                        .HasColumnType("int");
 
                     b.Property<Guid?>("SubjectId")
                         .HasColumnType("uniqueidentifier");
@@ -1025,6 +1034,10 @@ namespace HumanOS.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BrandLogoStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<Guid>("CapabilityId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1141,6 +1154,9 @@ namespace HumanOS.Migrations
 
                     b.Property<Guid>("CapabilityGraphId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("ChapterIndex")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()

@@ -74,6 +74,7 @@ public sealed class PdfCapabilityGraphPipelineService
     private readonly NodeKnowledgeIndexService _knowledgeIndexService;
     private readonly IdeaToDocumentAgent _ideaToDocument;
     private readonly PdfImageDescriptionAgent _pdfImageDescription;
+    private readonly PdfContentExtractionService _pdfContentExtraction;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly IConfiguration _configuration;
 
@@ -100,6 +101,7 @@ public sealed class PdfCapabilityGraphPipelineService
         NodeKnowledgeIndexService knowledgeIndexService,
         IdeaToDocumentAgent ideaToDocument,
         PdfImageDescriptionAgent pdfImageDescription,
+        PdfContentExtractionService pdfContentExtraction,
         IDbContextFactory<HumanOsDbContext> dbContextFactory,
         IConfiguration configuration)
     {
@@ -116,6 +118,7 @@ public sealed class PdfCapabilityGraphPipelineService
         _knowledgeIndexService = knowledgeIndexService;
         _ideaToDocument = ideaToDocument;
         _pdfImageDescription = pdfImageDescription;
+        _pdfContentExtraction = pdfContentExtraction;
         _dbContextFactory = dbContextFactory;
         _configuration = configuration;
         _illustrationStorage = new CapabilityGraphIllustrationStorageService(configuration);
@@ -278,108 +281,37 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid? targetJobRoleId = null,
         string? targetSkill = null,
         int? maxDeepDiveCardsPerNode = null,
-        bool strictSyllabusMode = false)
+        bool strictSyllabusMode = false,
+        List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        bool includeProductionStep = true,
+        int? recallItemsRequired = null,
+        int? assessmentQuestionsPerRound = null,
+        byte[]? brandLogoBytes = null)
     {
         // ==================== 1. EXTRACT TEXT + IMAGES, PER PAGE ====================
         reportProgress("Extrayendo texto del PDF");
 
-        List<PdfTextExtractor.PageExtractionResult> pages;
-        using (var stream = new MemoryStream(pdfBytes))
-        {
-            pages = PdfTextExtractor.ExtractPagesWithImages(stream);
-        }
+        // Real AI vision description (via PdfImageDescriptionAgent) of
+        // every embedded image above a minimum size — NOT just OCR/text
+        // extraction — so scanned/image-only pages and diagrams/photos
+        // alongside real text still reach Curador/GraphArchitect with
+        // genuine content. See PdfContentExtractionService's doc comment
+        // (shared with PreviewCapabilityOutlineFunction's outline preview,
+        // 2026-08-05, so the chapter/index detection sees the SAME content
+        // this real run does).
+        var extraction = await _pdfContentExtraction.ExtractAsync(
+            pdfBytes, _pdfImageDescription, MaxPdfImagesToDescribe, MaxPdfImagesPerPage, reportProgress, cancellationToken);
 
-        var pageCount = pages.Count;
+        var pageCount = extraction.PageCount;
         var maxPages = MaxSourcePdfPages;
         if (pageCount > maxPages)
         {
             throw new PdfTooLargeException(pageCount, maxPages);
         }
 
-        // ==================== 1b. DESCRIBE EMBEDDED IMAGES (best-effort) ====================
-        // Real AI vision description (via PdfImageDescriptionAgent, the
-        // same main LLM deployment used everywhere else) of every embedded
-        // image above a minimum size — NOT just OCR/text extraction — so
-        // scanned/image-only pages and diagrams/photos alongside real text
-        // still reach Curador/GraphArchitect with genuine content. See
-        // /memories/repo/pdf-to-capability-graph-v2-pipeline.md.
-        //
-        // PdfPig's page.GetImages() yields one entry PER PLACEMENT in the
-        // content stream, not one per unique embedded resource — a single
-        // picture drawn more than once on a page (or reused across pages,
-        // e.g. a repeated background/logo) shows up as several identical
-        // ExtractedPageImage byte arrays. We hash each image's bytes and
-        // only ever call the vision model once per unique hash; every
-        // occurrence (including duplicates) still gets the resulting
-        // description folded into ITS OWN page's text, so per-page context
-        // for the CapabilityGraph pipeline is preserved even when we skip
-        // the redundant AI call.
-        //
-        // A PER-PAGE cap (MaxPdfImagesPerPage) is also enforced, on top of
-        // the global MaxPdfImagesToDescribe budget: some PDFs have a single
-        // page whose scan/graphic is split into dozens of small distinct
-        // raster tiles by whatever tool produced the file — without a
-        // per-page cap that one page alone can burn through the entire
-        // global budget and leave every later page (which may hold the
-        // actual pedagogically important images) with zero descriptions.
-        var imageTokenUsage = new List<AgentTokenUsage>();
-        var describedImageCount = 0;
-
-        if (_pdfImageDescription.IsConfigured)
-        {
-            var maxImages = MaxPdfImagesToDescribe;
-            var maxImagesPerPage = MaxPdfImagesPerPage;
-            var descriptionsByHash = new Dictionary<string, string>();
-            var totalUniqueImages = pages
-                .SelectMany(p => p.Images)
-                .Select(image => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image.Bytes)))
-                .Distinct()
-                .Count();
-            var progressTotal = Math.Min(maxImages, totalUniqueImages);
-
-            foreach (var page in pages)
-            {
-                var describedOnThisPage = 0;
-
-                foreach (var image in page.Images)
-                {
-                    var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image.Bytes));
-
-                    if (descriptionsByHash.TryGetValue(hash, out var cachedDescription))
-                    {
-                        page.Text = AppendImageDescription(page.Text, page.PageNumber, cachedDescription);
-                        continue;
-                    }
-
-                    if (describedImageCount >= maxImages || describedOnThisPage >= maxImagesPerPage)
-                    {
-                        continue;
-                    }
-
-                    try
-                    {
-                        reportProgress($"Describiendo imagen {describedImageCount + 1}/{progressTotal} (página {page.PageNumber})");
-
-                        var description = await _pdfImageDescription.DescribeAsync(
-                            image.Bytes, image.ContentType, page.Text, cancellationToken);
-
-                        descriptionsByHash[hash] = description.Description;
-                        page.Text = AppendImageDescription(page.Text, page.PageNumber, description.Description);
-
-                        imageTokenUsage.Add(WithModuleId(description.TokenUsage, $"Página {page.PageNumber}"));
-                        describedImageCount++;
-                        describedOnThisPage++;
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        // Best-effort — one bad/unsupported image should never
-                        // fail the whole run.
-                    }
-                }
-            }
-        }
-
-        var combinedText = string.Join("\n\n", pages.Select(p => p.Text).Where(t => !string.IsNullOrWhiteSpace(t)));
+        var imageTokenUsage = extraction.TokenUsage;
+        var describedImageCount = extraction.DescribedImageCount;
+        var combinedText = extraction.CombinedText;
 
         if (string.IsNullOrWhiteSpace(combinedText))
         {
@@ -413,7 +345,12 @@ public sealed class PdfCapabilityGraphPipelineService
             targetJobRoleId,
             targetSkill,
             maxDeepDiveCardsPerNode,
-            strictSyllabusMode);
+            strictSyllabusMode,
+            approvedOutline,
+            includeProductionStep,
+            recallItemsRequired,
+            assessmentQuestionsPerRound,
+            brandLogoBytes);
 
         result.DescribedImageCount = describedImageCount;
         return result;
@@ -456,7 +393,12 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid? targetJobRoleId = null,
         string? targetSkill = null,
         int? maxDeepDiveCardsPerNode = null,
-        bool strictSyllabusMode = false)
+        bool strictSyllabusMode = false,
+        List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        bool includeProductionStep = true,
+        int? recallItemsRequired = null,
+        int? assessmentQuestionsPerRound = null,
+        byte[]? brandLogoBytes = null)
     {
         if (!_ideaToDocument.IsConfigured)
         {
@@ -494,7 +436,12 @@ public sealed class PdfCapabilityGraphPipelineService
             targetJobRoleId,
             targetSkill,
             maxDeepDiveCardsPerNode,
-            strictSyllabusMode);
+            strictSyllabusMode,
+            approvedOutline,
+            includeProductionStep,
+            recallItemsRequired,
+            assessmentQuestionsPerRound,
+            brandLogoBytes);
     }
 
     /// <summary>Shared continuation of both <see cref="RunAsync"/> (real
@@ -529,8 +476,24 @@ public sealed class PdfCapabilityGraphPipelineService
         Guid? targetJobRoleId = null,
         string? targetSkill = null,
         int? maxDeepDiveCardsPerNode = null,
-        bool strictSyllabusMode = false)
+        bool strictSyllabusMode = false,
+        List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        bool includeProductionStep = true,
+        int? recallItemsRequired = null,
+        int? assessmentQuestionsPerRound = null,
+        byte[]? brandLogoBytes = null)
     {
+        // A designer-approved outline (2026-08-04 "Paso 5") already pins
+        // down the exact chapter/node structure the generation loop must
+        // mirror — always force strict mode in that case (skips the
+        // "Libre" size cap below too, since the precise slices were
+        // already located during preview), regardless of what the caller
+        // passed for strictSyllabusMode.
+        if (approvedOutline is { Count: > 0 })
+        {
+            strictSyllabusMode = true;
+        }
+
         // Never allow more than 10 Deep Dive cards per node for a course,
         // regardless of client input.
         int? normalizedMaxDeepDiveCardsPerNode = null;
@@ -569,25 +532,39 @@ public sealed class PdfCapabilityGraphPipelineService
         };
 
         List<RawMaterialItem> chapterMaterials;
-        try
+        if (approvedOutline is { Count: > 0 })
         {
-            chapterMaterials = await DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(
-                sourceMaterial, _tocExtraction, strictSyllabusMode, cancellationToken);
+            // 2026-08-04 "Paso 5" design: the designer already reviewed and
+            // approved (possibly hand-edited) the chapter/node outline via
+            // the preview endpoint — use it VERBATIM instead of re-running
+            // detection, so the generation loop below respects exactly the
+            // names that were approved. A failure here (e.g. the document
+            // somehow changed between preview and submit) is a real error,
+            // never silently downgraded.
+            chapterMaterials = DocumentChapterSplitter.BuildMaterialsFromApprovedOutline(sourceMaterial, approvedOutline);
         }
-        catch (SyllabusStructureNotFoundException)
+        else
         {
-            // Tier 2 hard reject (2026-08-03) — the caller explicitly opted
-            // into "Estructurado" mode and neither the deterministic (Tier 0)
-            // nor the LLM-based (Tier 1) detector found a confident module
-            // structure. Must propagate as a real run failure, never be
-            // silently downgraded to a single-chapter/unstructured run.
-            throw;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // TocExtraction is best-effort — fall back to the whole
-            // document as a single chapter rather than failing the run.
-            chapterMaterials = [sourceMaterial];
+            try
+            {
+                chapterMaterials = await DocumentChapterSplitter.SplitIntoChapterMaterialsAsync(
+                    sourceMaterial, _tocExtraction, strictSyllabusMode, cancellationToken);
+            }
+            catch (SyllabusStructureNotFoundException)
+            {
+                // Tier 2 hard reject (2026-08-03) — the caller explicitly opted
+                // into "Estructurado" mode and neither the deterministic (Tier 0)
+                // nor the LLM-based (Tier 1) detector found a confident module
+                // structure. Must propagate as a real run failure, never be
+                // silently downgraded to a single-chapter/unstructured run.
+                throw;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // TocExtraction is best-effort — fall back to the whole
+                // document as a single chapter rather than failing the run.
+                chapterMaterials = [sourceMaterial];
+            }
         }
 
         // Token usage across the WHOLE run (2026-07-20 — cost-per-capability
@@ -613,6 +590,16 @@ public sealed class PdfCapabilityGraphPipelineService
         var chunkTagToChapterNumber = new Dictionary<string, int>();
         var chapterTitleByNumber = new Dictionary<int, string>();
 
+        // Collapses several subsection-derived chapterMaterials sharing the
+        // SAME LevelTitle (parent module heading) onto ONE level number —
+        // see "Chapter = Level, Subsection = Node" doc comment on
+        // DocumentChapterSplitter.BuildMaterialsFromParsedModules. Without
+        // this, each subsection got its own sequential chapterNumber, so
+        // CapabilityGraphLevelAutoNamer emitted one duplicate-named level
+        // PER SUBSECTION instead of one level per real chapter/module
+        // (e.g. 3 levels all named "Introduction" instead of 1).
+        var levelNumberByTitle = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         for (var i = 0; i < chapterMaterials.Count; i++)
         {
             var chapterNumber = i + 1;
@@ -620,12 +607,30 @@ public sealed class PdfCapabilityGraphPipelineService
 
             if (hasRealChapters)
             {
-                chapterOrderLines.Add($"{chapterNumber}. {chapterLabel}");
+                // Verbatim heading only (not the noisy "{source.Label} — "-
+                // prefixed Label) — strict-syllabus-mode node Names are
+                // required to reproduce this text exactly, so it must be
+                // the clean source heading, not an internal bookkeeping
+                // label.
+                chapterOrderLines.Add($"{chapterNumber}. {chapterMaterials[i].ChapterTitle}");
             }
 
-            if (!string.IsNullOrWhiteSpace(chapterMaterials[i].ChapterTitle))
+            // Prefer LevelTitle (the parent module/chapter's own heading,
+            // 2026-08-04 "Chapter = Level, Subsection = Node" design) so
+            // several subsection-derived "chapters" sharing the same parent
+            // module collapse onto ONE graph level name — falls back to
+            // this item's own ChapterTitle when it already represents a
+            // whole top-level chapter with no further subsection split.
+            var levelTitle = chapterMaterials[i].LevelTitle ?? chapterMaterials[i].ChapterTitle;
+            var levelNumber = chapterNumber;
+            if (!string.IsNullOrWhiteSpace(levelTitle))
             {
-                chapterTitleByNumber[chapterNumber] = chapterMaterials[i].ChapterTitle!;
+                if (!levelNumberByTitle.TryGetValue(levelTitle!, out levelNumber))
+                {
+                    levelNumber = levelNumberByTitle.Count + 1;
+                    levelNumberByTitle[levelTitle!] = levelNumber;
+                }
+                chapterTitleByNumber[levelNumber] = levelTitle!;
             }
 
             var chapterBatch = new List<RawMaterialItem> { chapterMaterials[i] };
@@ -649,7 +654,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
                 if (hasRealChapters)
                 {
-                    chunkTagToChapterNumber[mergedTag] = chapterNumber;
+                    chunkTagToChapterNumber[mergedTag] = levelNumber;
                 }
             }
 
@@ -715,13 +720,14 @@ public sealed class PdfCapabilityGraphPipelineService
         var graph = graphResult.Graph;
         tokenUsage.Add(WithModuleId(graphResult.TokenUsage, capabilityName));
 
-        // Best-effort, deterministic (no extra LLM call) attempt to give
-        // each computed graph "level" a real title drawn from the source
-        // document's own chapter/module headings, instead of leaving every
-        // level to the generic "Nivel N" fallback (2026-08-03). See
+        // Best-effort, deterministic (no extra LLM call) attempt to group
+        // graph nodes into "climb levels" that match the source document's
+        // own chapter/module structure and give each a real title, instead
+        // of leaving every level to the generic "Nivel N" fallback
+        // (2026-08-03, chapter-based grouping since 2026-08-04). See
         // CapabilityGraphLevelAutoNamer for the algorithm.
         var autoLevelNames = CapabilityGraphLevelAutoNamer.ComputeLevelNames(
-            graph.Nodes, graph.Edges, chunkTagToChapterNumber, chapterTitleByNumber);
+            graph.Nodes, chunkTagToChapterNumber, chapterTitleByNumber);
 
         // Document-wide executive summary + key entities (2026-07-20 — see
         // Agents/Studio/DocumentContextAgent.cs and
@@ -775,7 +781,8 @@ public sealed class PdfCapabilityGraphPipelineService
         await using (var setupDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
         {
             capabilityId = await EnsureCapabilityAsync(
-                setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, category, targetJobRoleId, targetSkill, cancellationToken);
+                setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, category, targetJobRoleId, targetSkill,
+                includeProductionStep, recallItemsRequired, assessmentQuestionsPerRound, cancellationToken);
 
             // Top-down flow (2026-07-23): Programs are created empty first;
             // Capabilities are connected to them afterward. When the wizard
@@ -796,6 +803,31 @@ public sealed class PdfCapabilityGraphPipelineService
                     programSequenceNumber,
                     capabilityObjectives,
                     capabilityRequirements);
+            }
+        }
+
+        // Brand logo reference upload (2026-08-04 "logo en las ilustraciones"
+        // feature): a designer can optionally attach the company's real
+        // logo when creating a Capability so every illustration generated
+        // below (and, later, any illustration generated for this same
+        // Capability by Assessment/Tutor/BlueprintReview/AddNode) can use it
+        // as a genuine visual reference via GraphIllustrationImageService's
+        // image-edit path, instead of the model guessing/hallucinating a
+        // logo from a text description alone. Best-effort — a failed upload
+        // never blocks Capability creation; the run simply proceeds without
+        // a brand logo, same as before this feature existed.
+        string? brandLogoStoragePath = null;
+        if (brandLogoBytes is { Length: > 0 } && _illustrationStorage.IsConfigured)
+        {
+            try
+            {
+                using var logoStream = new MemoryStream(brandLogoBytes);
+                brandLogoStoragePath = await _illustrationStorage.UploadBrandLogoAsync(
+                    tenantId, capabilityId, logoStream, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Best-effort — see comment above.
             }
         }
 
@@ -841,7 +873,7 @@ public sealed class PdfCapabilityGraphPipelineService
                         // See MathDiagramRenderService's doc comment.
                         var generated = isMathDiagram
                             ? await _mathDiagramRenderService.RenderAsync(promptDto.MathDiagram!, cancellationToken)
-                            : (object)await _imageService.GenerateAsync(promptDto.Prompt, cancellationToken);
+                            : (object)await _imageService.GenerateAsync(promptDto.Prompt, brandLogoBytes, cancellationToken);
 
                         var (imageBytes, imageModel, width, height) = generated switch
                         {
@@ -900,7 +932,7 @@ public sealed class PdfCapabilityGraphPipelineService
                     $"'{capabilityName}'. {executiveSummary ?? graph.Description}. " +
                     "Flat design, no text, no letters, no words, wide banner composition, soft color palette.";
 
-                var generatedCover = await _imageService.GenerateAsync(coverPrompt, cancellationToken);
+                var generatedCover = await _imageService.GenerateAsync(coverPrompt, brandLogoBytes, cancellationToken);
                 using var coverStream = generatedCover.ImageBytes.ToStream();
                 coverImageStoragePath = await _illustrationStorage.UploadCoverImageAsync(
                     tenantId, capabilityId, coverStream, cancellationToken: cancellationToken);
@@ -919,22 +951,22 @@ public sealed class PdfCapabilityGraphPipelineService
         {
             persistedGraph = await _persistenceService.PersistAsync(
                 persistDbContext, capabilityId, graph, illustrationRecords, cancellationToken,
-                executiveSummary, keyEntitiesJson, coverImageStoragePath);
+                executiveSummary, keyEntitiesJson, coverImageStoragePath, brandLogoStoragePath, autoLevelNames.LevelIndexByNodeId);
         }
 
         // Auto-name computed graph levels from the source document's own
         // chapter/module headings (2026-08-03) — best-effort, never blocks
         // an otherwise-successful Capability creation. Only levels
-        // CapabilityGraphLevelAutoNamer could confidently trace to ONE
-        // dominant chapter get a row here; every other level simply keeps
-        // showing the generic "Nivel N" fallback until a professor names
-        // it by hand (same PreviewGraphPage.tsx pencil-icon flow as today).
-        if (autoLevelNames.Count > 0)
+        // CapabilityGraphLevelAutoNamer could confidently trace to a
+        // chapter get a row here; every other level simply keeps showing
+        // the generic "Nivel N" fallback until a professor names it by hand
+        // (same PreviewGraphPage.tsx pencil-icon flow as today).
+        if (autoLevelNames.Levels.Count > 0)
         {
             try
             {
                 await using var levelNamingDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-                foreach (var (levelIndex, name) in autoLevelNames)
+                foreach (var (levelIndex, name) in autoLevelNames.Levels)
                 {
                     levelNamingDbContext.CapabilityGraphLevels.Add(new Models.Capabilities.Graph.CapabilityGraphLevel
                     {
@@ -1006,7 +1038,7 @@ public sealed class PdfCapabilityGraphPipelineService
             var nodeBlueprintTasks = reloadedNodes.Select(node => ProcessNodeBlueprintStageAsync(
                 node, nodesNeedingCurrentInfo, effectiveEnableWebEnrichment, capabilityName, languageCode,
                 pedagogicalAudience, includeExamplesStep, tenantId, capabilityId, allChunks, reportProgress,
-                normalizedMaxDeepDiveCardsPerNode, nodeBlueprintSemaphore, cancellationToken)).ToList();
+                normalizedMaxDeepDiveCardsPerNode, includeProductionStep, nodeBlueprintSemaphore, cancellationToken, brandLogoBytes)).ToList();
 
             var nodeBlueprintResults = await Task.WhenAll(nodeBlueprintTasks);
 
@@ -1123,16 +1155,6 @@ public sealed class PdfCapabilityGraphPipelineService
         CachedInputTokens = usage.CachedInputTokens
     };
 
-    /// <summary>Folds an embedded image's (possibly cached/reused) AI
-    /// description into a page's extracted text, so every page that
-    /// contains the image — even a duplicate placement of one already
-    /// described elsewhere — keeps its full context for Curador/
-    /// GraphArchitect.</summary>
-    private static string AppendImageDescription(string pageText, int pageNumber, string description) =>
-        string.IsNullOrWhiteSpace(pageText)
-            ? $"[Descripción de imagen — página {pageNumber}]\n{description}"
-            : $"{pageText}\n\n[Descripción de imagen — página {pageNumber}]\n{description}";
-
     private static async Task<Guid> EnsureCapabilityAsync(
         HumanOsDbContext dbContext,
         Guid capabilityDomainId,
@@ -1146,6 +1168,9 @@ public sealed class PdfCapabilityGraphPipelineService
         string? category,
         Guid? targetJobRoleId,
         string? targetSkill,
+        bool includeProductionStep,
+        int? recallItemsRequired,
+        int? assessmentQuestionsPerRound,
         CancellationToken cancellationToken)
     {
         var domainExists = await dbContext.CapabilityDomains
@@ -1181,6 +1206,9 @@ public sealed class PdfCapabilityGraphPipelineService
             ContentLanguageCode = string.IsNullOrWhiteSpace(languageCode) ? "es" : languageCode.Trim().ToLowerInvariant(),
             PedagogicalAudience = string.IsNullOrWhiteSpace(pedagogicalAudience) ? null : pedagogicalAudience.Trim(),
             IncludeExamplesStep = includeExamplesStep,
+            IncludeProductionStep = includeProductionStep,
+            RecallItemsRequired = recallItemsRequired.HasValue ? Math.Clamp(recallItemsRequired.Value, Agentic.Runtime.RecallLoopGate.MinItemsRequiredToAdvance, Agentic.Runtime.RecallLoopGate.MaxItemsRequiredToAdvance) : null,
+            AssessmentQuestionsPerRound = assessmentQuestionsPerRound.HasValue ? Math.Clamp(assessmentQuestionsPerRound.Value, 1, 10) : null,
             Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
             TargetJobRoleId = targetJobRoleId,
             TargetSkill = string.IsNullOrWhiteSpace(targetSkill) ? null : targetSkill.Trim(),
@@ -1236,8 +1264,10 @@ public sealed class PdfCapabilityGraphPipelineService
         List<CuratedChunk> allChunks,
         Action<string> reportProgress,
         int? maxDeepDiveCardsPerNode,
+        bool includeProductionStep,
         SemaphoreSlim semaphore,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        byte[]? brandLogoBytes = null)
     {
         await semaphore.WaitAsync(cancellationToken);
         try
@@ -1288,7 +1318,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
             reportProgress($"Diseñando experiencia de aprendizaje: {node.Name}");
             var (blueprintPersisted, exampleIllustrationsForNode) = await TryDesignPersistValidateBlueprintAsync(
-                node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, maxDeepDiveCardsPerNode, tenantId, capabilityId, result.TokenUsage, cancellationToken);
+                node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, maxDeepDiveCardsPerNode, includeProductionStep, tenantId, capabilityId, result.TokenUsage, cancellationToken, brandLogoBytes);
             result.BlueprintPersisted = blueprintPersisted;
             result.ExampleCardIllustrationsGenerated = exampleIllustrationsForNode;
 
@@ -1322,8 +1352,9 @@ public sealed class PdfCapabilityGraphPipelineService
 
     private async Task<(bool Success, int ExampleCardIllustrationsGenerated)> TryDesignPersistValidateBlueprintAsync(
         CapabilityGraphNode node, string? webFindings, string languageCode, string? pedagogicalAudience, bool includeExamplesStep,
-        int? maxDeepDiveCardsPerNode,
-        Guid tenantId, Guid capabilityId, List<AgentTokenUsage> tokenUsage, CancellationToken cancellationToken)
+        int? maxDeepDiveCardsPerNode, bool includeProductionStep,
+        Guid tenantId, Guid capabilityId, List<AgentTokenUsage> tokenUsage, CancellationToken cancellationToken,
+        byte[]? brandLogoBytes = null)
     {
         try
         {
@@ -1340,7 +1371,7 @@ public sealed class PdfCapabilityGraphPipelineService
             LogPipelineEvent($"DESIGN-START node={node.CapabilityGraphNodeId}");
             var designResult = await _experienceDesigner.DesignBlueprintAsync(
                 node, availableIllustrations, webFindings, languageCode, pedagogicalAudience, includeExamplesStep,
-                maxDeepDiveCardsPerNode, cancellationToken: cancellationToken);
+                maxDeepDiveCardsPerNode, includeProductionStep, cancellationToken: cancellationToken);
             tokenUsage.Add(WithModuleId(designResult.TokenUsage, node.Name));
             LogPipelineEvent($"DESIGN-OK node={node.CapabilityGraphNodeId}");
 
@@ -1363,12 +1394,13 @@ public sealed class PdfCapabilityGraphPipelineService
                     {
                         exampleCardIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
                             blueprintDbContext, tenantId, capabilityId, node.CapabilityGraphNodeId,
-                            node.Illustrations.Count, examplesStepDto.ExampleCards, cancellationToken);
+                            node.Illustrations.Count, examplesStepDto.ExampleCards, cancellationToken, brandLogoBytes,
+                            pedagogicalAudience);
                     }
                 }
 
                 persistedBlueprint = await _blueprintPersistenceService.PersistAsync(
-                    blueprintDbContext, node.CapabilityGraphNodeId, designResult.Blueprint, node.Illustrations.ToList(), includeExamplesStep, cancellationToken);
+                    blueprintDbContext, node.CapabilityGraphNodeId, designResult.Blueprint, node.Illustrations.ToList(), includeExamplesStep, includeProductionStep, cancellationToken);
             }
             LogPipelineEvent($"SQL-SAVE-OK node={node.CapabilityGraphNodeId} what=blueprint");
 

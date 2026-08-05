@@ -26,12 +26,21 @@ export const apiClient = axios.create({
  *  client-side. */
 apiClient.interceptors.request.use(async (config) => {
   const accounts = msalInstance.getAllAccounts();
+  const account = msalInstance.getActiveAccount() ?? accounts[0] ?? null;
 
-  if (accounts.length > 0) {
+  if (account) {
+    // The backend keys identity-checked endpoints (e.g. HrForceAdvanceStepFunction)
+    // off these headers today, not the Bearer token (see AuthContext.tsx).
+    const claims = account.idTokenClaims as Record<string, unknown> | undefined;
+    const oid = (claims?.oid as string) ?? (claims?.sub as string) ?? account.homeAccountId.split('.')[0];
+    const tid = (claims?.tid as string) ?? account.homeAccountId.split('.')[1];
+    config.headers['X-Azure-OID'] = oid;
+    config.headers['X-Azure-TID'] = tid;
+
     try {
       const result = await msalInstance.acquireTokenSilent({
         scopes: humanOsApiScopes,
-        account: accounts[0],
+        account,
       });
 
       config.headers.Authorization = `Bearer ${result.accessToken}`;

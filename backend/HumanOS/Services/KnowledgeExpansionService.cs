@@ -172,16 +172,21 @@ public sealed class KnowledgeExpansionService
         }
 
         var segments = pathSeed.Split('/');
-        if (segments.Length < 3 || !Guid.TryParse(segments[0], out var tenantId) || !Guid.TryParse(segments[1], out var capabilityId))
+        if (segments.Length < 3 || !Guid.TryParse(segments[0], out var tenantId) || !Guid.TryParse(segments[1], out var capabilityIdForDiagram))
         {
             return null;
         }
 
         try
         {
+            // Brand logo reference (2026-08-04), if one was attached at
+            // capability-creation time — see GraphIllustrationImageService's
+            // LogoReferenceInstruction for what the model is told to do with it.
+            var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(dbContext, capabilityIdForDiagram, cancellationToken);
+
             object generated = mathDiagram is not null
                 ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
-                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+                : await _imageService.GenerateAsync(diagramPrompt!, brandLogoBytes, cancellationToken);
             var (imageBytes, imageModel, width, height) = generated switch
             {
                 MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),
@@ -191,7 +196,7 @@ public sealed class KnowledgeExpansionService
             using var imageStream = imageBytes.ToStream();
 
             var storagePath = await _illustrationStorage.UploadIllustrationAsync(
-                tenantId, capabilityId, node.CapabilityGraphNodeId, DiagramImageIndex, imageStream,
+                tenantId, capabilityIdForDiagram, node.CapabilityGraphNodeId, DiagramImageIndex, imageStream,
                 cancellationToken: cancellationToken);
 
             var illustration = new CapabilityGraphNodeIllustration

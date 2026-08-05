@@ -121,3 +121,75 @@ export function computeGlobalMemoryScore(rootGroups: RootGroup[]): number | null
   if (count === 0) return null;
   return Math.round((sum / count) * 100);
 }
+
+/** One day's point on the "Mi Evolución" growth timeline. */
+export interface EngramCountHistoryPoint {
+  /** ISO yyyy-MM-dd for this day (local time, midnight). */
+  date: string;
+  /** Cumulative number of distinct engrams mastered on/before this day —
+   * a simple growth counter, never goes down (unlike memory freshness,
+   * which is what Mi Cerebro's own gauge already covers). */
+  count: number;
+  /** Average best-assessment score (0-100) across every engram counted so
+   * far, using each node's CURRENT finalScore (we only keep the latest
+   * attempt's score, not a full history) — a quality signal, drives the
+   * bar's color intensity. null while count is 0. */
+  avgScore: number | null;
+  /** Names of engrams whose most recent completion landed on this exact
+   * calendar day — drives the little "brain" marker on that day's bar. */
+  events: string[];
+}
+
+/** Builds a daily cumulative "engrams mastered" time series for the last
+ * `days` days (ending today) straight from data the Brain page already
+ * fetches — no new backend endpoint needed. Always trending up (or flat),
+ * telling a clear growth story without needing to explain the forgetting
+ * curve (that's Mi Cerebro's job). */
+export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): EngramCountHistoryPoint[] {
+  const masteredNodes: { name: string; lastCompletedDate: string; finalScore?: number }[] = [];
+  for (const root of rootGroups) {
+    for (const cluster of root.clusters) {
+      for (const node of cluster.nodes) {
+        if (node.lastCompletedDate) {
+          masteredNodes.push({ name: node.name, lastCompletedDate: node.lastCompletedDate, finalScore: node.finalScore });
+        }
+      }
+    }
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const points: EngramCountHistoryPoint[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(today.getTime() - i * DAY_MS);
+    // A node counts for THIS day if it was mastered any time up through the
+    // END of this calendar day — not just before its midnight start —
+    // otherwise a node mastered later today wouldn't count on today's point.
+    const endOfDayMs = day.getTime() + DAY_MS - 1;
+    let count = 0;
+    let scoreSum = 0;
+    let scoreCount = 0;
+    const events: string[] = [];
+    for (const node of masteredNodes) {
+      const masteredAtMs = new Date(node.lastCompletedDate).getTime();
+      if (masteredAtMs > endOfDayMs) continue; // not mastered yet as of this day
+      count += 1;
+      if (typeof node.finalScore === 'number') {
+        scoreSum += node.finalScore;
+        scoreCount += 1;
+      }
+      if (masteredAtMs >= day.getTime() && masteredAtMs <= endOfDayMs) events.push(node.name);
+    }
+    points.push({
+      date: day.toISOString().slice(0, 10),
+      count,
+      avgScore: scoreCount > 0 ? Math.round(scoreSum / scoreCount) : null,
+      events,
+    });
+  }
+  return points;
+}
+
+
+

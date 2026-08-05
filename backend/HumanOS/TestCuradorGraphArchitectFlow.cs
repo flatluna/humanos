@@ -217,7 +217,7 @@ public sealed class TestCuradorGraphArchitectFlow
                         {
                             try
                             {
-                                var generated = await _imageService.GenerateAsync(promptDto.Prompt, CancellationToken.None);
+                                var generated = await _imageService.GenerateAsync(promptDto.Prompt, cancellationToken: CancellationToken.None);
                                 using var stream = generated.ImageBytes.ToStream();
                                 var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                                     tenantId, capabilityId, node.NodeId, imageIndex, stream);

@@ -512,6 +512,11 @@ public sealed class BlueprintReviewService
             var existingCount = await dbContext.CapabilityGraphNodeIllustrations.CountAsync(i => i.CapabilityGraphNodeId == node.CapabilityGraphNodeId, cancellationToken);
             var imageIndex = 200 + existingCount; // Base offset for reviewer-edit illustrations — never collides with the pipeline's low sequential indexes, KnowledgeExpansion's fixed 99, or Assessment's 100+ range.
 
+            // Brand logo reference (2026-08-04), if one was attached at
+            // capability-creation time — see GraphIllustrationImageService's
+            // LogoReferenceInstruction for what the model is told to do with it.
+            var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(dbContext, capabilityId, cancellationToken);
+
             // Two mutually-exclusive rendering paths, decided by
             // BlueprintStepEditorAgent (LLM proposes, code just dispatches):
             // precise coordinate-plane graphs go through the deterministic
@@ -519,7 +524,7 @@ public sealed class BlueprintReviewService
             // image model as before. See MathDiagramRenderService's doc comment.
             object generated = mathDiagram is not null
                 ? await _mathDiagramRenderService.RenderAsync(mathDiagram, cancellationToken)
-                : await _imageService.GenerateAsync(diagramPrompt!, cancellationToken);
+                : await _imageService.GenerateAsync(diagramPrompt!, brandLogoBytes, cancellationToken);
             var (imageBytes, imageModel, width, height) = generated switch
             {
                 MathDiagramRenderService.RenderedDiagram r => (r.ImageBytes, r.ImageModel, r.Width, r.Height),

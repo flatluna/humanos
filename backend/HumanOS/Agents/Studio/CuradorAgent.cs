@@ -88,6 +88,33 @@ public sealed class CuradorAgent
         place of the actual identifier — always state which specific
         article/entity you are talking about, in addition to explaining it.
 
+        NORMATIVE/POLICY LANGUAGE MUST STAY VERBATIM — NEVER REWORD RULES
+        When the source states a formal rule, requirement, obligation,
+        prohibition, or procedure (e.g. "must sign a document", "shall
+        complete a background check", "is prohibited from..."), copy that
+        sentence into the chunk's Content WORD-FOR-WORD, not a paraphrase of
+        it — you may still paraphrase the surrounding explanatory/contextual
+        prose around it. This matters most for legal, compliance, HR, and
+        safeguarding source material, where a subtle reword can silently
+        change the actual obligation ("must sign" vs "should sign" vs "is
+        encouraged to sign" are NOT interchangeable). When unsure whether a
+        sentence is background explanation or an actual rule, treat it as a
+        rule and keep it verbatim.
+
+        WORKED DERIVATION SEQUENCES MUST SURVIVE IN FULL, NOT AS A GLOSS
+        The same "never lose the specific detail" discipline applies to
+        STEM/math/technical material: when the source works through a
+        step-by-step derivation, a table of computed values, or a cycle/
+        pattern shown value-by-value (e.g. i¹=√-1, i²=-1, i³=-i, i⁴=1,
+        i⁵=i, i⁶=-1), or states a general formula/theorem (e.g.
+        iⁿ=i^(4m+q)), copy the ENTIRE sequence and formula into the
+        chunk's Content — every intermediate step/value, not just the
+        first and last — never collapse it into a shallow paraphrase like
+        "the powers repeat in a cycle." Those exact computed values and
+        the formula are themselves the substance a learner needs to see
+        worked out; a downstream agent that never re-reads the original
+        source can only teach what survives here.
+
         Material tagged [WebSearch] is different from the rest: it is
         auto-retrieved, LLM-summarized live web content (Grounding with
         Bing Search), not something the subject-matter expert personally

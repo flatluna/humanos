@@ -32,6 +32,13 @@ export interface BackendCapabilityGraphNode {
    * the large Mastered-state star icon (see DeepDiveLoopGate.cs /
    * GraphProgressionEngine.GetDeepDiveMasteredNodeIdsAsync). */
   deepDiveMastered?: boolean;
+  /** 0-based index of the source document chapter/module this node
+   * belongs to (see backend CapabilityGraphNode.ChapterIndex) — what the
+   * "climb" map now groups nodes by (2026-08-04, ported from Capability
+   * Studio's PreviewGraphPage). Null/undefined for nodes whose chapter
+   * couldn't be traced, or capabilities created before this field
+   * existed — falls back to edge-tier grouping in that case. */
+  chapterIndex?: number | null;
 }
 
 /** RelationshipType enum values from backend (Requires=0, BuildsOn=1). */

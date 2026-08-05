@@ -241,7 +241,7 @@ export default function ProgramCatalogPage() {
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <h3 className="font-semibold text-slate-900 dark:text-white">{program.name}</h3>
                 <p className="line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
-                  {program.description ?? 'Un programa curado de capacidades para avanzar paso a paso.'}
+                  {program.description ?? 'Un programa curado de Engramas para avanzar paso a paso.'}
                 </p>
 
                 <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">

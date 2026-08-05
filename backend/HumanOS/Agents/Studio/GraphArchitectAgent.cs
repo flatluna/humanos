@@ -370,6 +370,35 @@ public sealed class GraphArchitectAgent
         name each one explicitly next to the point it makes (e.g.
         "ARTÍCULO 44 exempts X... ARTÍCULO 45 extends this to Y...") rather
         than merging them into one unattributed paraphrase.
+
+        NORMATIVE/POLICY STATEMENTS MUST SURVIVE VERBATIM, NOT PARAPHRASED
+        The same discipline applies to actual rules/requirements/obligations
+        stated in the curated chunks (as opposed to background explanation)
+        — for legal, compliance, HR, and safeguarding-policy corpora
+        especially, a subtle reword can silently change the real
+        obligation. When AcademicDefinition (or Examples) is built from a
+        chunk that states a concrete rule ("must", "shall", "is required
+        to", "is prohibited from", "before serving, a volunteer must..."),
+        quote that governing sentence VERBATIM (in quotation marks) rather
+        than restating it in your own words — you may still add a plain-
+        language Interpretation alongside it, but the AcademicDefinition
+        itself must not silently alter what the rule actually requires.
+        NEVER invent a new rule, requirement, or fact the corpus does not
+        state.
+
+        WORKED DERIVATION SEQUENCES MUST SURVIVE IN FULL, NOT AS A GLOSS
+        The same discipline applies to STEM/math/technical corpora: when
+        the corpus works through a concrete step-by-step derivation, a
+        table of computed values, a cycle/pattern shown value-by-value, or
+        states a general formula/theorem (e.g. powers of i: i¹=√-1, i²=-1,
+        i³=-i, i⁴=1, i⁵=i, i⁶=-1, and the periodicity formula
+        iⁿ=i^(4m+q)), copy that ENTIRE sequence and formula into this
+        node's Examples verbatim (every intermediate step/value, not just
+        first-and-last), never collapse it into a shallow paraphrase like
+        "the powers repeat in a cycle." The specific computed values and
+        the formula ARE the content a learner needs to see worked out —
+        losing them here means no later step in the pipeline can ever
+        recover them, since none of them re-read the raw corpus.
         - IllustrationPrompts: when this node benefits from an image, write
           EXACTLY TWO prompts (a sentence each), one per Purpose — never more,
           never fewer than two if any illustration is warranted at all;
@@ -611,18 +640,25 @@ public sealed class GraphArchitectAgent
           — not even a short introductory/objectives subsection or a
           "complementary activity" subsection. Every single line MUST
           produce its own node.
-        - Frame even a thin/procedural subsection as the real capability it
-          represents rather than dropping it: an introductory/objectives
-          subsection becomes a node about the unit's foundational
-          orientation/goal; a "complementary activity" subsection becomes a
-          node about applying/practicing everything the unit just covered.
-          Never invent a reason to discard a line from the list.
-        - Each node's Name should still be a short (2-5 word), human/
-          knowledge-centered label (never the literal numbering like "1.1"
-          verbatim) but must clearly and traceably correspond to EXACTLY
-          ONE line from the list — never fold two lines' worth of content
-          into one node, and never split one line's content across two
-          nodes.
+        - Never drop a thin/procedural subsection line just because it
+          seems short: give it a real, fully-developed node (its own
+          AcademicDefinition, Examples, Applications, etc.) built from
+          whatever that subsection actually covers. Never invent a reason
+          to discard a line from the list.
+        - Each node's Name MUST be the EXACT heading text of its
+          corresponding line, VERBATIM — including its own internal
+          numbering (e.g. "3.2 General Responsibilities", NOT "Volunteer
+          Guidance" or any other invented/paraphrased/thematic label).
+          This is a hard legal/traceability requirement: a reviewer must be
+          able to look at a node and instantly know which exact heading of
+          the source document it came from, with zero ambiguity. NEVER
+          invent a new pedagogical/thematic name for a node in this mode —
+          that is correct behavior in the DEFAULT (non-strict) mode
+          described above, but is explicitly FORBIDDEN here. Only strip the
+          leading "N. " line-number prefix this list itself adds (e.g.
+          "5. "), never the heading's OWN numbering that follows it. Never
+          fold two lines' worth of content into one node, and never split
+          one line's content across two nodes.
         - Each such node's References MUST cite the corpus chunk Tag(s)
           that came from that specific line's chapter, so its source is
           unambiguous and level/module auto-naming can attribute it

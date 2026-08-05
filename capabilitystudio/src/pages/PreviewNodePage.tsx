@@ -507,7 +507,7 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
   }, [sessionNodeId, step, assessmentRound]);
 
   const handleAssessmentSubmitAnswer = useCallback(async () => {
-    if (!assessmentRound?.CurrentQuestion || !assessmentAnswerText.trim()) return;
+    if (!assessmentRound?.CurrentQuestion || !assessmentAnswerText.trim() || assessmentSubmitting) return;
     setAssessmentSubmitting(true);
     setErrorMessage(null);
     try {
@@ -519,7 +519,7 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
     } finally {
       setAssessmentSubmitting(false);
     }
-  }, [assessmentRound, assessmentAnswerText]);
+  }, [assessmentRound, assessmentAnswerText, assessmentSubmitting]);
 
   const handleAssessmentContinue = useCallback(() => {
     if (!assessmentLastResult || !assessmentRound) return;
@@ -545,7 +545,7 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
     setErrorMessage(null);
     try {
       const result = await completeNode(sessionNodeId);
-      setNewlyUnlocked(result.newlyUnlockedNodes);
+      setNewlyUnlocked(result.NewlyUnlockedNodes);
     } catch {
       setErrorMessage(t('previewNode.genericErrorFallback'));
     } finally {
@@ -572,7 +572,7 @@ function RealNodeExperience({ mode }: { mode: PreviewMode }) {
       const result = await forceAdvanceStep(sessionNodeId);
       if (result.NodeCompleted) {
         const completion = await completeNode(sessionNodeId);
-        setNewlyUnlocked(completion.newlyUnlockedNodes);
+        setNewlyUnlocked(completion.NewlyUnlockedNodes);
       } else if (result.NextStep) {
         resetStepUiState(normalizeStep(result.NextStep));
       }

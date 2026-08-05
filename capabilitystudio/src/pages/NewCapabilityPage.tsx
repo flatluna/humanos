@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { FileText, MessageSquareText, Video, Link2, ArrowLeft, ArrowRight, Sparkles, Globe, Baby } from 'lucide-react';
+import {
+  FileText,
+  MessageSquareText,
+  Video,
+  Link2,
+  ArrowLeft,
+  ArrowRight,
+  Sparkles,
+  Globe,
+  Baby,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  Wand2,
+  ListTree,
+} from 'lucide-react';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getCapabilityDomains, type CapabilityDomain } from '../lib/api/domainsApi';
 import { getPrograms, getProgramById, type BackendProgram, type BackendProgramDetail } from '../lib/api/programsApi';
@@ -12,6 +27,9 @@ import {
   startPdfCapabilityGraph,
   startCapabilityGraphFromDescription,
   getActiveCapabilityGraphRun,
+  previewCapabilityOutline,
+  type CapabilityOutlineChapter,
+  type CapabilityOutlineSource,
 } from '../lib/api/pdfPipelineApi';
 import StepIndicator from '../components/StepIndicator';
 import TypeOptionCard from '../components/TypeOptionCard';
@@ -72,6 +90,15 @@ export default function NewCapabilityPage() {
   // judgment. Off by default — most courses want the AI's own concept-
   // based graph design.
   const [strictSyllabusMode, setStrictSyllabusMode] = useState(false);
+  // Production ('Aplícalo') step opt-out (2026-08-04): some clients don't
+  // want a hands-on application exercise for every node — on by default
+  // (existing 5-step Memory Paradox order unchanged).
+  const [includeProductionStep, setIncludeProductionStep] = useState(true);
+  // Recall items required / Assessment questions per round (2026-08-04):
+  // plain strings so the field can be left blank ('' = keep the runtime
+  // default) instead of forcing a number on designers who don't care.
+  const [recallItemsRequired, setRecallItemsRequired] = useState('');
+  const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState('');
   const [programId, setProgramId] = useState<string>('');
   const [programDetail, setProgramDetail] = useState<BackendProgramDetail | null>(null);
   const [programSequenceNumber, setProgramSequenceNumber] = useState<number | null>(null);
@@ -93,10 +120,25 @@ export default function NewCapabilityPage() {
   const [file, setFile] = useState<File | null>(null);
   const [ideaDescription, setIdeaDescription] = useState('');
   const [enableWebEnrichment, setEnableWebEnrichment] = useState(false);
+  // Brand logo reference (2026-08-04 "logo en las ilustraciones" feature):
+  // optional PNG the designer attaches so every illustration generated for
+  // this capability uses the REAL company logo as a visual reference
+  // (instead of the AI guessing/hallucinating one from a text prompt). Null
+  // means no logo — behavior is identical to before this feature existed.
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [conflictingRunId, setConflictingRunId] = useState<string | null>(null);
+
+  // Paso 5 "Diseño de la capability" (2026-08-04): the reviewed/approved
+  // (possibly hand-edited) chapter/node outline — null means "not loaded
+  // yet" or "designer chose to continue without an approved outline".
+  const [outline, setOutline] = useState<CapabilityOutlineChapter[] | null>(null);
+  const [outlineSource, setOutlineSource] = useState<CapabilityOutlineSource | null>(null);
+  const [outlineLoading, setOutlineLoading] = useState(false);
+  const [outlineError, setOutlineError] = useState<string | null>(null);
+  const [outlineSkipped, setOutlineSkipped] = useState(false);
 
   useEffect(() => {
     getSubjects().then(setSubjects).catch(() => setSubjects([]));
@@ -189,12 +231,100 @@ export default function NewCapabilityPage() {
     return false;
   }, [canAdvanceFromStep1, capabilityType, file, ideaDescription]);
 
+  /** Runs the cheap detection-only outline preview (Paso 5) — called once
+   * when the designer first reaches step 5, and again if they click
+   * "Regenerar". Does NOT run the expensive generation pipeline. */
+  async function loadOutlinePreview() {
+    setOutlineLoading(true);
+    setOutlineError(null);
+    setOutlineSkipped(false);
+    try {
+      let result;
+      if (capabilityType === 'pdf' && file) {
+        const contentBase64 = await readFileAsBase64(file);
+        result = await previewCapabilityOutline({ fileName: file.name, contentBase64 });
+      } else if (capabilityType === 'text' && ideaDescription.trim()) {
+        result = await previewCapabilityOutline({ text: ideaDescription.trim() });
+      } else {
+        setOutline(null);
+        setOutlineSource(null);
+        return;
+      }
+
+      setOutlineSource(result.Source);
+      if (result.Source === 'None' || result.Chapters.length === 0) {
+        setOutline(null);
+        setOutlineError(result.RejectionReason ?? t('newCapability.outlineNotFound'));
+      } else {
+        setOutline(result.Chapters);
+      }
+    } catch (err) {
+      setOutline(null);
+      setOutlineSource(null);
+      setOutlineError(err instanceof Error ? err.message : t('newCapability.outlineLoadError'));
+    } finally {
+      setOutlineLoading(false);
+    }
+  }
+
+  /** Moves from step 4 (review) into step 5 (design/approval), kicking off
+   * the outline preview the first time it's reached. */
+  async function goToDesignStep() {
+    setStep(5);
+    if (outline === null && outlineSource === null && !outlineLoading) {
+      await loadOutlinePreview();
+    }
+  }
+
+  function updateChapterTitle(chapterIndex: number, newTitle: string) {
+    setOutline((prev) =>
+      prev ? prev.map((chapter, i) => (i === chapterIndex ? { ...chapter, Title: newTitle } : chapter)) : prev,
+    );
+  }
+
+  function updateNodeTitle(chapterIndex: number, nodeIndex: number, newTitle: string) {
+    setOutline((prev) =>
+      prev
+        ? prev.map((chapter, i) =>
+            i === chapterIndex
+              ? { ...chapter, Nodes: chapter.Nodes.map((node, j) => (j === nodeIndex ? { ...node, Title: newTitle } : node)) }
+              : chapter,
+          )
+        : prev,
+    );
+  }
+
+  function removeNode(chapterIndex: number, nodeIndex: number) {
+    setOutline((prev) =>
+      prev
+        ? prev
+            .map((chapter, i) =>
+              i === chapterIndex ? { ...chapter, Nodes: chapter.Nodes.filter((_, j) => j !== nodeIndex) } : chapter,
+            )
+            .filter((chapter) => chapter.Nodes.length > 0)
+        : prev,
+    );
+  }
+
+  function removeChapter(chapterIndex: number) {
+    setOutline((prev) => (prev ? prev.filter((_, i) => i !== chapterIndex) : prev));
+  }
+
   async function handleSubmit() {
     setSubmitting(true);
     setSubmitError(null);
     setConflictingRunId(null);
     try {
       const normalizedMaxDeepDiveCardsPerNode = Math.max(1, Math.min(10, maxDeepDiveCardsPerNode));
+      const normalizedRecallItemsRequired =
+        recallItemsRequired.trim() === ''
+          ? null
+          : Math.max(1, Math.min(10, Number.parseInt(recallItemsRequired, 10) || 1));
+      const normalizedAssessmentQuestionsPerRound =
+        assessmentQuestionsPerRound.trim() === ''
+          ? null
+          : Math.max(1, Math.min(10, Number.parseInt(assessmentQuestionsPerRound, 10) || 1));
+      const logoImageBase64 = logoFile ? await readFileAsBase64(logoFile) : null;
       if (capabilityType === 'pdf') {
         if (!file) return;
         const contentBase64 = await readFileAsBase64(file);
@@ -218,6 +348,11 @@ export default function NewCapabilityPage() {
           targetSkill: targetSkill || null,
           maxDeepDiveCardsPerNode: normalizedMaxDeepDiveCardsPerNode,
           strictSyllabusMode,
+          approvedOutline: !outlineSkipped && outline && outline.length > 0 ? outline : null,
+          includeProductionStep,
+          recallItemsRequired: normalizedRecallItemsRequired,
+          assessmentQuestionsPerRound: normalizedAssessmentQuestionsPerRound,
+          logoImageBase64,
         });
         navigate(`/runs/${run.RunId}`);
       } else if (capabilityType === 'text') {
@@ -240,6 +375,11 @@ export default function NewCapabilityPage() {
           targetSkill: targetSkill || null,
           maxDeepDiveCardsPerNode: normalizedMaxDeepDiveCardsPerNode,
           strictSyllabusMode,
+          approvedOutline: !outlineSkipped && outline && outline.length > 0 ? outline : null,
+          includeProductionStep,
+          recallItemsRequired: normalizedRecallItemsRequired,
+          assessmentQuestionsPerRound: normalizedAssessmentQuestionsPerRound,
+          logoImageBase64,
         });
         navigate(`/runs/${run.RunId}`);
       }
@@ -388,6 +528,55 @@ export default function NewCapabilityPage() {
               />
               {t('newCapability.strictSyllabusModeToggle')}
             </label>
+          </Field>
+
+          <Field
+            label={t('newCapability.includeProductionStepLabel')}
+            hint={t('newCapability.includeProductionStepHint')}
+          >
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={includeProductionStep}
+                onChange={(e) => setIncludeProductionStep(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
+              />
+              {includeProductionStep
+                ? t('newCapability.includeProductionStepOn')
+                : t('newCapability.includeProductionStepOff')}
+            </label>
+          </Field>
+
+          <Field
+            label={t('newCapability.recallItemsRequiredLabel')}
+            hint={t('newCapability.recallItemsRequiredHint')}
+          >
+            <input
+              type="number"
+              min={1}
+              max={10}
+              step={1}
+              placeholder={t('newCapability.useDefaultPlaceholder')}
+              value={recallItemsRequired}
+              onChange={(e) => setRecallItemsRequired(e.target.value)}
+              className="input"
+            />
+          </Field>
+
+          <Field
+            label={t('newCapability.assessmentQuestionsPerRoundLabel')}
+            hint={t('newCapability.assessmentQuestionsPerRoundHint')}
+          >
+            <input
+              type="number"
+              min={1}
+              max={10}
+              step={1}
+              placeholder={t('newCapability.useDefaultPlaceholder')}
+              value={assessmentQuestionsPerRound}
+              onChange={(e) => setAssessmentQuestionsPerRound(e.target.value)}
+              className="input"
+            />
           </Field>
 
           <Field label={t('newCapability.domainLabel')}>
@@ -648,6 +837,16 @@ export default function NewCapabilityPage() {
             </div>
           </label>
 
+          <Field label={t('newCapability.logoLabel')} hint={t('newCapability.logoSubtitle')}>
+            <FileDropzone
+              file={logoFile}
+              onFileSelected={setLogoFile}
+              accept="image/png"
+              title={t('newCapability.logoDropzoneTitle')}
+              subtitle={t('newCapability.logoDropzoneSubtitle')}
+            />
+          </Field>
+
           <WizardNav onBack={() => setStep(2)} onNext={() => setStep(4)} nextDisabled={!canAdvanceFromStep3} />
         </div>
       )}
@@ -688,12 +887,29 @@ export default function NewCapabilityPage() {
               label={t('newCapability.summaryMaxDeepDiveCards')}
               value={String(Math.max(1, Math.min(10, maxDeepDiveCardsPerNode)))}
             />
+            <SummaryRow
+              label={t('newCapability.summaryIncludeProductionStep')}
+              value={includeProductionStep ? t('newCapability.enabled') : t('newCapability.disabled')}
+            />
+            <SummaryRow
+              label={t('newCapability.summaryRecallItemsRequired')}
+              value={recallItemsRequired.trim() === '' ? t('newCapability.useDefaultValue') : recallItemsRequired.trim()}
+            />
+            <SummaryRow
+              label={t('newCapability.summaryAssessmentQuestionsPerRound')}
+              value={
+                assessmentQuestionsPerRound.trim() === ''
+                  ? t('newCapability.useDefaultValue')
+                  : assessmentQuestionsPerRound.trim()
+              }
+            />
             {capabilityType === 'pdf' ? (
               <SummaryRow label={t('newCapability.summaryFile')} value={file?.name ?? t('newCapability.dash')} />
             ) : (
               <SummaryRow label={t('newCapability.summaryIdea')} value={ideaDescription || t('newCapability.dash')} />
             )}
             <SummaryRow label={t('newCapability.summaryWebEnrichment')} value={enableWebEnrichment ? t('newCapability.enabled') : t('newCapability.disabled')} />
+            <SummaryRow label={t('newCapability.summaryLogo')} value={logoFile?.name ?? t('newCapability.dash')} />
             {selectedProgram && (
               <>
                 <SummaryRow label={t('newCapability.summaryProgram')} value={selectedProgram.Name} />
@@ -725,8 +941,139 @@ export default function NewCapabilityPage() {
 
           <WizardNav
             onBack={() => setStep(3)}
+            onNext={goToDesignStep}
+            nextDisabled={!canSubmit}
+            nextLabel={t('common.continue')}
+          />
+        </div>
+      )}
+
+      {step === 5 && (
+        <div className="animate-fade-in space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-white">{t('newCapability.step5Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newCapability.step5Subtitle')}</p>
+          </div>
+
+          {outlineLoading && (
+            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
+              <RefreshCw className="h-4 w-4 animate-spin text-brand-400" />
+              {t('newCapability.outlineLoading')}
+            </div>
+          )}
+
+          {!outlineLoading && outline && outline.length > 0 && (
+            <>
+              <div
+                className={`flex items-center gap-2 rounded-xl border p-3 text-xs font-medium ${
+                  outlineSource === 'InferredByAI'
+                    ? 'border-amber-500/20 bg-amber-500/5 text-amber-300'
+                    : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-300'
+                }`}
+              >
+                {outlineSource === 'InferredByAI' ? <Wand2 className="h-4 w-4 shrink-0" /> : <ListTree className="h-4 w-4 shrink-0" />}
+                {outlineSource === 'InferredByAI' ? t('newCapability.outlineSourceInferred') : t('newCapability.outlineSourceDetected')}
+              </div>
+
+              <div className="space-y-4">
+                {outline.map((chapter, chapterIndex) => (
+                  <div key={chapterIndex} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex items-start gap-2">
+                      <Pencil className="mt-2.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
+                      <input
+                        type="text"
+                        value={chapter.Title}
+                        onChange={(e) => updateChapterTitle(chapterIndex, e.target.value)}
+                        className="input flex-1 font-semibold text-white"
+                      />
+                      <button
+                        type="button"
+                        title={t('newCapability.outlineRemoveChapter')}
+                        onClick={() => removeChapter(chapterIndex)}
+                        className="mt-1 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 space-y-2 pl-6">
+                      {chapter.Nodes.map((node, nodeIndex) => (
+                        <div key={nodeIndex} className="flex items-center gap-2">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+                          <input
+                            type="text"
+                            value={node.Title}
+                            onChange={(e) => updateNodeTitle(chapterIndex, nodeIndex, e.target.value)}
+                            className="input flex-1 py-1.5 text-sm"
+                          />
+                          <button
+                            type="button"
+                            title={t('newCapability.outlineRemoveNode')}
+                            onClick={() => removeNode(chapterIndex, nodeIndex)}
+                            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={loadOutlinePreview}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {t('newCapability.outlineRegenerate')}
+              </button>
+            </>
+          )}
+
+          {!outlineLoading && (!outline || outline.length === 0) && (
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
+              <p>{outlineError ?? t('newCapability.outlineNotFound')}</p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={loadOutlinePreview}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-white/20"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t('newCapability.outlineRetry')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutlineSkipped(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-white/20"
+                >
+                  {t('newCapability.outlineSkip')}
+                </button>
+              </div>
+              {outlineSkipped && <p className="text-xs text-emerald-300">{t('newCapability.outlineSkipped')}</p>}
+            </div>
+          )}
+
+          {submitError && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">
+              {submitError}
+              {conflictingRunId && (
+                <Link
+                  to={`/runs/${conflictingRunId}`}
+                  className="ml-1.5 inline-flex items-center gap-1 font-medium text-brand-400 hover:text-brand-300"
+                >
+                  {t('newCapability.viewProgress')} <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </div>
+          )}
+
+          <WizardNav
+            onBack={() => setStep(4)}
             onNext={handleSubmit}
-            nextDisabled={!canSubmit || submitting}
+            nextDisabled={!canSubmit || submitting || outlineLoading || (!outline && !outlineSkipped)}
             nextLabel={submitting ? t('newCapability.starting') : t('newCapability.createCapability')}
             nextIcon={Sparkles}
           />

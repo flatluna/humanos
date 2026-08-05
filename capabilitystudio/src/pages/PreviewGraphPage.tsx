@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Lock, PlayCircle, Star, ChevronDown, Plus, Pencil, Check, X, Trash2 } from 'lucide-react';
+import { ArrowLeft, Lock, PlayCircle, Star, ChevronDown, Plus, Pencil, Check, X, Trash2, Menu, ListChecks, Search } from 'lucide-react';
 import {
   getCapabilityGraph,
   setCapabilityGraphLevelName,
@@ -54,15 +54,76 @@ const getStateLabels = (t: (key: string) => string): Record<CapabilityGraphNodeS
   Mastered: t('previewGraph.stateMastered'),
 });
 
+// Cycled per level in the sidebar so a long course reads like a colorful
+// chaptered table of contents instead of a wall of uniform gray text.
+const LEVEL_ACCENTS = [
+  { text: 'text-brand-300', dot: 'bg-brand-400', border: 'border-brand-400/50' },
+  { text: 'text-sky-300', dot: 'bg-sky-400', border: 'border-sky-400/50' },
+  { text: 'text-emerald-300', dot: 'bg-emerald-400', border: 'border-emerald-400/50' },
+  { text: 'text-amber-300', dot: 'bg-amber-400', border: 'border-amber-400/50' },
+  { text: 'text-fuchsia-300', dot: 'bg-fuchsia-400', border: 'border-fuchsia-400/50' },
+  { text: 'text-rose-300', dot: 'bg-rose-400', border: 'border-rose-400/50' },
+];
+
 /**
- * Groups nodes into "climb" levels using the graph's prerequisite edges
- * (Requires/BuildsOn: Source depends on Target) instead of a flat list —
- * much friendlier for a kid, since it visually reads as a pyramid: the
- * foundational nodes with no prerequisites form the wide base (top of the
- * page, first to unlock) and each level narrows towards the few advanced
- * nodes at the summit, connected by a simple path instead of a bare list.
+ * Groups nodes into "climb" levels — much friendlier for a kid, since it
+ * visually reads as a pyramid.
+ *
+ * Preferred grouping (2026-08-04): by each node's own ChapterIndex — the
+ * source document's chapter/module structure, e.g. "1.1 Propósito de la
+ * Política" and "1.2 Importancia del Voluntariado" both sit in ONE row
+ * for chapter "1. Introducción", exactly as the document/professor
+ * planned it, regardless of any prerequisite edge between them.
+ *
+ * Falls back to the OLDER edge-depth tiering (a node's tier is 1 + the
+ * deepest tier among its prerequisites) only when no node in the graph has
+ * a ChapterIndex at all — i.e. capabilities created before that field
+ * existed. That older approach could put two sibling nodes from the SAME
+ * chapter into different rows, both confusingly auto-named after that one
+ * shared chapter — this is exactly what chapter-based grouping fixes.
  */
 function groupIntoLevels(
+  nodes: BackendCapabilityGraphNode[],
+  edges: BackendCapabilityGraphEdge[]
+): BackendCapabilityGraphNode[][] {
+  const hasChapterIndex = nodes.some((n) => n.ChapterIndex !== null && n.ChapterIndex !== undefined);
+  if (hasChapterIndex) {
+    return groupByChapterIndex(nodes);
+  }
+  return groupByPrerequisiteTier(nodes, edges);
+}
+
+function groupByChapterIndex(nodes: BackendCapabilityGraphNode[]): BackendCapabilityGraphNode[][] {
+  const byChapter = new Map<number, BackendCapabilityGraphNode[]>();
+  const unassigned: BackendCapabilityGraphNode[] = [];
+
+  nodes.forEach((n) => {
+    if (n.ChapterIndex === null || n.ChapterIndex === undefined) {
+      unassigned.push(n);
+      return;
+    }
+    const group = byChapter.get(n.ChapterIndex) ?? [];
+    group.push(n);
+    byChapter.set(n.ChapterIndex, group);
+  });
+
+  const levels = Array.from(byChapter.keys())
+    .sort((a, b) => a - b)
+    .map((chapterIndex) => {
+      const group = byChapter.get(chapterIndex)!;
+      group.sort((a, b) => a.SortOrder - b.SortOrder);
+      return group;
+    });
+
+  if (unassigned.length > 0) {
+    unassigned.sort((a, b) => a.SortOrder - b.SortOrder);
+    levels.push(unassigned);
+  }
+
+  return levels;
+}
+
+function groupByPrerequisiteTier(
   nodes: BackendCapabilityGraphNode[],
   edges: BackendCapabilityGraphEdge[]
 ): BackendCapabilityGraphNode[][] {
@@ -101,6 +162,14 @@ export default function PreviewGraphPage() {
   const [error, setError] = useState<string | null>(null);
   const [addNodeLevel, setAddNodeLevel] = useState<number | null>(null);
   const [deletingNode, setDeletingNode] = useState<BackendCapabilityGraphNode | null>(null);
+  // Course-contents sidebar (2026-08-05) — a Coursera-style index alongside
+  // the existing "climb" map, purely a navigation aid: it never changes
+  // Locked/Available/Mastered gating, it just lets a student jump straight
+  // to any already-unlocked node and see overall progress at a glance
+  // instead of scrolling through the whole map. Collapsed by default on
+  // mobile (toggled via this state); always visible at the `lg` breakpoint.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarQuery, setSidebarQuery] = useState('');
 
   // Inline editing of a level's professor-given display name (2026-07-30) —
   // see setCapabilityGraphLevelName. `editingLevelIndex` is the level
@@ -131,6 +200,28 @@ export default function PreviewGraphPage() {
     graph?.Levels?.forEach((l) => map.set(l.LevelIndex, l.Name));
     return map;
   }, [graph]);
+
+  // Sidebar search (2026-08-05) — matches either the chapter/level title or
+  // an individual node name. A chapter whose title matches is kept whole
+  // (so the student can still see every node in it); otherwise only its
+  // matching nodes are kept. Case/accent-insensitive for ES/EN content.
+  const normalizeForSearch = useCallback(
+    (value: string) => value.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+    []
+  );
+  const filteredLevels = useMemo(() => {
+    const query = normalizeForSearch(sidebarQuery.trim());
+    if (!query) return levels.map((level, levelIndex) => ({ levelIndex, level }));
+
+    return levels
+      .map((level, levelIndex) => {
+        const levelName = levelNameByIndex.get(levelIndex) ?? t('previewGraph.level', { n: levelIndex + 1 });
+        const levelMatches = normalizeForSearch(levelName).includes(query);
+        const matchingNodes = levelMatches ? level : level.filter((node) => normalizeForSearch(node.Name).includes(query));
+        return { levelIndex, level: matchingNodes };
+      })
+      .filter(({ level }) => level.length > 0);
+  }, [levels, levelNameByIndex, sidebarQuery, normalizeForSearch, t]);
 
   const startEditingLevelName = useCallback((levelIndex: number) => {
     setEditingLevelIndex(levelIndex);
@@ -170,6 +261,36 @@ export default function PreviewGraphPage() {
     return null;
   }, [levels]);
 
+  // Both Demo and Edit modes are reviewer-facing (not a real student's
+  // progression) — no node should ever look or behave as locked in either.
+  // Shared by both the map bubbles AND the new sidebar index below, so the
+  // two navigation surfaces can never disagree about what's clickable.
+  const nodeEffectiveState = useCallback(
+    (node: BackendCapabilityGraphNode): CapabilityGraphNodeState =>
+      (mode === 'edit' || mode === 'demo') && node.State === 'Locked' ? 'Available' : node.State,
+    [mode]
+  );
+  const isNodeClickable = useCallback(
+    (node: BackendCapabilityGraphNode) => node.State !== 'Locked' || mode === 'demo' || mode === 'edit',
+    [mode]
+  );
+  const goToNode = useCallback(
+    (node: BackendCapabilityGraphNode) => {
+      navigate(withPreviewMode(`/capabilities/${capabilityId}/preview/nodes/${node.CapabilityGraphNodeId}`, mode));
+    },
+    [navigate, capabilityId, mode]
+  );
+
+  const progress = useMemo(() => {
+    const total = graph?.Nodes.length ?? 0;
+    const mastered = graph?.Nodes.filter((n) => n.State === 'Mastered').length ?? 0;
+    return { total, mastered, percent: total > 0 ? Math.round((mastered / total) * 100) : 0 };
+  }, [graph]);
+
+  const scrollToLevel = useCallback((levelIndex: number) => {
+    document.getElementById(`preview-graph-level-${levelIndex}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   if (loading) return <LoadingSpinner label={t('previewGraph.loading')} />;
 
   if (error || !graph) {
@@ -187,7 +308,7 @@ export default function PreviewGraphPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 xl:max-w-7xl 2xl:max-w-[96rem]">
       <Link
         to={`/capabilities/${capabilityId}`}
         className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white"
@@ -208,9 +329,116 @@ export default function PreviewGraphPage() {
         )}
       </div>
 
-      <div className="mt-10 flex flex-col items-center">
+      {levels.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((open) => !open)}
+          className="mx-auto mt-6 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/[0.06] lg:hidden"
+        >
+          {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          {sidebarOpen ? t('previewGraph.sidebarToggleHide') : t('previewGraph.sidebarToggleShow')}
+        </button>
+      )}
+
+      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+        {levels.length > 0 && (
+          <aside className={`${sidebarOpen ? 'block' : 'hidden'} w-full flex-none lg:sticky lg:top-6 lg:block lg:w-72 xl:w-80 2xl:w-96`}>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 lg:flex lg:max-h-[calc(100vh-3rem)] lg:flex-col">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <ListChecks className="h-4 w-4 text-brand-400" /> {t('previewGraph.sidebarTitle')}
+              </div>
+              <div className="mt-3">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
+                    style={{ width: `${progress.percent}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  {t('previewGraph.sidebarProgress', { done: progress.mastered, total: progress.total })}
+                </p>
+              </div>
+
+              <div className="relative mt-3">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={sidebarQuery}
+                  onChange={(e) => setSidebarQuery(e.target.value)}
+                  placeholder={t('previewGraph.sidebarSearchPlaceholder')}
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] py-1.5 pl-8 pr-7 text-xs text-white placeholder:text-slate-500 focus:border-brand-400/60 focus:outline-none"
+                />
+                {sidebarQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSidebarQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <nav className="mt-3 space-y-3 overflow-y-auto pr-1 lg:min-h-0 lg:flex-1">
+                {filteredLevels.length === 0 && (
+                  <p className="px-1 text-xs text-slate-500">{t('previewGraph.sidebarNoResults')}</p>
+                )}
+                {filteredLevels.map(({ levelIndex, level }) => {
+                  const accent = LEVEL_ACCENTS[levelIndex % LEVEL_ACCENTS.length];
+                  return (
+                    <div key={levelIndex} className={`rounded-xl border bg-white/[0.02] p-2.5 ${accent.border}`}>
+                      <button
+                        type="button"
+                        onClick={() => scrollToLevel(levelIndex)}
+                        className={`flex w-full items-center gap-1.5 truncate text-left text-[11px] font-semibold uppercase tracking-wide hover:brightness-125 ${accent.text}`}
+                      >
+                        <span className={`h-1.5 w-1.5 flex-none rounded-full ${accent.dot}`} />
+                        <span className="truncate">{levelNameByIndex.get(levelIndex) ?? t('previewGraph.level', { n: levelIndex + 1 })}</span>
+                      </button>
+                      <ul className="mt-1.5 space-y-0.5">
+                        {level.map((node) => {
+                          const effectiveState = nodeEffectiveState(node);
+                          const clickable = isNodeClickable(node);
+                          const Icon = STATE_STYLES[effectiveState].Icon;
+                          const isNextUp = node.CapabilityGraphNodeId === nextUpNodeId;
+                          return (
+                            <li key={node.CapabilityGraphNodeId}>
+                              <button
+                                type="button"
+                                disabled={!clickable}
+                                onClick={() => goToNode(node)}
+                                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition ${
+                                  clickable ? 'cursor-pointer hover:bg-white/[0.06]' : 'cursor-not-allowed opacity-50'
+                                } ${isNextUp ? 'bg-brand-500/10 ring-1 ring-inset ring-brand-400/40' : ''}`}
+                              >
+                                <Icon
+                                  className={`h-3.5 w-3.5 flex-none ${STATE_STYLES[effectiveState].icon}`}
+                                  fill={effectiveState === 'Mastered' ? 'currentColor' : 'none'}
+                                />
+                                <span className={`line-clamp-2 flex-1 ${effectiveState === 'Locked' ? 'text-slate-500' : 'text-slate-200'}`}>
+                                  {node.Name}
+                                </span>
+                                {isNextUp && (
+                                  <span className="flex-none rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#fff]">
+                                    {t('previewGraph.sidebarNextBadge')}
+                                  </span>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </nav>
+            </div>
+          </aside>
+        )}
+
+        <div className="flex flex-1 flex-col items-center rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8">
         {levels.map((level, levelIndex) => (
-          <div key={levelIndex} className="flex w-full flex-col items-center">
+          <div key={levelIndex} id={`preview-graph-level-${levelIndex}`} className="flex w-full scroll-mt-6 flex-col items-center">
             <div className="relative z-10 mb-6 flex items-center gap-2">
               {editingLevelIndex === levelIndex ? (
                 <div className="flex items-center gap-1.5">
@@ -273,10 +501,10 @@ export default function PreviewGraphPage() {
                 // student's progression) — no node should ever look or
                 // behave as locked in either. Only "Real" mode (this page
                 // isn't rendered there) would show genuine Locked gating.
-                const effectiveState = (mode === 'edit' || mode === 'demo') && node.State === 'Locked' ? 'Available' : node.State;
+                const effectiveState = nodeEffectiveState(node);
                 const style = STATE_STYLES[effectiveState];
                 const Icon = style.Icon;
-                const clickable = node.State !== 'Locked' || mode === 'demo' || mode === 'edit';
+                const clickable = isNodeClickable(node);
                 const isNextUp = node.CapabilityGraphNodeId === nextUpNodeId;
 
                 return (
@@ -297,9 +525,7 @@ export default function PreviewGraphPage() {
                     <button
                       type="button"
                       disabled={!clickable}
-                      onClick={() =>
-                        navigate(withPreviewMode(`/capabilities/${capabilityId}/preview/nodes/${node.CapabilityGraphNodeId}`, mode))
-                      }
+                      onClick={() => goToNode(node)}
                       className={`flex w-24 flex-col items-center gap-2 text-center transition ${
                         clickable ? 'cursor-pointer' : 'cursor-not-allowed'
                       }`}
@@ -360,6 +586,7 @@ export default function PreviewGraphPage() {
             </button>
           </div>
         )}
+        </div>
       </div>
 
       {addNodeLevel !== null && graph && (

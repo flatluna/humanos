@@ -2,6 +2,7 @@ export interface Translations {
   common: {
     appName: string;
     appNameFull: string;
+    appEdition: string;
     languageEnglish: string;
     languageSpanish: string;
     notifications: string;
@@ -340,6 +341,14 @@ export interface Translations {
     loadingDescription: string;
     memoryScoreLabel: string;
     memoryScoreCaption: string;
+  };
+  growth: {
+    subtitle: string;
+    loading: string;
+    emptyHint: string;
+    countLabel: string;
+    todayDelta: string;
+    explainer: string;
   };
   humanState: {
     sectionTitle: string;
@@ -843,5 +852,34 @@ export interface Translations {
     creating: string;
     createAccount: string;
     createOrganization: string;
+  };
+  profile: {
+    loadingTitle: string;
+    loadingDescription: string;
+    personalInfoTitle: string;
+    savedLabel: string;
+    changePhoto: string;
+    firstName: string;
+    lastName: string;
+    displayName: string;
+    phone: string;
+    preferredLanguage: string;
+    country: string;
+    countryPlaceholder: string;
+    timeZone: string;
+    timeZonePlaceholder: string;
+    dateOfBirth: string;
+    occupation: string;
+    occupationPlaceholder: string;
+    company: string;
+    companyPlaceholder: string;
+    companyReadOnlyHint: string;
+    biography: string;
+    biographyPlaceholder: string;
+    loadError: string;
+    saveError: string;
+    photoError: string;
+    saving: string;
+    saveChanges: string;
   };
 }

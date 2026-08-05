@@ -6,7 +6,7 @@ namespace HumanOS.Agentic.Runtime;
 /// THIS class has the final say on whether the current card is mastered
 /// and whether the whole step is done, exactly like <see cref="RecallLoopGate"/>.
 ///
-/// Unlike RecallLoopGate (mastering <see cref="RecallLoopGate.ItemsRequiredToAdvance"/>
+/// Unlike RecallLoopGate (mastering <see cref="RecallLoopGate.DefaultItemsRequiredToAdvance"/>
 /// DISTINCT items out of an open-ended, dynamically-generated pool), Deep
 /// Dive requires the student to master EVERY SINGLE ExampleCard in the
 /// node's coverage pool, strictly in the order they appear — product

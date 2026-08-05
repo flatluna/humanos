@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Lock, PlayCircle, Star, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Lock, PlayCircle, Star, Info, ChevronDown, ChevronUp, Menu, X, ListChecks, Search } from 'lucide-react';
 import { useI18n } from '../i18n/useI18n';
 import { useAuth } from '@/auth/AuthContext';
 import {
@@ -21,15 +21,79 @@ import {
  * prerequisites) form the first level, more advanced nodes sit in later
  * levels, visually separated by a chevron between rows instead of drawn
  * edge lines.
+ *
+ * Also ported (2026-08-05, same source page) the "course contents"
+ * sidebar — a Coursera-style table of contents alongside the map, purely
+ * a navigation aid: it never changes Locked/Available/Mastered gating, it
+ * just lets a student search and jump straight to any already-unlocked
+ * node and see overall progress at a glance.
  */
 
+// Cycled per level in the sidebar so a long course reads like a colorful
+// chaptered table of contents instead of a wall of uniform gray text.
+const LEVEL_ACCENTS = [
+  { text: 'text-brand-600 dark:text-brand-300', dot: 'bg-brand-500 dark:bg-brand-400', border: 'border-brand-300 dark:border-brand-400/50' },
+  { text: 'text-sky-600 dark:text-sky-300', dot: 'bg-sky-500 dark:bg-sky-400', border: 'border-sky-300 dark:border-sky-400/50' },
+  { text: 'text-emerald-600 dark:text-emerald-300', dot: 'bg-emerald-500 dark:bg-emerald-400', border: 'border-emerald-300 dark:border-emerald-400/50' },
+  { text: 'text-amber-600 dark:text-amber-300', dot: 'bg-amber-500 dark:bg-amber-400', border: 'border-amber-300 dark:border-amber-400/50' },
+  { text: 'text-fuchsia-600 dark:text-fuchsia-300', dot: 'bg-fuchsia-500 dark:bg-fuchsia-400', border: 'border-fuchsia-300 dark:border-fuchsia-400/50' },
+  { text: 'text-rose-600 dark:text-rose-300', dot: 'bg-rose-500 dark:bg-rose-400', border: 'border-rose-300 dark:border-rose-400/50' },
+];
+
 /**
- * Groups nodes into "climb" levels using the graph's prerequisite edges
- * (Requires/BuildsOn: Source depends on Target) — the foundational nodes
- * with no prerequisites form level 1, and each subsequent level is
- * 1 + its deepest prerequisite's level.
+ * Groups nodes into "climb" levels.
+ *
+ * Preferred grouping (2026-08-04): by each node's own `chapterIndex` — the
+ * source document's chapter/module structure, so nodes from the same
+ * chapter sit in one row exactly as the document/professor planned it,
+ * regardless of any prerequisite edge between them.
+ *
+ * Falls back to the OLDER edge-depth tiering only when no node in the
+ * graph has a chapterIndex at all — i.e. capabilities created before that
+ * field existed.
  */
 function groupIntoLevels(
+  nodes: BackendCapabilityGraphNode[],
+  edges: BackendCapabilityGraphEdge[]
+): BackendCapabilityGraphNode[][] {
+  const hasChapterIndex = nodes.some((n) => n.chapterIndex !== null && n.chapterIndex !== undefined);
+  if (hasChapterIndex) {
+    return groupByChapterIndex(nodes);
+  }
+  return groupByPrerequisiteTier(nodes, edges);
+}
+
+function groupByChapterIndex(nodes: BackendCapabilityGraphNode[]): BackendCapabilityGraphNode[][] {
+  const byChapter = new Map<number, BackendCapabilityGraphNode[]>();
+  const unassigned: BackendCapabilityGraphNode[] = [];
+
+  nodes.forEach((n) => {
+    if (n.chapterIndex === null || n.chapterIndex === undefined) {
+      unassigned.push(n);
+      return;
+    }
+    const group = byChapter.get(n.chapterIndex) ?? [];
+    group.push(n);
+    byChapter.set(n.chapterIndex, group);
+  });
+
+  const levels = Array.from(byChapter.keys())
+    .sort((a, b) => a - b)
+    .map((chapterIndex) => {
+      const group = byChapter.get(chapterIndex)!;
+      group.sort((a, b) => a.sortOrder - b.sortOrder);
+      return group;
+    });
+
+  if (unassigned.length > 0) {
+    unassigned.sort((a, b) => a.sortOrder - b.sortOrder);
+    levels.push(unassigned);
+  }
+
+  return levels;
+}
+
+function groupByPrerequisiteTier(
   nodes: BackendCapabilityGraphNode[],
   edges: BackendCapabilityGraphEdge[]
 ): BackendCapabilityGraphNode[][] {
@@ -106,6 +170,15 @@ export default function CapabilityGraphMapPage() {
   // collapsed by default so it never competes with the graph map for
   // attention; the student opens it deliberately via "About this course".
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // Course-contents sidebar (2026-08-05, ported from Capability Studio's
+  // PreviewGraphPage) — a Coursera-style index alongside the existing
+  // "climb" map, purely a navigation aid: it never changes
+  // Locked/Available/Mastered gating, it just lets a student jump straight
+  // to any already-unlocked node and see overall progress at a glance
+  // instead of scrolling through the whole map. Collapsed by default on
+  // mobile (toggled via this state); always visible at the `lg` breakpoint.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarQuery, setSidebarQuery] = useState('');
 
   useEffect(() => {
     if (!capabilityId || !personId) return;
@@ -145,6 +218,32 @@ export default function CapabilityGraphMapPage() {
     return null;
   }, [levels]);
 
+  // Sidebar search (2026-08-05) — matches either the chapter/level title or
+  // an individual node name. A chapter whose title matches is kept whole
+  // (so the student can still see every node in it); otherwise only its
+  // matching nodes are kept. Case/accent-insensitive for ES/EN content.
+  const normalizeForSearch = useCallback(
+    (value: string) => value.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+    []
+  );
+  const filteredLevels = useMemo(() => {
+    const query = normalizeForSearch(sidebarQuery.trim());
+    if (!query) return levels.map((level, levelIndex) => ({ levelIndex, level }));
+
+    return levels
+      .map((level, levelIndex) => {
+        const levelName = levelNameByIndex.get(levelIndex) ?? `${t.graphLevelLabel} ${levelIndex + 1}`;
+        const levelMatches = normalizeForSearch(levelName).includes(query);
+        const matchingNodes = levelMatches ? level : level.filter((node) => normalizeForSearch(node.name).includes(query));
+        return { levelIndex, level: matchingNodes };
+      })
+      .filter(({ level }) => level.length > 0);
+  }, [levels, levelNameByIndex, sidebarQuery, normalizeForSearch, t.graphLevelLabel]);
+
+  const scrollToLevel = useCallback((levelIndex: number) => {
+    document.getElementById(`capability-graph-level-${levelIndex}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   // Average score across every node that's already Mastered and has a
   // recorded FinalScore — gives the student one glance-able "how am I
   // doing overall" number instead of only per-node scores.
@@ -157,6 +256,17 @@ export default function CapabilityGraphMapPage() {
     return Math.round(scored.reduce((sum, n) => sum + n.finalScore, 0) / scored.length);
   }, [graph]);
 
+  const progress = useMemo(() => {
+    const total = graph?.nodes.length ?? 0;
+    const mastered = graph?.nodes.filter((n) => n.state === 'Mastered').length ?? 0;
+    return { total, mastered, percent: total > 0 ? Math.round((mastered / total) * 100) : 0 };
+  }, [graph]);
+
+  const isNodeClickable = useCallback(
+    (node: BackendCapabilityGraphNode) => node.state !== 'Locked' || reviewMode,
+    [reviewMode]
+  );
+
   function handleNodeClick(node: BackendCapabilityGraphNode) {
     if (node.state === 'Locked' && !reviewMode) return;
     const suffix = programId ? `?programId=${programId}` : '';
@@ -164,7 +274,7 @@ export default function CapabilityGraphMapPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-8">
+    <div className="mx-auto max-w-6xl p-4 sm:p-8">
       <Link to={programId ? '/programs' : '/capabilities'} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
         ← {programId ? t.myPrograms : t.backToSubjects}
       </Link>
@@ -247,9 +357,119 @@ export default function CapabilityGraphMapPage() {
             )}
           </div>
 
-          <div className="mt-8 flex flex-col items-center">
-            {levels.map((level, levelIndex) => (
-              <div key={levelIndex} className="flex w-full flex-col items-center">
+          {levels.length > 0 && (
+            <div className="mt-6 flex justify-center lg:hidden">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((open) => !open)}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]"
+              >
+                {sidebarOpen ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+                {sidebarOpen ? t.graphSidebarToggleHide : t.graphSidebarToggleShow}
+              </button>
+            </div>
+          )}
+
+          <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+            {levels.length > 0 && (
+              <aside className={`w-full flex-none lg:sticky lg:top-20 lg:block lg:w-72 xl:w-80 ${sidebarOpen ? 'block' : 'hidden'}`}>
+                <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                    <ListChecks className="h-4 w-4 text-brand-500" />
+                    {t.graphSidebarTitle}
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                    <span>
+                      {t.graphSidebarProgressLabel}: {progress.mastered}/{progress.total}
+                    </span>
+                    <span>{progress.percent}%</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500"
+                      style={{ width: `${progress.percent}%` }}
+                    />
+                  </div>
+
+                  <div className="relative mt-4">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={sidebarQuery}
+                      onChange={(e) => setSidebarQuery(e.target.value)}
+                      placeholder={t.graphSidebarSearchPlaceholder}
+                      className="w-full rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] py-1.5 pl-8 pr-7 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400/50"
+                    />
+                    {sidebarQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSidebarQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <nav className="mt-3 space-y-3">
+                    {filteredLevels.map(({ levelIndex, level }) => {
+                      const accent = LEVEL_ACCENTS[levelIndex % LEVEL_ACCENTS.length];
+                      return (
+                        <div key={levelIndex}>
+                          <button
+                            type="button"
+                            onClick={() => scrollToLevel(levelIndex)}
+                            className={`flex w-full items-center gap-2 text-left text-xs font-semibold uppercase tracking-wide ${accent.text} hover:underline`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${accent.dot}`} />
+                            {levelNameByIndex.get(levelIndex) ?? `${t.graphLevelLabel} ${levelIndex + 1}`}
+                          </button>
+                          <ul className={`mt-1.5 space-y-1 border-l pl-3 ${accent.border}`}>
+                            {level.map((node) => {
+                              const style = STATE_STYLES[node.state];
+                              const Icon = style.Icon;
+                              const clickable = isNodeClickable(node);
+                              const isNextUp = node.capabilityGraphNodeId === nextUpNodeId;
+                              return (
+                                <li key={node.capabilityGraphNodeId}>
+                                  <button
+                                    type="button"
+                                    disabled={!clickable}
+                                    onClick={() => handleNodeClick(node)}
+                                    className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs ${
+                                      clickable
+                                        ? 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06]'
+                                        : 'cursor-not-allowed text-slate-400 dark:text-slate-500 opacity-60'
+                                    }`}
+                                  >
+                                    <Icon className={`h-3.5 w-3.5 flex-none ${style.icon}`} fill={node.state === 'Mastered' ? 'currentColor' : 'none'} />
+                                    <span className="line-clamp-1 flex-1">{node.name}</span>
+                                    {isNextUp && (
+                                      <span className="flex-none rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-semibold text-[#fff]">
+                                        {t.graphSidebarNextBadge}
+                                      </span>
+                                    )}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      );
+                    })}
+
+                    {filteredLevels.length === 0 && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{t.graphSidebarNoResults}</p>
+                    )}
+                  </nav>
+                </div>
+              </aside>
+            )}
+
+            <div className="flex flex-1 flex-col items-center">
+              {levels.map((level, levelIndex) => (
+                <div key={levelIndex} id={`capability-graph-level-${levelIndex}`} className="flex w-full scroll-mt-24 flex-col items-center">
                 <span className="mb-4 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {levelNameByIndex.get(levelIndex) ?? `${t.graphLevelLabel} ${levelIndex + 1}`}
                 </span>
@@ -332,6 +552,7 @@ export default function CapabilityGraphMapPage() {
                 {t.graphNoNodesYet}
               </p>
             )}
+            </div>
           </div>
 
           {levels.length > 0 && (

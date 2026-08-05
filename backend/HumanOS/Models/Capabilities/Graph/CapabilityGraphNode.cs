@@ -56,6 +56,20 @@ public class CapabilityGraphNode
     /// <summary>Tags de los chunks del corpus a los que este nodo es trazable, serializados como JSON (List&lt;string&gt;).</summary>
     public string? ReferencesJson { get; set; }
 
+    /// <summary>
+    /// 0-based index of the source document chapter/module this node was
+    /// authored from (computed by <see cref="Services.CapabilityGraphLevelAutoNamer"/>
+    /// from <see cref="ReferencesJson"/>, in the chapter's own document
+    /// order — 2026-08-04). This is what the "climb" preview groups nodes
+    /// by, replacing the old purely edge-depth-based tiering that could put
+    /// two sibling nodes from the SAME chapter into different rows both
+    /// confusingly labeled with that chapter's name. Null for nodes whose
+    /// source chapter couldn't be traced (e.g. manually-added nodes, or
+    /// capabilities created before this field existed) — the UI falls back
+    /// to the old edge-tier grouping in that case.
+    /// </summary>
+    public int? ChapterIndex { get; set; }
+
     /// <summary>Fecha UTC de creación del nodo.</summary>
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 

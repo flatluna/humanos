@@ -78,7 +78,7 @@ public sealed class GenerateVisualAidImageFunction
 
         try
         {
-            var generated = await _imageService.GenerateAsync(prompt, cancellationToken);
+            var generated = await _imageService.GenerateAsync(prompt, cancellationToken: cancellationToken);
 
             var response = new GenerateResponse
             {
