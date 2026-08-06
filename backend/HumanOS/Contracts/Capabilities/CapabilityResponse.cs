@@ -74,6 +74,14 @@ public sealed class CapabilityResponse
     /// cover (e.g. ["Foundation", "Exploration", "Mastery"]).</summary>
     public List<HumanEvolutionLayer> Levels { get; set; } = [];
 
+    /// <summary>See Capability.OwnerPersonId. Null for the public/official
+    /// catalog.</summary>
+    public Guid? OwnerPersonId { get; set; }
+
+    /// <summary>See Capability.OwnerTenantId. Null for a public capability
+    /// or a Consumer's personal one.</summary>
+    public Guid? OwnerTenantId { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }

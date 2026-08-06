@@ -13,6 +13,12 @@ dist-ssr/
 # Local Azure Storage emulator runtime state (not source)
 .azurite/
 
+# Azure Functions publish/deploy artifacts (large binaries + deployment
+# settings that shouldn't be committed to source control)
+deploy.zip
+publish-output/
+.deploy-settings.json
+
 # Browser-automation tool scratch output (screenshots, temp state)
 .playwright-mcp/
 

@@ -219,11 +219,35 @@ export interface Translations {
     groupToday: string;
     groupGrowth: string;
     groupSupport: string;
+    groupCreate: string;
+    createCourse: string;
   };
   privacy: {
     privateToYou: string;
     sharedWithOrganization: string;
     requiredForRole: string;
+  };
+  privacyPage: {
+    heroTitle: string;
+    heroSubtitle: string;
+    commitments: {
+      noSharing: string;
+      noSelling: string;
+      noAiTraining: string;
+      azureSql: string;
+    };
+    openModalButton: string;
+    modal: {
+      title: string;
+      intro: string;
+      sections: {
+        noSharing: { title: string; body: string };
+        noAiTraining: { title: string; body: string };
+        azureSql: { title: string; body: string; bullets: string[] };
+      };
+      closingNote: string;
+      closeButton: string;
+    };
   };
   greeting: {
     morning: string;

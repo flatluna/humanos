@@ -102,3 +102,18 @@ export const humanOsApiScopes: string[] = [
   import.meta.env.VITE_API_SCOPE ?? 'api://human-os/user_impersonation',
 ];
 
+/** X-Azure-OID / X-Azure-TID headers for the active MSAL account, or {}
+ *  when signed out — same identity pattern the backend keys ownership
+ *  checks off (see PersonService.GetByAzureIdentityAsync). Use this for
+ *  any fetch-based API client that doesn't go through the axios
+ *  apiClient interceptor in src/api/index.ts. */
+export function getIdentityHeaders(): Record<string, string> {
+  const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0] ?? null;
+  if (!account) return {};
+
+  const claims = account.idTokenClaims as Record<string, unknown> | undefined;
+  const oid = (claims?.oid as string) ?? (claims?.sub as string) ?? account.homeAccountId.split('.')[0];
+  const tid = (claims?.tid as string) ?? account.homeAccountId.split('.')[1];
+  return { 'X-Azure-OID': oid, 'X-Azure-TID': tid };
+}
+

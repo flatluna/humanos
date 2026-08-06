@@ -102,6 +102,22 @@ export interface StartPdfCapabilityGraphRequest {
    * reuse the real logo instead of guessing/hallucinating one. Omit/null
    * for capabilities with no logo. */
   logoImageBase64?: string | null;
+
+  /** Required (2026-08-06 "disclosure de responsabilidad de contenido"
+   * feature): must be true — the creator explicitly accepted Capability
+   * Studio's content-liability disclosure in the creation wizard. The
+   * backend rejects the request with 400 if this isn't true; the actual
+   * acceptance date/identity is stamped server-side, never trusted from
+   * this value. */
+  acceptedLegalDisclosure: boolean;
+
+  /** Optional (2026-08-06 "cursos globales o personales" feature): when
+   * true, forces this capability into the public/official catalog
+   * (OwnerPersonId/OwnerTenantId both null), visible to every student,
+   * regardless of who created it. False/omitted (the default) keeps
+   * today's existing behavior — visible only to the creator (or their
+   * whole tenant, for an employer account). See Capability.OwnerPersonId. */
+  isGlobal?: boolean;
 }
 
 export type PdfCapabilityGraphStage = 'Running' | 'Completed' | 'Failed';
@@ -234,6 +250,11 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   assessmentQuestionsPerRound?: number | null;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   logoImageBase64?: string | null;
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  acceptedLegalDisclosure: boolean;
+
+  /** See StartPdfCapabilityGraphRequest's identical field. */
+  isGlobal?: boolean;
 }
 
 /** Starts a V2 run from a short idea/goal description instead of a PDF —

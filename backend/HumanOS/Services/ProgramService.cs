@@ -202,6 +202,21 @@ public sealed class ProgramService
 
     public async Task<bool> DeleteAsync(Guid programId, CancellationToken cancellationToken = default)
     {
+        // ProgramEnrollment and LearningSession both have a Restrict FK to
+        // Program (deliberately, so a Capability/Program deletion never
+        // silently wipes someone's enrollment/learning history) — the raw
+        // ExecuteDeleteAsync below would otherwise fail with a DB-level FK
+        // violation. Enrollments stop making sense once their Program is
+        // gone, so those rows are removed; LearningSession history must
+        // survive, so its ProgramId is only detached (set to null).
+        await _dbContext.ProgramEnrollments
+            .Where(e => e.ProgramId == programId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        await _dbContext.LearningSessions
+            .Where(s => s.ProgramId == programId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ProgramId, (Guid?)null), cancellationToken);
+
         var deleted = await _dbContext.Programs
             .Where(p => p.ProgramId == programId)
             .ExecuteDeleteAsync(cancellationToken);

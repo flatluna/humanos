@@ -134,6 +134,41 @@ public sealed class Capability
     [MaxLength(400)]
     public string? TargetSkill { get; set; }
 
+    /// <summary>Who created this capability via Capability Studio (2026-08-05
+    /// "Empleador/Consumidor pueden crear cursos" ownership model). Null for
+    /// every capability created before this field existed and for any
+    /// capability created by a caller whose identity couldn't be resolved —
+    /// treated as part of the PUBLIC/official catalog, visible to everyone,
+    /// exactly like today. When set, see <see cref="OwnerTenantId"/> to tell
+    /// a personal (Consumer) course from an employer (Tenant) one.</summary>
+    public Guid? OwnerPersonId { get; set; }
+
+    /// <summary>Set ONLY when <see cref="OwnerPersonId"/> belongs to a
+    /// Person with an organization (an Employer/HRAdmin authoring a course
+    /// for their own company) — makes this capability visible ONLY to
+    /// People in this same Tenant. Null + non-null <see cref="OwnerPersonId"/>
+    /// means a Consumer's personal course, visible ONLY to that Person.
+    /// Null + null OwnerPersonId means the public/official catalog.</summary>
+    public Guid? OwnerTenantId { get; set; }
+
+    /// <summary>When the creator accepted the legal/liability disclosure
+    /// (2026-08-06 "disclosure de responsabilidad de contenido") required
+    /// on Capability Studio's creation wizard before generation could
+    /// start — stamped server-side (UTC), never trusted from the client.
+    /// Null only for capabilities created before this field existed.</summary>
+    public DateTime? ConsentAcceptedDate { get; set; }
+
+    /// <summary>Same best-effort identity as <see cref="OwnerPersonId"/> —
+    /// the Person who accepted the disclosure, when resolvable. Null when
+    /// the caller's identity couldn't be resolved.</summary>
+    public Guid? ConsentAcceptedByPersonId { get; set; }
+
+    /// <summary>Snapshot of the accepting person's display identity (email)
+    /// at acceptance time, kept even if the Person row is later changed or
+    /// removed — this is the actual audit record of who accepted.</summary>
+    [MaxLength(320)]
+    public string? ConsentAcceptedByName { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }

@@ -125,7 +125,12 @@ public sealed class PdfCapabilityGraphOrchestrator
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
-        byte[]? brandLogoBytes = null)
+        byte[]? brandLogoBytes = null,
+        Guid? ownerPersonId = null,
+        Guid? ownerTenantId = null,
+        DateTime? consentAcceptedDate = null,
+        Guid? consentAcceptedByPersonId = null,
+        string? consentAcceptedByName = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -170,7 +175,12 @@ public sealed class PdfCapabilityGraphOrchestrator
                     includeProductionStep,
                     recallItemsRequired,
                     assessmentQuestionsPerRound,
-                    brandLogoBytes);
+                    brandLogoBytes,
+                    ownerPersonId,
+                    ownerTenantId,
+                    consentAcceptedDate,
+                    consentAcceptedByPersonId,
+                    consentAcceptedByName);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }
@@ -233,7 +243,12 @@ public sealed class PdfCapabilityGraphOrchestrator
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
-        byte[]? brandLogoBytes = null)
+        byte[]? brandLogoBytes = null,
+        Guid? ownerPersonId = null,
+        Guid? ownerTenantId = null,
+        DateTime? consentAcceptedDate = null,
+        Guid? consentAcceptedByPersonId = null,
+        string? consentAcceptedByName = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -273,7 +288,12 @@ public sealed class PdfCapabilityGraphOrchestrator
                     includeProductionStep,
                     recallItemsRequired,
                     assessmentQuestionsPerRound,
-                    brandLogoBytes);
+                    brandLogoBytes,
+                    ownerPersonId,
+                    ownerTenantId,
+                    consentAcceptedDate,
+                    consentAcceptedByPersonId,
+                    consentAcceptedByName);
 
                 session.UpdateStatus(PdfCapabilityGraphRunStatus.Completed(runId, result));
             }

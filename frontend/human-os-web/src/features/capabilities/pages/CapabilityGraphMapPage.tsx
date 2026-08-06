@@ -29,16 +29,15 @@ import {
  * node and see overall progress at a glance.
  */
 
-// Cycled per level in the sidebar so a long course reads like a colorful
-// chaptered table of contents instead of a wall of uniform gray text.
-const LEVEL_ACCENTS = [
-  { text: 'text-brand-600 dark:text-brand-300', dot: 'bg-brand-500 dark:bg-brand-400', border: 'border-brand-300 dark:border-brand-400/50' },
-  { text: 'text-sky-600 dark:text-sky-300', dot: 'bg-sky-500 dark:bg-sky-400', border: 'border-sky-300 dark:border-sky-400/50' },
-  { text: 'text-emerald-600 dark:text-emerald-300', dot: 'bg-emerald-500 dark:bg-emerald-400', border: 'border-emerald-300 dark:border-emerald-400/50' },
-  { text: 'text-amber-600 dark:text-amber-300', dot: 'bg-amber-500 dark:bg-amber-400', border: 'border-amber-300 dark:border-amber-400/50' },
-  { text: 'text-fuchsia-600 dark:text-fuchsia-300', dot: 'bg-fuchsia-500 dark:bg-fuchsia-400', border: 'border-fuchsia-300 dark:border-fuchsia-400/50' },
-  { text: 'text-rose-600 dark:text-rose-300', dot: 'bg-rose-500 dark:bg-rose-400', border: 'border-rose-300 dark:border-rose-400/50' },
-];
+// A single consistent brand accent (2026-08-05) instead of a per-level
+// rainbow — cycling through 6 saturated colors read as a chaotic wall of
+// unrelated colors on longer courses; chapters are differentiated by
+// their own name/number instead.
+const LEVEL_ACCENT = {
+  text: 'text-brand-600 dark:text-brand-300',
+  dot: 'bg-brand-500 dark:bg-brand-400',
+  border: 'border-brand-200 dark:border-brand-400/30',
+};
 
 /**
  * Groups nodes into "climb" levels.
@@ -274,7 +273,7 @@ export default function CapabilityGraphMapPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-4 sm:p-8">
+    <div className="mx-auto max-w-6xl p-4 sm:p-8 xl:max-w-7xl 2xl:max-w-[96rem]">
       <Link to={programId ? '/programs' : '/capabilities'} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline">
         ← {programId ? t.myPrograms : t.backToSubjects}
       </Link>
@@ -372,7 +371,7 @@ export default function CapabilityGraphMapPage() {
 
           <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
             {levels.length > 0 && (
-              <aside className={`w-full flex-none lg:sticky lg:top-20 lg:block lg:w-72 xl:w-80 ${sidebarOpen ? 'block' : 'hidden'}`}>
+              <aside className={`w-full flex-none lg:sticky lg:top-20 lg:block lg:w-72 xl:w-80 2xl:w-96 ${sidebarOpen ? 'block' : 'hidden'}`}>
                 <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
                     <ListChecks className="h-4 w-4 text-brand-500" />
@@ -414,9 +413,9 @@ export default function CapabilityGraphMapPage() {
 
                   <nav className="mt-3 space-y-3">
                     {filteredLevels.map(({ levelIndex, level }) => {
-                      const accent = LEVEL_ACCENTS[levelIndex % LEVEL_ACCENTS.length];
+                      const accent = LEVEL_ACCENT;
                       return (
-                        <div key={levelIndex}>
+                        <div key={levelIndex} className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] p-2.5">
                           <button
                             type="button"
                             onClick={() => scrollToLevel(levelIndex)}
@@ -425,7 +424,7 @@ export default function CapabilityGraphMapPage() {
                             <span className={`h-1.5 w-1.5 rounded-full ${accent.dot}`} />
                             {levelNameByIndex.get(levelIndex) ?? `${t.graphLevelLabel} ${levelIndex + 1}`}
                           </button>
-                          <ul className={`mt-1.5 space-y-1 border-l pl-3 ${accent.border}`}>
+                          <ul className="mt-1.5 space-y-1">
                             {level.map((node) => {
                               const style = STATE_STYLES[node.state];
                               const Icon = style.Icon;
@@ -467,7 +466,7 @@ export default function CapabilityGraphMapPage() {
               </aside>
             )}
 
-            <div className="flex flex-1 flex-col items-center">
+            <div className="flex flex-1 flex-col items-center rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] p-6 sm:p-8">
               {levels.map((level, levelIndex) => (
                 <div key={levelIndex} id={`capability-graph-level-${levelIndex}`} className="flex w-full scroll-mt-24 flex-col items-center">
                 <span className="mb-4 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">

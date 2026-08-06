@@ -2,7 +2,7 @@ import type { Translations } from './types';
 
 const en: Translations = {
   common: {
-    appName: 'Engram',
+    appName: 'Engrams',
     appNameFull: 'Engram Academy',
     appEdition: 'For Individuals · v1.0',
     languageEnglish: 'English',
@@ -246,11 +246,55 @@ const en: Translations = {
     groupToday: 'Today',
     groupGrowth: 'Growth',
     groupSupport: 'Support',
+    groupCreate: 'Create',
+    createCourse: 'Create your own course',
   },
   privacy: {
     privateToYou: 'Private to You',
     sharedWithOrganization: 'Shared with Organization',
     requiredForRole: 'Required for Role',
+  },
+  privacyPage: {
+    heroTitle: 'Your privacy is our priority',
+    heroSubtitle: 'Here is exactly how we protect your personal information and learning progress.',
+    commitments: {
+      noSharing: 'We never share your data with anyone',
+      noSelling: 'We never sell your information',
+      noAiTraining: 'We never use your data to train AI models',
+      azureSql: 'Your information lives in secure databases on the Microsoft Azure cloud (Azure SQL)',
+    },
+    openModalButton: 'See how we protect your data',
+    modal: {
+      title: 'How we protect your information',
+      intro:
+        'At Engrams, your trust is the foundation of everything we build. Here is exactly what we do — and never do — with your data.',
+      sections: {
+        noSharing: {
+          title: 'We never trust your data to anyone',
+          body: 'Your personal information, your progress, and your conversations with the tutor belong to you. We never share, rent, or sell them to third parties, advertisers, or data brokers, under any circumstances.',
+        },
+        noAiTraining: {
+          title: 'Never used to train AI',
+          body: 'Your data is never used to train, fine-tune, or improve any AI model — ours or anyone else\'s. The AI models we use (such as Azure OpenAI) process your information only to respond to you in the moment — they do not retain it for training.',
+        },
+        azureSql: {
+          title: 'Securely hosted on Azure SQL',
+          body: 'All your information — profile, progress, evaluations — is stored in Azure SQL Database, Microsoft Azure\'s enterprise database service, inside our own private cloud infrastructure.',
+          bullets: [
+            'Encryption at rest (Transparent Data Encryption) — your data is encrypted even on disk.',
+            'Encryption in transit (TLS 1.2+) — every connection between the app and the database is encrypted.',
+            'Authentication via Microsoft Entra ID — access controlled by identity, not shared passwords.',
+            'Private networking and firewall rules — the database is never publicly reachable from the internet.',
+            'Automatic, geo-redundant backups — your progress is never lost.',
+            'Continuous auditing and threat detection (Microsoft Defender for SQL) — active monitoring against improper access.',
+            'Compliance with international standards — Azure is certified for ISO 27001, SOC 2, HIPAA, GDPR, and more.',
+          ],
+        },
+      },
+      closingNote:
+        'In short: your data belongs to you, it is protected with the same security standards used by banks and hospitals, and it is never used for anything other than helping you learn.',
+      closeButton: 'Got it',
+    },
   },
   greeting: {
     morning: 'Good Morning, {{name}}',

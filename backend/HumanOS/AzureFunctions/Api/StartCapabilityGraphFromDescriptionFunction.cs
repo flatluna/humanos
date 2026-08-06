@@ -21,10 +21,12 @@ namespace HumanOS.AzureFunctions.Api;
 public sealed class StartCapabilityGraphFromDescriptionFunction
 {
     private readonly PdfCapabilityGraphOrchestrator _orchestrator;
+    private readonly PersonService _personService;
 
-    public StartCapabilityGraphFromDescriptionFunction(PdfCapabilityGraphOrchestrator orchestrator)
+    public StartCapabilityGraphFromDescriptionFunction(PdfCapabilityGraphOrchestrator orchestrator, PersonService personService)
     {
         _orchestrator = orchestrator;
+        _personService = personService;
     }
 
     public sealed class StartRequest
@@ -109,6 +111,12 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
 
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public string? LogoImageBase64 { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public bool AcceptedLegalDisclosure { get; set; }
+
+        /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
+        public bool IsGlobal { get; set; }
     }
 
     [Function("StartCapabilityGraphFromDescription")]
@@ -143,6 +151,16 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 HttpStatusCode.BadRequest,
                 "InvalidRequest",
                 "'tenantId', 'capabilityDomainId', 'capabilityName' and 'description' are required.",
+                cancellationToken);
+        }
+
+        if (!body.AcceptedLegalDisclosure)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "LegalDisclosureNotAccepted",
+                "'acceptedLegalDisclosure' must be true — the content-liability disclosure must be accepted before generation can start.",
                 cancellationToken);
         }
 
@@ -192,12 +210,40 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
 
         try
         {
+            // Ownership (2026-08-05): see StartPdfCapabilityGraphFunction's
+            // identical best-effort identity resolution.
+            Guid? callerPersonId = null;
+            Guid? callerTenantId = null;
+            string? callerEmail = null;
+            if (request.Headers.TryGetValues("X-Azure-OID", out var oidValues) && !string.IsNullOrWhiteSpace(oidValues.FirstOrDefault()) &&
+                request.Headers.TryGetValues("X-Azure-TID", out var tidValues) && !string.IsNullOrWhiteSpace(tidValues.FirstOrDefault()))
+            {
+                var callerPerson = await _personService.GetByAzureIdentityAsync(oidValues.First(), tidValues.First(), cancellationToken);
+                if (callerPerson is not null)
+                {
+                    callerPersonId = callerPerson.PersonId;
+                    callerTenantId = callerPerson.TenantId;
+                    callerEmail = callerPerson.Email;
+                }
+            }
+
+            // Global/personal visibility (2026-08-06): see
+            // StartPdfCapabilityGraphFunction's identical IsGlobal handling.
+            Guid? ownerPersonId = body.IsGlobal ? null : callerPersonId;
+            Guid? ownerTenantId = body.IsGlobal ? null : callerTenantId;
+
+            // Legal disclosure consent (2026-08-06): stamped server-side
+            // (UTC) — body.AcceptedLegalDisclosure only gates whether this
+            // is recorded at all (already validated true above).
+            var consentAcceptedDate = DateTime.UtcNow;
+
             var status = _orchestrator.StartFromDescription(
                 body.Description, body.CapabilityName, body.CapabilityDomainId, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
                 body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
-                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes);
+                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes,
+                ownerPersonId, ownerTenantId, consentAcceptedDate, callerPersonId, callerEmail);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

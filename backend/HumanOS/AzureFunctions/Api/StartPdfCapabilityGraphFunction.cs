@@ -21,10 +21,12 @@ namespace HumanOS.AzureFunctions.Api;
 public sealed class StartPdfCapabilityGraphFunction
 {
     private readonly PdfCapabilityGraphOrchestrator _orchestrator;
+    private readonly PersonService _personService;
 
-    public StartPdfCapabilityGraphFunction(PdfCapabilityGraphOrchestrator orchestrator)
+    public StartPdfCapabilityGraphFunction(PdfCapabilityGraphOrchestrator orchestrator, PersonService personService)
     {
         _orchestrator = orchestrator;
+        _personService = personService;
     }
 
     public sealed class StartRequest
@@ -178,6 +180,25 @@ public sealed class StartPdfCapabilityGraphFunction
         /// guessing/hallucinating one from a text description. Null/omitted
         /// means no logo is used, same as before this feature existed.</summary>
         public string? LogoImageBase64 { get; set; }
+
+        /// <summary>Required (2026-08-06 "disclosure de responsabilidad de
+        /// contenido" feature): must be true — the creator explicitly
+        /// accepted Capability Studio's content-liability disclosure in the
+        /// creation wizard before generation is allowed to start. The
+        /// server stamps the actual acceptance date/identity itself (see
+        /// Capability.ConsentAcceptedDate) rather than trusting any value
+        /// from the client; this flag only gates whether that stamp is
+        /// recorded at all.</summary>
+        public bool AcceptedLegalDisclosure { get; set; }
+
+        /// <summary>Optional (2026-08-06 "cursos globales o personales"
+        /// feature): when true, forces this capability into the
+        /// public/official catalog (OwnerPersonId/OwnerTenantId both null),
+        /// visible to every student, regardless of who created it. False
+        /// (default) keeps the existing best-effort ownership resolution
+        /// from the caller's identity headers. See
+        /// Capability.OwnerPersonId.</summary>
+        public bool IsGlobal { get; set; }
     }
 
     [Function("StartPdfCapabilityGraph")]
@@ -213,6 +234,16 @@ public sealed class StartPdfCapabilityGraphFunction
                 HttpStatusCode.BadRequest,
                 "InvalidRequest",
                 "'tenantId', 'capabilityDomainId', 'capabilityName', 'fileName' and 'contentBase64' are required.",
+                cancellationToken);
+        }
+
+        if (!body.AcceptedLegalDisclosure)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "LegalDisclosureNotAccepted",
+                "'acceptedLegalDisclosure' must be true — the content-liability disclosure must be accepted before generation can start.",
                 cancellationToken);
         }
 
@@ -273,12 +304,46 @@ public sealed class StartPdfCapabilityGraphFunction
 
         try
         {
+            // Ownership (2026-08-05): identity headers are OPTIONAL — Capability
+            // Studio has no real auth wired in yet, so this is best-effort and
+            // falls back to null/null (public/official catalog), same as before
+            // this feature existed.
+            Guid? callerPersonId = null;
+            Guid? callerTenantId = null;
+            string? callerEmail = null;
+            if (request.Headers.TryGetValues("X-Azure-OID", out var oidValues) && !string.IsNullOrWhiteSpace(oidValues.FirstOrDefault()) &&
+                request.Headers.TryGetValues("X-Azure-TID", out var tidValues) && !string.IsNullOrWhiteSpace(tidValues.FirstOrDefault()))
+            {
+                var callerPerson = await _personService.GetByAzureIdentityAsync(oidValues.First(), tidValues.First(), cancellationToken);
+                if (callerPerson is not null)
+                {
+                    callerPersonId = callerPerson.PersonId;
+                    callerTenantId = callerPerson.TenantId;
+                    callerEmail = callerPerson.Email;
+                }
+            }
+
+            // Global/personal visibility (2026-08-06 "cursos globales o
+            // personales" feature): IsGlobal forces the catalog-visible
+            // owner fields to null (public catalog) regardless of who
+            // created it. ConsentAcceptedByPersonId/Name below always keep
+            // the real creator identity for audit purposes, independent of
+            // this choice.
+            Guid? ownerPersonId = body.IsGlobal ? null : callerPersonId;
+            Guid? ownerTenantId = body.IsGlobal ? null : callerTenantId;
+
+            // Legal disclosure consent (2026-08-06): stamped server-side
+            // (UTC) — body.AcceptedLegalDisclosure only gates whether this
+            // is recorded at all (already validated true above).
+            var consentAcceptedDate = DateTime.UtcNow;
+
             var status = _orchestrator.Start(
                 pdfBytes, body.FileName, body.CapabilityDomainId, body.CapabilityName, body.TenantId, body.EnableWebEnrichment, body.SubjectId, body.ProgramId,
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
                 body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
-                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes);
+                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes,
+                ownerPersonId, ownerTenantId, consentAcceptedDate, callerPersonId, callerEmail);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }

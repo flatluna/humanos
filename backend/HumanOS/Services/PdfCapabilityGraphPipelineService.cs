@@ -286,7 +286,12 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
-        byte[]? brandLogoBytes = null)
+        byte[]? brandLogoBytes = null,
+        Guid? ownerPersonId = null,
+        Guid? ownerTenantId = null,
+        DateTime? consentAcceptedDate = null,
+        Guid? consentAcceptedByPersonId = null,
+        string? consentAcceptedByName = null)
     {
         // ==================== 1. EXTRACT TEXT + IMAGES, PER PAGE ====================
         reportProgress("Extrayendo texto del PDF");
@@ -350,7 +355,12 @@ public sealed class PdfCapabilityGraphPipelineService
             includeProductionStep,
             recallItemsRequired,
             assessmentQuestionsPerRound,
-            brandLogoBytes);
+            brandLogoBytes,
+            ownerPersonId,
+            ownerTenantId,
+            consentAcceptedDate,
+            consentAcceptedByPersonId,
+            consentAcceptedByName);
 
         result.DescribedImageCount = describedImageCount;
         return result;
@@ -398,7 +408,12 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
-        byte[]? brandLogoBytes = null)
+        byte[]? brandLogoBytes = null,
+        Guid? ownerPersonId = null,
+        Guid? ownerTenantId = null,
+        DateTime? consentAcceptedDate = null,
+        Guid? consentAcceptedByPersonId = null,
+        string? consentAcceptedByName = null)
     {
         if (!_ideaToDocument.IsConfigured)
         {
@@ -441,7 +456,12 @@ public sealed class PdfCapabilityGraphPipelineService
             includeProductionStep,
             recallItemsRequired,
             assessmentQuestionsPerRound,
-            brandLogoBytes);
+            brandLogoBytes,
+            ownerPersonId,
+            ownerTenantId,
+            consentAcceptedDate,
+            consentAcceptedByPersonId,
+            consentAcceptedByName);
     }
 
     /// <summary>Shared continuation of both <see cref="RunAsync"/> (real
@@ -481,7 +501,12 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
-        byte[]? brandLogoBytes = null)
+        byte[]? brandLogoBytes = null,
+        Guid? ownerPersonId = null,
+        Guid? ownerTenantId = null,
+        DateTime? consentAcceptedDate = null,
+        Guid? consentAcceptedByPersonId = null,
+        string? consentAcceptedByName = null)
     {
         // A designer-approved outline (2026-08-04 "Paso 5") already pins
         // down the exact chapter/node structure the generation loop must
@@ -782,7 +807,7 @@ public sealed class PdfCapabilityGraphPipelineService
         {
             capabilityId = await EnsureCapabilityAsync(
                 setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, category, targetJobRoleId, targetSkill,
-                includeProductionStep, recallItemsRequired, assessmentQuestionsPerRound, cancellationToken);
+                includeProductionStep, recallItemsRequired, assessmentQuestionsPerRound, ownerPersonId, ownerTenantId, consentAcceptedDate, consentAcceptedByPersonId, consentAcceptedByName, cancellationToken);
 
             // Top-down flow (2026-07-23): Programs are created empty first;
             // Capabilities are connected to them afterward. When the wizard
@@ -1171,6 +1196,11 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeProductionStep,
         int? recallItemsRequired,
         int? assessmentQuestionsPerRound,
+        Guid? ownerPersonId,
+        Guid? ownerTenantId,
+        DateTime? consentAcceptedDate,
+        Guid? consentAcceptedByPersonId,
+        string? consentAcceptedByName,
         CancellationToken cancellationToken)
     {
         var domainExists = await dbContext.CapabilityDomains
@@ -1212,6 +1242,11 @@ public sealed class PdfCapabilityGraphPipelineService
             Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
             TargetJobRoleId = targetJobRoleId,
             TargetSkill = string.IsNullOrWhiteSpace(targetSkill) ? null : targetSkill.Trim(),
+            OwnerPersonId = ownerPersonId,
+            OwnerTenantId = ownerTenantId,
+            ConsentAcceptedDate = consentAcceptedDate,
+            ConsentAcceptedByPersonId = consentAcceptedByPersonId,
+            ConsentAcceptedByName = string.IsNullOrWhiteSpace(consentAcceptedByName) ? null : consentAcceptedByName.Trim(),
             CreatedDate = DateTime.UtcNow,
             UpdatedDate = DateTime.UtcNow
         };

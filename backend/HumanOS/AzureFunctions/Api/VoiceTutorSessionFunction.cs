@@ -440,7 +440,16 @@ public sealed class VoiceTutorSessionFunction
                 ? string.Join("\n", bankEntries)
                 : "(no hay otros ejemplos ya preparados — si pide más, invéntalos siguiendo la regla 4 de abajo)";
 
-            var greeting = BuildGreeting();
+            // DeepDive re-connects on EVERY card the student opens the voice
+            // tutor for (unlike Hypothesis/Teaching, which greet once per
+            // whole step) — repeating the full node/course name each time
+            // was reported as "muy incómodo, el usuario ya lo leyó"
+            // (2026-08-05). Just a short hello here; the card content itself
+            // is still read in full right after, unaffected.
+            var name = string.IsNullOrWhiteSpace(personName) ? null : personName!.Trim();
+            var greeting = isEnglish
+                ? (name is null ? "Hi." : $"Hi, {name}.")
+                : (name is null ? "Hola." : $"Hola, {name}.");
             var deepDiveOpeningRule = $"""
                 - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
                   estudiante diga algo primero. Tu PRIMERA frase, literalmente, debe ser: "{greeting}"

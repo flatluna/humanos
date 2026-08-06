@@ -1,14 +1,25 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
+import { useAuth } from '../auth/AuthContext';
+
+// Studio is opened from human-os-web/human-os-enterprise (usually in a new
+// tab), but users who land here directly (bookmark, typed URL, refresh after
+// closing the origin tab) have no way back without this. Only Consumer and
+// HRAdmin personas reach Studio (canAuthorCourses gate), so the origin app
+// is one of these two depending on whether the account belongs to a tenant.
+const HUMAN_OS_WEB_URL = 'http://localhost:5178';
+const HUMAN_OS_ENTERPRISE_URL = 'http://localhost:5179';
 
 export default function Layout() {
   const { t } = useTranslation();
   const location = useLocation();
+  const { user, logout } = useAuth();
   const onProgramsSection = location.pathname.startsWith('/programs');
+  const backToMainAppUrl = user?.tenantId ? HUMAN_OS_ENTERPRISE_URL : HUMAN_OS_WEB_URL;
 
   return (
     <div className="min-h-full flex flex-col">
@@ -17,7 +28,7 @@ export default function Layout() {
           <Link to="/" className="flex items-center gap-2.5 group">
             <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-cover shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
             <div className="leading-tight">
-              <div className="font-semibold tracking-tight text-white">Capability Studio</div>
+              <div className="font-semibold tracking-tight text-white">Engrams.one</div>
               <div className="text-[11px] text-slate-400">Engram</div>
             </div>
           </Link>
@@ -32,7 +43,7 @@ export default function Layout() {
                 }`
               }
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-4 w-4 text-sky-400" />
               {t('nav.catalog')}
             </NavLink>
             <NavLink
@@ -43,7 +54,7 @@ export default function Layout() {
                 }`
               }
             >
-              <GraduationCap className="h-4 w-4" />
+              <GraduationCap className="h-4 w-4 text-violet-400" />
               {t('nav.programs')}
             </NavLink>
             <NavLink
@@ -54,14 +65,41 @@ export default function Layout() {
                 }`
               }
             >
-              <Coins className="h-4 w-4" />
+              <Coins className="h-4 w-4 text-amber-400" />
               {t('nav.costs')}
             </NavLink>
           </nav>
 
           <div className="flex items-center gap-2">
+            <a
+              href={backToMainAppUrl}
+              title={t('nav.backToHumanOS')}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden md:inline">{t('nav.backToHumanOS')}</span>
+            </a>
             <LanguageSwitcher />
             <ThemeSwitcher />
+            {user && (
+              <span
+                title={user.tenantId ? `Empresa: ${user.tenantName}` : 'Cuenta individual'}
+                className="hidden lg:inline-flex items-center rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300"
+              >
+                {user.tenantId ? `${user.tenantName} · ${user.orgRole}` : 'Cuenta individual'}
+              </span>
+            )}
+            {user && (
+              <button
+                type="button"
+                onClick={() => void logout()}
+                title={user.email}
+                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                <span className="hidden md:inline max-w-[10rem] truncate">{user.email}</span>
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
             {onProgramsSection ? (
               <Link
                 to="/programs/new"

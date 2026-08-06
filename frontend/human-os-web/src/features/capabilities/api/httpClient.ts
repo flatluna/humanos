@@ -5,6 +5,7 @@
  * bodies come back PascalCase (no camelCase policy on the backend's JSON
  * serializer) — see PascalCase response types across this app's api/ files.
  */
+import { getIdentityHeaders } from '@/auth';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -18,7 +19,7 @@ interface ApiErrorBody {
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
   });
   return handleResponse<T>(response);
 }
@@ -26,7 +27,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getIdentityHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return handleResponse<T>(response);
@@ -35,7 +36,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getIdentityHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return handleResponse<T>(response);
@@ -47,7 +48,7 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
 export async function apiPostFile<T>(path: string, file: File): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    headers: { 'Content-Type': file.type || 'application/octet-stream', ...getIdentityHeaders() },
     body: file,
   });
   return handleResponse<T>(response);
@@ -56,7 +57,7 @@ export async function apiPostFile<T>(path: string, file: File): Promise<T> {
 export async function apiDelete<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'DELETE',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
   });
   return handleResponse<T>(response);
 }

@@ -4,6 +4,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HumanOS.Services;
 
+/// <summary>Outcome of <see cref="CapabilityService.UpdateVisibilityAsync"/>.</summary>
+public enum CapabilityVisibilityUpdateResult
+{
+    Success,
+    NotFound,
+    /// <summary>Marking Personal requires a resolved caller identity (X-Azure-OID/X-Azure-TID matched a Person).</summary>
+    CallerIdentityRequired,
+    /// <summary>The caller isn't this capability's current owner.</summary>
+    Forbidden,
+}
+
 public sealed class CapabilityService
 {
     private readonly HumanOsDbContext _dbContext;
@@ -18,7 +29,9 @@ public sealed class CapabilityService
         string? domainCode = null,
         string? subjectCode = null,
         string? contentLanguageCode = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? callerPersonId = null,
+        Guid? callerTenantId = null)
     {
         var normalizedLanguageCode = languageCode.Trim();
         var query = _dbContext.Capabilities
@@ -33,6 +46,21 @@ public sealed class CapabilityService
             .Include(c => c.CapabilityGraph)
                 .ThenInclude(g => g!.Edges)
             .Where(c => c.IsActive);
+
+        // Ownership/visibility filter (2026-08-05 "Empleador/Consumidor
+        // pueden crear cursos" model): a capability with no OwnerPersonId
+        // is the public/official catalog (visible to everyone, same as
+        // before this feature existed). A capability WITH an OwnerPersonId
+        // is either a Consumer's personal course (OwnerTenantId null —
+        // visible ONLY to that same Person) or an Employer's course
+        // (OwnerTenantId set — visible to every Person in that same
+        // Tenant). callerPersonId/callerTenantId are null for an
+        // unidentified/anonymous caller, which correctly shows only the
+        // public catalog.
+        query = query.Where(c =>
+            c.OwnerPersonId == null ||
+            c.OwnerPersonId == callerPersonId ||
+            (c.OwnerTenantId != null && c.OwnerTenantId == callerTenantId));
 
         if (!string.IsNullOrWhiteSpace(domainCode))
         {
@@ -100,6 +128,8 @@ public sealed class CapabilityService
             HasCoverImage = !string.IsNullOrEmpty(c.CapabilityGraph?.CoverImageStoragePath),
             LearningSummary = Truncate(c.CapabilityGraph?.ExecutiveSummary, 95),
             Levels = [.. c.Levels.OrderBy(l => l.SortOrder).Select(l => l.Layer)],
+            OwnerPersonId = c.OwnerPersonId,
+            OwnerTenantId = c.OwnerTenantId,
             CreatedDate = c.CreatedDate,
             UpdatedDate = c.UpdatedDate
         }).ToList();
@@ -221,7 +251,9 @@ public sealed class CapabilityService
             Description = capability.Translations?.FirstOrDefault(t => t.LanguageCode == normalizedLanguageCode)?.Description
                 ?? capability.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Description
                 ?? capability.Description,
-            IsActive = capability.IsActive
+            IsActive = capability.IsActive,
+            OwnerPersonId = capability.OwnerPersonId,
+            OwnerTenantId = capability.OwnerTenantId
         };
     }
 
@@ -257,7 +289,9 @@ public sealed class CapabilityService
             Description = capability.Translations?.FirstOrDefault(t => t.LanguageCode == normalizedLanguageCode)?.Description
                 ?? capability.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Description
                 ?? capability.Description,
-            IsActive = capability.IsActive
+            IsActive = capability.IsActive,
+            OwnerPersonId = capability.OwnerPersonId,
+            OwnerTenantId = capability.OwnerTenantId
         };
     }
 
@@ -445,6 +479,45 @@ public sealed class CapabilityService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Flips an EXISTING capability between the public/official catalog
+    /// (Global) and scoped-to-one-person/tenant (Personal) after creation
+    /// (2026-08-06 "cursos globales o personales" feature) — see
+    /// Capability.OwnerPersonId/OwnerTenantId. Marking Personal requires a
+    /// resolved caller identity (becomes the new owner); marking Global
+    /// always succeeds and clears both owner fields. Only the current
+    /// owner (or nobody, for an already-public capability) may change it,
+    /// to prevent an unrelated caller from hijacking someone else's course.
+    /// </summary>
+    public async Task<CapabilityVisibilityUpdateResult> UpdateVisibilityAsync(
+        Guid capabilityId, bool isGlobal, Guid? callerPersonId, Guid? callerTenantId, CancellationToken cancellationToken = default)
+    {
+        var capability = await _dbContext.Capabilities
+            .FirstOrDefaultAsync(c => c.CapabilityId == capabilityId, cancellationToken);
+
+        if (capability is null)
+        {
+            return CapabilityVisibilityUpdateResult.NotFound;
+        }
+
+        if (!isGlobal && callerPersonId is null)
+        {
+            return CapabilityVisibilityUpdateResult.CallerIdentityRequired;
+        }
+
+        if (capability.OwnerPersonId is not null && capability.OwnerPersonId != callerPersonId)
+        {
+            return CapabilityVisibilityUpdateResult.Forbidden;
+        }
+
+        capability.OwnerPersonId = isGlobal ? null : callerPersonId;
+        capability.OwnerTenantId = isGlobal ? null : callerTenantId;
+        capability.UpdatedDate = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return CapabilityVisibilityUpdateResult.Success;
     }
 
     public async Task<bool> DeleteAsync(Guid capabilityId, CancellationToken cancellationToken = default)

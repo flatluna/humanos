@@ -130,6 +130,17 @@ export function advanceStep(learningSessionNodeId: string): Promise<BackendRunti
   });
 }
 
+// Self-service "siguiente tarjeta" on the LAST Deep Dive card (2026-08-05,
+// see RuntimeSkipDeepDiveStepFunction.cs) — unlike advanceStep above, this
+// is allowed while DeepDive is Active (that generic endpoint explicitly
+// rejects it) but ONLY for DeepDive; the backend independently re-checks
+// the active step really is DeepDive before skipping it ungraded.
+export function skipDeepDiveStep(learningSessionNodeId: string): Promise<BackendRuntimeStep> {
+  return rPost<BackendRuntimeStep>('/instructor-runtime/steps/deepdive-skip', {
+    LearningSessionNodeId: learningSessionNodeId,
+  });
+}
+
 // === "Aprobar (demo HR)" (2026-08-02, ported from human-os-employee) —
 // HRAdmin-only, real per-caller server-side check (see
 // HrForceAdvanceStepFunction.cs). Lets an HRAdmin force-complete the
@@ -183,13 +194,25 @@ export interface VoiceTutorSessionDto {
 }
 
 export function requestVoiceTutorSession(
-  target: { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
+  target:
+    | { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
+    | { capabilityGraphNodeId: string; stepType: ExperienceStepType; exampleCardIndex?: number; isReviewOnly?: boolean }
 ): Promise<VoiceTutorSessionDto> {
-  return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
-    LearningSessionStepId: target.learningSessionStepId,
-    CurrentPromptText: target.promptText,
-    ExampleCardIndex: target.exampleCardIndex,
-  });
+  return rPost<VoiceTutorSessionDto>(
+    '/instructor-runtime/tutor/voice-session',
+    'learningSessionStepId' in target
+      ? {
+          LearningSessionStepId: target.learningSessionStepId,
+          CurrentPromptText: target.promptText,
+          ExampleCardIndex: target.exampleCardIndex,
+        }
+      : {
+          CapabilityGraphNodeId: target.capabilityGraphNodeId,
+          StepType: target.stepType,
+          ExampleCardIndex: target.exampleCardIndex,
+          IsReviewOnly: target.isReviewOnly,
+        }
+  );
 }
 
 // === "Reactivar Engrama" (2026-07-24) === A second, distinct Agent

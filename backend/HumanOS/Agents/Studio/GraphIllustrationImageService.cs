@@ -1,7 +1,9 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using HumanOS.Common;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Images;
+using System.ClientModel;
 
 namespace HumanOS.Agents.Studio;
 
@@ -28,9 +30,16 @@ public sealed class GraphIllustrationImageService
 
     public GraphIllustrationImageService(IConfiguration configuration)
     {
-        var endpoint = configuration["AzureOpenAIEndpoint"];
+        // 'AzureOpenAIImageEndpoint'/'AzureOpenAIImageApiKey' (2026-08-06, dual-resource
+        // migration): gpt-image-2 stayed pinned on twinet-resource (its RPM quota is
+        // maxed out subscription-wide, see /memories/repo migration notes) while every
+        // other deployment moved to engramsediucation-resource — these let THIS one
+        // service point at a different account than 'AzureOpenAIEndpoint'/'AzureOpenAIApiKey'.
+        // Falls back to the shared settings when not set, so nothing breaks for anyone
+        // still on a single-resource setup.
+        var endpoint = configuration["AzureOpenAIImageEndpoint"] ?? configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIImageDeploymentName"];
-        var apiKey = configuration["AzureOpenAIApiKey"];
+        var apiKey = configuration["AzureOpenAIImageApiKey"] ?? configuration["AzureOpenAIApiKey"];
 
         _modelName = deploymentName ?? string.Empty;
 
@@ -121,8 +130,14 @@ public sealed class GraphIllustrationImageService
             };
 
             using var logoStream = new MemoryStream(logoImageBytes);
-            var editResponse = await _client.GenerateImageEditAsync(
-                logoStream, "brand-logo.png", $"{prompt}\n\n{LogoReferenceInstruction}", editOptions, cancellationToken);
+            // Quota-retry (2026-08-06): gpt-image-2 on twinet-resource is pinned right at
+            // its subscription-wide RPM quota ceiling, so a transient 429 here is expected
+            // occasionally under load — wait it out instead of failing the whole request.
+            var editResponse = await QuotaRetryPolicy.ExecuteAsync(
+                () => _client.GenerateImageEditAsync(
+                    logoStream, "brand-logo.png", $"{prompt}\n\n{LogoReferenceInstruction}", editOptions, cancellationToken),
+                classify: ex => ex is ClientResultException { Status: 429 } ? TimeSpan.Zero : null,
+                cancellationToken);
             var editedImage = editResponse.Value;
 
             return new GeneratedIllustration
@@ -146,7 +161,11 @@ public sealed class GraphIllustrationImageService
         };
 #pragma warning restore OPENAI001
 
-        var response = await _client.GenerateImageAsync(prompt, options, cancellationToken);
+        // Quota-retry (2026-08-06): see the image-edit branch above for why.
+        var response = await QuotaRetryPolicy.ExecuteAsync(
+            () => _client.GenerateImageAsync(prompt, options, cancellationToken),
+            classify: ex => ex is ClientResultException { Status: 429 } ? TimeSpan.Zero : null,
+            cancellationToken);
         var image = response.Value;
 
         return new GeneratedIllustration

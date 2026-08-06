@@ -53,7 +53,7 @@ const COLOR_STYLES: Record<(typeof NAV_ITEMS)[number]['color'], { chip: string; 
   },
 };
 
-const CAPABILITY_STUDIO_URL = 'http://localhost:3002';
+const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
 
 export function EnterpriseSidebar() {
   return (

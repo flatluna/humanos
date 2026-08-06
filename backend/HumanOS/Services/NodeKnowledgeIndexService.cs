@@ -325,4 +325,5 @@ public sealed class NodeKnowledgeIndexService
             }
         }
     }
+
 }

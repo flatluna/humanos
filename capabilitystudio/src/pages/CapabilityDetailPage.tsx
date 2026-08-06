@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, PlayCircle, Layers, GitBranch, Calendar, Trash2, GraduationCap, X, Baby } from 'lucide-react';
-import { getCapabilities, deleteCapability, updateCapabilityPedagogicalAudience, type BackendCapability } from '../lib/api/capabilitiesApi';
+import { ArrowLeft, ExternalLink, PlayCircle, Layers, GitBranch, Calendar, Trash2, GraduationCap, X, Baby, Globe } from 'lucide-react';
+import {
+  getCapabilities,
+  deleteCapability,
+  updateCapabilityPedagogicalAudience,
+  updateCapabilityVisibility,
+  type BackendCapability,
+} from '../lib/api/capabilitiesApi';
 import {
   getPrograms,
   getProgramsForCapability,
@@ -34,6 +40,8 @@ export default function CapabilityDetailPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [audienceBusy, setAudienceBusy] = useState(false);
   const [audienceError, setAudienceError] = useState<string | null>(null);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityError, setVisibilityError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +120,27 @@ export default function CapabilityDetailPage() {
       setAudienceError(err instanceof Error ? err.message : t('capabilityDetail.audienceErrorFallback'));
     } finally {
       setAudienceBusy(false);
+    }
+  }
+
+  async function handleSetVisibility(nextIsGlobal: boolean) {
+    if (!capability || visibilityBusy) return;
+    const currentIsGlobal = capability.OwnerPersonId === null;
+    if (currentIsGlobal === nextIsGlobal) return;
+    setVisibilityBusy(true);
+    setVisibilityError(null);
+    try {
+      await updateCapabilityVisibility(capability.CapabilityId, nextIsGlobal);
+      // Re-fetch instead of guessing the new OwnerPersonId client-side —
+      // marking Personal assigns whichever caller identity the backend
+      // resolved from the request's X-Azure-OID/X-Azure-TID headers.
+      const all = await getCapabilities();
+      const refreshed = all.find((c) => c.CapabilityId === capability.CapabilityId);
+      if (refreshed) setCapability(refreshed);
+    } catch (err) {
+      setVisibilityError(err instanceof Error ? err.message : t('capabilityDetail.visibilityErrorFallback'));
+    } finally {
+      setVisibilityBusy(false);
     }
   }
 
@@ -258,6 +287,38 @@ export default function CapabilityDetailPage() {
             })}
           </div>
           {audienceError && <p className="mt-2 text-sm text-red-300">{audienceError}</p>}
+        </div>
+
+        <div className="mt-8">
+          <h3 className="mb-1 text-lg font-semibold text-white">{t('capabilityDetail.visibilityHeading')}</h3>
+          <p className="mb-3 text-sm text-slate-400">{t('newCapability.visibilityHint')}</p>
+          <div className="grid max-w-md grid-cols-2 gap-2">
+            {(
+              [
+                { value: false, label: t('newCapability.visibilityPersonal') },
+                { value: true, label: t('newCapability.visibilityGlobal') },
+              ]
+            ).map((option) => {
+              const active = (capability.OwnerPersonId === null) === option.value;
+              return (
+                <button
+                  key={String(option.value)}
+                  type="button"
+                  disabled={visibilityBusy}
+                  onClick={() => handleSetVisibility(option.value)}
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    active
+                      ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                      : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                  }`}
+                >
+                  <Globe className="h-4 w-4 shrink-0" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {visibilityError && <p className="mt-2 text-sm text-red-300">{visibilityError}</p>}
         </div>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">

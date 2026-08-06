@@ -49,6 +49,12 @@ public sealed class CapabilityConfiguration
         builder.Property(x => x.TargetSkill)
             .HasMaxLength(400);
 
+        builder.Property(x => x.ConsentAcceptedByName)
+            .HasMaxLength(320);
+
+        builder.Property(x => x.ConsentAcceptedDate)
+            .HasColumnType("datetime2");
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")
@@ -80,6 +86,27 @@ public sealed class CapabilityConfiguration
             .HasConstraintName(
                 "FK_Capability_TargetJobRole");
 
+        builder.HasOne<HumanOS.Models.People.Person>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerPersonId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName(
+                "FK_Capability_OwnerPerson");
+
+        builder.HasOne<HumanOS.Models.Tenancy.Tenant>()
+            .WithMany()
+            .HasForeignKey(x => x.OwnerTenantId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName(
+                "FK_Capability_OwnerTenant");
+
+        builder.HasOne<HumanOS.Models.People.Person>()
+            .WithMany()
+            .HasForeignKey(x => x.ConsentAcceptedByPersonId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName(
+                "FK_Capability_ConsentAcceptedByPerson");
+
         builder.HasIndex(x => x.Code)
             .IsUnique()
             .HasDatabaseName("UX_Capability_Code");
@@ -99,5 +126,17 @@ public sealed class CapabilityConfiguration
         builder.HasIndex(x => x.TargetJobRoleId)
             .HasDatabaseName(
                 "IX_Capability_TargetJobRoleId");
+
+        builder.HasIndex(x => x.OwnerPersonId)
+            .HasDatabaseName(
+                "IX_Capability_OwnerPersonId");
+
+        builder.HasIndex(x => x.OwnerTenantId)
+            .HasDatabaseName(
+                "IX_Capability_OwnerTenantId");
+
+        builder.HasIndex(x => x.ConsentAcceptedByPersonId)
+            .HasDatabaseName(
+                "IX_Capability_ConsentAcceptedByPersonId");
     }
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import DOMPurify from 'dompurify';
-import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp, Images, ShieldCheck } from 'lucide-react';
+import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Send, MessageCircle, Star, X, Sparkles, ChevronDown, ChevronUp, Images, ShieldCheck, SkipForward, SkipBack } from 'lucide-react';
 import { useI18n } from '../i18n/useI18n';
 import { useAuth } from '@/auth/AuthContext';
 import { API_BASE_URL } from '../api/httpClient';
@@ -15,6 +15,7 @@ import {
   submitStepResponse,
   advanceStep,
   forceAdvanceStep,
+  skipDeepDiveStep,
   askTutor,
   submitRecallAttempt,
   submitDeepDiveAttempt,
@@ -363,9 +364,28 @@ export default function NodeWorkflowPage() {
     error: boolean;
   } | null>(null);
 
+  // DeepDive is the one exception: revisiting it (2026-08-05 "quiero que se
+  // active el comportamiento igual que como cuando ingresa por primera vez,
+  // no un modal con los textos de cada cuadro") browses the same cards, one
+  // at a time with Prev/Next, instead of a flat read-only text dump — pure
+  // client-side free practice, never touches grading/backend progression.
+  const [deepDivePractice, setDeepDivePractice] = useState<{
+    data: StepReviewDto | null;
+    cardIndex: number;
+    loading: boolean;
+    error: boolean;
+  } | null>(null);
+
   const handleStepIconClick = useCallback(
     (stepType: ExperienceStepType) => {
       if (!sessionNodeId) return;
+      if (stepType === 'DeepDive') {
+        setDeepDivePractice({ data: null, cardIndex: 0, loading: true, error: false });
+        getStepReview(sessionNodeId, stepType)
+          .then((data) => setDeepDivePractice({ data, cardIndex: 0, loading: false, error: false }))
+          .catch(() => setDeepDivePractice({ data: null, cardIndex: 0, loading: false, error: true }));
+        return;
+      }
       setStepReview({ stepType, data: null, loading: true, error: false });
       getStepReview(sessionNodeId, stepType)
         .then((data) => setStepReview({ stepType, data, loading: false, error: false }))
@@ -375,6 +395,15 @@ export default function NodeWorkflowPage() {
   );
 
   const closeStepReview = useCallback(() => setStepReview(null), []);
+  const closeDeepDivePractice = useCallback(() => setDeepDivePractice(null), []);
+  const deepDivePracticePrevCard = useCallback(() => {
+    setDeepDivePractice((prev) => (prev ? { ...prev, cardIndex: Math.max(prev.cardIndex - 1, 0) } : prev));
+  }, []);
+  const deepDivePracticeNextCard = useCallback(() => {
+    setDeepDivePractice((prev) =>
+      prev ? { ...prev, cardIndex: Math.min(prev.cardIndex + 1, (prev.data?.ExampleCards?.length ?? 1) - 1) } : prev
+    );
+  }, []);
 
   // Production ("Aplícalo") formative grading: submit for real AI
   // evaluation. No attempt cap — an incorrect verdict just clears the
@@ -480,12 +509,13 @@ export default function NodeWorkflowPage() {
   // no regression path). Mastering the card advances NextCardIndex; once
   // every card is mastered in order, Advanced flips true and the same
   // "reward pause" pattern as Recall plays before moving to the next step.
-  const handleDeepDiveSubmit = useCallback(async () => {
-    if (!step || !responseText.trim()) return;
+  const handleDeepDiveSubmit = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? responseText).trim();
+    if (!step || !text) return;
     setSubmitting(true);
     setErrorMessage(null);
     try {
-      const outcome = await submitDeepDiveAttempt(step.learningSessionStepId, responseText.trim(), deepDiveLastPrompt);
+      const outcome = await submitDeepDiveAttempt(step.learningSessionStepId, text, deepDiveLastPrompt);
       setResponseText('');
       if (outcome.Advanced && outcome.NextStep) {
         setPendingAdvance({ nextStep: outcome.NextStep, title: t.deepDiveRewardTitle });
@@ -509,6 +539,49 @@ export default function NodeWorkflowPage() {
       setSubmitting(false);
     }
   }, [step, responseText, deepDiveLastPrompt, t.nodeError, t.deepDiveRewardTitle]);
+
+  // Manual card navigation (2026-08-05, explicit repeated user request: "no
+  // quiero forzarlo a contestar perfecto... que decida cuándo dar next...
+  // aunque no haya enviado respuesta... siguiente tarjeta siempre tiene que
+  // estar disponible... también un back para ver tarjeta anterior, quiero
+  // que el usuario siempre pueda regresar a ver sus tarjetas sin
+  // restricción"). Previous is purely client-side (mirrors Capability
+  // Studio's reviewer-only `autoApprove` skip button, but available to
+  // every student here) — it only ever revisits already-seen cards, never
+  // touches real grading/mastery state, so it's always unrestricted. Next
+  // is the same for every card EXCEPT the last one — completing the whole
+  // Deep Dive step is still tracked server-side, so on the last card it
+  // calls RuntimeSkipDeepDiveStepFunction (self-service, DeepDive-only —
+  // see skipDeepDiveStep) to advance to the next workflow step ungraded.
+  const totalDeepDiveCards = deepDiveTotalCards || step?.exampleCards?.length || 0;
+  const [skippingDeepDive, setSkippingDeepDive] = useState(false);
+
+  const handleDeepDivePrevCard = useCallback(() => {
+    setDeepDiveCardIndex((i) => Math.max(i - 1, 0));
+    setDeepDiveLastPrompt(undefined);
+    setResponseText('');
+  }, []);
+
+  const handleDeepDiveNextCard = useCallback(async () => {
+    if (!step?.exampleCards) return;
+    if (deepDiveCardIndex < totalDeepDiveCards - 1) {
+      setDeepDiveCardIndex((i) => Math.min(i + 1, step.exampleCards!.length - 1));
+      setDeepDiveLastPrompt(undefined);
+      setResponseText('');
+      return;
+    }
+    if (!sessionNodeId || skippingDeepDive) return;
+    setSkippingDeepDive(true);
+    setErrorMessage(null);
+    try {
+      const nextStep = await skipDeepDiveStep(sessionNodeId);
+      resetStepUiState(normalizeStep(nextStep));
+    } catch {
+      setErrorMessage(t.nodeError);
+    } finally {
+      setSkippingDeepDive(false);
+    }
+  }, [step, deepDiveCardIndex, totalDeepDiveCards, sessionNodeId, skippingDeepDive, resetStepUiState, t.nodeError]);
 
   // Adaptive Assessment: the first time this node's step becomes
   // Assessment, resume any in-progress round or start a brand-new one.
@@ -571,7 +644,7 @@ export default function NodeWorkflowPage() {
     setErrorMessage(null);
     try {
       const result = await completeNode(sessionNodeId);
-      setNewlyUnlocked(result.newlyUnlockedNodes);
+      setNewlyUnlocked(result.newlyUnlockedNodes ?? []);
     } catch {
       setErrorMessage(t.nodeError);
     } finally {
@@ -645,17 +718,105 @@ export default function NodeWorkflowPage() {
     );
   }
 
+  // Revisiting Deep Dive from the stepper: same one-card-at-a-time browsing
+  // as first entry (Prev/Next), not the flat all-cards-text modal — purely
+  // client-side free practice, no grading/backend calls at all.
+  if (deepDivePractice) {
+    const cards = deepDivePractice.data?.ExampleCards ?? [];
+    const cardIndex = Math.min(deepDivePractice.cardIndex, Math.max(cards.length - 1, 0));
+    const card = cards[cardIndex];
+    return (
+      <div className="mx-auto max-w-3xl p-4 sm:p-8">
+        <button
+          type="button"
+          onClick={closeDeepDivePractice}
+          className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline"
+        >
+          ← {t.deepDivePracticeClose}
+        </button>
+
+        {nodeInfo && (
+          <div className="mt-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-5">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{nodeInfo.name}</h1>
+          </div>
+        )}
+
+        <div className="mt-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-6">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+            <BookOpen className="h-5 w-5 text-brand-500" /> {t.stepDeepDive}
+          </h2>
+
+          {deepDivePractice.loading && <p className="text-sm text-slate-500 dark:text-slate-400">{t.stepReviewLoading}</p>}
+          {deepDivePractice.error && <p className="text-sm text-red-600 dark:text-red-400">{t.nodeError}</p>}
+
+          {card && (
+            <>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                {t.deepDiveCardLabel} {cardIndex + 1} {t.assessmentOfLabel} {cards.length}
+              </p>
+              <div className="mt-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] p-4">
+                {card.IllustrationId ? (
+                  <img
+                    src={`${API_BASE_URL}/illustrations/${card.IllustrationId}/image`}
+                    alt={card.Title}
+                    className="mb-2 h-auto max-h-80 w-full rounded-lg object-contain bg-black/20"
+                  />
+                ) : (
+                  card.Emoji && <div className="mb-2 text-3xl leading-none">{card.Emoji}</div>
+                )}
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">{card.Title}</p>
+                <RichContent className="mt-1 text-sm text-slate-600 dark:text-slate-300" html={card.Text} />
+                {/* Same per-card "habla con tu maestro" voice Agent as first
+                    entry — blueprint-only path (no live LearningSessionStep
+                    exists for a step the student already passed), so it just
+                    talks about the card, never grades anything here. */}
+                {nodeId && (
+                  <VoiceTutorAgent
+                    capabilityGraphNodeId={nodeId}
+                    stepType="DeepDive"
+                    exampleCardIndex={cardIndex}
+                    isReviewOnly
+                    autoConnect={false}
+                    compact
+                  />
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={deepDivePracticePrevCard}
+                  disabled={cardIndex <= 0}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:disabled:hover:bg-slate-800"
+                >
+                  <SkipBack className="h-4 w-4" /> {t.deepDivePrevCard}
+                </button>
+                <button
+                  type="button"
+                  onClick={deepDivePracticeNextCard}
+                  disabled={cardIndex >= cards.length - 1}
+                  className="flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 disabled:hover:bg-emerald-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20 dark:disabled:hover:bg-emerald-500/10"
+                >
+                  <SkipForward className="h-4 w-4" /> {t.deepDiveNextCard}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (newlyUnlocked !== null) {
     return (
       <div className="mx-auto max-w-2xl p-8">
         <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-8 text-center">
           <Check className="mx-auto h-10 w-10 text-emerald-600 dark:text-emerald-400" />
           <h1 className="mt-3 text-xl font-semibold text-emerald-700 dark:text-emerald-300">{t.completedBannerTitle}</h1>
-          {newlyUnlocked.length > 0 && (
+          {(newlyUnlocked ?? []).length > 0 && (
             <div className="mt-4 text-sm text-emerald-700 dark:text-emerald-200">
               <p className="font-medium">{t.newlyUnlockedTitle}</p>
               <ul className="mt-1 space-y-1">
-                {newlyUnlocked.map((n) => (
+                {(newlyUnlocked ?? []).map((n) => (
                   <li key={n.CapabilityGraphNodeId}>{n.Name}</li>
                 ))}
               </ul>
@@ -799,6 +960,22 @@ export default function NodeWorkflowPage() {
                   )}
                   <p className="text-sm font-semibold text-slate-900 dark:text-white">{card.Title}</p>
                   <RichContent className="mt-1 text-sm text-slate-600 dark:text-slate-300" html={card.Text} />
+                  {/* "Habla con tu maestro" — same compact, per-card voice
+                      Agent as Capability Studio's PreviewNodePage, ported
+                      here (2026-08-05, restores what was missing). Doesn't
+                      auto-connect (student must press it); when the Agent
+                      itself decides the spoken explanation is good enough
+                      (mark_explanation_understood), it's graded exactly
+                      like a typed answer via handleDeepDiveSubmit's
+                      overrideText, without ever touching the visible
+                      textarea below. */}
+                  <VoiceTutorAgent
+                    learningSessionStepId={step.learningSessionStepId}
+                    exampleCardIndex={deepDiveCardIndex}
+                    autoConnect={false}
+                    compact
+                    onExplanationAccepted={(explanation) => void handleDeepDiveSubmit(explanation)}
+                  />
                 </div>
               );
             })()}
@@ -884,16 +1061,45 @@ export default function NodeWorkflowPage() {
                 rows={3}
                 className="input"
               />
-              <button
-                onClick={handleDeepDiveSubmit}
-                disabled={submitting || !responseText.trim()}
-                className="mt-3 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
-              >
-                {t.deepDiveSubmit}
-              </button>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  onClick={() => void handleDeepDiveSubmit()}
+                  disabled={submitting || !responseText.trim()}
+                  className="rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {t.deepDiveSubmit}
+                </button>
+                {/* "Anterior" (2026-08-05: "queiro que el usuario siempre
+                    pueda regresar a ver sus tarjetas sin restricción") —
+                    purely local card navigation, never touches grading, so
+                    it's only ever disabled on card 1 (nothing before it). */}
+                <button
+                  type="button"
+                  onClick={handleDeepDivePrevCard}
+                  disabled={deepDiveCardIndex <= 0}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:disabled:hover:bg-slate-800"
+                >
+                  <SkipBack className="h-4 w-4" /> {t.deepDivePrevCard}
+                </button>
+                {/* Shown on every card, ALWAYS enabled (2026-08-05: "en cada
+                    tarjeta pon siguiente tarjeta" then "siguiente tarjeta
+                    siempre tiene que estar disponible") — on the last card
+                    this calls skipDeepDiveStep (RuntimeSkipDeepDiveStepFunction)
+                    to advance past Deep Dive ungraded instead of just
+                    moving the local card index. */}
+                <button
+                  type="button"
+                  onClick={() => void handleDeepDiveNextCard()}
+                  disabled={skippingDeepDive}
+                  className="flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 disabled:hover:bg-emerald-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20 dark:disabled:hover:bg-emerald-500/10"
+                >
+                  <SkipForward className="h-4 w-4" /> {t.deepDiveNextCard}
+                </button>
+              </div>
             </div>
           )
         )}
+
 
         {/* Production ("Aplícalo") — real, formative AI grading via
             ProductionEvaluatorAgent (never affects node mastery/unlocking,

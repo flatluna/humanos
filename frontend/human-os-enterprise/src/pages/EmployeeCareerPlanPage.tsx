@@ -23,7 +23,7 @@ import {
   type CareerPlanRoadmapStepDto,
 } from '@/api/orgStructureApi';
 
-// Capability Studio (:3002) is the AUTHORING app — where HR/designers
+// Capability Studio (:3010) is the AUTHORING app — where HR/designers
 // generate brand-new courses. Matching a roadmap step to a real course is
 // fully automatic (see PersonCareerPlanService.AutoMatchCapabilitiesAsync
 // on the backend) — HR never manually links anything. A roadmap step
@@ -40,7 +40,7 @@ import {
 //  - Program matches still point at Engram for now — Program support
 //    hasn't been ported to human-os-employee yet (no employee career step
 //    has matched a Program so far; revisit if/when one does).
-const CAPABILITY_STUDIO_URL = 'http://localhost:3002';
+const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
 const ENGRAM_APP_URL = 'http://localhost:5178';
 const EMPLOYEE_PORTAL_URL = 'http://localhost:5180';
 

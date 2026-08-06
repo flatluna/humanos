@@ -32,6 +32,10 @@ export interface BackendCapability {
   Levels: string[];
   CreatedDate: string;
   UpdatedDate: string;
+  /** See Capability.OwnerPersonId. Null for the public/official catalog. */
+  OwnerPersonId: string | null;
+  /** See Capability.OwnerTenantId. Null for a public capability or a Consumer's personal one. */
+  OwnerTenantId: string | null;
 }
 
 export interface GetCapabilitiesFilters {
@@ -75,4 +79,15 @@ export async function updateCapabilityPedagogicalAudience(
   pedagogicalAudience: 'YoungLearner' | null,
 ): Promise<void> {
   await apiPatch(`/capabilities/${capabilityId}/pedagogical-audience`, { pedagogicalAudience });
+}
+
+/**
+ * Flips an EXISTING capability between the public/official catalog
+ * (Global) and scoped-to-one-person/tenant (Personal). Marking Personal
+ * makes the current caller its new owner (requires a resolvable identity
+ * — see getIdentityHeaders); only the current owner (or nobody, for an
+ * already-public capability) may change it.
+ */
+export async function updateCapabilityVisibility(capabilityId: string, isGlobal: boolean): Promise<void> {
+  await apiPatch(`/capabilities/${capabilityId}/visibility`, { isGlobal });
 }

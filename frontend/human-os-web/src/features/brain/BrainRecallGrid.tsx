@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { BookOpen, Layers, Sparkles, Zap } from 'lucide-react';
 import type { RootGroup, SelectedNeuron } from './types';
 import { getSubjectColor } from './subjectColor';
-import { getMemoryColor, getRetrievability, isAutomatic } from './memoryScience';
+import { getMemoryColor, getRetrievability, isAutomatic, toUtcMs } from './memoryScience';
 
 /** Same 8-color palette used across the feature — one color per enrolled
  *  Program/standalone Capability root, so everything belonging to one area
@@ -17,7 +17,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 function relativeLabel(lastCompletedDate: string | undefined, locale: string) {
   if (!lastCompletedDate) return '—';
-  const days = Math.floor((Date.now() - new Date(lastCompletedDate).getTime()) / DAY_MS);
+  const days = Math.floor((Date.now() - toUtcMs(lastCompletedDate)) / DAY_MS);
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
   if (days < 1) return rtf.format(0, 'day');
   if (days < 30) return rtf.format(-days, 'day');

@@ -28,6 +28,11 @@ export interface NavItem {
    *  it's kept visible as a placeholder for a future lighter-weight,
    *  goal-based AI recommender instead of being removed outright). */
   disabled?: boolean;
+  /** Passed straight to react-router's NavLink `end` prop. Needed for
+   *  '/programs' (Mis Programas), which would otherwise also read as
+   *  "active" while on '/programs/catalog' (Programas) since that's a
+   *  child route — both items lit up together, which is confusing. */
+  end?: boolean;
 }
 
 export interface NavGroup {
@@ -48,7 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/growth-plan', icon: Map, labelKey: 'nav.growthPlan', disabled: true },
       { to: '/programs/catalog', icon: GraduationCap, labelKey: 'nav.programs' },
-      { to: '/programs', icon: BookmarkCheck, labelKey: 'nav.myPrograms' },
+      { to: '/programs', icon: BookmarkCheck, labelKey: 'nav.myPrograms', end: true },
       { to: '/capabilities', icon: Layers, labelKey: 'nav.capabilities' },
       { to: '/my-capabilities', icon: BookmarkCheck, labelKey: 'nav.myCapabilities' },
       { to: '/growth', icon: TrendingUp, labelKey: 'nav.myEvolution' },

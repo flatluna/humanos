@@ -33,9 +33,15 @@ public sealed class RealtimeVoiceSessionService
     public RealtimeVoiceSessionService(IConfiguration configuration, IHttpClientFactory httpClientFactory)
     {
         _httpClient = httpClientFactory.CreateClient(nameof(RealtimeVoiceSessionService));
-        _endpoint = configuration["AzureOpenAIEndpoint"];
+        // 'AzureOpenAIRealtimeEndpoint'/'AzureOpenAIRealtimeApiKey' (2026-08-06, dual-resource
+        // migration): gpt-realtime-mini stayed pinned on twinet-resource (its RPM quota is
+        // maxed out subscription-wide, see /memories/repo migration notes) while every other
+        // deployment moved to engramsediucation-resource — these let THIS service point at a
+        // different account than 'AzureOpenAIEndpoint'/'AzureOpenAIApiKey'. Falls back to the
+        // shared settings when not set, so nothing breaks for anyone on a single-resource setup.
+        _endpoint = configuration["AzureOpenAIRealtimeEndpoint"] ?? configuration["AzureOpenAIEndpoint"];
         _deploymentName = configuration["AzureOpenAIRealtimeDeploymentName"];
-        _apiKey = configuration["AzureOpenAIApiKey"];
+        _apiKey = configuration["AzureOpenAIRealtimeApiKey"] ?? configuration["AzureOpenAIApiKey"];
         _voice = configuration["AzureOpenAIRealtimeVoice"] is { Length: > 0 } configuredVoice
             ? configuredVoice
             : "marin";
@@ -182,21 +188,41 @@ public sealed class RealtimeVoiceSessionService
         }
 
         var sessionConfig = new { session = sessionNode };
+        var sessionConfigJson = JsonSerializer.Serialize(sessionConfig);
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, requestUri)
-        {
-            Content = new StringContent(JsonSerializer.Serialize(sessionConfig), Encoding.UTF8, "application/json")
-        };
-        httpRequest.Headers.Add("api-key", _apiKey);
+        // Quota-retry (2026-08-06): gpt-realtime-mini on twinet-resource is pinned right
+        // at its subscription-wide RPM quota ceiling, so a transient 429 here is expected
+        // occasionally under load — wait it out instead of failing the whole session mint.
+        // HttpRequestMessage is single-use, so it's rebuilt fresh on every attempt.
+        var responseBody = await HumanOS.Common.QuotaRetryPolicy.ExecuteAsync(
+            async () =>
+            {
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, requestUri)
+                {
+                    Content = new StringContent(sessionConfigJson, Encoding.UTF8, "application/json")
+                };
+                httpRequest.Headers.Add("api-key", _apiKey);
 
-        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Azure OpenAI Realtime client_secrets request failed ({(int)response.StatusCode}): {responseBody}");
-        }
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    throw new HumanOS.Common.QuotaExceededHttpException(
+                        response.Headers.RetryAfter?.Delta,
+                        $"Azure OpenAI Realtime client_secrets request was rate-limited (429): {body}");
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new InvalidOperationException(
+                        $"Azure OpenAI Realtime client_secrets request failed ({(int)response.StatusCode}): {body}");
+                }
+
+                return body;
+            },
+            classify: ex => ex is HumanOS.Common.QuotaExceededHttpException qe ? (qe.RetryAfter ?? TimeSpan.Zero) : null,
+            cancellationToken);
 
         using var parsedResponse = JsonDocument.Parse(responseBody);
         var root = parsedResponse.RootElement;

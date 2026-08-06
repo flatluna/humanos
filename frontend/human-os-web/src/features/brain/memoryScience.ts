@@ -2,6 +2,19 @@ import type { RootGroup } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Backend datetime strings for LastCompletedDate/FirstCompletedDate are
+ * serialized from a UTC value with no "Z"/offset suffix (e.g.
+ * "2026-08-06T01:17:58.68"). The native `new Date(...)` parser treats a
+ * timezone-less ISO string as LOCAL time, not UTC — in negative-UTC-offset
+ * timezones this can shift the parsed instant into "tomorrow", making an
+ * engram mastered moments ago look like it hasn't happened yet from
+ * "today"'s point of view. Append "Z" when the string has no timezone
+ * designator so it's always parsed as the UTC instant it actually is. */
+export function toUtcMs(dateString: string): number {
+  const hasTimezone = /[Zz]|[+-]\d{2}:\d{2}$/.test(dateString);
+  return new Date(hasTimezone ? dateString : `${dateString}Z`).getTime();
+}
+
 /** How many days a memory takes to reach 50% retrievability, indexed by
  * how many times the student has genuinely mastered the node (reviewCount).
  * Grows the same way spaced-repetition systems like Anki/FSRS grow their
@@ -56,7 +69,7 @@ export function isAutomatic(reviewCount: number): boolean {
  */
 export function getRetrievability(lastCompletedDate: string | undefined, reviewCount = 1): number | null {
   if (!lastCompletedDate) return null;
-  const elapsedDays = Math.max(0, (Date.now() - new Date(lastCompletedDate).getTime()) / DAY_MS);
+  const elapsedDays = Math.max(0, (Date.now() - toUtcMs(lastCompletedDate)) / DAY_MS);
   const stability = getStabilityDays(reviewCount);
   return 1 / (1 + elapsedDays / (9 * stability));
 }
@@ -172,7 +185,7 @@ export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): E
     let scoreCount = 0;
     const events: string[] = [];
     for (const node of masteredNodes) {
-      const masteredAtMs = new Date(node.lastCompletedDate).getTime();
+      const masteredAtMs = toUtcMs(node.lastCompletedDate);
       if (masteredAtMs > endOfDayMs) continue; // not mastered yet as of this day
       count += 1;
       if (typeof node.finalScore === 'number') {

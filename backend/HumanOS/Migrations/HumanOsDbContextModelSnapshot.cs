@@ -309,6 +309,16 @@ namespace HumanOS.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("ConsentAcceptedByName")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid?>("ConsentAcceptedByPersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConsentAcceptedDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ContentLanguageCode")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -340,6 +350,12 @@ namespace HumanOS.Migrations
                         .IsRequired()
                         .HasMaxLength(400)
                         .HasColumnType("nvarchar(400)");
+
+                    b.Property<Guid?>("OwnerPersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OwnerTenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("PedagogicalAudience")
                         .HasMaxLength(30)
@@ -375,6 +391,15 @@ namespace HumanOS.Migrations
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("UX_Capability_Code");
+
+                    b.HasIndex("ConsentAcceptedByPersonId")
+                        .HasDatabaseName("IX_Capability_ConsentAcceptedByPersonId");
+
+                    b.HasIndex("OwnerPersonId")
+                        .HasDatabaseName("IX_Capability_OwnerPersonId");
+
+                    b.HasIndex("OwnerTenantId")
+                        .HasDatabaseName("IX_Capability_OwnerTenantId");
 
                     b.HasIndex("SubjectId")
                         .HasDatabaseName("IX_Capability_SubjectId");
@@ -4004,6 +4029,24 @@ namespace HumanOS.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_Capability_CapabilityDomain");
+
+                    b.HasOne("HumanOS.Models.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("ConsentAcceptedByPersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Capability_ConsentAcceptedByPerson");
+
+                    b.HasOne("HumanOS.Models.People.Person", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerPersonId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Capability_OwnerPerson");
+
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerTenantId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Capability_OwnerTenant");
 
                     b.HasOne("HumanOS.Models.Capabilities.Subject", "Subject")
                         .WithMany("Capabilities")

@@ -49,7 +49,11 @@ export function AppHeader() {
           </button>
 
           <div className="flex items-center gap-2.5">
-            <span className="h-6 w-6 shrink-0 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500" aria-hidden="true" />
+            <img
+              src="/engramslogo.png?v=2"
+              alt={t('common.appName')}
+              className="h-9 w-9 shrink-0 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/15"
+            />
             <div className="flex flex-col leading-tight">
               <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
                 {t('common.appName')}

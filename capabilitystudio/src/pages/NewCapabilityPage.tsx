@@ -35,6 +35,7 @@ import StepIndicator from '../components/StepIndicator';
 import TypeOptionCard from '../components/TypeOptionCard';
 import FileDropzone from '../components/FileDropzone';
 import { getSubjectIcon } from '../lib/subjectVisuals';
+import { useAuth } from '../auth/AuthContext';
 
 type CapabilityType = 'pdf' | 'text' | 'video' | 'link';
 
@@ -50,8 +51,20 @@ const CAREER_CATEGORIES = [
   { value: 'hr-processes' as const, labelKey: 'newCapability.careerCategoryHrProcesses' },
 ];
 
+/// Mirrors the backend's SyllabusOutlineParser module-keyword regex
+/// (2026-08-03 "Estructurado" mode) — used client-side only to warn early
+/// when "Strictly follow the document's index" is on but the idea/description
+/// text has no recognizable numbered index (e.g. a simple one-line topic like
+/// "curso de paella"), instead of letting an expensive generation run fail.
+const STRUCTURED_INDEX_PATTERN =
+  /(?:M[oó]dulo|Unidad|Cap[ií]tulo|Unit|Chapter|Tema|Secci[oó]n|Section|Part|Parte)\s+\d+|\b\d{1,2}\.\d{1,2}\b/i;
+
 export default function NewCapabilityPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  // Career/company-course fields only make sense for tenant (company) accounts,
+  // never for an individual/consumer account creating their own content.
+  const isCompanyAccount = !!user?.tenantId;
   const STEPS = t('newCapability.steps', { returnObjects: true }) as string[];
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -105,6 +118,13 @@ export default function NewCapabilityPage() {
   const [capabilityObjectives, setCapabilityObjectives] = useState('');
   const [capabilityRequirements, setCapabilityRequirements] = useState('');
 
+  // Global/personal visibility (2026-08-06): defaults to false (Personal)
+  // to keep today's existing behavior unchanged — every course an
+  // individual/consumer creates stays visible ONLY to them unless they
+  // explicitly opt into the public catalog here. See
+  // Capability.OwnerPersonId/OwnerTenantId.
+  const [isGlobal, setIsGlobal] = useState(false);
+
   // Career-plan linking (2026-08-01): career category is a plain string,
   // '' meaning "not an employer course" (Category stays null on the
   // backend). targetSkill is only meaningful once a career category is
@@ -130,6 +150,12 @@ export default function NewCapabilityPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [conflictingRunId, setConflictingRunId] = useState<string | null>(null);
+
+  // Legal/liability disclosure consent (2026-08-06 feature): must be
+  // checked before the final "Create" button is enabled — the backend
+  // independently re-validates this and stamps the actual acceptance
+  // date/identity itself, never trusting the client's timestamp.
+  const [acceptedLegalDisclosure, setAcceptedLegalDisclosure] = useState(false);
 
   // Paso 5 "Diseño de la capability" (2026-08-04): the reviewed/approved
   // (possibly hand-edited) chapter/node outline — null means "not loaded
@@ -221,15 +247,37 @@ export default function NewCapabilityPage() {
   }, [programId]);
 
   const canAdvanceFromStep1 = name.trim().length > 0 && capabilityDomainId.length > 0;
+  // Estructurado mode makes no sense for a plain idea/topic statement (e.g.
+  // "curso de paella") — it requires the description to already spell out a
+  // numbered outline (see StrictSyllabusModeAddendum). Block early instead of
+  // wasting a full generation run that the backend would reject anyway.
+  const strictModeMissingIndexForIdea =
+    strictSyllabusMode &&
+    capabilityType === 'text' &&
+    ideaDescription.trim().length > 0 &&
+    !STRUCTURED_INDEX_PATTERN.test(ideaDescription);
   const canAdvanceFromStep3 =
-    capabilityType === 'pdf' ? file !== null : capabilityType === 'text' ? ideaDescription.trim().length > 0 : false;
+    (capabilityType === 'pdf'
+      ? file !== null
+      : capabilityType === 'text'
+        ? ideaDescription.trim().length > 0
+        : false) && !strictModeMissingIndexForIdea;
 
-  const canSubmit = useMemo(() => {
+  // Gate for moving Review (step 4) -> Learning path design (step 5), where the
+  // legal disclosure checkbox actually lives — must NOT require it already accepted.
+  const canAdvanceToDesignStep = useMemo(() => {
     if (!canAdvanceFromStep1) return false;
     if (capabilityType === 'pdf') return file !== null;
     if (capabilityType === 'text') return ideaDescription.trim().length > 0;
     return false;
   }, [canAdvanceFromStep1, capabilityType, file, ideaDescription]);
+
+  // Gate for the final submit button on step 5, which does require the disclosure.
+  const canSubmit = useMemo(() => {
+    if (!canAdvanceToDesignStep) return false;
+    if (!acceptedLegalDisclosure) return false;
+    return true;
+  }, [canAdvanceToDesignStep, acceptedLegalDisclosure]);
 
   /** Runs the cheap detection-only outline preview (Paso 5) — called once
    * when the designer first reaches step 5, and again if they click
@@ -268,9 +316,23 @@ export default function NewCapabilityPage() {
   }
 
   /** Moves from step 4 (review) into step 5 (design/approval), kicking off
-   * the outline preview the first time it's reached. */
+   * the outline preview the first time it's reached.
+   *
+   * The preview/approval flow only makes sense for PDF documents, where a
+   * real, stable document text exists to detect/locate chapter markers in.
+   * For "Texto/idea" capabilities, previewing operates on the raw, tiny
+   * idea sentence (see loadOutlinePreview below) — its StartMarkers can
+   * never be relocated in the much longer document the backend generates
+   * from that idea via IdeaToDocumentAgent right before the real run, so
+   * approving it would only produce a guaranteed "Generation failed"
+   * (and silently force strictSyllabusMode=true server-side regardless of
+   * the step-1 checkbox). Always treat it as skipped for idea-based runs. */
   async function goToDesignStep() {
     setStep(5);
+    if (capabilityType === 'text') {
+      setOutlineSkipped(true);
+      return;
+    }
     if (outline === null && outlineSource === null && !outlineLoading) {
       await loadOutlinePreview();
     }
@@ -353,6 +415,8 @@ export default function NewCapabilityPage() {
           recallItemsRequired: normalizedRecallItemsRequired,
           assessmentQuestionsPerRound: normalizedAssessmentQuestionsPerRound,
           logoImageBase64,
+          acceptedLegalDisclosure,
+          isGlobal,
         });
         navigate(`/runs/${run.RunId}`);
       } else if (capabilityType === 'text') {
@@ -380,6 +444,8 @@ export default function NewCapabilityPage() {
           recallItemsRequired: normalizedRecallItemsRequired,
           assessmentQuestionsPerRound: normalizedAssessmentQuestionsPerRound,
           logoImageBase64,
+          acceptedLegalDisclosure,
+          isGlobal,
         });
         navigate(`/runs/${run.RunId}`);
       }
@@ -579,6 +645,34 @@ export default function NewCapabilityPage() {
             />
           </Field>
 
+          <Field label={t('newCapability.visibilityLabel')} hint={t('newCapability.visibilityHint')}>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { value: false, label: t('newCapability.visibilityPersonal') },
+                  { value: true, label: t('newCapability.visibilityGlobal') },
+                ]
+              ).map((option) => {
+                const active = isGlobal === option.value;
+                return (
+                  <button
+                    key={String(option.value)}
+                    type="button"
+                    onClick={() => setIsGlobal(option.value)}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                    }`}
+                  >
+                    <Globe className="h-4 w-4 shrink-0" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
           <Field label={t('newCapability.domainLabel')}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {subjects.map((subject) => {
@@ -603,58 +697,63 @@ export default function NewCapabilityPage() {
             </div>
           </Field>
 
-          <Field label={t('newCapability.careerCategoryLabel')} hint={t('newCapability.careerCategoryHint')}>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => setCareerCategory('')}
-                className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                  careerCategory === ''
-                    ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                    : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                }`}
-              >
-                {t('newCapability.careerCategoryNone')}
-              </button>
-              {CAREER_CATEGORIES.map((option) => {
-                const active = careerCategory === option.value;
-                return (
+          {isCompanyAccount && (
+            <>
+              <Field label={t('newCapability.careerCategoryLabel')} hint={t('newCapability.careerCategoryHint')}>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <button
-                    key={option.value}
                     type="button"
-                    onClick={() => setCareerCategory(active ? '' : option.value)}
+                    onClick={() => setCareerCategory('')}
                     className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
+                      careerCategory === ''
                         ? 'border-brand-400/60 bg-brand-500/10 text-white'
                         : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
                     }`}
                   >
-                    {t(option.labelKey)}
+                    {t('newCapability.careerCategoryNone')}
                   </button>
-                );
-              })}
-            </div>
-          </Field>
-
-          {careerCategory && (
-            <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-              <Field label={t('newCapability.targetSkillLabel')} hint={t('newCapability.targetSkillCatalogHint')}>
-                {catalogSkills.length > 0 ? (
-                  <select value={targetSkill} onChange={(e) => setTargetSkill(e.target.value)} className="input">
-                    <option value="">{t('newCapability.targetSkillPlaceholder')}</option>
-                    {catalogSkills.map((skill) => (
-                      <option key={skill.SkillId} value={skill.Name}>
-                        {skill.Name}
-                        {skill.JobRoleCount > 0 ? ` (${skill.JobRoleCount})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-xs text-slate-500">{t('newCapability.targetSkillNoOptions')}</p>
-                )}
+                  {CAREER_CATEGORIES.map((option) => {
+                    const active = careerCategory === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setCareerCategory(active ? '' : option.value)}
+                        className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                            : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                        }`}
+                      >
+                        {t(option.labelKey)}
+                      </button>
+                    );
+                  })}
+                </div>
               </Field>
-            </div>
+
+              {careerCategory && (
+                <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <Field label={t('newCapability.targetSkillLabel')} hint={t('newCapability.targetSkillCatalogHint')}>
+                    {catalogSkills.length > 0 ? (
+                      <select value={targetSkill} onChange={(e) => setTargetSkill(e.target.value)} className="input">
+                        <option value="">{t('newCapability.targetSkillPlaceholder')}</option>
+                        {catalogSkills.map((skill) => (
+                          <option key={skill.SkillId} value={skill.Name}>
+                            {skill.Name}
+                            {skill.JobRoleCount > 0 ? ` (${skill.JobRoleCount})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-xs text-slate-500">{t('newCapability.targetSkillNoOptions')}</p>
+                    )}
+                  </Field>
+                </div>
+              )}
+            </>
           )}
+
 
           <Field label={t('newCapability.authoringCategoryLabel')} hint={t('newCapability.authoringCategoryHint')}>
             <select value={capabilityDomainId} onChange={(e) => setCapabilityDomainId(e.target.value)} className="input">
@@ -821,6 +920,9 @@ export default function NewCapabilityPage() {
                 placeholder={t('newCapability.ideaPlaceholder')}
                 className="input resize-none"
               />
+              {strictModeMissingIndexForIdea && (
+                <p className="mt-2 text-xs text-amber-400">{t('newCapability.strictModeMissingIndexWarning')}</p>
+              )}
             </Field>
           )}
 
@@ -861,6 +963,10 @@ export default function NewCapabilityPage() {
           <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <SummaryRow label={t('newCapability.summaryName')} value={name} />
             {description && <SummaryRow label={t('newCapability.summaryDescription')} value={description} />}
+            <SummaryRow
+              label={t('newCapability.summaryVisibility')}
+              value={isGlobal ? t('newCapability.visibilityGlobal') : t('newCapability.visibilityPersonal')}
+            />
             <SummaryRow
               label={t('newCapability.summaryDomain')}
               value={subjects.find((s) => s.SubjectId === subjectId)?.Name ?? t('newCapability.notSpecified')}
@@ -942,7 +1048,7 @@ export default function NewCapabilityPage() {
           <WizardNav
             onBack={() => setStep(3)}
             onNext={goToDesignStep}
-            nextDisabled={!canSubmit}
+            nextDisabled={!canAdvanceToDesignStep}
             nextLabel={t('common.continue')}
           />
         </div>
@@ -955,14 +1061,20 @@ export default function NewCapabilityPage() {
             <p className="mt-1 text-slate-400">{t('newCapability.step5Subtitle')}</p>
           </div>
 
-          {outlineLoading && (
+          {capabilityType === 'text' && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+              {t('newCapability.outlineNotApplicableForIdea')}
+            </div>
+          )}
+
+          {capabilityType === 'pdf' && outlineLoading && (
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
               <RefreshCw className="h-4 w-4 animate-spin text-brand-400" />
               {t('newCapability.outlineLoading')}
             </div>
           )}
 
-          {!outlineLoading && outline && outline.length > 0 && (
+          {capabilityType === 'pdf' && !outlineLoading && outline && outline.length > 0 && (
             <>
               <div
                 className={`flex items-center gap-2 rounded-xl border p-3 text-xs font-medium ${
@@ -1032,7 +1144,7 @@ export default function NewCapabilityPage() {
             </>
           )}
 
-          {!outlineLoading && (!outline || outline.length === 0) && (
+          {capabilityType === 'pdf' && !outlineLoading && (!outline || outline.length === 0) && (
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
               <p>{outlineError ?? t('newCapability.outlineNotFound')}</p>
               <div className="flex flex-wrap gap-3">
@@ -1069,6 +1181,24 @@ export default function NewCapabilityPage() {
               )}
             </div>
           )}
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <h3 className="text-sm font-semibold text-white">{t('newCapability.legalDisclosureTitle')}</h3>
+            <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs text-slate-400">
+              {(t('newCapability.legalDisclosurePoints', { returnObjects: true }) as string[]).map((point, index) => (
+                <li key={index}>{point}</li>
+              ))}
+            </ul>
+            <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={acceptedLegalDisclosure}
+                onChange={(e) => setAcceptedLegalDisclosure(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] text-brand-500 focus:ring-brand-500"
+              />
+              {t('newCapability.legalDisclosureCheckboxLabel')}
+            </label>
+          </div>
 
           <WizardNav
             onBack={() => setStep(4)}
