@@ -76,6 +76,9 @@ export default function HomePage() {
           <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
             {t('home.subtitle')}
           </p>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
+            {t('home.subtitleFunctional')}
+          </p>
 
           <div className="mx-auto mt-8 max-w-xl">
             <div className="relative">

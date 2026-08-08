@@ -33,3 +33,18 @@ public sealed class EngramReviewSessionRequest
     /// range or omitted falls back to the original whole-lesson behavior.</summary>
     public int? ExampleCardIndex { get; set; }
 }
+
+/// <summary>
+/// Request DTO for logging one completed full "Reactivar Engrama" voice
+/// review (see EngramReviewCompleteFunction.cs) — sent by the frontend only
+/// when the Agent itself calls the <c>complete_review</c> Realtime tool,
+/// signaling it walked the student through the ENTIRE lesson from beginning
+/// to end. See <see cref="HumanOS.Models.Learning.EngramReviewCompletion"/>.
+/// </summary>
+public sealed class EngramReviewCompleteRequest
+{
+    public Guid PersonId { get; set; }
+
+    public Guid CapabilityGraphNodeId { get; set; }
+}
+

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useLocation, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Bell, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Bell, PanelLeftClose, PanelLeftOpen, Sparkles } from 'lucide-react';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { ProfileMenu } from './ProfileMenu';
+import { WhatIsEngramModal } from './WhatIsEngramModal';
 import { useSidebarStore } from '@/store/useSidebarStore';
 import { useAuth } from '@/auth/AuthContext';
 import { ALL_NAV_ITEMS } from '@/components/navigation/navItems';
@@ -34,6 +36,7 @@ export function AppHeader() {
   const toggleSidebar = useSidebarStore((state) => state.toggle);
   const { user } = useAuth();
   const { pageLabelKey, pageTo, subLabelKey } = useBreadcrumbLabelKeys();
+  const [showEngramExplainer, setShowEngramExplainer] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-white/10 dark:bg-[#05060a]/80">
@@ -85,6 +88,24 @@ export function AppHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowEngramExplainer(true)}
+            className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:flex dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:border-white/20 dark:hover:text-white"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
+            {t('engramExplainer.buttonLabel')}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowEngramExplainer(true)}
+            aria-label={t('engramExplainer.buttonLabel')}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:hidden dark:border-white/10 dark:text-white/60 dark:hover:border-white/20 dark:hover:text-white"
+          >
+            <Sparkles className="h-4 w-4" />
+          </button>
+
           <LanguageSwitcher />
           <ThemeToggle />
 
@@ -99,6 +120,8 @@ export function AppHeader() {
           <ProfileMenu userName={user?.name ?? ''} variant="compact" />
         </div>
       </div>
+
+      {showEngramExplainer && <WhatIsEngramModal onClose={() => setShowEngramExplainer(false)} />}
     </header>
   );
 }

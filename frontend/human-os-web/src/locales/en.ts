@@ -4,7 +4,7 @@ const en: Translations = {
   common: {
     appName: 'Engrams',
     appNameFull: 'Engram Academy',
-    appEdition: 'For Individuals · v1.0',
+    appEdition: 'Humans First · AI Agents Second',
     languageEnglish: 'English',
     languageSpanish: 'Spanish',
     notifications: 'Notifications',
@@ -17,6 +17,35 @@ const en: Translations = {
     expandSidebar: 'Expand sidebar',
     collapseSidebar: 'Collapse sidebar',
   },
+  engramExplainer: {
+    buttonLabel: 'What is an Engram?',
+    title: 'What is an Engram?',
+    intro:
+      'An Engram is a piece of knowledge you have actually mastered — not just read once, but practiced, recalled, and made your own. It is the real, durable unit of learning this whole app is built around.',
+    sections: {
+      engram: {
+        title: 'A memory, not a checkbox',
+        body:
+          'In neuroscience, an engram is the physical trace a memory leaves in the brain. Here, each Engram represents a skill or idea you can genuinely recall and apply — the opposite of content you skimmed once and forgot.',
+      },
+      graphLearning: {
+        title: 'Graph Learning',
+        body:
+          'Your knowledge is organized as a connected graph, not a flat list of lessons. Each Engram builds on the ones before it, so mastery compounds in the right order instead of leaving gaps underneath what you "finished."',
+      },
+      memoryParadox: {
+        title: 'The Memory Paradox',
+        body:
+          'AI can answer almost anything instantly — but the easier answers are to look up, the weaker your own memory becomes if you only look, never recall. Real capability and a sharp mind still come from retrieval and practice, not from outsourcing the thinking.',
+      },
+      humansFirst: {
+        title: 'Humans First · AI Agents Second',
+        body:
+          'Our AI agents are not here to think for you. They guide, question, and coach so YOU build the Engram — keeping your memory strong and your IQ climbing, instead of quietly fading while an agent does the work.',
+      },
+    },
+    closeButton: 'Got it',
+  },
   landing: {
     topBar: {
       goToApp: 'Go to App',
@@ -25,7 +54,7 @@ const en: Translations = {
       signIn: 'Sign In / Create Account',
     },
     hero: {
-      badge: 'A new category of human development',
+      badge: 'Humans First · AI Agents Second',
       titleLine1: 'Engram Academy',
       titleLine2: 'Where knowledge becomes memory.',
       subtitle:
@@ -303,6 +332,7 @@ const en: Translations = {
   },  todayPage: {
     loadingTitle: 'Preparing your day',
     loadingDescription: 'Gathering your progress, your goals, and where you left off...',
+    tagline: 'Humans First · AI Agents Second',
   },  progressOverview: {
     sectionTitle: 'Your Progress So Far',
     programsEnrolled: 'Programs enrolled',
@@ -397,7 +427,7 @@ const en: Translations = {
     explainerToggleShow: 'Tap to see the explanation',
     explainerToggleHide: 'Hide explanation',
     explainerLegendTitle: 'What each symbol means',
-    explainerLegendRing: 'The colored ring around each topic shows how fresh that memory is right now:',
+    explainerLegendRing: 'The colored circle around each topic shows how fresh that memory is right now:',
     explainerColorStrong: 'Strong',
     explainerColorFading: 'Fading',
     explainerColorForgotten: 'Almost forgotten',
@@ -413,13 +443,14 @@ const en: Translations = {
     memoryScoreCaption: 'How fresh your mastered knowledge is right now, based on real forgetting-curve science.',
   },
   growth: {
-    subtitle: 'How many engrams you\u2019ve mastered over time \u2014 your progress, always adding up.',
+    subtitle: 'What you actually mastered each day — not just a running total.',
     loading: 'Loading your evolution...',
     emptyHint: 'Master your first engram and your evolution chart will appear here.',
-    countLabel: 'Engrams mastered',
-    todayDelta: 'today',
+    dailyCountLabel: 'Engrams mastered that day',
+    totalLabel: 'Total so far',
+    scoreLabel: 'Avg. score',
     explainer:
-      'Each bar shows how many engrams you\u2019d mastered by that day \u2014 a cumulative count that only ever goes up. The bar\u2019s color reflects your average assessment score so far (greener = better performance), and the \ud83e\udde0 marker flags the exact day you mastered a new engram.',
+      'Each bar shows how many engrams you actually mastered on THAT specific day — your real day-by-day activity, not a cumulative total that only ever grows. The bar\u2019s color reflects that day\u2019s average assessment score (greener = better performance), the \ud83e\udde0 marker flags days you mastered something new, and the badge in the corner shows your lifetime total so far.',
   },
   humanState: {
     sectionTitle: 'Human State',

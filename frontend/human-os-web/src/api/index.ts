@@ -12,7 +12,10 @@ export const queryClient = new QueryClient({
 });
 
 export const apiClient = axios.create({
-  baseURL: '/api',
+  // '/api' relies on a local dev proxy (see vite.config.ts) to reach the
+  // Functions host; production builds must point straight at the deployed
+  // backend since there's no proxy once this is a static site.
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   headers: { 'Content-Type': 'application/json' },
 });
 

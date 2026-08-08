@@ -560,9 +560,11 @@ public sealed class GraphProgressionEngine
     }
 
     /// <summary>Per-node MOST RECENT completion date (max CompletedDate across all Completed
-    /// LearningSessionNode rows) for this person in this Capability — the raw signal the
-    /// Brain recall grid uses to show "hace cuánto lo repasaste" recency per node, without a
-    /// separate GetNodeSummary call per node.</summary>
+    /// LearningSessionNode rows, PLUS any completed "Reactivar Engrama" voice-review sessions —
+    /// see <see cref="EngramReviewCompletion"/>, product decision 2026-08-07: a full voice
+    /// review refreshes the memory clock exactly like practicing again) for this person in
+    /// this Capability — the raw signal the Brain recall grid uses to show "hace cuánto lo
+    /// repasaste" recency per node, without a separate GetNodeSummary call per node.</summary>
     private static async Task<Dictionary<Guid, DateTime>> GetNodeLastCompletedDatesAsync(
         HumanOsDbContext dbContext,
         Guid personId,
@@ -584,14 +586,32 @@ public sealed class GraphProgressionEngine
             lastCompleted[group.Key] = group.Max(n => n.CompletedDate!.Value);
         }
 
+        var reviewDates = await dbContext.EngramReviewCompletions
+            .AsNoTracking()
+            .Where(r => r.PersonId == personId && lastCompleted.Keys.Contains(r.CapabilityGraphNodeId))
+            .Select(r => new { r.CapabilityGraphNodeId, r.CompletedDate })
+            .ToListAsync(cancellationToken);
+
+        foreach (var group in reviewDates.GroupBy(r => r.CapabilityGraphNodeId))
+        {
+            var mostRecentReview = group.Max(r => r.CompletedDate);
+            if (!lastCompleted.TryGetValue(group.Key, out var existing) || mostRecentReview > existing)
+            {
+                lastCompleted[group.Key] = mostRecentReview;
+            }
+        }
+
         return lastCompleted;
     }
 
     /// <summary>Per-node count of distinct times this person has genuinely mastered a node
-    /// (Completed LearningSessionNode rows that have a Passed AssessmentResult) — feeds the
-    /// client-side forgetting-curve "stability" calculation (more reviews = a memory that
-    /// decays more slowly), mirroring how spaced-repetition systems like Anki/FSRS grow the
-    /// review interval after each successful recall.</summary>
+    /// (Completed LearningSessionNode rows that have a Passed AssessmentResult), PLUS any
+    /// completed "Reactivar Engrama" voice-review sessions (see
+    /// <see cref="EngramReviewCompletion"/>, product decision 2026-08-07: a full voice review
+    /// counts equally toward stability/automaticity) — feeds the client-side forgetting-curve
+    /// "stability" calculation (more reviews = a memory that decays more slowly), mirroring how
+    /// spaced-repetition systems like Anki/FSRS grow the review interval after each successful
+    /// recall.</summary>
     private static async Task<Dictionary<Guid, int>> GetNodeReviewCountsAsync(
         HumanOsDbContext dbContext,
         Guid personId,
@@ -610,6 +630,19 @@ public sealed class GraphProgressionEngine
         foreach (var group in completedNodes.GroupBy(n => n.CapabilityGraphNodeId))
         {
             reviewCounts[group.Key] = group.Count(n => n.AssessmentResults.Any(a => a.Passed));
+        }
+
+        var nodeIds = reviewCounts.Keys.ToList();
+        var voiceReviewCounts = await dbContext.EngramReviewCompletions
+            .AsNoTracking()
+            .Where(r => r.PersonId == personId && nodeIds.Contains(r.CapabilityGraphNodeId))
+            .GroupBy(r => r.CapabilityGraphNodeId)
+            .Select(g => new { CapabilityGraphNodeId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        foreach (var group in voiceReviewCounts)
+        {
+            reviewCounts[group.CapabilityGraphNodeId] = reviewCounts.GetValueOrDefault(group.CapabilityGraphNodeId) + group.Count;
         }
 
         return reviewCounts;

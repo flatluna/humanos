@@ -22,6 +22,12 @@ export interface SkillDto {
   jobRoles: SkillJobRoleLinkDto[];
   createdDate: string;
   updatedDate: string;
+  /** Set when an active Capability already satisfies this skill (see
+   * backend's SkillService.GetMatchedCapabilitiesAsync) — null means no
+   * course exists yet. Powers the "Curso creado" vs "Generar curso"
+   * indicator. */
+  matchedCapabilityId: string | null;
+  matchedCapabilityName: string | null;
 }
 
 export interface SaveSkillRequest {

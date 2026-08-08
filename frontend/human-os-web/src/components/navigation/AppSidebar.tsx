@@ -7,11 +7,12 @@ import { useSidebarStore } from '@/store/useSidebarStore';
 import { useAuth } from '@/auth/AuthContext';
 import { ProfileMenu } from '@/components/layout/ProfileMenu';
 
-// Capability Studio (:3010) is the AUTHORING app. Only a Consumer (no
-// tenant) or an org's HRAdmin can create courses there (2026-08-05
+// Capability Studio (:3010 locally) is the AUTHORING app. Only a Consumer
+// (no tenant) or an org's HRAdmin can create courses there (2026-08-05
 // ownership/visibility model) — a plain Employee/Manager can't, so the
-// link is hidden for them.
-const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
+// link is hidden for them. Env-driven so production points at the deployed
+// Studio SWA instead of localhost (2026-08-07 fix).
+const CAPABILITY_STUDIO_URL = import.meta.env.VITE_CAPABILITY_STUDIO_URL ?? 'http://localhost:3010';
 
 export function AppSidebar() {
   const { t } = useTranslation();

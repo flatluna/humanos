@@ -11,8 +11,8 @@ import { useAuth } from '../auth/AuthContext';
 // closing the origin tab) have no way back without this. Only Consumer and
 // HRAdmin personas reach Studio (canAuthorCourses gate), so the origin app
 // is one of these two depending on whether the account belongs to a tenant.
-const HUMAN_OS_WEB_URL = 'http://localhost:5178';
-const HUMAN_OS_ENTERPRISE_URL = 'http://localhost:5179';
+const HUMAN_OS_WEB_URL = import.meta.env.VITE_HUMAN_OS_WEB_URL ?? 'http://localhost:5178';
+const HUMAN_OS_ENTERPRISE_URL = import.meta.env.VITE_HUMAN_OS_ENTERPRISE_URL ?? 'http://localhost:5179';
 
 export default function Layout() {
   const { t } = useTranslation();

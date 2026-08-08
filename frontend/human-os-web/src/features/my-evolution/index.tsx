@@ -19,7 +19,7 @@ export function MyEvolutionPage() {
 
   const { data: rootGroups = [], isLoading } = useBrainGraph(personId, i18n.language);
   const history = useMemo(() => computeEngramCountHistory(rootGroups, 30), [rootGroups]);
-  const hasData = history.some((p) => p.count > 0);
+  const hasData = (history[history.length - 1]?.cumulativeCount ?? 0) > 0;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
@@ -44,8 +44,9 @@ export function MyEvolutionPage() {
         <Card className="p-5 sm:p-6">
           <EngramStockChart
             history={history}
-            countLabel={t('growth.countLabel')}
-            todayDeltaLabel={t('growth.todayDelta')}
+            dailyCountLabel={t('growth.dailyCountLabel')}
+            totalLabel={t('growth.totalLabel')}
+            scoreLabel={t('growth.scoreLabel')}
             locale={i18n.language}
           />
         </Card>

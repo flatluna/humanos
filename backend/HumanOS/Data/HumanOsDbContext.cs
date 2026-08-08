@@ -230,6 +230,11 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<LearningAssessmentResult> LearningAssessmentResults =>
         Set<LearningAssessmentResult>();
 
+    /// <summary>Completed "Reactivar Engrama" full voice-review sessions —
+    /// see <see cref="EngramReviewCompletion"/>.</summary>
+    public DbSet<EngramReviewCompletion> EngramReviewCompletions =>
+        Set<EngramReviewCompletion>();
+
     /// <summary>Dynamic-assessment attempt cycles (5 questions, one at a
     /// time, never a fixed bank) for a node's Assessment step — see
     /// <see cref="Models.Learning.AssessmentRound"/>.</summary>

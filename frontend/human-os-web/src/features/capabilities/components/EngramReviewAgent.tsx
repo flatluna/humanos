@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Mic, Bot, Sparkles, X, Image as ImageIcon } from 'lucide-react';
-import { requestEngramReviewSession, requestGeneratedVisualAidImage } from '../api/runtimeSessionApi';
+import { requestEngramReviewSession, requestGeneratedVisualAidImage, searchNodeKnowledge } from '../api/runtimeSessionApi';
 import { API_BASE_URL } from '../api/httpClient';
 
 type VoiceState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error';
@@ -106,19 +106,23 @@ export default function EngramReviewAgent({
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  const micGraceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ephemeralAidHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Real barge-in support (2026-07-24): instead of hard-muting the mic
-  // track while the Agent talks (which fully blocks genuine interruption,
-  // not just echo), the raw mic is routed through a GainNode before being
-  // sent over the peer connection. While the Agent is speaking the gain is
-  // ducked way down (not to zero) so ordinary speaker-bleed echo stays
-  // below the server VAD's `threshold`, but a real, clearly louder
-  // interruption from the student still crosses it and triggers
-  // `interrupt_response: true` server-side like a normal conversation.
-  const micGainNodeRef = useRef<GainNode | null>(null);
-  const micProcessingContextRef = useRef<AudioContext | null>(null);
-  const micProcessedStreamRef = useRef<MediaStream | null>(null);
+  // FIXED 2026-08-06 (matches VoiceTutorAgent.tsx's 2026-08-05 fix, never
+  // ported here until now — this was the actual root cause of "the Agent
+  // won't stop talking, can't interrupt it" reports on the Brain page's
+  // engram/card review): the mic stays live and at full gain the ENTIRE
+  // time, including while the Agent is speaking, so the server's own VAD
+  // (`turn_detection: server_vad`, `interrupt_response: true`, set by the
+  // backend in RealtimeVoiceSessionService) can detect real speech and
+  // auto-cancel/truncate the Agent's in-progress response — true voice
+  // barge-in. `input_audio_buffer.speech_started` (handled in the data
+  // channel's onmessage below) pauses local playback immediately for a
+  // snappy felt interruption as soon as the server detects it. The prior
+  // GainNode-based mic-ducking approach (ducking to 12% gain while the
+  // Agent spoke) suppressed the student's real voice enough that the
+  // server's VAD never crossed threshold, so real interruption never
+  // worked at all. Trade-off accepted: speaker+mic setups without
+  // headphones can occasionally self-interrupt on acoustic echo.
   // Kept in a ref (mirrors nodeIllustrations state) so handleShowIllustration's
   // functional setIllustrationIndex updater can read the latest fetched list
   // without needing to depend on/re-create the callback whenever it changes.
@@ -138,10 +142,6 @@ export default function EngramReviewAgent({
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    if (micGraceTimeoutRef.current !== null) {
-      clearTimeout(micGraceTimeoutRef.current);
-      micGraceTimeoutRef.current = null;
-    }
     if (ephemeralAidHideTimeoutRef.current !== null) {
       clearTimeout(ephemeralAidHideTimeoutRef.current);
       ephemeralAidHideTimeoutRef.current = null;
@@ -151,11 +151,6 @@ export default function EngramReviewAgent({
     peerConnectionRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
-    micProcessedStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micProcessedStreamRef.current = null;
-    micGainNodeRef.current = null;
-    micProcessingContextRef.current?.close().catch(() => undefined);
-    micProcessingContextRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
     setNodeIllustrations([]);
@@ -184,31 +179,8 @@ export default function EngramReviewAgent({
       const average = sum / buffer.length;
       const isAgentSpeaking = average > 12;
 
-      // Duck (not mute) the outgoing mic level while the Agent's own audio
-      // is audible — see micGainNodeRef's doc comment above. A real,
-      // louder interruption still reaches the server's VAD and triggers
-      // `interrupt_response: true`; ordinary speaker-bleed echo mostly
-      // doesn't. Ramped smoothly (setTargetAtTime) to avoid audible
-      // clicks/zipper noise.
-      const micGain = micGainNodeRef.current;
-      if (micGain) {
-        const ctx = micProcessingContextRef.current;
-        const now = ctx?.currentTime ?? 0;
-        if (isAgentSpeaking) {
-          micGain.gain.setTargetAtTime(0.12, now, 0.05);
-          if (micGraceTimeoutRef.current !== null) {
-            clearTimeout(micGraceTimeoutRef.current);
-            micGraceTimeoutRef.current = null;
-          }
-        } else if (micGain.gain.value < 0.9 && micGraceTimeoutRef.current === null) {
-          micGraceTimeoutRef.current = setTimeout(() => {
-            const ctx2 = micProcessingContextRef.current;
-            micGainNodeRef.current?.gain.setTargetAtTime(1, ctx2?.currentTime ?? 0, 0.05);
-            micGraceTimeoutRef.current = null;
-          }, 500);
-        }
-      }
-
+      // If the agent's audio resumes (a new response), make sure local
+      // playback isn't left paused from a previous manual/auto interrupt.
       if (isAgentSpeaking && audioElementRef.current?.paused) {
         audioElementRef.current.play().catch(() => undefined);
       }
@@ -329,6 +301,40 @@ export default function EngramReviewAgent({
     [sendToolResult]
   );
 
+  // Realtime "search_other_chapters" tool (2026-08-06): the model asked about
+  // something outside this lesson's own material -- looks it up via the
+  // SAME cross-node RAG/vector search already used by the text-based Tutor
+  // (see NodeKnowledgeIndexService/SearchNodeKnowledgeFunction.cs), on
+  // demand, instead of every chapter's content being stuffed into every
+  // session's instructions upfront. No UI change — this is a silent lookup,
+  // the Agent just speaks the answer once it gets the snippets back.
+  const handleSearchOtherChapters = useCallback(
+    async (callId: string, query: string) => {
+      try {
+        const result = await searchNodeKnowledge(capabilityGraphNodeId, query);
+        if (!result.Snippets.length) {
+          sendToolResult(
+            callId,
+            'No se encontro contenido relacionado en otros capitulos del curso. Dile brevemente al estudiante que ese tema no parece estar cubierto en este curso, sin inventar una respuesta.'
+          );
+          return;
+        }
+        const formatted = result.Snippets.map((s) => `[Capítulo: ${s.NodeName}]\n${s.Content}`).join('\n\n');
+        sendToolResult(
+          callId,
+          `Contenido encontrado de otros capitulos del curso (usalo para responder, citando de forma natural que es de otro capitulo si aplica):\n\n${formatted}`
+        );
+      } catch (err) {
+        console.error('EngramReviewAgent: search_other_chapters failed', err);
+        sendToolResult(
+          callId,
+          'La busqueda en otros capitulos fallo temporalmente. Dile brevemente al estudiante que no pudiste consultarlo ahora mismo y continua la conversacion con normalidad.'
+        );
+      }
+    },
+    [capabilityGraphNodeId, sendToolResult]
+  );
+
   const connect = useCallback(async () => {
     setErrorMessage(null);
     setState('connecting');
@@ -345,6 +351,9 @@ export default function EngramReviewAgent({
       setNodeIllustrations(illustrations);
       setIllustrationIndex(0);
 
+      // Explicit (not just `true`) so the browser can't skip echo
+      // cancellation — without it, the mic picks up the Agent's own voice
+      // from the speakers and the model ends up "talking to itself".
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -354,25 +363,10 @@ export default function EngramReviewAgent({
       });
       localStreamRef.current = micStream;
 
-      // Route the raw mic through a GainNode so it can be ducked (not fully
-      // muted) while the Agent talks — see micGainNodeRef's doc comment.
-      // The peer connection sends the PROCESSED stream's track, not the
-      // hardware track directly.
-      const micProcessingContext = new AudioContext();
-      micProcessingContextRef.current = micProcessingContext;
-      const micSource = micProcessingContext.createMediaStreamSource(micStream);
-      const micGain = micProcessingContext.createGain();
-      micGain.gain.value = 1;
-      micSource.connect(micGain);
-      const micDestination = micProcessingContext.createMediaStreamDestination();
-      micGain.connect(micDestination);
-      micGainNodeRef.current = micGain;
-      micProcessedStreamRef.current = micDestination.stream;
-
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
 
-      micDestination.stream.getTracks().forEach((track) => peerConnection.addTrack(track, micDestination.stream));
+      micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
 
       peerConnection.ontrack = (event) => {
         const [remoteStream] = event.streams;
@@ -410,7 +404,27 @@ export default function EngramReviewAgent({
               ? (((payload.response as Record<string, unknown> | undefined)?.output as Record<string, unknown>[] | undefined) ?? [])
               : [];
         for (const item of items) {
-          if (item.type !== 'function_call' || item.name !== 'show_visual_aid') continue;
+          if (item.type !== 'function_call') continue;
+          const callId = item.call_id as string;
+          // Guard against the same tool call being reported twice (see
+          // handledToolCallIdsRef's comment) — only ever answer it once.
+          if (handledToolCallIdsRef.current.has(callId)) continue;
+
+          if (item.name === 'search_other_chapters') {
+            let searchArgs: { query?: string };
+            try {
+              searchArgs = JSON.parse((item.arguments as string) ?? '{}');
+            } catch {
+              continue; // Malformed tool arguments — ignore, don't crash the session.
+            }
+            if (!searchArgs.query) continue;
+            handledToolCallIdsRef.current.add(callId);
+            console.log('[EngramReviewAgent] search_other_chapters called with', searchArgs);
+            handleSearchOtherChapters(callId, searchArgs.query);
+            continue;
+          }
+
+          if (item.name !== 'show_visual_aid') continue;
           let args: {
             kind?: string;
             illustration_id?: string;
@@ -426,10 +440,6 @@ export default function EngramReviewAgent({
             continue; // Malformed tool arguments — ignore, don't crash the session.
           }
           console.log('[EngramReviewAgent] show_visual_aid called with', args);
-          const callId = item.call_id as string;
-          // Guard against the same tool call being reported twice (see
-          // handledToolCallIdsRef's comment) — only ever answer it once.
-          if (handledToolCallIdsRef.current.has(callId)) continue;
           handledToolCallIdsRef.current.add(callId);
           if (args.kind === 'illustration' && args.illustration_id) {
             handleShowIllustration(callId, args.illustration_id);
@@ -445,17 +455,31 @@ export default function EngramReviewAgent({
         }
       };
       dataChannel.onopen = () => {
+        // FIXED 2026-08-06 (matches VoiceTutorAgent.tsx's 2026-08-05 fix): the
+        // GA Realtime session schema nests turn_detection under
+        // `session.audio.input.turn_detection`, NOT at the top level like the
+        // legacy Realtime API — the previous top-level shape was silently
+        // ignored by the server, so this client-side reinforcement was dead
+        // code. The backend already sets this correctly at session creation
+        // (see RealtimeVoiceSessionService.cs), so real barge-in still
+        // worked, but this override never actually did anything. Fixed here
+        // with the correct nested shape for clarity/defensiveness.
         dataChannel.send(
           JSON.stringify({
             type: 'session.update',
             session: {
-              turn_detection: {
-                type: 'server_vad',
-                threshold: 0.75,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 700,
-                create_response: true,
-                interrupt_response: true,
+              audio: {
+                input: {
+                  turn_detection: {
+                    type: 'server_vad',
+                    threshold: 0.85,
+                    prefix_padding_ms: 300,
+                    silence_duration_ms: 700,
+                    create_response: true,
+                    interrupt_response: true,
+                  },
+                  noise_reduction: { type: 'near_field' },
+                },
               },
             },
           })

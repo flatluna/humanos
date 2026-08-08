@@ -177,6 +177,10 @@ public sealed class CapabilityGraphPersistenceService
     /// REQUIRE the new node (edges created as existing --Requires--> NewNode).</param>
     /// <param name="sortOrder">Pre-computed SortOrder for the new node
     /// (caller decides — typically max(existing SortOrder) + 1).</param>
+    /// <param name="chapterIndex">0-based ChapterIndex to assign the new
+    /// node to (2026-08-06 fix), or null for capability graphs that still
+    /// use the older edge-depth tiering — see
+    /// <see cref="Contracts.Capabilities.AddCapabilityGraphNodeRequest.TargetChapterIndex"/>.</param>
     public async Task<CapabilityGraphNode> AddNodeAsync(
         HumanOsDbContext dbContext,
         Guid capabilityGraphId,
@@ -185,6 +189,7 @@ public sealed class CapabilityGraphPersistenceService
         IReadOnlyList<Guid> requiredByNodeIds,
         int sortOrder,
         IReadOnlyList<NodeIllustrationRecord>? illustrations,
+        int? chapterIndex = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
@@ -203,6 +208,7 @@ public sealed class CapabilityGraphPersistenceService
             ExamplesJson = JsonSerializer.Serialize(node.Examples),
             ApplicationsJson = JsonSerializer.Serialize(node.Applications),
             ReferencesJson = JsonSerializer.Serialize(node.References),
+            ChapterIndex = chapterIndex,
             CreatedDate = DateTime.UtcNow
         };
 

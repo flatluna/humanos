@@ -100,6 +100,19 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public List<CapabilityOutlineChapterDto>? ApprovedOutline { get; set; }
 
+        /// <summary>Optional (2026-08-07): the exact document
+        /// IdeaToDocumentAgent expanded <see cref="Description"/> into during
+        /// the outline preview call (PreviewCapabilityOutlineFunction's
+        /// ExpandedDocumentText), when <see cref="ApprovedOutline"/> was
+        /// approved from that preview. When provided, the pipeline reuses
+        /// this text VERBATIM instead of calling IdeaToDocumentAgent again —
+        /// required for ApprovedOutline's StartMarkers to still resolve,
+        /// since a fresh expansion call would produce different (non-
+        /// deterministic) text. Ignored when ApprovedOutline is null/empty
+        /// (the normal "skip outline design" path expands fresh, same as
+        /// before this field existed).</summary>
+        public string? PreExpandedDocumentText { get; set; }
+
         /// <summary>See StartPdfCapabilityGraphFunction's identical field.</summary>
         public bool IncludeProductionStep { get; set; } = true;
 
@@ -242,7 +255,7 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 body.ProgramSequenceNumber, body.CapabilityObjectives, body.CapabilityRequirements, body.CapabilityDescription,
                 string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
                 body.PedagogicalAudience, body.IncludeExamplesStep, body.Category, body.TargetJobRoleId, body.TargetSkill, body.MaxDeepDiveCardsPerNode,
-                body.StrictSyllabusMode, body.ApprovedOutline, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes,
+                body.StrictSyllabusMode, body.ApprovedOutline, body.PreExpandedDocumentText, body.IncludeProductionStep, body.RecallItemsRequired, body.AssessmentQuestionsPerRound, brandLogoBytes,
                 ownerPersonId, ownerTenantId, consentAcceptedDate, callerPersonId, callerEmail);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);

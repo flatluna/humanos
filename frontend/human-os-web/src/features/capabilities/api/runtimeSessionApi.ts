@@ -248,6 +248,26 @@ export function requestGeneratedVisualAidImage(prompt: string): Promise<Generate
   });
 }
 
+// Cross-chapter RAG lookup (2026-08-06) for the search_other_chapters Realtime
+// tool — lets the voice Agent fetch content from a DIFFERENT node/chapter of
+// the same course on demand, instead of the whole course being stuffed into
+// every session's instructions. See SearchNodeKnowledgeFunction.cs.
+export interface NodeKnowledgeSnippetDto {
+  NodeName: string;
+  Content: string;
+}
+
+export interface NodeKnowledgeSearchResultDto {
+  Snippets: NodeKnowledgeSnippetDto[];
+}
+
+export function searchNodeKnowledge(capabilityGraphNodeId: string, query: string): Promise<NodeKnowledgeSearchResultDto> {
+  return rPost<NodeKnowledgeSearchResultDto>('/instructor-runtime/tutor/knowledge/search', {
+    CapabilityGraphNodeId: capabilityGraphNodeId,
+    Query: query,
+  });
+}
+
 export function askTutor(
   learningSessionStepId: string,
   mode: TutorMode,

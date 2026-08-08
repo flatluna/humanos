@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPostFile, apiPut, API_BASE_URL } from '@/features/capabilities/api/httpClient';
+import { apiPost, apiPostFile, apiPut, API_BASE_URL } from '@/features/capabilities/api/httpClient';
 
 /**
  * "Mi Perfil" — client for the account's own self-service profile

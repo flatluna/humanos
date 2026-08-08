@@ -61,16 +61,22 @@ export function getRetrievability(lastCompletedDate: string | undefined, reviewC
   return 1 / (1 + elapsedDays / (9 * stability));
 }
 
-/** Color gradient stops (retrievability -> hex), from "just learned" (emerald)
- * fading down to "essentially forgotten" (rose). Interpolated linearly in
- * RGB space so the ring/dot color breathes smoothly instead of snapping
- * between hard buckets. */
+/** Color gradient stops (retrievability -> hex), redesigned (2026-08-07,
+ * product decision) as a "traffic light" heat gradient: vivid red = fully
+ * forgotten (an urgent "go review this" signal), warming through orange
+ * and yellow, to green = just reviewed/100% fresh. Routed through
+ * orange/yellow rather than a straight red->green blend, which would
+ * otherwise interpolate through a muddy brown in RGB space. Fills the
+ * WHOLE node circle (not just a thin ring), so the "how much do I
+ * remember" state reads at a glance from the dot's color. Interpolated
+ * linearly in RGB space so the dot color breathes smoothly instead of
+ * snapping between hard buckets. */
 export const COLOR_STOPS: Array<[number, string]> = [
-  [1, '#34d399'],
-  [0.75, '#22d3ee'],
-  [0.5, '#fbbf24'],
-  [0.25, '#fb923c'],
-  [0, '#fb7185'],
+  [1, '#16a34a'],
+  [0.75, '#65a30d'],
+  [0.5, '#eab308'],
+  [0.25, '#f97316'],
+  [0, '#ef4444'],
 ];
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -98,6 +104,25 @@ export function getMemoryColor(retrievability: number | null): string {
     }
   }
   return COLOR_STOPS[COLOR_STOPS.length - 1][1];
+}
+
+/** Perceptual relative luminance (WCAG formula), used to pick a legible
+ * text color on top of an arbitrary hex background. */
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Readable text/icon color to place ON TOP of a solid getMemoryColor()
+ * fill — computed from the actual resulting background's luminance rather
+ * than hardcoded buckets, so it stays correct as the gradient's colors
+ * change (e.g. the yellow midpoint needs dark text, red/green endpoints
+ * need white). */
+export function getMemoryTextColor(retrievability: number | null): string {
+  return relativeLuminance(getMemoryColor(retrievability)) > 0.4 ? '#0f172a' : '#ffffff';
 }
 
 /** Global "memory score" (0-100) — the simple average retrievability across

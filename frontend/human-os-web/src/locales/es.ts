@@ -4,7 +4,7 @@ const es: Translations = {
   common: {
     appName: 'Engrams',
     appNameFull: 'Engram Academy',
-    appEdition: 'Para Individuos · v1.0',
+    appEdition: 'Humanos primero · Agentes de IA segundo',
     languageEnglish: 'Inglés',
     languageSpanish: 'Español',
     notifications: 'Notificaciones',
@@ -17,6 +17,35 @@ const es: Translations = {
     expandSidebar: 'Expandir barra lateral',
     collapseSidebar: 'Contraer barra lateral',
   },
+  engramExplainer: {
+    buttonLabel: '¿Qué es un Engrama?',
+    title: '¿Qué es un Engrama?',
+    intro:
+      'Un Engrama es un conocimiento que realmente dominaste — no algo que solo leíste una vez, sino que practicaste, recordaste y volviste tuyo. Es la unidad real y duradera de aprendizaje sobre la que está construida esta app.',
+    sections: {
+      engram: {
+        title: 'Una memoria, no una casilla marcada',
+        body:
+          'En neurociencia, un engrama es la huella física que deja un recuerdo en el cerebro. Aquí, cada Engrama representa una habilidad o idea que realmente puedes recordar y aplicar — lo opuesto a un contenido que hojeaste una vez y olvidaste.',
+      },
+      graphLearning: {
+        title: 'Graph Learning',
+        body:
+          'Tu conocimiento se organiza como un grafo conectado, no como una lista plana de lecciones. Cada Engrama se apoya en los anteriores, para que el dominio se acumule en el orden correcto sin dejar huecos debajo de lo que ya "terminaste".',
+      },
+      memoryParadox: {
+        title: 'La Paradoja de la Memoria',
+        body:
+          'La IA puede responder casi cualquier cosa al instante — pero mientras más fácil es buscar la respuesta, más débil se vuelve tu propia memoria si solo consultas y nunca recuerdas. La capacidad real y una mente aguda siguen viniendo de recordar y practicar, no de delegar el pensamiento.',
+      },
+      humansFirst: {
+        title: 'Humanos primero · Agentes de IA segundo',
+        body:
+          'Nuestros agentes de IA no están aquí para pensar por ti. Guían, preguntan y acompañan para que TÚ construyas el Engrama — manteniendo tu memoria fuerte y tu IQ subiendo, en lugar de irse apagando mientras un agente hace el trabajo.',
+      },
+    },
+    closeButton: 'Entendido',
+  },
   landing: {
     topBar: {
       goToApp: 'Ir a la App',
@@ -25,7 +54,7 @@ const es: Translations = {
       signIn: 'Iniciar Sesión / Crear Cuenta',
     },
     hero: {
-      badge: 'Una nueva categoría de desarrollo humano',
+      badge: 'Humanos primero · Agentes de IA segundo',
       titleLine1: 'Engram Academy',
       titleLine2: 'Donde el conocimiento se convierte en memoria.',
       subtitle:
@@ -304,6 +333,7 @@ const es: Translations = {
   todayPage: {
     loadingTitle: 'Preparando tu día',
     loadingDescription: 'Reuniendo tu progreso, tus metas y dónde te quedaste...',
+    tagline: 'Humanos primero · Agentes de IA segundo',
   },
   progressOverview: {
     sectionTitle: 'Tu Progreso Hasta Hoy',
@@ -401,7 +431,7 @@ const es: Translations = {
     explainerToggleShow: 'Toca para ver la explicación',
     explainerToggleHide: 'Ocultar explicación',
     explainerLegendTitle: 'Qué significa cada símbolo',
-    explainerLegendRing: 'El anillo de color alrededor de cada tema muestra qué tan fresco está ese recuerdo ahora mismo:',
+    explainerLegendRing: 'El círculo de color de cada tema muestra qué tan fresco está ese recuerdo ahora mismo:',
     explainerColorStrong: 'Fuerte',
     explainerColorFading: 'Debilitándose',
     explainerColorForgotten: 'Casi olvidado',
@@ -415,13 +445,14 @@ const es: Translations = {
     explainerBenefitSocial: 'Contrarresta la dependencia de TikTok, redes sociales y de preguntarle todo a un GPT: entrena a tu cerebro a resolver y recordar por sí mismo, en vez de delegar cada pensamiento a un algoritmo.',
   },
   growth: {
-    subtitle: 'Cuántos engramas has dominado a lo largo del tiempo — tu progreso, siempre sumando.',
+    subtitle: 'Lo que realmente dominaste cada día — no solo un total acumulado.',
     loading: 'Cargando tu evolución...',
     emptyHint: 'Domina tu primer engrama y aquí aparecerá tu gráfica de evolución.',
-    countLabel: 'Engramas dominados',
-    todayDelta: 'hoy',
+    dailyCountLabel: 'Engramas dominados ese día',
+    totalLabel: 'Total acumulado',
+    scoreLabel: 'Score prom.',
     explainer:
-      'Cada barra muestra cuántos engramas llevabas dominados hasta ese día — un conteo acumulado que solo sube. El color de la barra refleja tu score promedio en las evaluaciones hasta ese momento (más verde = mejor desempeño), y la ruedita 🧠 marca el día exacto en que dominaste un engrama nuevo.',
+      'Cada barra muestra cuántos engramas dominaste REALMENTE ese día específico — tu actividad real día a día, no un total acumulado que solo crece. El color de la barra refleja el score promedio de las evaluaciones de ese día (más verde = mejor desempeño), la ruedita 🧠 marca los días en que dominaste algo nuevo, y el badge de la esquina muestra tu total acumulado hasta hoy.',
   },
   humanState: {
     sectionTitle: 'Estado Humano',

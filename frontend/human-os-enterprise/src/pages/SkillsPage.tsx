@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router';
-import { GraduationCap, Heart, Building2, ShieldCheck, Plus, Pencil, Trash2, X, RefreshCw } from 'lucide-react';
+import { GraduationCap, Heart, Building2, ShieldCheck, Plus, Pencil, Trash2, X, RefreshCw, BookOpen, PlayCircle, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { getJobRoles } from '@/api/orgStructureApi';
 import {
@@ -59,6 +59,27 @@ const CATEGORY_TABS = [
 ] as const;
 
 type CategoryTabId = (typeof CATEGORY_TABS)[number]['id'];
+
+/** Same Capability Studio deep-link pattern EmployeeCareerPlanPage.tsx's
+ * buildGenerateCourseUrl already uses for career-plan roadmap steps
+ * (2026-08-07 "skills <-> engrams" feature) — replicated here so the Skill
+ * catalog page offers the exact same "Generar curso" action, prefilled with
+ * this skill's own name/description/category so the created Capability
+ * auto-matches back to it (see SkillService.GetMatchedCapabilitiesAsync). */
+const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
+
+function buildGenerateCourseUrl(skill: SkillDto): string {
+  const params = new URLSearchParams();
+  params.set('name', skill.name);
+  if (skill.description) params.set('description', skill.description);
+  params.set('careerCategory', skill.category);
+  params.set('targetSkill', skill.name);
+  return `${CAPABILITY_STUDIO_URL}/new?${params.toString()}`;
+}
+
+function buildCapabilityStudioDetailUrl(capabilityId: string): string {
+  return `${CAPABILITY_STUDIO_URL}/capabilities/${capabilityId}`;
+}
 
 function isCategoryTabId(value: string | undefined): value is CategoryTabId {
   return CATEGORY_TABS.some((tab) => tab.id === value);
@@ -308,6 +329,31 @@ export function SkillsPage() {
                           {role.jobRoleTitle}
                         </span>
                       ))
+                    )}
+                  </div>
+                  <div className="mt-2">
+                    {skill.matchedCapabilityId ? (
+                      <a
+                        href={buildCapabilityStudioDetailUrl(skill.matchedCapabilityId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-500"
+                      >
+                        <PlayCircle className="h-3 w-3" />
+                        Curso creado
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <a
+                        href={buildGenerateCourseUrl(skill)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-500"
+                      >
+                        <BookOpen className="h-3 w-3" />
+                        Generar curso
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
                     )}
                   </div>
                 </div>

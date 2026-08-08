@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
@@ -21,6 +21,7 @@ import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getCapabilityDomains, type CapabilityDomain } from '../lib/api/domainsApi';
 import { getPrograms, getProgramById, type BackendProgram, type BackendProgramDetail } from '../lib/api/programsApi';
 import { getSkillsSummary, type SkillSummaryDto } from '../lib/api/skillsApi';
+import { getJobRoles, type JobRoleDto } from '../lib/api/jobRolesApi';
 import {
   DEFAULT_STUDIO_TENANT_ID,
   readFileAsBase64,
@@ -34,6 +35,7 @@ import {
 import StepIndicator from '../components/StepIndicator';
 import TypeOptionCard from '../components/TypeOptionCard';
 import FileDropzone from '../components/FileDropzone';
+import SearchableCombobox from '../components/SearchableCombobox';
 import { getSubjectIcon } from '../lib/subjectVisuals';
 import { useAuth } from '../auth/AuthContext';
 
@@ -51,6 +53,15 @@ const CAREER_CATEGORIES = [
   { value: 'hr-processes' as const, labelKey: 'newCapability.careerCategoryHrProcesses' },
 ];
 
+/// Display label for a job role in the "Technical Skills" role picker —
+/// includes department (and level, when set) since two roles can share
+/// the same Title in different departments; used both as the option label
+/// AND as the combobox's matched search text (see selectedJobRole).
+function jobRoleOptionLabel(role: JobRoleDto): string {
+  const withLevel = role.LevelLabel ? `${role.Title} (${role.LevelLabel})` : role.Title;
+  return `${withLevel} — ${role.DepartmentName}`;
+}
+
 /// Mirrors the backend's SyllabusOutlineParser module-keyword regex
 /// (2026-08-03 "Estructurado" mode) — used client-side only to warn early
 /// when "Strictly follow the document's index" is on but the idea/description
@@ -65,6 +76,16 @@ export default function NewCapabilityPage() {
   // Career/company-course fields only make sense for tenant (company) accounts,
   // never for an individual/consumer account creating their own content.
   const isCompanyAccount = !!user?.tenantId;
+  // Real tenant of the signed-in account (2026-08-07 bug fix) — was
+  // previously hardcoded to DEFAULT_STUDIO_TENANT_ID for every caller,
+  // which silently queried/created Skill catalog rows against a fixed
+  // demo tenant instead of the actual signed-in company (e.g. an
+  // HRAdmin whose own tenant differs from the demo one saw an empty
+  // combobox even though their company's catalog had entries). Falls
+  // back to the demo tenant only for a Consumer/individual account
+  // (tenantId null), matching the backend's non-empty TenantId
+  // requirement.
+  const effectiveTenantId = user?.tenantId ?? DEFAULT_STUDIO_TENANT_ID;
   const STEPS = t('newCapability.steps', { returnObjects: true }) as string[];
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -128,11 +149,27 @@ export default function NewCapabilityPage() {
   // Career-plan linking (2026-08-01): career category is a plain string,
   // '' meaning "not an employer course" (Category stays null on the
   // backend). targetSkill is only meaningful once a career category is
-  // chosen — HR picks it straight from the shared Skill catalog, which
-  // already knows every job role that requires it, so no separate
-  // job-role picker is needed here.
-  const [careerCategory, setCareerCategory] = useState<string>('');
-  const [targetSkill, setTargetSkill] = useState<string>('');
+  // chosen. For "soft-skills"/"department-processes"/"hr-processes", HR
+  // picks it straight from the shared Skill catalog (across ALL job
+  // roles). "job-skills" (2026-08-08 "Technical Skills" rework) is
+  // different: technical skills live on the JobRole itself, never the
+  // employee, so HR must first pick WHICH job role, then pick one of
+  // THAT role's own TechnicalSkills — an employee never sees this screen,
+  // it's purely an HR authoring choice.
+  // Both are also prefillable from the URL (2026-08-07, same "Generar
+  // curso" deep link as name/description) — see EmployeeCareerPlanPage's
+  // buildGenerateCourseUrl in human-os-enterprise, which maps the
+  // roadmap step's track/skill to these same kebab-case category ids so
+  // the created course auto-matches back to that step without HR having
+  // to re-pick anything.
+  const [careerCategory, setCareerCategory] = useState<string>(() => searchParams.get('careerCategory') ?? '');
+  const [targetSkill, setTargetSkill] = useState<string>(() => searchParams.get('targetSkill') ?? '');
+  const [jobRoles, setJobRoles] = useState<JobRoleDto[]>([]);
+  // Free-text search box bound to the job-role combobox — matched against
+  // jobRoleOptionLabel() below to derive the actual selected JobRoleId,
+  // rather than tracking the id in separate state that could drift out of
+  // sync with the displayed text.
+  const [targetJobRoleSearch, setTargetJobRoleSearch] = useState('');
 
   const MAX_PROGRAM_SEQUENCE_SLOTS = 20;
 
@@ -165,6 +202,14 @@ export default function NewCapabilityPage() {
   const [outlineLoading, setOutlineLoading] = useState(false);
   const [outlineError, setOutlineError] = useState<string | null>(null);
   const [outlineSkipped, setOutlineSkipped] = useState(false);
+  // Set only for the "Texto/idea" flow (2026-08-07): the full document
+  // IdeaToDocumentAgent expanded ideaDescription into while building the
+  // outline above — must be resent VERBATIM as preExpandedDocumentText at
+  // submit time so the approved outline's StartMarkers still resolve
+  // against the SAME text (a fresh expansion call would produce different,
+  // non-deterministic text). Null for the PDF flow (the file itself is
+  // resent instead) or when no outline was ever approved.
+  const [expandedDocumentText, setExpandedDocumentText] = useState<string | null>(null);
 
   useEffect(() => {
     getSubjects().then(setSubjects).catch(() => setSubjects([]));
@@ -181,14 +226,16 @@ export default function NewCapabilityPage() {
   // reusable Skill catalog for that category (2026-08-01 "cierra el
   // ciclo" feature) — lists every skill/process HR has already authored
   // across ALL job roles in this category, so picking one doesn't require
-  // choosing a specific job role first.
+  // choosing a specific job role first. "job-skills" is excluded — its
+  // technical skills live on the selected JobRole itself (see the
+  // job-roles effect below), never on this flat shared catalog.
   useEffect(() => {
-    if (!careerCategory) {
+    if (!careerCategory || careerCategory === 'job-skills') {
       setCatalogSkills([]);
       return;
     }
     let cancelled = false;
-    getSkillsSummary(DEFAULT_STUDIO_TENANT_ID, careerCategory)
+    getSkillsSummary(effectiveTenantId, careerCategory)
       .then((skills) => {
         if (!cancelled) setCatalogSkills(skills);
       })
@@ -198,15 +245,58 @@ export default function NewCapabilityPage() {
     return () => {
       cancelled = true;
     };
-  }, [careerCategory]);
+  }, [careerCategory, effectiveTenantId]);
 
-  // Resetting career category clears any target skill that no longer
-  // makes sense (e.g. switching from "Mi Puesto" to "Ninguna").
+  // "Technical Skills" (job-skills) flow (2026-08-08 rework): fetch this
+  // tenant's job roles so HR can pick ONE, then choose from that role's
+  // own TechnicalSkills list — never the employee-facing side, purely an
+  // HR authoring step.
+  useEffect(() => {
+    if (careerCategory !== 'job-skills') {
+      setJobRoles([]);
+      return;
+    }
+    let cancelled = false;
+    getJobRoles(effectiveTenantId)
+      .then((roles) => {
+        if (!cancelled) setJobRoles(roles);
+      })
+      .catch(() => {
+        if (!cancelled) setJobRoles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [careerCategory, effectiveTenantId]);
+
+  // Resetting career category clears any target skill/job-role that no
+  // longer makes sense (e.g. switching from "Technical Skills" to "Ninguna").
   useEffect(() => {
     if (!careerCategory) {
       setTargetSkill('');
     }
+    if (careerCategory !== 'job-skills') {
+      setTargetJobRoleSearch('');
+    }
   }, [careerCategory]);
+
+  const selectedJobRole = useMemo(
+    () => jobRoles.find((role) => jobRoleOptionLabel(role) === targetJobRoleSearch) ?? null,
+    [jobRoles, targetJobRoleSearch],
+  );
+
+  // Switching to a different job role invalidates whichever technical
+  // skill was picked for the previous one — skipped on the very first
+  // run so a URL-prefilled targetSkill ("Generar curso" deep link) isn't
+  // wiped out before the user has actually changed anything.
+  const skipFirstJobRoleReset = useRef(true);
+  useEffect(() => {
+    if (skipFirstJobRoleReset.current) {
+      skipFirstJobRoleReset.current = false;
+      return;
+    }
+    setTargetSkill('');
+  }, [selectedJobRole?.JobRoleId]);
 
   // Map of occupied sequence slots (1..20) → the capability name already
   // sitting there, so the picker below can disable them without forcing
@@ -286,13 +376,26 @@ export default function NewCapabilityPage() {
     setOutlineLoading(true);
     setOutlineError(null);
     setOutlineSkipped(false);
+    setExpandedDocumentText(null);
     try {
       let result;
       if (capabilityType === 'pdf' && file) {
         const contentBase64 = await readFileAsBase64(file);
         result = await previewCapabilityOutline({ fileName: file.name, contentBase64 });
       } else if (capabilityType === 'text' && ideaDescription.trim()) {
-        result = await previewCapabilityOutline({ text: ideaDescription.trim() });
+        // "Texto/idea" flow (2026-08-07): expands the idea into a real
+        // document FIRST (same expansion the real run would otherwise do
+        // at generation time), then detects chapters against THAT
+        // document — never against the raw one-sentence idea. Reusing
+        // strictSyllabusMode here mirrors an explicit numbered outline
+        // already present in the idea description, same as the real run.
+        result = await previewCapabilityOutline({
+          text: ideaDescription.trim(),
+          capabilityName: name.trim(),
+          languageCode,
+          strictSyllabusMode,
+        });
+        setExpandedDocumentText(result.ExpandedDocumentText ?? null);
       } else {
         setOutline(null);
         setOutlineSource(null);
@@ -318,21 +421,16 @@ export default function NewCapabilityPage() {
   /** Moves from step 4 (review) into step 5 (design/approval), kicking off
    * the outline preview the first time it's reached.
    *
-   * The preview/approval flow only makes sense for PDF documents, where a
-   * real, stable document text exists to detect/locate chapter markers in.
-   * For "Texto/idea" capabilities, previewing operates on the raw, tiny
-   * idea sentence (see loadOutlinePreview below) — its StartMarkers can
-   * never be relocated in the much longer document the backend generates
-   * from that idea via IdeaToDocumentAgent right before the real run, so
-   * approving it would only produce a guaranteed "Generation failed"
-   * (and silently force strictSyllabusMode=true server-side regardless of
-   * the step-1 checkbox). Always treat it as skipped for idea-based runs. */
+   * "Texto/idea" capabilities (2026-08-07): the preview endpoint expands
+   * the idea into a real document via IdeaToDocumentAgent FIRST, then
+   * detects chapters/nodes against that generated document — the SAME
+   * expanded text is resent verbatim at submit time (expandedDocumentText
+   * state) so the approved outline's StartMarkers still resolve, instead
+   * of the real run re-expanding the idea into different, non-
+   * deterministic text. This replaced the previous behavior of always
+   * skipping outline design for idea-based courses. */
   async function goToDesignStep() {
     setStep(5);
-    if (capabilityType === 'text') {
-      setOutlineSkipped(true);
-      return;
-    }
     if (outline === null && outlineSource === null && !outlineLoading) {
       await loadOutlinePreview();
     }
@@ -391,7 +489,7 @@ export default function NewCapabilityPage() {
         if (!file) return;
         const contentBase64 = await readFileAsBase64(file);
         const run = await startPdfCapabilityGraph({
-          tenantId: DEFAULT_STUDIO_TENANT_ID,
+          tenantId: effectiveTenantId,
           capabilityDomainId,
           subjectId: subjectId || null,
           capabilityName: name.trim(),
@@ -407,6 +505,7 @@ export default function NewCapabilityPage() {
           pedagogicalAudience: pedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : null,
           includeExamplesStep,
           category: careerCategory || null,
+          targetJobRoleId: selectedJobRole?.JobRoleId ?? null,
           targetSkill: targetSkill || null,
           maxDeepDiveCardsPerNode: normalizedMaxDeepDiveCardsPerNode,
           strictSyllabusMode,
@@ -420,8 +519,9 @@ export default function NewCapabilityPage() {
         });
         navigate(`/runs/${run.RunId}`);
       } else if (capabilityType === 'text') {
+        const hasApprovedOutline = !outlineSkipped && outline && outline.length > 0;
         const run = await startCapabilityGraphFromDescription({
-          tenantId: DEFAULT_STUDIO_TENANT_ID,
+          tenantId: effectiveTenantId,
           capabilityDomainId,
           subjectId: subjectId || null,
           capabilityName: name.trim(),
@@ -436,10 +536,15 @@ export default function NewCapabilityPage() {
           pedagogicalAudience: pedagogicalAudience === 'YoungLearner' ? 'YoungLearner' : null,
           includeExamplesStep,
           category: careerCategory || null,
+          targetJobRoleId: selectedJobRole?.JobRoleId ?? null,
           targetSkill: targetSkill || null,
           maxDeepDiveCardsPerNode: normalizedMaxDeepDiveCardsPerNode,
           strictSyllabusMode,
-          approvedOutline: !outlineSkipped && outline && outline.length > 0 ? outline : null,
+          approvedOutline: hasApprovedOutline ? outline : null,
+          // Reuse the SAME document the approved outline's StartMarkers
+          // were located against (see expandedDocumentText's doc comment)
+          // — only sent when there's actually an approved outline to honor.
+          preExpandedDocumentText: hasApprovedOutline ? expandedDocumentText : null,
           includeProductionStep,
           recallItemsRequired: normalizedRecallItemsRequired,
           assessmentQuestionsPerRound: normalizedAssessmentQuestionsPerRound,
@@ -732,27 +837,83 @@ export default function NewCapabilityPage() {
                 </div>
               </Field>
 
-              {careerCategory && (
+              {careerCategory === 'job-skills' && (
+                <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  {/* "Technical Skills" flow (2026-08-08 rework): an
+                      employee never sees this wizard, so a job role must
+                      be picked FIRST — technical skills belong to the
+                      JobRole itself (JobRoleDto.TechnicalSkills), not to
+                      a flat shared catalog like the other 3 categories. */}
+                  <Field label={t('newCapability.targetJobRoleLabel')} hint={t('newCapability.targetJobRoleHint')}>
+                    <SearchableCombobox
+                      value={targetJobRoleSearch}
+                      onChange={setTargetJobRoleSearch}
+                      options={jobRoles.map((role) => ({
+                        id: role.JobRoleId,
+                        label: jobRoleOptionLabel(role),
+                      }))}
+                      placeholder={t('newCapability.targetJobRolePlaceholder')}
+                      emptyOptionsText={t('newCapability.targetJobRoleNoOptions')}
+                    />
+                    {jobRoles.length === 0 && (
+                      <p className="mt-1 text-xs text-slate-500">{t('newCapability.targetJobRoleNoOptions')}</p>
+                    )}
+                  </Field>
+
+                  <Field
+                    label={t('newCapability.targetSkillLabel')}
+                    hint={selectedJobRole ? t('newCapability.targetSkillRoleHint') : undefined}
+                  >
+                    <SearchableCombobox
+                      value={targetSkill}
+                      onChange={setTargetSkill}
+                      disabled={!selectedJobRole}
+                      options={(selectedJobRole?.TechnicalSkills ?? []).map((skill) => ({
+                        id: skill,
+                        label: skill,
+                      }))}
+                      placeholder={t('newCapability.targetSkillPlaceholder')}
+                      emptyOptionsText={t('newCapability.targetSkillNoMatches')}
+                    />
+                    {!selectedJobRole && (
+                      <p className="mt-1 text-xs text-slate-500">{t('newCapability.targetSkillNoRoleSelected')}</p>
+                    )}
+                    {selectedJobRole && selectedJobRole.TechnicalSkills.length === 0 && (
+                      <p className="mt-1 text-xs text-slate-500">{t('newCapability.targetSkillNoOptions')}</p>
+                    )}
+                  </Field>
+                </div>
+              )}
+
+              {careerCategory && careerCategory !== 'job-skills' && (
                 <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
                   <Field label={t('newCapability.targetSkillLabel')} hint={t('newCapability.targetSkillCatalogHint')}>
-                    {catalogSkills.length > 0 ? (
-                      <select value={targetSkill} onChange={(e) => setTargetSkill(e.target.value)} className="input">
-                        <option value="">{t('newCapability.targetSkillPlaceholder')}</option>
-                        {catalogSkills.map((skill) => (
-                          <option key={skill.SkillId} value={skill.Name}>
-                            {skill.Name}
-                            {skill.JobRoleCount > 0 ? ` (${skill.JobRoleCount})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <p className="text-xs text-slate-500">{t('newCapability.targetSkillNoOptions')}</p>
+                    {/* Searchable combobox (2026-08-08): pick an existing
+                        catalog skill OR type a brand-new name — unlike a
+                        strict <select>, a name with no match in
+                        catalogSkills is never blocked. EnsureCapabilityAsync
+                        auto-registers it as a new Skill catalog entry when
+                        this course is created. */}
+                    <SearchableCombobox
+                      value={targetSkill}
+                      onChange={setTargetSkill}
+                      options={catalogSkills.map((skill) => ({
+                        id: skill.SkillId,
+                        label: skill.Name,
+                        meta: `${skill.JobRoleCount}`,
+                      }))}
+                      placeholder={t('newCapability.targetSkillPlaceholder')}
+                      emptyOptionsText={t('newCapability.targetSkillNoMatches')}
+                    />
+                    {catalogSkills.length === 0 && (
+                      <p className="mt-1 text-xs text-slate-500">{t('newCapability.targetSkillNoOptions')}</p>
                     )}
                   </Field>
                 </div>
               )}
             </>
           )}
+
 
 
           <Field label={t('newCapability.authoringCategoryLabel')} hint={t('newCapability.authoringCategoryHint')}>
@@ -983,6 +1144,9 @@ export default function NewCapabilityPage() {
                   : t('newCapability.careerCategoryNone')
               }
             />
+            {selectedJobRole && (
+              <SummaryRow label={t('newCapability.summaryTargetJobRole')} value={jobRoleOptionLabel(selectedJobRole)} />
+            )}
             {targetSkill && <SummaryRow label={t('newCapability.summaryTargetSkill')} value={targetSkill} />}
             <SummaryRow label={t('newCapability.summaryContentLanguage')} value={languageCode === 'en' ? t('common.languageEnglish') : t('common.languageSpanish')} />
             <SummaryRow
@@ -1061,20 +1225,14 @@ export default function NewCapabilityPage() {
             <p className="mt-1 text-slate-400">{t('newCapability.step5Subtitle')}</p>
           </div>
 
-          {capabilityType === 'text' && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
-              {t('newCapability.outlineNotApplicableForIdea')}
-            </div>
-          )}
-
-          {capabilityType === 'pdf' && outlineLoading && (
+          {outlineLoading && (
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
               <RefreshCw className="h-4 w-4 animate-spin text-brand-400" />
               {t('newCapability.outlineLoading')}
             </div>
           )}
 
-          {capabilityType === 'pdf' && !outlineLoading && outline && outline.length > 0 && (
+          {!outlineLoading && outline && outline.length > 0 && (
             <>
               <div
                 className={`flex items-center gap-2 rounded-xl border p-3 text-xs font-medium ${
@@ -1144,7 +1302,7 @@ export default function NewCapabilityPage() {
             </>
           )}
 
-          {capabilityType === 'pdf' && !outlineLoading && (!outline || outline.length === 0) && (
+          {!outlineLoading && (!outline || outline.length === 0) && (
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
               <p>{outlineError ?? t('newCapability.outlineNotFound')}</p>
               <div className="flex flex-wrap gap-3">

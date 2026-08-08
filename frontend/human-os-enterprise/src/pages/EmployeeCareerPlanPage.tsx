@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router';
 import {
@@ -44,10 +44,18 @@ const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
 const ENGRAM_APP_URL = 'http://localhost:5178';
 const EMPLOYEE_PORTAL_URL = 'http://localhost:5180';
 
-function buildGenerateCourseUrl(course: Pick<CareerPlanRoadmapStepDto, 'title' | 'description'>): string {
+function buildGenerateCourseUrl(course: Pick<CareerPlanRoadmapStepDto, 'title' | 'description' | 'skill'> & { track: Track }): string {
   const params = new URLSearchParams();
   if (course.title) params.set('name', course.title);
   if (course.description) params.set('description', course.description);
+  // Prefill the career category + target skill too (2026-08-07) — without
+  // this, HR had to manually re-pick both in Studio, and picking the wrong
+  // one means AutoMatchCapabilitiesAsync never links the new course back
+  // to this roadmap step. Must match capabilitystudio's CAREER_CATEGORIES
+  // kebab-case ids (NewCapabilityPage.tsx).
+  const careerCategory = TRACK_TO_CAREER_CATEGORY[course.track];
+  if (careerCategory) params.set('careerCategory', careerCategory);
+  if (course.skill) params.set('targetSkill', course.skill);
   return `${CAPABILITY_STUDIO_URL}/new?${params.toString()}`;
 }
 
@@ -76,23 +84,40 @@ function canViewCareerPlan(currentUserOrgRole: string, currentUserPersonId: stri
 
 type Track = 'technical' | 'soft' | 'department' | 'hr';
 
+/** Track -> capabilitystudio's CAREER_CATEGORIES kebab-case ids (NewCapabilityPage.tsx). */
+const TRACK_TO_CAREER_CATEGORY: Record<Track, string> = {
+  technical: 'job-skills',
+  soft: 'soft-skills',
+  department: 'department-processes',
+  hr: 'hr-processes',
+};
+
 interface RoadmapCourse extends CareerPlanRoadmapStepDto {
   track: Track;
 }
 
 /** The same 4 course categories shown as separate pages in the employee
  * portal (human-os-employee's CareerPlanPage.tsx — see /memories/repo).
- * This HR-facing detail view is a single read-only overview page (no
- * per-employee routing needed here), so all 4 categories are shown
- * stacked with their real titles instead of split into separate routes —
- * HR wants to see everything at a glance for one employee. All 4
- * categories are now real, backend-driven tracks (2026-08-01 "cursos de
- * empresa" feature). */
-const CATEGORY_META = {
-  jobSkills: { title: 'Mi Puesto', icon: Briefcase, accent: 'sky' as const },
-  softSkills: { title: 'Soft Skills', icon: Sparkles, accent: 'violet' as const },
-  departmentProcesses: { title: 'Procesos de Depto.', icon: Building2, accent: 'slate' as const },
-  hrProcesses: { title: 'Procesos de RRHH', icon: ShieldCheck, accent: 'slate' as const },
+ * This HR-facing detail view lets HR pick ONE category at a time via tabs
+ * (mirrors the enterprise console's own "Catálogo de Skills" page —
+ * SkillsPage.tsx — and the employee portal's per-category routes) instead
+ * of scrolling through all 4 stacked, since one employee can rack up a lot
+ * of steps once every track is populated. All 4 categories are real,
+ * backend-driven tracks (2026-08-01 "cursos de empresa" feature). */
+const CATEGORY_META: Record<Track, { title: string; icon: typeof Briefcase; accent: 'sky' | 'violet' | 'slate' }> = {
+  technical: { title: 'Mi Puesto', icon: Briefcase, accent: 'sky' },
+  soft: { title: 'Soft Skills', icon: Sparkles, accent: 'violet' },
+  department: { title: 'Procesos de Depto.', icon: Building2, accent: 'slate' },
+  hr: { title: 'Procesos de RRHH', icon: ShieldCheck, accent: 'slate' },
+};
+
+const TRACK_ORDER: Track[] = ['technical', 'soft', 'department', 'hr'];
+
+const EMPTY_MESSAGE_BY_TRACK: Record<Track, string> = {
+  technical: 'No hay cursos de su descripción de puesto todavía.',
+  soft: 'No hay cursos de soft skills todavía.',
+  department: 'No hay cursos de procesos del departamento todavía.',
+  hr: 'No hay cursos de procesos de Recursos Humanos todavía.',
 };
 
 /** Per-card status badge (Completado/En progreso/Pendiente) — needed now
@@ -128,6 +153,8 @@ export function EmployeeCareerPlanPage() {
   const params = useParams<{ personId: string }>();
   const personId = params.personId!;
 
+  const [activeTrack, setActiveTrack] = useState<Track>('technical');
+
   const peopleQuery = useQuery({
     queryKey: ['tenant-people', tenantId],
     queryFn: () => getTenantPeople(tenantId),
@@ -156,10 +183,12 @@ export function EmployeeCareerPlanPage() {
   const inProgress = allCourses.filter((c) => c.trainingStatus === 'InProgress');
   const pending = allCourses.filter((c) => c.trainingStatus === 'Pending');
 
-  const jobSkillsCourses = allCourses.filter((c) => c.track === 'technical');
-  const softSkillsCourses = allCourses.filter((c) => c.track === 'soft');
-  const departmentProcessesCourses = allCourses.filter((c) => c.track === 'department');
-  const hrProcessesCourses = allCourses.filter((c) => c.track === 'hr');
+  const coursesByTrack: Record<Track, RoadmapCourse[]> = {
+    technical: allCourses.filter((c) => c.track === 'technical'),
+    soft: allCourses.filter((c) => c.track === 'soft'),
+    department: allCourses.filter((c) => c.track === 'department'),
+    hr: allCourses.filter((c) => c.track === 'hr'),
+  };
 
   const total = allCourses.length;
   const completionRate = total === 0 ? 0 : Math.round((completed.length / total) * 100);
@@ -294,33 +323,45 @@ export function EmployeeCareerPlanPage() {
             </p>
           )}
 
+          {/* Category tabs (2026-08-07) — same convention as the enterprise
+              console's "Catálogo de Skills" tabs, so HR filters to one
+              track at a time instead of scrolling through all 4 stacked. */}
+          <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4 dark:border-white/10">
+            {TRACK_ORDER.map((track) => {
+              const meta = CATEGORY_META[track];
+              const Icon = meta.icon;
+              const isActive = track === activeTrack;
+              const styles = ACCENT_STYLES[meta.accent];
+              const count = coursesByTrack[track].length;
+              return (
+                <button
+                  key={track}
+                  type="button"
+                  onClick={() => setActiveTrack(track)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    isActive ? `text-white shadow-md ${ACCENT_BUTTON_STYLES[meta.accent]}` : `${styles.badge} hover:brightness-95`
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {meta.title}
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                      isActive ? 'bg-white/20' : 'bg-black/5 dark:bg-white/10'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <CourseSection
-            title={CATEGORY_META.jobSkills.title}
-            icon={CATEGORY_META.jobSkills.icon}
-            accent={CATEGORY_META.jobSkills.accent}
-            courses={jobSkillsCourses}
-            emptyMessage="No hay cursos de su descripción de puesto todavía."
-          />
-          <CourseSection
-            title={CATEGORY_META.softSkills.title}
-            icon={CATEGORY_META.softSkills.icon}
-            accent={CATEGORY_META.softSkills.accent}
-            courses={softSkillsCourses}
-            emptyMessage="No hay cursos de soft skills todavía."
-          />
-          <CourseSection
-            title={CATEGORY_META.departmentProcesses.title}
-            icon={CATEGORY_META.departmentProcesses.icon}
-            accent={CATEGORY_META.departmentProcesses.accent}
-            courses={departmentProcessesCourses}
-            emptyMessage="No hay cursos de procesos del departamento todavía."
-          />
-          <CourseSection
-            title={CATEGORY_META.hrProcesses.title}
-            icon={CATEGORY_META.hrProcesses.icon}
-            accent={CATEGORY_META.hrProcesses.accent}
-            courses={hrProcessesCourses}
-            emptyMessage="No hay cursos de procesos de Recursos Humanos todavía."
+            title={CATEGORY_META[activeTrack].title}
+            icon={CATEGORY_META[activeTrack].icon}
+            accent={CATEGORY_META[activeTrack].accent}
+            courses={coursesByTrack[activeTrack]}
+            emptyMessage={EMPTY_MESSAGE_BY_TRACK[activeTrack]}
           />
         </>
       )}
@@ -360,6 +401,16 @@ const ACCENT_STYLES = {
     badge: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
   },
 } as const;
+
+// Active-tab gradient per accent — same convention as SkillsPage's COLOR_STYLES.button.
+const ACCENT_BUTTON_STYLES: Record<keyof typeof ACCENT_STYLES, string> = {
+  slate: 'bg-gradient-to-r from-slate-600 to-slate-500 shadow-slate-500/30',
+  indigo: 'bg-gradient-to-r from-indigo-600 to-indigo-500 shadow-indigo-500/30',
+  amber: 'bg-gradient-to-r from-amber-500 to-amber-400 shadow-amber-500/30',
+  rose: 'bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-500/30',
+  sky: 'bg-gradient-to-r from-sky-600 to-sky-500 shadow-sky-500/30',
+  violet: 'bg-gradient-to-r from-violet-600 to-violet-500 shadow-violet-500/30',
+};
 
 type Accent = keyof typeof ACCENT_STYLES;
 

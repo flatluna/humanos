@@ -310,6 +310,38 @@ public sealed class BlueprintReviewService
         };
     }
 
+    /// <summary>
+    /// Removes ONE ExampleCard (by index) from a node's Deep Dive step pool
+    /// — no LLM call needed, just drops the entry and re-persists the
+    /// remaining cards untouched. Delete counterpart to
+    /// <see cref="AddExampleCardAsync"/>/<see cref="EditExampleCardAsync"/>.
+    /// </summary>
+    public async Task<BlueprintStepResult> DeleteExampleCardAsync(
+        HumanOsDbContext dbContext,
+        Guid capabilityGraphNodeId,
+        int cardIndex,
+        CancellationToken cancellationToken = default)
+    {
+        var (_, _, step, cards) = await LoadDeepDiveStepAsync(dbContext, capabilityGraphNodeId, cancellationToken);
+
+        if (cardIndex < 0 || cardIndex >= cards.Count)
+        {
+            throw new InvalidOperationException($"CardIndex {cardIndex} is out of range — this Deep Dive step has {cards.Count} card(s).");
+        }
+
+        cards.RemoveAt(cardIndex);
+        step.ExampleCardsJson = JsonSerializer.Serialize(cards);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new BlueprintStepResult
+        {
+            StepType = step.StepType,
+            Content = step.Content,
+            Illustrations = await ResolveIllustrationsAsync(dbContext, step, cancellationToken),
+            ExampleCards = cards
+        };
+    }
+
     /// <summary>Shared load path for both card-level operations — resolves
     /// the node (with Illustrations, needed for tenant/capability path
     /// derivation), the most recent blueprint's DeepDive step, and its

@@ -242,6 +242,16 @@ export interface StartCapabilityGraphFromDescriptionRequest {
   strictSyllabusMode?: boolean;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   approvedOutline?: CapabilityOutlineChapter[] | null;
+  /** Optional (2026-08-07 "índice para ideas de texto" feature): the exact
+   * document IdeaToDocumentAgent expanded `description` into during the
+   * outline preview call (previewCapabilityOutline's ExpandedDocumentText),
+   * when `approvedOutline` was approved from that preview. Send it back
+   * VERBATIM here so the real run reuses this text instead of expanding
+   * the idea again — required for approvedOutline's StartMarkers to still
+   * resolve, since a second expansion call would produce different
+   * (non-deterministic) text. Omit/null when no outline was approved
+   * (the normal "skip outline design" path). */
+  preExpandedDocumentText?: string | null;
   /** See StartPdfCapabilityGraphRequest's identical field. */
   includeProductionStep?: boolean;
   /** See StartPdfCapabilityGraphRequest's identical field. */
@@ -298,15 +308,26 @@ export interface CapabilityOutlinePreviewResult {
   Source: CapabilityOutlineSource;
   Chapters: CapabilityOutlineChapter[];
   RejectionReason: string | null;
+  /** Set only for the "Texto/idea" preview path (capabilityName + text) —
+   * the full document IdeaToDocumentAgent expanded the idea into, which
+   * this outline's StartMarkers were located against. Must be resent
+   * unchanged as preExpandedDocumentText on
+   * startCapabilityGraphFromDescription when submitting approvedOutline. */
+  ExpandedDocumentText: string | null;
 }
 
 /** Cheap, detection-only preview of a document's chapter/node structure —
  * runs ONLY text extraction + detection, WITHOUT the expensive
  * Curador/GraphArchitect/illustrations pipeline, so the designer can
  * review/approve the plan (Paso 5) before any real generation happens.
- * Pass either a PDF (fileName + contentBase64) or plain text. */
+ * Pass either a PDF (fileName + contentBase64) or an idea/text description
+ * (text + capabilityName — expanded via IdeaToDocumentAgent first, see
+ * ExpandedDocumentText above, so detection runs against the real
+ * generated document instead of the raw one-sentence idea). */
 export function previewCapabilityOutline(
-  request: { fileName: string; contentBase64: string } | { text: string }
+  request:
+    | { fileName: string; contentBase64: string }
+    | { text: string; capabilityName: string; languageCode?: 'es' | 'en'; strictSyllabusMode?: boolean }
 ): Promise<CapabilityOutlinePreviewResult> {
   return apiPost<CapabilityOutlinePreviewResult>('/studio/capability-graph/preview-outline', request);
 }

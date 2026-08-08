@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { TrendingUp, Brain } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import { getMemoryColor, type EngramCountHistoryPoint } from '../brain/memoryScience';
 
 const WIDTH = 600;
@@ -9,6 +9,8 @@ const BARS_TOP = 28; // room above the tallest bar for the brain marker
 const BARS_BOTTOM = 28; // room below the bars for date labels
 const BAR_GAP = 2;
 const MARKER_SIZE = 16;
+const TOOLTIP_WIDTH = 108;
+const TOOLTIP_HEIGHT = 22;
 
 /** Rounds a chart max UP to a "nice" number (1/2/5 × a power of ten) so the
  * Y-axis gridlines land on round values instead of odd fractions. */
@@ -31,30 +33,32 @@ function parseLocalDate(isoDate: string): Date {
 
 export interface EngramStockChartProps {
   history: EngramCountHistoryPoint[];
-  countLabel: string;
-  todayDeltaLabel: string;
+  dailyCountLabel: string;
+  totalLabel: string;
+  scoreLabel: string;
   locale: string;
 }
 
-/** "Mi Evolución" — cumulative engrams mastered as a bar-per-day timeline:
- *  one bar per day (its height = engrams mastered by that day, so it only
- *  ever goes up or stays flat), colored by average assessment quality, with
- *  a little "brain" marker on top of any day an engram was mastered.
- *  Hand-rolled SVG (no charting library dependency) to match this
- *  codebase's existing hand-rolled gauges/rings (MemoryScoreGauge,
- *  BrainRecallGrid). */
-export function EngramStockChart({ history, countLabel, todayDeltaLabel, locale }: EngramStockChartProps) {
+/** "Mi Evolución" — a bar-per-day timeline of engrams ACTUALLY mastered
+ *  that day (not a flattened running total), colored by that day's average
+ *  assessment quality, with a little "brain" marker on any day an engram
+ *  was mastered. The lifetime cumulative total is shown separately as an
+ *  always-visible badge, so the bars themselves stay a genuine day-by-day
+ *  activity signal. Hand-rolled SVG (no charting library dependency) to
+ *  match this codebase's existing hand-rolled gauges/rings
+ *  (MemoryScoreGauge, BrainRecallGrid). */
+export function EngramStockChart({ history, dailyCountLabel, totalLabel, scoreLabel, locale }: EngramStockChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const { bars, dateLabelEvery, yTicks } = useMemo(() => {
     if (history.length === 0) return { bars: [], dateLabelEvery: 1, yTicks: [] as number[] };
-    const axisMax = niceAxisMax(Math.max(...history.map((p) => p.count), 1));
+    const axisMax = niceAxisMax(Math.max(...history.map((p) => p.dailyCount), 1));
     const barsAreaHeight = HEIGHT - BARS_TOP - BARS_BOTTOM;
     const plotWidth = WIDTH - AXIS_LEFT;
     const barWidth = plotWidth / history.length - BAR_GAP;
     const built = history.map((p, i) => {
       const x = AXIS_LEFT + i * (plotWidth / history.length) + BAR_GAP / 2;
-      const barHeight = p.count > 0 ? Math.max(2, (p.count / axisMax) * barsAreaHeight) : 0;
+      const barHeight = p.dailyCount > 0 ? Math.max(2, (p.dailyCount / axisMax) * barsAreaHeight) : 0;
       const y = BARS_TOP + (barsAreaHeight - barHeight);
       return { ...p, x, y, width: Math.max(1, barWidth), height: barHeight, centerX: x + Math.max(1, barWidth) / 2 };
     });
@@ -71,27 +75,28 @@ export function EngramStockChart({ history, countLabel, todayDeltaLabel, locale 
   const barsAreaHeight = HEIGHT - BARS_TOP - BARS_BOTTOM;
   const axisMax = yTicks[yTicks.length - 1] ?? 1;
   const latest = bars[bars.length - 1];
-  const previous = bars.length > 1 ? bars[bars.length - 2] : latest;
-  const todayDelta = latest.count - previous.count;
   const active = hoverIndex !== null ? bars[hoverIndex] : latest;
 
   return (
     <div>
       <div className="flex items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/50">{countLabel}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/50">{dailyCountLabel}</p>
           <div className="mt-1 flex items-baseline gap-2">
-            <p className="text-3xl font-bold text-slate-900 dark:text-white">{active.count}</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-white">{active.dailyCount}</p>
             <span className="text-xs text-slate-400 dark:text-white/40">
               {parseLocalDate(active.date).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
             </span>
           </div>
+          {active.avgScore !== null && (
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-white/40">
+              {scoreLabel}: {active.avgScore}%
+            </p>
+          )}
         </div>
-        {todayDelta > 0 && (
-          <div className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-500">
-            <TrendingUp className="h-3.5 w-3.5" />+{todayDelta} {todayDeltaLabel}
-          </div>
-        )}
+        <div className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-500">
+          {totalLabel}: {latest.cumulativeCount}
+        </div>
       </div>
 
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="mt-4 h-52 w-full overflow-visible">
@@ -168,6 +173,40 @@ export function EngramStockChart({ history, countLabel, todayDeltaLabel, locale 
             </g>
           );
         })}
+        {hoverIndex !== null &&
+          (() => {
+            const bar = bars[hoverIndex];
+            const fullDate = parseLocalDate(bar.date).toLocaleDateString(locale, {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            });
+            const tooltipX = Math.min(Math.max(bar.centerX - TOOLTIP_WIDTH / 2, AXIS_LEFT), WIDTH - TOOLTIP_WIDTH);
+            const tooltipY = Math.max(2, bar.y - (bar.events.length > 0 ? MARKER_SIZE + 8 : 0) - TOOLTIP_HEIGHT - 6);
+            return (
+              <g pointerEvents="none">
+                <rect
+                  x={tooltipX}
+                  y={tooltipY}
+                  width={TOOLTIP_WIDTH}
+                  height={TOOLTIP_HEIGHT}
+                  rx={5}
+                  className="fill-slate-900 dark:fill-white"
+                  opacity={0.92}
+                />
+                <text
+                  x={tooltipX + TOOLTIP_WIDTH / 2}
+                  y={tooltipY + TOOLTIP_HEIGHT / 2 + 3}
+                  textAnchor="middle"
+                  className="fill-white dark:fill-slate-900"
+                  style={{ fontSize: 10, fontWeight: 600 }}
+                >
+                  {fullDate}
+                </text>
+              </g>
+            );
+          })()}
       </svg>
     </div>
   );

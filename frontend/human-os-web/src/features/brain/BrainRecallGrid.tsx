@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { BookOpen, Layers, Sparkles, Zap } from 'lucide-react';
 import type { RootGroup, SelectedNeuron } from './types';
 import { getSubjectColor } from './subjectColor';
-import { getMemoryColor, getRetrievability, isAutomatic, toUtcMs } from './memoryScience';
+import { getMemoryColor, getMemoryTextColor, getRetrievability, isAutomatic, toUtcMs } from './memoryScience';
 
 /** Same 8-color palette used across the feature — one color per enrolled
  *  Program/standalone Capability root, so everything belonging to one area
@@ -12,8 +12,6 @@ import { getMemoryColor, getRetrievability, isAutomatic, toUtcMs } from './memor
 const CLUSTER_HEX = ['#22d3ee', '#e879f9', '#34d399', '#fbbf24', '#fb7185', '#38bdf8', '#a3e635', '#f87171'];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const RING_RADIUS = 15;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 function relativeLabel(lastCompletedDate: string | undefined, locale: string) {
   if (!lastCompletedDate) return '—';
@@ -122,6 +120,7 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
                     {nodes.map((node, i) => {
                       const retrievability = getRetrievability(node.lastCompletedDate, node.reviewCount ?? 1);
                       const memoryColor = getMemoryColor(retrievability);
+                      const memoryTextColor = getMemoryTextColor(retrievability);
                       const percent = retrievability === null ? null : Math.round(retrievability * 100);
                       const isFading = percent !== null && percent < 30;
                       const automatic = isAutomatic(node.reviewCount ?? 0);
@@ -150,28 +149,13 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
                         >
                           <div className="flex items-center justify-between">
                             <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-                              <svg className="absolute inset-0 -rotate-90" viewBox="0 0 36 36">
-                                <circle cx="18" cy="18" r={RING_RADIUS} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
-                                <motion.circle
-                                  cx="18"
-                                  cy="18"
-                                  r={RING_RADIUS}
-                                  fill="none"
-                                  stroke={memoryColor}
-                                  strokeWidth="3"
-                                  strokeLinecap="round"
-                                  strokeDasharray={RING_CIRCUMFERENCE}
-                                  animate={{ strokeDashoffset: RING_CIRCUMFERENCE * (1 - (retrievability ?? 0)) }}
-                                  transition={{ duration: 1, ease: 'easeOut' }}
-                                  className={isFading ? 'animate-pulse' : undefined}
-                                />
-                              </svg>
-                              <div
-                                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                                style={{ background: colorHex }}
+                              <motion.div
+                                className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-[11px] font-bold ${isFading ? 'animate-pulse' : ''}`}
+                                animate={{ background: memoryColor, color: memoryTextColor }}
+                                transition={{ duration: 1, ease: 'easeOut' }}
                               >
                                 {node.name.charAt(0).toUpperCase()}
-                              </div>
+                              </motion.div>
                             </div>
                             {percent !== null && (
                               <span

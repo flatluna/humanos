@@ -2,6 +2,7 @@ using HumanOS.Agents.Studio;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities;
 using HumanOS.Models.Capabilities.Graph;
+using HumanOS.Models.OrgStructure;
 using HumanOS.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -405,6 +406,15 @@ public sealed class PdfCapabilityGraphPipelineService
         int? maxDeepDiveCardsPerNode = null,
         bool strictSyllabusMode = false,
         List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        // Optional (2026-08-07): the exact document IdeaToDocumentAgent
+        // already expanded this idea into during the outline preview call
+        // (see CapabilityOutlinePreviewService.PreviewFromIdeaAsync),
+        // reused VERBATIM here instead of calling IdeaToDocumentAgent a
+        // second time — required for approvedOutline's StartMarkers to
+        // still resolve, since a fresh expansion call would produce
+        // different (non-deterministic) text. Null skips this reuse and
+        // expands fresh, same as before this field existed.
+        string? preExpandedDocumentText = null,
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
@@ -422,11 +432,28 @@ public sealed class PdfCapabilityGraphPipelineService
                 "'AzureOpenAIDeploymentName' application settings.");
         }
 
-        reportProgress("Expandiendo la idea en material de curso");
-        var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, languageCode, strictSyllabusMode, cancellationToken);
+        string documentText;
+        List<AgentTokenUsage> seedTokenUsage;
+        if (!string.IsNullOrWhiteSpace(preExpandedDocumentText))
+        {
+            // Reuse the exact document the outline preview already expanded
+            // and detected chapters/nodes against — see this parameter's
+            // doc comment above for why re-expanding would break
+            // approvedOutline's StartMarker lookups.
+            reportProgress("Usando el material ya generado en la vista previa del índice");
+            documentText = preExpandedDocumentText;
+            seedTokenUsage = [];
+        }
+        else
+        {
+            reportProgress("Expandiendo la idea en material de curso");
+            var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, languageCode, strictSyllabusMode, cancellationToken);
+            documentText = expansion.DocumentText;
+            seedTokenUsage = [expansion.TokenUsage];
+        }
 
         return await RunFromDocumentTextAsync(
-            expansion.DocumentText,
+            documentText,
             0,
             capabilityName,
             RawMaterialType.UserNote,
@@ -438,7 +465,7 @@ public sealed class PdfCapabilityGraphPipelineService
             cancellationToken,
             enableWebEnrichment,
             subjectId,
-            seedTokenUsage: [expansion.TokenUsage],
+            seedTokenUsage: seedTokenUsage,
             programId,
             programSequenceNumber,
             capabilityObjectives,
@@ -807,7 +834,7 @@ public sealed class PdfCapabilityGraphPipelineService
         {
             capabilityId = await EnsureCapabilityAsync(
                 setupDbContext, capabilityDomainId, capabilityName, subjectId, capabilityGenerationSourceDescription, capabilityDescription, languageCode, pedagogicalAudience, includeExamplesStep, category, targetJobRoleId, targetSkill,
-                includeProductionStep, recallItemsRequired, assessmentQuestionsPerRound, ownerPersonId, ownerTenantId, consentAcceptedDate, consentAcceptedByPersonId, consentAcceptedByName, cancellationToken);
+                includeProductionStep, recallItemsRequired, assessmentQuestionsPerRound, normalizedMaxDeepDiveCardsPerNode, ownerPersonId, ownerTenantId, consentAcceptedDate, consentAcceptedByPersonId, consentAcceptedByName, tenantId, cancellationToken);
 
             // Top-down flow (2026-07-23): Programs are created empty first;
             // Capabilities are connected to them afterward. When the wizard
@@ -1196,11 +1223,13 @@ public sealed class PdfCapabilityGraphPipelineService
         bool includeProductionStep,
         int? recallItemsRequired,
         int? assessmentQuestionsPerRound,
+        int? maxDeepDiveCardsPerNode,
         Guid? ownerPersonId,
         Guid? ownerTenantId,
         DateTime? consentAcceptedDate,
         Guid? consentAcceptedByPersonId,
         string? consentAcceptedByName,
+        Guid tenantId,
         CancellationToken cancellationToken)
     {
         var domainExists = await dbContext.CapabilityDomains
@@ -1239,6 +1268,7 @@ public sealed class PdfCapabilityGraphPipelineService
             IncludeProductionStep = includeProductionStep,
             RecallItemsRequired = recallItemsRequired.HasValue ? Math.Clamp(recallItemsRequired.Value, Agentic.Runtime.RecallLoopGate.MinItemsRequiredToAdvance, Agentic.Runtime.RecallLoopGate.MaxItemsRequiredToAdvance) : null,
             AssessmentQuestionsPerRound = assessmentQuestionsPerRound.HasValue ? Math.Clamp(assessmentQuestionsPerRound.Value, 1, 10) : null,
+            MaxDeepDiveCardsPerNode = maxDeepDiveCardsPerNode.HasValue ? Math.Clamp(maxDeepDiveCardsPerNode.Value, 1, MaxDeepDiveCardsPerNodeHardLimit) : null,
             Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
             TargetJobRoleId = targetJobRoleId,
             TargetSkill = string.IsNullOrWhiteSpace(targetSkill) ? null : targetSkill.Trim(),
@@ -1252,6 +1282,34 @@ public sealed class PdfCapabilityGraphPipelineService
         };
 
         dbContext.Capabilities.Add(capability);
+
+        // Reverse-direction catalog sync (2026-08-07 "skills <-> engrams"
+        // feature): a course authored against a Category+TargetSkill that
+        // doesn't exist yet in this tenant's Skill catalog becomes a new
+        // catalog entry, so the enterprise console's Skill catalog and the
+        // course library stay in sync in both directions — HR no longer
+        // has to separately remember to register the skill first.
+        if (capability.Category is not null && capability.TargetSkill is not null)
+        {
+            var skillAlreadyExists = await dbContext.Skills.AnyAsync(
+                s => s.TenantId == tenantId && s.Category == capability.Category && s.Name.ToLower() == capability.TargetSkill.ToLower(),
+                cancellationToken);
+
+            if (!skillAlreadyExists)
+            {
+                dbContext.Skills.Add(new Skill
+                {
+                    SkillId = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    Category = capability.Category,
+                    Name = capability.TargetSkill,
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow,
+                    UpdatedDate = DateTime.UtcNow,
+                });
+            }
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return capability.CapabilityId;
@@ -1393,51 +1451,22 @@ public sealed class PdfCapabilityGraphPipelineService
     {
         try
         {
-            var availableIllustrations = node.Illustrations
-                .Select((illustration, i) => new AvailableIllustrationDto
-                {
-                    Index = i + 1,
-                    Prompt = illustration.Prompt ?? string.Empty,
-                    Caption = illustration.Caption,
-                    Purpose = illustration.Purpose
-                })
-                .ToList();
-
-            LogPipelineEvent($"DESIGN-START node={node.CapabilityGraphNodeId}");
-            var designResult = await _experienceDesigner.DesignBlueprintAsync(
-                node, availableIllustrations, webFindings, languageCode, pedagogicalAudience, includeExamplesStep,
-                maxDeepDiveCardsPerNode, includeProductionStep, cancellationToken: cancellationToken);
-            tokenUsage.Add(WithModuleId(designResult.TokenUsage, node.Name));
-            LogPipelineEvent($"DESIGN-OK node={node.CapabilityGraphNodeId}");
-
-            NodeExperienceBlueprint persistedBlueprint;
-            var exampleCardIllustrationsGenerated = 0;
-            LogPipelineEvent($"SQL-SAVE-START node={node.CapabilityGraphNodeId} what=blueprint");
-            await using (var blueprintDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
-            {
-                // Real illustrations for the Examples step's cards
-                // (2026-07-29): must happen AFTER the agent invents the
-                // cards' Title/Text, and BEFORE persisting, so each card's
-                // IllustrationId is already resolved in the JSON blob.
-                // Best-effort — see ExampleCardIllustrationService's own
-                // doc comment.
-                if (includeExamplesStep)
-                {
-                    var examplesStepDto = designResult.Blueprint.Steps
-                        .FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
-                    if (examplesStepDto?.ExampleCards is { Count: > 0 })
-                    {
-                        exampleCardIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
-                            blueprintDbContext, tenantId, capabilityId, node.CapabilityGraphNodeId,
-                            node.Illustrations.Count, examplesStepDto.ExampleCards, cancellationToken, brandLogoBytes,
-                            pedagogicalAudience);
-                    }
-                }
-
-                persistedBlueprint = await _blueprintPersistenceService.PersistAsync(
-                    blueprintDbContext, node.CapabilityGraphNodeId, designResult.Blueprint, node.Illustrations.ToList(), includeExamplesStep, includeProductionStep, cancellationToken);
-            }
-            LogPipelineEvent($"SQL-SAVE-OK node={node.CapabilityGraphNodeId} what=blueprint");
+            // Bounded retry (2026-08-06 fix — see /memories/repo notes on the
+            // "Control de Edición" orphaned-node bug): design+illustrate+persist
+            // used to run ONCE — any transient failure (LLM hiccup, an
+            // image-quota burst outlasting GraphIllustrationImageService's own
+            // retry budget) permanently left the node with no blueprint at all,
+            // silently, since this whole method is itself best-effort to the
+            // caller. Retrying the FULL step from scratch is safe: nothing is
+            // persisted until PersistAsync succeeds.
+            var (persistedBlueprint, exampleCardIllustrationsGenerated) = await HumanOS.Common.TransientRetry.ExecuteAsync(
+                () => DesignAndPersistBlueprintAsync(
+                    node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, maxDeepDiveCardsPerNode,
+                    includeProductionStep, tenantId, capabilityId, tokenUsage, cancellationToken, brandLogoBytes),
+                maxAttempts: 3,
+                cancellationToken,
+                onRetry: (ex, attempt) => LogPipelineEvent(
+                    $"BLUEPRINT-RETRY node={node.CapabilityGraphNodeId} attempt={attempt} exType={ex.GetType().FullName} msg={ex.Message}"));
 
             if (_blueprintValidator.IsConfigured)
             {
@@ -1474,5 +1503,64 @@ public sealed class PdfCapabilityGraphPipelineService
             LogPipelineEvent($"BLUEPRINT-FAILED node={node.CapabilityGraphNodeId} exType={ex.GetType().FullName} msg={ex.Message}\n{ex}");
             return (false, 0);
         }
+    }
+
+    /// <summary>One full design+illustrate+persist attempt for a node's
+    /// blueprint — factored out of <see cref="TryDesignPersistValidateBlueprintAsync"/>
+    /// so <see cref="HumanOS.Common.TransientRetry"/> can re-run the whole
+    /// thing from scratch on a transient failure.</summary>
+    private async Task<(NodeExperienceBlueprint PersistedBlueprint, int ExampleCardIllustrationsGenerated)> DesignAndPersistBlueprintAsync(
+        CapabilityGraphNode node, string? webFindings, string languageCode, string? pedagogicalAudience, bool includeExamplesStep,
+        int? maxDeepDiveCardsPerNode, bool includeProductionStep,
+        Guid tenantId, Guid capabilityId, List<AgentTokenUsage> tokenUsage, CancellationToken cancellationToken,
+        byte[]? brandLogoBytes)
+    {
+        var availableIllustrations = node.Illustrations
+            .Select((illustration, i) => new AvailableIllustrationDto
+            {
+                Index = i + 1,
+                Prompt = illustration.Prompt ?? string.Empty,
+                Caption = illustration.Caption,
+                Purpose = illustration.Purpose
+            })
+            .ToList();
+
+        LogPipelineEvent($"DESIGN-START node={node.CapabilityGraphNodeId}");
+        var designResult = await _experienceDesigner.DesignBlueprintAsync(
+            node, availableIllustrations, webFindings, languageCode, pedagogicalAudience, includeExamplesStep,
+            maxDeepDiveCardsPerNode, includeProductionStep, cancellationToken: cancellationToken);
+        tokenUsage.Add(WithModuleId(designResult.TokenUsage, node.Name));
+        LogPipelineEvent($"DESIGN-OK node={node.CapabilityGraphNodeId}");
+
+        NodeExperienceBlueprint persistedBlueprint;
+        var exampleCardIllustrationsGenerated = 0;
+        LogPipelineEvent($"SQL-SAVE-START node={node.CapabilityGraphNodeId} what=blueprint");
+        await using (var blueprintDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
+        {
+            // Real illustrations for the Examples step's cards
+            // (2026-07-29): must happen AFTER the agent invents the
+            // cards' Title/Text, and BEFORE persisting, so each card's
+            // IllustrationId is already resolved in the JSON blob.
+            // Best-effort — see ExampleCardIllustrationService's own
+            // doc comment.
+            if (includeExamplesStep)
+            {
+                var examplesStepDto = designResult.Blueprint.Steps
+                    .FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+                if (examplesStepDto?.ExampleCards is { Count: > 0 })
+                {
+                    exampleCardIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
+                        blueprintDbContext, tenantId, capabilityId, node.CapabilityGraphNodeId,
+                        node.Illustrations.Count, examplesStepDto.ExampleCards, cancellationToken, brandLogoBytes,
+                        pedagogicalAudience);
+                }
+            }
+
+            persistedBlueprint = await _blueprintPersistenceService.PersistAsync(
+                blueprintDbContext, node.CapabilityGraphNodeId, designResult.Blueprint, node.Illustrations.ToList(), includeExamplesStep, includeProductionStep, cancellationToken);
+        }
+        LogPipelineEvent($"SQL-SAVE-OK node={node.CapabilityGraphNodeId} what=blueprint");
+
+        return (persistedBlueprint, exampleCardIllustrationsGenerated);
     }
 }

@@ -76,7 +76,17 @@ export interface AddGraphNodeRequest {
   Prompt: string;
   RequiresNodeIds: string[];
   RequiredByNodeIds: string[];
-  GenerateIllustrations: boolean;
+  /** "None" | "AiGenerated" (default) | "UploadDirect" | "AiGeneratedFromUpload" —
+   * see AddGraphNodeModal.tsx for the professor-facing meaning of each. */
+  IllustrationMode: string;
+  /** Base64-encoded image (no data: URL prefix), required when
+   * IllustrationMode is "UploadDirect" or "AiGeneratedFromUpload". */
+  UploadedImageBase64?: string | null;
+  UploadedImageContentType?: string | null;
+  /** 0-based ChapterIndex to place the new node in (2026-08-06 fix for nodes
+   * silently landing at the end of chapter-graded graphs) — null for graphs
+   * still using the older edge-depth tiering. See AddGraphNodeModal.tsx. */
+  TargetChapterIndex?: number | null;
 }
 
 export interface AddGraphNodeResponse {
@@ -569,4 +579,8 @@ export function addDeepDiveCard(capabilityGraphNodeId: string, instruction: stri
   return apiPost<BlueprintStepDto>(`/studio/nodes/${capabilityGraphNodeId}/blueprint/deepdive/cards/add`, {
     Instruction: instruction,
   });
+}
+
+export function deleteDeepDiveCard(capabilityGraphNodeId: string, cardIndex: number): Promise<BlueprintStepDto> {
+  return apiDelete<BlueprintStepDto>(`/studio/nodes/${capabilityGraphNodeId}/blueprint/deepdive/cards/${cardIndex}`);
 }

@@ -46,8 +46,8 @@ const msalConfig: Configuration = {
     authority: 'https://twinetwork.ciamlogin.com/twinetwork.onmicrosoft.com/',
     knownAuthorities: ['twinetwork.ciamlogin.com'],
     authorityMetadata: CIAM_METADATA,
-    redirectUri: 'http://localhost:3010',
-    postLogoutRedirectUri: 'http://localhost:3010',
+    redirectUri: import.meta.env.VITE_REDIRECT_URI ?? 'http://localhost:3010',
+    postLogoutRedirectUri: import.meta.env.VITE_POST_LOGOUT_REDIRECT_URI ?? 'http://localhost:3010',
   },
   cache: {
     cacheLocation: 'sessionStorage',

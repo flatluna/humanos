@@ -29,17 +29,20 @@ public sealed class PreviewCapabilityOutlineFunction
     private readonly TocExtractionAgent _tocExtraction;
     private readonly PdfImageDescriptionAgent _pdfImageDescription;
     private readonly PdfContentExtractionService _pdfContentExtraction;
+    private readonly IdeaToDocumentAgent _ideaToDocument;
     private readonly IConfiguration _configuration;
 
     public PreviewCapabilityOutlineFunction(
         TocExtractionAgent tocExtraction,
         PdfImageDescriptionAgent pdfImageDescription,
         PdfContentExtractionService pdfContentExtraction,
+        IdeaToDocumentAgent ideaToDocument,
         IConfiguration configuration)
     {
         _tocExtraction = tocExtraction;
         _pdfImageDescription = pdfImageDescription;
         _pdfContentExtraction = pdfContentExtraction;
+        _ideaToDocument = ideaToDocument;
         _configuration = configuration;
     }
 
@@ -52,10 +55,32 @@ public sealed class PreviewCapabilityOutlineFunction
 
         public string? ContentBase64 { get; set; }
 
-        /// <summary>Required when previewing plain text instead of a PDF
-        /// (the "Texto/idea" entry point, or a pasted table of contents) —
-        /// mutually exclusive with <see cref="ContentBase64"/>.</summary>
+        /// <summary>Required when previewing the "Texto/idea" entry point
+        /// instead of a PDF — the user's short idea/goal description, e.g.
+        /// "Capacidad para que un niño aprenda a sumar y restar". Mutually
+        /// exclusive with <see cref="ContentBase64"/>. Expanded into a full
+        /// document via IdeaToDocumentAgent BEFORE chapter/node detection
+        /// runs (2026-08-07) — see
+        /// <see cref="CapabilityOutlinePreviewService.PreviewFromIdeaAsync"/>.
+        /// Requires <see cref="CapabilityName"/> to also be set.</summary>
         public string? Text { get; set; }
+
+        /// <summary>Required together with <see cref="Text"/> — same value
+        /// the real run's CapabilityName will use, passed to
+        /// IdeaToDocumentAgent for the expansion.</summary>
+        public string? CapabilityName { get; set; }
+
+        /// <summary>Optional, only used together with <see cref="Text"/> —
+        /// "es" or "en", defaults to "es". See
+        /// StartCapabilityGraphFromDescriptionFunction's identical field.</summary>
+        public string? LanguageCode { get; set; }
+
+        /// <summary>Optional, only used together with <see cref="Text"/> —
+        /// see StartCapabilityGraphFromDescriptionFunction's identical
+        /// field. Passed through to the IdeaToDocumentAgent expansion so
+        /// it mirrors an explicit numbered outline already present in the
+        /// idea description, same as the real run would.</summary>
+        public bool StrictSyllabusMode { get; set; }
     }
 
     [Function("PreviewCapabilityOutline")]
@@ -82,38 +107,61 @@ public sealed class PreviewCapabilityOutlineFunction
                 cancellationToken);
         }
 
+        if (hasText && string.IsNullOrWhiteSpace(body!.CapabilityName))
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "InvalidRequest",
+                "'capabilityName' is required together with 'text'.",
+                cancellationToken);
+        }
+
+        // "Texto/idea" entry point (2026-08-07): expand the idea into a
+        // real document FIRST, then run detection against that document —
+        // never against the raw idea sentence. See
+        // CapabilityOutlinePreviewService.PreviewFromIdeaAsync's doc
+        // comment for why (StartMarker relocation across a later, separate
+        // expansion call would otherwise never match).
+        if (hasText)
+        {
+            var ideaResult = await CapabilityOutlinePreviewService.PreviewFromIdeaAsync(
+                body!.CapabilityName!,
+                body.Text!,
+                string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode.Trim().ToLowerInvariant(),
+                body.StrictSyllabusMode,
+                _ideaToDocument,
+                _tocExtraction,
+                cancellationToken);
+
+            return await FunctionResponseFactory.SuccessResponseAsync(request, ideaResult, cancellationToken: cancellationToken);
+        }
+
         string documentText;
-        if (hasPdf)
+        byte[] pdfBytes;
+        try
         {
-            byte[] pdfBytes;
-            try
-            {
-                pdfBytes = Convert.FromBase64String(body.ContentBase64!);
-            }
-            catch (FormatException)
-            {
-                return await FunctionResponseFactory.ErrorResponseAsync(
-                    request, HttpStatusCode.BadRequest, "InvalidBase64", "'contentBase64' is not valid base64.", cancellationToken);
-            }
-
-            // Extract text AND describe embedded images (2026-08-05) — the
-            // SAME extraction the real run uses (see
-            // PdfContentExtractionService's doc comment) — so a scanned/
-            // image-heavy PDF's chapter/index detection here is based on
-            // its actual content instead of PdfPig's plain text alone,
-            // which is empty (or near-empty) for such documents.
-            var maxImagesToDescribe = _configuration.GetValue<int?>("MaxCapabilityPdfImagesToDescribe") ?? DefaultMaxImagesToDescribe;
-            var maxImagesPerPage = _configuration.GetValue<int?>("MaxCapabilityPdfImagesPerPage") ?? DefaultMaxImagesPerPage;
-
-            var extraction = await _pdfContentExtraction.ExtractAsync(
-                pdfBytes, _pdfImageDescription, maxImagesToDescribe, maxImagesPerPage, reportProgress: null, cancellationToken);
-
-            documentText = extraction.CombinedText;
+            pdfBytes = Convert.FromBase64String(body.ContentBase64!);
         }
-        else
+        catch (FormatException)
         {
-            documentText = body.Text!;
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidBase64", "'contentBase64' is not valid base64.", cancellationToken);
         }
+
+        // Extract text AND describe embedded images (2026-08-05) — the
+        // SAME extraction the real run uses (see
+        // PdfContentExtractionService's doc comment) — so a scanned/
+        // image-heavy PDF's chapter/index detection here is based on
+        // its actual content instead of PdfPig's plain text alone,
+        // which is empty (or near-empty) for such documents.
+        var maxImagesToDescribe = _configuration.GetValue<int?>("MaxCapabilityPdfImagesToDescribe") ?? DefaultMaxImagesToDescribe;
+        var maxImagesPerPage = _configuration.GetValue<int?>("MaxCapabilityPdfImagesPerPage") ?? DefaultMaxImagesPerPage;
+
+        var extraction = await _pdfContentExtraction.ExtractAsync(
+            pdfBytes, _pdfImageDescription, maxImagesToDescribe, maxImagesPerPage, reportProgress: null, cancellationToken);
+
+        documentText = extraction.CombinedText;
 
         if (string.IsNullOrWhiteSpace(documentText))
         {

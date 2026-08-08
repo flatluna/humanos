@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Sparkles, Loader2, ChevronRight, CheckCircle2, Circle } from 'lucide-react';
+import { X, Sparkles, Loader2, ChevronRight, CheckCircle2, Circle, UploadCloud, ImageOff } from 'lucide-react';
 import {
   addCapabilityGraphNode,
   type BackendCapabilityGraphNode,
 } from '../lib/api/runtimeApi';
+import { readFileAsBase64 } from '../lib/api/pdfPipelineApi';
 
 /** How long (ms) each simulated progress step stays on screen before
  * advancing. The last step stays put (spinning) until the real API response
  * arrives — a single HTTP call gives no true incremental backend progress. */
 const STEP_DURATION_MS = 3200;
+
+/** The three ways this modal can produce a node's illustration(s)
+ * (2026-08-06 "imagen del profesor" feature) — mirrors the backend's
+ * AddCapabilityGraphNodeRequest.IllustrationMode string values exactly. */
+type IllustrationMode = 'None' | 'AiGenerated' | 'UploadDirect' | 'AiGeneratedFromUpload';
 
 interface AddGraphNodeModalProps {
   capabilityId: string;
@@ -48,11 +54,47 @@ export default function AddGraphNodeModal({
   const [prompt, setPrompt] = useState('');
   const [requiresIds, setRequiresIds] = useState<Set<string>>(new Set(belowLevel.map((n) => n.CapabilityGraphNodeId)));
   const [requiredByIds, setRequiredByIds] = useState<Set<string>>(new Set());
-  const [generateIllustrations, setGenerateIllustrations] = useState(true);
+  const [illustrationMode, setIllustrationMode] = useState<IllustrationMode>('AiGenerated');
+  const [uploadedImageFile, setUploadedImageFile] = useState<File | null>(null);
+  const [uploadedImagePreviewUrl, setUploadedImagePreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const needsUploadedImage = illustrationMode === 'UploadDirect' || illustrationMode === 'AiGeneratedFromUpload';
+
+  // Which ChapterIndex to persist the new node under (2026-08-06 fix — nodes
+  // used to always land at the very end of chapter-graded graphs because
+  // ChapterIndex was never set on them). Read it off an existing sibling
+  // node already sitting in the target level; for a brand-new level ("+
+  // Agregar nuevo nivel superior") there's no sibling yet, so assign the
+  // next index after the highest one seen anywhere in the graph. Left null
+  // (unchanged behavior) for graphs that don't use ChapterIndex at all yet
+  // (older edge-depth-tiered graphs), where level placement is still purely
+  // derived from the Requires/RequiredBy wiring below.
+  const targetChapterIndex = useMemo(() => {
+    const siblingWithChapter = (levels[targetLevelIndex] ?? []).find(
+      (n) => n.ChapterIndex !== null && n.ChapterIndex !== undefined
+    );
+    if (siblingWithChapter) return siblingWithChapter.ChapterIndex ?? null;
+
+    const allChapterIndexes = levels
+      .flat()
+      .map((n) => n.ChapterIndex)
+      .filter((c): c is number => c !== null && c !== undefined);
+    if (allChapterIndexes.length === 0) return null;
+    return Math.max(...allChapterIndexes) + 1;
+  }, [levels, targetLevelIndex]);
+
+  function handleFileSelected(file: File | null) {
+    setUploadedImageFile(file);
+    setUploadedImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+  }
 
   const steps = useMemo(() => {
     const base = [
@@ -60,10 +102,12 @@ export default function AddGraphNodeModal({
       t('addGraphNodeModal.stepGenerating'),
       t('addGraphNodeModal.stepVerifying'),
     ];
-    if (generateIllustrations) base.push(t('addGraphNodeModal.stepIllustrations'));
+    if (illustrationMode === 'UploadDirect') base.push(t('addGraphNodeModal.stepUploadingImage'));
+    else if (illustrationMode === 'AiGeneratedFromUpload') base.push(t('addGraphNodeModal.stepGeneratingFromReference'));
+    else if (illustrationMode === 'AiGenerated') base.push(t('addGraphNodeModal.stepIllustrations'));
     base.push(t('addGraphNodeModal.stepSaving'));
     return base;
-  }, [generateIllustrations, t]);
+  }, [illustrationMode, t]);
 
   useEffect(() => {
     if (!submitting) {
@@ -80,6 +124,14 @@ export default function AddGraphNodeModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitting]);
 
+  // Revoke the object URL used for the upload preview on unmount/replacement,
+  // so switching/removing images doesn't leak blob URLs.
+  useEffect(() => {
+    return () => {
+      if (uploadedImagePreviewUrl) URL.revokeObjectURL(uploadedImagePreviewUrl);
+    };
+  }, [uploadedImagePreviewUrl]);
+
   function toggle(set: Set<string>, setSet: (s: Set<string>) => void, id: string) {
     const next = new Set(set);
     if (next.has(id)) next.delete(id);
@@ -89,14 +141,19 @@ export default function AddGraphNodeModal({
 
   async function handleSubmit() {
     if (!prompt.trim() || submitting) return;
+    if (needsUploadedImage && !uploadedImageFile) return;
     setSubmitting(true);
     setError(null);
     try {
+      const uploadedImageBase64 = uploadedImageFile ? await readFileAsBase64(uploadedImageFile) : null;
       await addCapabilityGraphNode(capabilityId, {
         Prompt: prompt.trim(),
         RequiresNodeIds: Array.from(requiresIds),
         RequiredByNodeIds: Array.from(requiredByIds),
-        GenerateIllustrations: generateIllustrations,
+        IllustrationMode: illustrationMode,
+        UploadedImageBase64: uploadedImageBase64,
+        UploadedImageContentType: uploadedImageFile?.type ?? null,
+        TargetChapterIndex: targetChapterIndex,
       });
       onCreated();
     } catch (err) {
@@ -170,15 +227,92 @@ export default function AddGraphNodeModal({
               />
             </div>
 
-            <label className="mt-5 flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={generateIllustrations}
-                onChange={(e) => setGenerateIllustrations(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-brand-500"
-              />
-              {t('addGraphNodeModal.generateIllustrationsLabel')}
-            </label>
+            <div className="mt-5">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                {t('addGraphNodeModal.illustrationModeLabel')}
+              </p>
+              <div className="space-y-2">
+                <IllustrationModeOption
+                  value="AiGenerated"
+                  current={illustrationMode}
+                  onSelect={setIllustrationMode}
+                  label={t('addGraphNodeModal.illustrationModeAi')}
+                  hint={t('addGraphNodeModal.illustrationModeAiHint')}
+                />
+                <IllustrationModeOption
+                  value="UploadDirect"
+                  current={illustrationMode}
+                  onSelect={setIllustrationMode}
+                  label={t('addGraphNodeModal.illustrationModeUpload')}
+                  hint={t('addGraphNodeModal.illustrationModeUploadHint')}
+                />
+                <IllustrationModeOption
+                  value="AiGeneratedFromUpload"
+                  current={illustrationMode}
+                  onSelect={setIllustrationMode}
+                  label={t('addGraphNodeModal.illustrationModeUploadAi')}
+                  hint={t('addGraphNodeModal.illustrationModeUploadAiHint')}
+                />
+                <IllustrationModeOption
+                  value="None"
+                  current={illustrationMode}
+                  onSelect={setIllustrationMode}
+                  label={t('addGraphNodeModal.illustrationModeNone')}
+                />
+              </div>
+
+              {needsUploadedImage && (
+                <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  {uploadedImagePreviewUrl ? (
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={uploadedImagePreviewUrl}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-slate-300">{uploadedImageFile?.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="mt-1 text-xs font-medium text-brand-400 hover:text-brand-300"
+                        >
+                          {t('addGraphNodeModal.uploadImageChange')}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleFileSelected(null)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 py-3 text-sm text-slate-400 hover:border-white/25 hover:text-slate-300"
+                    >
+                      <UploadCloud className="h-4 w-4" />
+                      {t('addGraphNodeModal.uploadImageButton')}
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => handleFileSelected(e.target.files?.[0] ?? null)}
+                  />
+                  {!uploadedImageFile && (
+                    <p className="mt-2 flex items-center gap-1 text-xs text-amber-300">
+                      <ImageOff className="h-3.5 w-3.5" /> {t('addGraphNodeModal.uploadImageRequired')}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             {error && (
               <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -197,7 +331,7 @@ export default function AddGraphNodeModal({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!prompt.trim()}
+                disabled={!prompt.trim() || (needsUploadedImage && !uploadedImageFile)}
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {t('addGraphNodeModal.createNode')} <ChevronRight className="h-4 w-4" />
@@ -207,6 +341,40 @@ export default function AddGraphNodeModal({
         )}
       </div>
     </div>
+  );
+}
+
+function IllustrationModeOption({
+  value,
+  current,
+  onSelect,
+  label,
+  hint,
+}: {
+  value: IllustrationMode;
+  current: IllustrationMode;
+  onSelect: (mode: IllustrationMode) => void;
+  label: string;
+  hint?: string;
+}) {
+  const selected = value === current;
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${
+        selected ? 'border-brand-500/50 bg-brand-500/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+      }`}
+    >
+      <input
+        type="radio"
+        checked={selected}
+        onChange={() => onSelect(value)}
+        className="mt-0.5 h-3.5 w-3.5 border-white/20 bg-white/[0.03] text-brand-500"
+      />
+      <div className="min-w-0">
+        <p className="text-sm text-slate-200">{label}</p>
+        {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+      </div>
+    </label>
   );
 }
 

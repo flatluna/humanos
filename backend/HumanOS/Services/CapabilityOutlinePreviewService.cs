@@ -66,6 +66,19 @@ public sealed class CapabilityOutlinePreviewResult
 
     public List<CapabilityOutlineChapterDto> Chapters { get; set; } = [];
 
+    /// <summary>Set ONLY by <see cref="CapabilityOutlinePreviewService.PreviewFromIdeaAsync"/>
+    /// (the "Texto/idea" entry point, 2026-08-07) — the full document
+    /// IdeaToDocumentAgent expanded the idea into, which THIS outline's
+    /// StartMarkers were located against. Must be sent back VERBATIM as
+    /// StartCapabilityGraphFromDescriptionFunction's PreExpandedDocumentText
+    /// when submitting an ApprovedOutline — the real run must slice the
+    /// SAME text these markers point into, since re-expanding the idea
+    /// would produce a different (non-deterministic) document and every
+    /// marker lookup would fail. Null for the PDF/raw-text preview path,
+    /// where the caller already holds the source content itself (the
+    /// file, or the pasted text) and can resend that unchanged instead.</summary>
+    public string? ExpandedDocumentText { get; set; }
+
     /// <summary>Set only when <see cref="Source"/> is None — a
     /// human-readable explanation of why no structure could be found.</summary>
     public string? RejectionReason { get; set; }
@@ -169,6 +182,45 @@ public static class CapabilityOutlinePreviewService
             Source = CapabilityOutlineSource.None,
             RejectionReason = tier0.RejectionReason ?? "No se pudo detectar ni inferir una estructura de capítulos para este documento."
         };
+    }
+
+    /// <summary>
+    /// "Texto/idea" entry point (2026-08-07): unlike <see cref="PreviewAsync"/>,
+    /// there is no document yet at all \u2014 only a short user-written idea.
+    /// Expands it via <see cref="IdeaToDocumentAgent"/> FIRST (the exact
+    /// same expansion the real run would otherwise do at generation time),
+    /// then runs the normal chapter/node detection against THAT generated
+    /// document \u2014 never against the raw one-sentence idea, whose
+    /// StartMarkers could never be relocated in the much longer document a
+    /// later, separate expansion call would produce. The returned
+    /// <see cref="CapabilityOutlinePreviewResult.ExpandedDocumentText"/>
+    /// must be sent back verbatim (as PreExpandedDocumentText) when the
+    /// approved outline is submitted, so the real run reuses THIS exact
+    /// text instead of calling IdeaToDocumentAgent a second time.
+    /// </summary>
+    public static async Task<CapabilityOutlinePreviewResult> PreviewFromIdeaAsync(
+        string capabilityName,
+        string description,
+        string languageCode,
+        bool strictSyllabusMode,
+        IdeaToDocumentAgent ideaToDocument,
+        TocExtractionAgent tocExtraction,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ideaToDocument.IsConfigured)
+        {
+            return new CapabilityOutlinePreviewResult
+            {
+                Source = CapabilityOutlineSource.None,
+                RejectionReason = "El agente IdeaToDocument no está configurado."
+            };
+        }
+
+        var expansion = await ideaToDocument.ExpandAsync(capabilityName, description, languageCode, strictSyllabusMode, cancellationToken);
+
+        var result = await PreviewAsync(expansion.DocumentText, tocExtraction, cancellationToken);
+        result.ExpandedDocumentText = expansion.DocumentText;
+        return result;
     }
 
     /// <summary>

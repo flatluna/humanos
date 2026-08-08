@@ -30,11 +30,25 @@ internal static class QuotaRetryPolicy
     /// means "quota error, no server-provided delay — use the default backoff").
     /// Returns null (not retryable, or budget/attempts exhausted) to rethrow.
     /// </summary>
+    /// <param name="maxTotalWait">
+    /// Overrides the default ~60s total retry budget. Only raise this for
+    /// calls made from background pipelines (never a live interactive
+    /// request like the Realtime voice session token fetch) — e.g. image
+    /// generation during course creation, where gpt-image-2's occasional
+    /// longer/hourly-style throttling needs more room than a 60s budget
+    /// gives it (2026-08-06).
+    /// </param>
+    /// <param name="backoffDelays">Overrides the default backoff steps used
+    /// when the server gives no explicit Retry-After delay.</param>
     public static async Task<T> ExecuteAsync<T>(
         Func<Task<T>> action,
         Func<Exception, TimeSpan?> classify,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? maxTotalWait = null,
+        TimeSpan[]? backoffDelays = null)
     {
+        var totalWaitBudget = maxTotalWait ?? MaxTotalWait;
+        var delays = backoffDelays ?? BackoffDelays;
         var elapsed = TimeSpan.Zero;
         for (var attempt = 0; ; attempt++)
         {
@@ -45,14 +59,14 @@ internal static class QuotaRetryPolicy
             catch (Exception ex)
             {
                 var suggestedDelay = classify(ex);
-                if (suggestedDelay is null || attempt >= BackoffDelays.Length || elapsed >= MaxTotalWait)
+                if (suggestedDelay is null || attempt >= delays.Length || elapsed >= totalWaitBudget)
                     throw;
 
                 var delay = suggestedDelay.Value > TimeSpan.Zero
                     ? suggestedDelay.Value
-                    : BackoffDelays[attempt];
-                if (elapsed + delay > MaxTotalWait)
-                    delay = MaxTotalWait - elapsed;
+                    : delays[attempt];
+                if (elapsed + delay > totalWaitBudget)
+                    delay = totalWaitBudget - elapsed;
                 if (delay <= TimeSpan.Zero)
                     throw;
 

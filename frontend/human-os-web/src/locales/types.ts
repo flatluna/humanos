@@ -15,6 +15,18 @@ export interface Translations {
     expandSidebar: string;
     collapseSidebar: string;
   };
+  engramExplainer: {
+    buttonLabel: string;
+    title: string;
+    intro: string;
+    sections: {
+      engram: { title: string; body: string };
+      graphLearning: { title: string; body: string };
+      memoryParadox: { title: string; body: string };
+      humansFirst: { title: string; body: string };
+    };
+    closeButton: string;
+  };
   landing: {
     topBar: {
       goToApp: string;
@@ -257,6 +269,7 @@ export interface Translations {
   todayPage: {
     loadingTitle: string;
     loadingDescription: string;
+    tagline: string;
   };
   progressOverview: {
     sectionTitle: string;
@@ -370,8 +383,9 @@ export interface Translations {
     subtitle: string;
     loading: string;
     emptyHint: string;
-    countLabel: string;
-    todayDelta: string;
+    dailyCountLabel: string;
+    totalLabel: string;
+    scoreLabel: string;
     explainer: string;
   };
   humanState: {

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
-import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Sparkles, Images, Pencil, Plus, X } from 'lucide-react';
+import { Lightbulb, BookOpen, RotateCcw, Hammer, ClipboardCheck, Check, Sparkles, Images, Pencil, Plus, X, Trash2 } from 'lucide-react';
 import { apiImageUrl } from '../lib/api/httpClient';
 import {
   getNodeBlueprint,
   editNodeBlueprintStep,
   editDeepDiveCard,
   addDeepDiveCard,
+  deleteDeepDiveCard,
   type ExperienceStepType,
   type NodeBlueprintDto,
   type BlueprintStepDto,
@@ -61,6 +62,15 @@ export default function PreviewNodeBlueprintView({ mode }: { mode: PreviewMode }
   const [cardInstruction, setCardInstruction] = useState('');
   const [savingCard, setSavingCard] = useState(false);
   const [cardSaveError, setCardSaveError] = useState<string | null>(null);
+
+  // Deep Dive card deletion (2026-08-06) — a lightweight "click to confirm"
+  // inline prompt (no LLM call, no full modal, mirrors the level-name-edit
+  // Check/X confirm pattern used elsewhere in Studio) since removing one
+  // card of several is a much lower-stakes action than deleting a whole
+  // node/capability.
+  const [deletingCardIndex, setDeletingCardIndex] = useState<number | null>(null);
+  const [deletingCardBusy, setDeletingCardBusy] = useState(false);
+  const [cardDeleteError, setCardDeleteError] = useState<string | null>(null);
 
   const [addingCard, setAddingCard] = useState(false);
   const [newCardInstruction, setNewCardInstruction] = useState('');
@@ -146,6 +156,21 @@ export default function PreviewNodeBlueprintView({ mode }: { mode: PreviewMode }
       setNewCardError(t('previewNodeBlueprint.cardAddErrorFallback'));
     } finally {
       setSavingNewCard(false);
+    }
+  };
+
+  const handleConfirmDeleteCard = async (index: number) => {
+    if (!nodeId || deletingCardBusy) return;
+    setDeletingCardBusy(true);
+    setCardDeleteError(null);
+    try {
+      const updated = await deleteDeepDiveCard(nodeId, index);
+      applyStepUpdate(updated);
+      setDeletingCardIndex(null);
+    } catch {
+      setCardDeleteError(t('previewNodeBlueprint.cardDeleteErrorFallback'));
+    } finally {
+      setDeletingCardBusy(false);
     }
   };
 
@@ -235,18 +260,30 @@ export default function PreviewNodeBlueprintView({ mode }: { mode: PreviewMode }
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {currentStep.ExampleCards.map((card, index) => (
                   <div key={index} className="relative rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                    {mode === 'edit' && editingCardIndex !== index && (
-                      <button
-                        onClick={() => {
-                          setEditingCardIndex(index);
-                          setCardInstruction('');
-                          setCardSaveError(null);
-                        }}
-                        title={t('previewNodeBlueprint.editThisCard')}
-                        className="absolute right-2 top-2 rounded-full border border-white/10 bg-white/[0.05] p-1.5 text-slate-300 hover:border-brand-400/50 hover:text-brand-300"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
+                    {mode === 'edit' && editingCardIndex !== index && deletingCardIndex !== index && (
+                      <div className="absolute right-2 top-2 flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEditingCardIndex(index);
+                            setCardInstruction('');
+                            setCardSaveError(null);
+                          }}
+                          title={t('previewNodeBlueprint.editThisCard')}
+                          className="rounded-full border border-white/10 bg-white/[0.05] p-1.5 text-slate-300 hover:border-brand-400/50 hover:text-brand-300"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDeletingCardIndex(index);
+                            setCardDeleteError(null);
+                          }}
+                          title={t('previewNodeBlueprint.deleteThisCard')}
+                          className="rounded-full border border-white/10 bg-white/[0.05] p-1.5 text-slate-300 hover:border-red-500 hover:text-red-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     )}
                     {card.IllustrationId ? (
                       <img
@@ -296,6 +333,32 @@ export default function PreviewNodeBlueprintView({ mode }: { mode: PreviewMode }
                               setCardSaveError(null);
                             }}
                             disabled={savingCard}
+                            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:text-white"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {deletingCardIndex === index && (
+                      <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/[0.06] p-3">
+                        <p className="text-xs text-red-200">{t('previewNodeBlueprint.confirmDeleteCard')}</p>
+                        {cardDeleteError && <p className="mt-1.5 text-xs text-red-300">{cardDeleteError}</p>}
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            onClick={() => void handleConfirmDeleteCard(index)}
+                            disabled={deletingCardBusy}
+                            className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-[#fff] disabled:opacity-50"
+                          >
+                            {deletingCardBusy ? t('previewNodeBlueprint.deleting') : t('previewNodeBlueprint.confirmDeleteCardButton')}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeletingCardIndex(null);
+                              setCardDeleteError(null);
+                            }}
+                            disabled={deletingCardBusy}
                             className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:text-white"
                           >
                             <X className="h-3.5 w-3.5" />

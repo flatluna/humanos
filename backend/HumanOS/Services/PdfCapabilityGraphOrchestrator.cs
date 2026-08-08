@@ -240,6 +240,8 @@ public sealed class PdfCapabilityGraphOrchestrator
         int? maxDeepDiveCardsPerNode = null,
         bool strictSyllabusMode = false,
         List<CapabilityOutlineChapterDto>? approvedOutline = null,
+        // See PdfCapabilityGraphPipelineService.RunFromDescriptionAsync's identical field.
+        string? preExpandedDocumentText = null,
         bool includeProductionStep = true,
         int? recallItemsRequired = null,
         int? assessmentQuestionsPerRound = null,
@@ -285,6 +287,7 @@ public sealed class PdfCapabilityGraphOrchestrator
                     maxDeepDiveCardsPerNode,
                     strictSyllabusMode,
                     approvedOutline,
+                    preExpandedDocumentText,
                     includeProductionStep,
                     recallItemsRequired,
                     assessmentQuestionsPerRound,

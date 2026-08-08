@@ -225,7 +225,12 @@ public sealed class PersonCareerPlanService
     /// found the employee is immediately auto-enrolled in that Capability
     /// (so it shows up in Engram's "Mis Capacidades" right away) and the
     /// match is persisted onto the step so this lookup is a cheap no-op
-    /// afterward.</summary>
+    /// afterward. ALSO revalidates already-matched steps: if the
+    /// previously matched Capability was since deleted or deactivated in
+    /// Studio, the stale MatchedCapabilityId/Name is cleared so the step
+    /// falls back to "Generar" (or gets re-matched to a replacement
+    /// Capability, if one with the same name exists) instead of forever
+    /// pointing at a course that no longer exists.</summary>
     private async Task AutoMatchCapabilitiesAsync(
         PersonCareerPlan plan,
         Guid personId,
@@ -244,9 +249,17 @@ public sealed class PersonCareerPlanService
             (hrProcessSteps, "hr-processes"),
         };
 
+        // Also re-run whenever some step already has a MatchedCapabilityId,
+        // so a match that was later deleted/deactivated in Studio can be
+        // detected and cleared below (2026-08-07 bug: a dangling match kept
+        // showing a "Tomar" button for a course that no longer exists —
+        // this method previously only ever looked at UNMATCHED steps, so a
+        // stale MatchedCapabilityId/MatchedCapabilityName was never
+        // revisited once set).
         var hasUnmatched = tracks.Any(t => t.Steps.Any(s => s.MatchedProgramId is null && s.MatchedCapabilityId is null));
+        var hasCapabilityMatch = tracks.Any(t => t.Steps.Any(s => s.MatchedCapabilityId is not null));
 
-        if (!hasUnmatched)
+        if (!hasUnmatched && !hasCapabilityMatch)
         {
             return;
         }
@@ -256,6 +269,7 @@ public sealed class PersonCareerPlanService
             .Where(c => c.IsActive)
             .Select(c => new { c.CapabilityId, c.Name, c.Category, c.TargetJobRoleId, c.TargetSkill })
             .ToListAsync(cancellationToken);
+        var activeCapabilityIds = activeCapabilities.Select(c => c.CapabilityId).ToHashSet();
 
         var changed = false;
 
@@ -263,6 +277,13 @@ public sealed class PersonCareerPlanService
         {
             foreach (var step in steps)
             {
+                if (step.MatchedCapabilityId is not null && !activeCapabilityIds.Contains(step.MatchedCapabilityId.Value))
+                {
+                    step.MatchedCapabilityId = null;
+                    step.MatchedCapabilityName = null;
+                    changed = true;
+                }
+
                 if (step.MatchedProgramId is not null || step.MatchedCapabilityId is not null)
                 {
                     continue;

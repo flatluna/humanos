@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { Compass } from 'lucide-react';
+import { Compass, Sparkles } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { getPersonGoals, getPersonMotivations, getHumanStateToday, upsertHumanState } from '@/api/humanOsApi';
 import { getEnrolledPrograms, type EnrolledProgram } from '@/features/my-programs/api/enrolledProgramsApi';
@@ -220,7 +220,11 @@ export function TodayPage() {
       )}
       <main>
         <div className="mx-auto max-w-6xl px-6 pt-8">
-          <p className="text-2xl font-semibold text-slate-900 dark:text-white">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-white/60">
+            <Sparkles className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
+            {t('todayPage.tagline')}
+          </span>
+          <p className="mt-3 text-2xl font-semibold text-slate-900 dark:text-white">
             {t(`greeting.${greetingKey}`, { name: displayName })}
           </p>
         </div>

@@ -74,16 +74,22 @@ export function getRetrievability(lastCompletedDate: string | undefined, reviewC
   return 1 / (1 + elapsedDays / (9 * stability));
 }
 
-/** Color gradient stops (retrievability -> hex), from "just learned" (emerald)
- * fading down to "essentially forgotten" (rose). Interpolated linearly in
- * RGB space so the ring/dot color breathes smoothly instead of snapping
- * between hard buckets. */
+/** Color gradient stops (retrievability -> hex), redesigned (2026-08-07,
+ * product decision) as a "traffic light" heat gradient: vivid red = fully
+ * forgotten (an urgent "go review this" signal), warming through orange
+ * and yellow, to green = just reviewed/100% fresh. Routed through
+ * orange/yellow rather than a straight red->green blend, which would
+ * otherwise interpolate through a muddy brown in RGB space. Fills the
+ * WHOLE node circle (not just a thin ring), so the "how much do I
+ * remember" state reads at a glance from the dot's color. Interpolated
+ * linearly in RGB space so the dot color breathes smoothly instead of
+ * snapping between hard buckets. */
 export const COLOR_STOPS: Array<[number, string]> = [
-  [1, '#34d399'],
-  [0.75, '#22d3ee'],
-  [0.5, '#fbbf24'],
-  [0.25, '#fb923c'],
-  [0, '#fb7185'],
+  [1, '#16a34a'],
+  [0.75, '#65a30d'],
+  [0.5, '#eab308'],
+  [0.25, '#f97316'],
+  [0, '#ef4444'],
 ];
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -111,6 +117,25 @@ export function getMemoryColor(retrievability: number | null): string {
     }
   }
   return COLOR_STOPS[COLOR_STOPS.length - 1][1];
+}
+
+/** Perceptual relative luminance (WCAG formula), used to pick a legible
+ * text color on top of an arbitrary hex background. */
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Readable text/icon color to place ON TOP of a solid getMemoryColor()
+ * fill — computed from the actual resulting background's luminance rather
+ * than hardcoded buckets, so it stays correct as the gradient's colors
+ * change (e.g. the yellow midpoint needs dark text, red/green endpoints
+ * need white). */
+export function getMemoryTextColor(retrievability: number | null): string {
+  return relativeLuminance(getMemoryColor(retrievability)) > 0.4 ? '#0f172a' : '#ffffff';
 }
 
 /** Global "memory score" (0-100) — the simple average retrievability across
@@ -141,23 +166,28 @@ export interface EngramCountHistoryPoint {
   date: string;
   /** Cumulative number of distinct engrams mastered on/before this day —
    * a simple growth counter, never goes down (unlike memory freshness,
-   * which is what Mi Cerebro's own gauge already covers). */
-  count: number;
-  /** Average best-assessment score (0-100) across every engram counted so
-   * far, using each node's CURRENT finalScore (we only keep the latest
-   * attempt's score, not a full history) — a quality signal, drives the
-   * bar's color intensity. null while count is 0. */
+   * which is what Mi Cerebro's own gauge already covers). Shown as an
+   * always-visible "total so far" badge, not the bar height. */
+  cumulativeCount: number;
+  /** Engrams mastered on THIS exact calendar day — the real day-by-day
+   * activity signal, and what the chart's bar height plots (a cumulative
+   * count would flatten every day's actual effort into one ever-growing
+   * number, hiding what was actually done "today"). */
+  dailyCount: number;
+  /** Average best-assessment score (0-100) of ONLY the engrams mastered on
+   * THIS day (not a cumulative/all-time average), so the bar's color
+   * genuinely reflects that day's performance. null when dailyCount is 0. */
   avgScore: number | null;
   /** Names of engrams whose most recent completion landed on this exact
    * calendar day — drives the little "brain" marker on that day's bar. */
   events: string[];
 }
 
-/** Builds a daily cumulative "engrams mastered" time series for the last
+/** Builds a daily "engrams mastered" activity time series for the last
  * `days` days (ending today) straight from data the Brain page already
- * fetches — no new backend endpoint needed. Always trending up (or flat),
- * telling a clear growth story without needing to explain the forgetting
- * curve (that's Mi Cerebro's job). */
+ * fetches — no new backend endpoint needed. Each point separates that
+ * day's own activity (dailyCount/avgScore, what the bars plot) from the
+ * running lifetime total (cumulativeCount, shown as a separate badge). */
 export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): EngramCountHistoryPoint[] {
   const masteredNodes: { name: string; lastCompletedDate: string; finalScore?: number }[] = [];
   for (const root of rootGroups) {
@@ -180,29 +210,34 @@ export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): E
     // END of this calendar day — not just before its midnight start —
     // otherwise a node mastered later today wouldn't count on today's point.
     const endOfDayMs = day.getTime() + DAY_MS - 1;
-    let count = 0;
-    let scoreSum = 0;
-    let scoreCount = 0;
+    let cumulativeCount = 0;
     const events: string[] = [];
+    let dailyScoreSum = 0;
+    let dailyScoreCount = 0;
     for (const node of masteredNodes) {
       const masteredAtMs = toUtcMs(node.lastCompletedDate);
       if (masteredAtMs > endOfDayMs) continue; // not mastered yet as of this day
-      count += 1;
-      if (typeof node.finalScore === 'number') {
-        scoreSum += node.finalScore;
-        scoreCount += 1;
+      cumulativeCount += 1;
+      const masteredToday = masteredAtMs >= day.getTime() && masteredAtMs <= endOfDayMs;
+      if (masteredToday) {
+        events.push(node.name);
+        if (typeof node.finalScore === 'number') {
+          dailyScoreSum += node.finalScore;
+          dailyScoreCount += 1;
+        }
       }
-      if (masteredAtMs >= day.getTime() && masteredAtMs <= endOfDayMs) events.push(node.name);
     }
     points.push({
       date: day.toISOString().slice(0, 10),
-      count,
-      avgScore: scoreCount > 0 ? Math.round(scoreSum / scoreCount) : null,
+      cumulativeCount,
+      dailyCount: events.length,
+      avgScore: dailyScoreCount > 0 ? Math.round(dailyScoreSum / dailyScoreCount) : null,
       events,
     });
   }
   return points;
 }
+
 
 
 

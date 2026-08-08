@@ -517,9 +517,9 @@ export default function PreviewGraphPage() {
                           setDeletingNode(node);
                         }}
                         title={t('previewGraph.deleteNode')}
-                        className="absolute -top-1 -right-1 z-20 rounded-full border border-white/10 bg-slate-900/90 p-1 text-slate-400 opacity-0 transition-opacity hover:border-red-500 hover:text-red-400 group-hover:opacity-100"
+                        className="absolute -top-2 -right-2 z-20 rounded-full border border-white/20 bg-slate-800 p-1.5 text-slate-200 opacity-70 shadow-md transition-opacity hover:border-red-500 hover:bg-red-500/20 hover:text-red-400 hover:opacity-100 group-hover:opacity-100"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                     <button

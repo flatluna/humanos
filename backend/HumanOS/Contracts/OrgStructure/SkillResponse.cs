@@ -22,6 +22,15 @@ public sealed class SkillResponse
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }
+
+    /// <summary>Set when an active Capability already satisfies this skill
+    /// (matched the same way as PersonCareerPlanService.AutoMatchCapabilitiesAsync
+    /// — see SkillService.GetMatchedCapabilitiesAsync) — null means no course
+    /// exists yet for this skill. Powers the "Curso creado" vs "Generar curso"
+    /// indicator on the enterprise console's Skill catalog page.</summary>
+    public Guid? MatchedCapabilityId { get; set; }
+
+    public string? MatchedCapabilityName { get; set; }
 }
 
 /// <summary>One Job Role this Skill is currently linked to — enough to

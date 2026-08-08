@@ -36,6 +36,7 @@ public sealed class AddCapabilityGraphNodeFunction
     private readonly NodeExperienceBlueprintPersistenceService _blueprintPersistenceService;
     private readonly BlueprintValidatorAgent _blueprintValidatorAgent;
     private readonly BlueprintValidationPersistenceService _blueprintValidationPersistenceService;
+    private readonly PdfImageDescriptionAgent _imageDescriptionAgent;
 
     public AddCapabilityGraphNodeFunction(
         HumanOsDbContext dbContext,
@@ -47,7 +48,8 @@ public sealed class AddCapabilityGraphNodeFunction
         ExampleCardIllustrationService exampleCardIllustrationService,
         NodeExperienceBlueprintPersistenceService blueprintPersistenceService,
         BlueprintValidatorAgent blueprintValidatorAgent,
-        BlueprintValidationPersistenceService blueprintValidationPersistenceService)
+        BlueprintValidationPersistenceService blueprintValidationPersistenceService,
+        PdfImageDescriptionAgent imageDescriptionAgent)
     {
         _dbContext = dbContext;
         _agent = agent;
@@ -59,6 +61,7 @@ public sealed class AddCapabilityGraphNodeFunction
         _blueprintPersistenceService = blueprintPersistenceService;
         _blueprintValidatorAgent = blueprintValidatorAgent;
         _blueprintValidationPersistenceService = blueprintValidationPersistenceService;
+        _imageDescriptionAgent = imageDescriptionAgent;
     }
 
     [Function("AddCapabilityGraphNode")]
@@ -84,6 +87,31 @@ public sealed class AddCapabilityGraphNodeFunction
                 request, HttpStatusCode.BadRequest, "MissingFields", "Prompt is required.", cancellationToken);
         }
 
+        var illustrationMode = string.IsNullOrWhiteSpace(body.IllustrationMode) ? "AiGenerated" : body.IllustrationMode;
+        var needsUploadedImage = illustrationMode is "UploadDirect" or "AiGeneratedFromUpload";
+
+        byte[]? uploadedImageBytes = null;
+        if (!string.IsNullOrWhiteSpace(body.UploadedImageBase64))
+        {
+            try
+            {
+                uploadedImageBytes = Convert.FromBase64String(body.UploadedImageBase64);
+            }
+            catch (FormatException)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "InvalidBase64", "'UploadedImageBase64' is not valid base64.", cancellationToken);
+            }
+        }
+
+        if (needsUploadedImage && uploadedImageBytes is null)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "MissingFields",
+                "UploadedImageBase64 is required when IllustrationMode is 'UploadDirect' or 'AiGeneratedFromUpload'.",
+                cancellationToken);
+        }
+
         var graph = await _dbContext.CapabilityGraphs
             .Include(g => g.Nodes).ThenInclude(n => n.Illustrations)
             .Include(g => g.Edges)
@@ -103,12 +131,13 @@ public sealed class AddCapabilityGraphNodeFunction
         // PedagogicalAudience (2026-07-26 fix, K-12 lesson course feature).
         var capabilityMeta = await _dbContext.Capabilities
             .Where(c => c.CapabilityId == capabilityId)
-            .Select(c => new { c.ContentLanguageCode, c.PedagogicalAudience, c.IncludeExamplesStep, c.IncludeProductionStep })
+            .Select(c => new { c.ContentLanguageCode, c.PedagogicalAudience, c.IncludeExamplesStep, c.IncludeProductionStep, c.MaxDeepDiveCardsPerNode })
             .FirstOrDefaultAsync(cancellationToken);
         var languageCode = capabilityMeta?.ContentLanguageCode ?? "es";
         var pedagogicalAudience = capabilityMeta?.PedagogicalAudience;
         var includeExamplesStep = capabilityMeta?.IncludeExamplesStep ?? true;
         var includeProductionStep = capabilityMeta?.IncludeProductionStep ?? true;
+        var maxDeepDiveCardsPerNode = capabilityMeta?.MaxDeepDiveCardsPerNode;
 
         var nodesById = graph.Nodes.ToDictionary(n => n.CapabilityGraphNodeId);
 
@@ -172,22 +201,72 @@ public sealed class AddCapabilityGraphNodeFunction
         // same technique KnowledgeExpansionService uses (2026-07-20) — since
         // neither Capability nor CapabilityGraph stores a TenantId column.
         var illustrationRecords = new List<CapabilityGraphPersistenceService.NodeIllustrationRecord>();
-        if (body.GenerateIllustrations && _imageService.IsConfigured && _illustrationStorage.IsConfigured
-            && node.IllustrationPrompts.Count > 0)
+        if (illustrationMode != "None" && _illustrationStorage.IsConfigured)
         {
             var tenantId = TryParseTenantIdFromExistingIllustration(graph.Nodes);
-            if (tenantId is not null)
+            if (tenantId is not null && illustrationMode == "UploadDirect" && uploadedImageBytes is not null)
             {
-                // Brand logo reference (2026-08-04), if one was attached at
-                // capability-creation time — see GraphIllustrationImageService's
-                // LogoReferenceInstruction for what the model is told to do with it.
-                var brandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken);
+                // Option 1: use the professor's own image AS-IS, no AI image
+                // generation at all — vision AI best-effort extracts a Caption
+                // describing its content so it isn't just a bare, undescribed image.
+                string? caption = null;
+                if (_imageDescriptionAgent.IsConfigured)
+                {
+                    try
+                    {
+                        var described = await _imageDescriptionAgent.DescribeAsync(
+                            uploadedImageBytes, body.UploadedImageContentType ?? "image/png", node.Description, cancellationToken);
+                        caption = described.Description;
+                    }
+                    catch
+                    {
+                        // Best-effort: a missing caption never blocks using the uploaded image.
+                    }
+                }
+
+                try
+                {
+                    using var uploadStream = new MemoryStream(uploadedImageBytes);
+                    var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                        tenantId.Value, capabilityId, node.NodeId, 1, uploadStream,
+                        contentType: body.UploadedImageContentType ?? "image/png", cancellationToken: cancellationToken);
+
+                    illustrationRecords.Add(new CapabilityGraphPersistenceService.NodeIllustrationRecord
+                    {
+                        NodeId = node.NodeId,
+                        StoragePath = storagePath,
+                        Prompt = "Imagen proporcionada por el profesor.",
+                        Caption = caption,
+                        ImageModel = "user-upload",
+                        Width = 0,
+                        Height = 0,
+                        Purpose = IllustrationPurpose.Teaching
+                    });
+                }
+                catch
+                {
+                    // Best-effort: a failed upload never blocks node creation.
+                }
+            }
+            else if (tenantId is not null && _imageService.IsConfigured && node.IllustrationPrompts.Count > 0)
+            {
+                // Options 2/3: the AI generates the illustration(s) from
+                // IllustrationPrompts — either plain text-to-image guided by the
+                // capability's own brand logo ("AiGenerated", unchanged default
+                // behavior), or an image-edit call referencing the professor's own
+                // uploaded image instead ("AiGeneratedFromUpload").
+                var useUploadedReference = illustrationMode == "AiGeneratedFromUpload" && uploadedImageBytes is not null;
+                var brandLogoBytes = useUploadedReference
+                    ? null
+                    : await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken);
 
                 foreach (var illustrationPrompt in node.IllustrationPrompts)
                 {
                     try
                     {
-                        var generated = await _imageService.GenerateAsync(illustrationPrompt.Prompt, brandLogoBytes, cancellationToken);
+                        var generated = useUploadedReference
+                            ? await _imageService.GenerateFromReferenceAsync(illustrationPrompt.Prompt, uploadedImageBytes!, cancellationToken)
+                            : await _imageService.GenerateAsync(illustrationPrompt.Prompt, brandLogoBytes, cancellationToken);
                         using var stream = generated.ImageBytes.ToStream();
                         var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                             tenantId.Value, capabilityId, node.NodeId, illustrationRecords.Count + 1, stream,
@@ -216,7 +295,7 @@ public sealed class AddCapabilityGraphNodeFunction
 
         var savedNode = await _persistenceService.AddNodeAsync(
             _dbContext, graph.CapabilityGraphId, node, body.RequiresNodeIds, body.RequiredByNodeIds,
-            nextSortOrder, illustrationRecords, cancellationToken);
+            nextSortOrder, illustrationRecords, body.TargetChapterIndex, cancellationToken);
 
         // A node with no NodeExperienceBlueprint cannot be previewed or
         // taught at all (GetNodeBlueprintFunction 404s) — so this is NOT
@@ -243,37 +322,55 @@ public sealed class AddCapabilityGraphNodeFunction
                 })
                 .ToList();
 
-            var designResult = await _experienceDesignerAgent.DesignBlueprintAsync(
-                savedNode, availableIllustrations, webFindings: null, languageCode: languageCode,
-                pedagogicalAudience: pedagogicalAudience, includeExamplesStep: includeExamplesStep,
-                includeProductionStep: includeProductionStep, cancellationToken: cancellationToken);
+            var exampleTenantId = TryParseTenantIdFromExistingIllustration(graph.Nodes);
+            var exampleBrandLogoBytes = exampleTenantId is not null
+                ? await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken)
+                : null;
 
-            // Real illustrations for the Examples step's cards (2026-07-29):
-            // must happen AFTER the agent invents the cards' Title/Text, and
-            // BEFORE persisting, so each card's IllustrationId is already
-            // resolved in the JSON blob. Best-effort, same tenantId-lookup
-            // technique as the node illustrations above.
-            if (includeExamplesStep)
-            {
-                var examplesStepDto = designResult.Blueprint.Steps
-                    .FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
-                if (examplesStepDto?.ExampleCards is { Count: > 0 })
+            // Bounded retry (2026-08-06 fix — see /memories/repo notes on the
+            // "Control de Edición" orphaned-node bug): this used to run ONCE —
+            // any transient failure (LLM hiccup, an image-quota burst
+            // outlasting GraphIllustrationImageService's own retry budget)
+            // permanently left the node with no blueprint at all. Retrying the
+            // FULL design+illustrate+persist step from scratch is safe:
+            // nothing is persisted until PersistAsync succeeds.
+            NodeExperienceBlueprint blueprintEntity = null!;
+            (blueprintEntity, exampleIllustrationsGenerated) = await HumanOS.Common.TransientRetry.ExecuteAsync(
+                async () =>
                 {
-                    var exampleTenantId = TryParseTenantIdFromExistingIllustration(graph.Nodes);
-                    if (exampleTenantId is not null)
-                    {
-                        var exampleBrandLogoBytes = await _illustrationStorage.TryGetBrandLogoBytesAsync(_dbContext, capabilityId, cancellationToken);
-                        exampleIllustrationsGenerated = await _exampleCardIllustrationService.GenerateAsync(
-                            _dbContext, exampleTenantId.Value, capabilityId, savedNode.CapabilityGraphNodeId,
-                            savedIllustrations.Count, examplesStepDto.ExampleCards, cancellationToken, exampleBrandLogoBytes,
-                            pedagogicalAudience);
-                    }
-                }
-            }
+                    var designResult = await _experienceDesignerAgent.DesignBlueprintAsync(
+                        savedNode, availableIllustrations, webFindings: null, languageCode: languageCode,
+                        pedagogicalAudience: pedagogicalAudience, includeExamplesStep: includeExamplesStep,
+                        maxDeepDiveCardsPerNode: maxDeepDiveCardsPerNode,
+                        includeProductionStep: includeProductionStep, cancellationToken: cancellationToken);
 
-            var blueprintEntity = await _blueprintPersistenceService.PersistAsync(
-                _dbContext, savedNode.CapabilityGraphNodeId, designResult.Blueprint, savedIllustrations,
-                includeExamplesStep: includeExamplesStep, includeProductionStep: includeProductionStep, cancellationToken: cancellationToken);
+                    // Real illustrations for the Examples step's cards (2026-07-29):
+                    // must happen AFTER the agent invents the cards' Title/Text, and
+                    // BEFORE persisting, so each card's IllustrationId is already
+                    // resolved in the JSON blob. Best-effort per card, same
+                    // tenantId-lookup technique as the node illustrations above.
+                    var thisAttemptExampleIllustrations = 0;
+                    if (includeExamplesStep)
+                    {
+                        var examplesStepDto = designResult.Blueprint.Steps
+                            .FirstOrDefault(s => s.StepType == ExperienceStepType.DeepDive);
+                        if (examplesStepDto?.ExampleCards is { Count: > 0 } && exampleTenantId is not null)
+                        {
+                            thisAttemptExampleIllustrations = await _exampleCardIllustrationService.GenerateAsync(
+                                _dbContext, exampleTenantId.Value, capabilityId, savedNode.CapabilityGraphNodeId,
+                                savedIllustrations.Count, examplesStepDto.ExampleCards, cancellationToken, exampleBrandLogoBytes,
+                                pedagogicalAudience);
+                        }
+                    }
+
+                    var persisted = await _blueprintPersistenceService.PersistAsync(
+                        _dbContext, savedNode.CapabilityGraphNodeId, designResult.Blueprint, savedIllustrations,
+                        includeExamplesStep: includeExamplesStep, includeProductionStep: includeProductionStep, cancellationToken: cancellationToken);
+
+                    return (persisted, thisAttemptExampleIllustrations);
+                },
+                maxAttempts: 3,
+                cancellationToken);
 
             blueprintGenerated = true;
 

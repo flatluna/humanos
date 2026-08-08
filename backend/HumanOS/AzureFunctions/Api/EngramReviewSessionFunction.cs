@@ -39,15 +39,18 @@ public sealed class EngramReviewSessionFunction
     private readonly RealtimeVoiceSessionService _voiceSessionService;
     private readonly InstructorRuntimeOrchestrator _orchestrator;
     private readonly HumanOsDbContext _dbContext;
+    private readonly NodeKnowledgeIndexService _knowledgeIndexService;
 
     public EngramReviewSessionFunction(
         RealtimeVoiceSessionService voiceSessionService,
         InstructorRuntimeOrchestrator orchestrator,
-        HumanOsDbContext dbContext)
+        HumanOsDbContext dbContext,
+        NodeKnowledgeIndexService knowledgeIndexService)
     {
         _voiceSessionService = voiceSessionService;
         _orchestrator = orchestrator;
         _dbContext = dbContext;
+        _knowledgeIndexService = knowledgeIndexService;
     }
 
     [Function("EngramReviewSession")]
@@ -148,8 +151,25 @@ public sealed class EngramReviewSessionFunction
             }
         }
 
-        var instructions = BuildInstructions(summary, node, profile, latestAssessment, latestAttempt, illustrations, focusCard);
-        var tools = BuildVisualAidTools(illustrations);
+        // Course-wide chapter awareness (2026-08-06) -- see search_other_chapters'
+        // doc comment on BuildKnowledgeSearchTool for the full rationale: a lightweight
+        // list of sibling chapter NAMES (not their content) is cheap enough to always
+        // include, so the Agent knows other chapters exist even when it can't answer
+        // from them directly -- the actual content is fetched on demand via the tool.
+        var otherChapterNames = node is null
+            ? []
+            : await _dbContext.CapabilityGraphNodes
+                .AsNoTracking()
+                .Where(n => n.CapabilityGraphId == node.CapabilityGraphId && n.CapabilityGraphNodeId != body.CapabilityGraphNodeId)
+                .OrderBy(n => n.SortOrder)
+                .Select(n => n.Name)
+                .ToListAsync(cancellationToken);
+        var knowledgeSearchAvailable = _knowledgeIndexService.IsConfigured && otherChapterNames.Count > 0;
+
+        var instructions = BuildInstructions(summary, node, profile, latestAssessment, latestAttempt, illustrations, focusCard, otherChapterNames, knowledgeSearchAvailable);
+        var tools = knowledgeSearchAvailable
+            ? new object[] { BuildShowVisualAidTool(illustrations), BuildKnowledgeSearchTool(), BuildCompleteReviewTool() }
+            : new object[] { BuildShowVisualAidTool(illustrations), BuildCompleteReviewTool() };
 
         try
         {
@@ -201,13 +221,11 @@ public sealed class EngramReviewSessionFunction
     /// response.output_item.done/response.done event with
     /// type == "function_call" and renders whichever kind was sent.
     /// </summary>
-    private static object BuildVisualAidTools(List<InstructorRuntimeOrchestrator.IllustrationRef> illustrations)
+    private static object BuildShowVisualAidTool(List<InstructorRuntimeOrchestrator.IllustrationRef> illustrations)
     {
         var illustrationIds = illustrations.Select(i => i.CapabilityGraphNodeIllustrationId.ToString()).ToArray();
 
-        return new[]
-        {
-            new
+        return new
             {
                 type = "function",
                 name = "show_visual_aid",
@@ -297,9 +315,77 @@ public sealed class EngramReviewSessionFunction
                     },
                     required = new[] { "kind" }
                 }
-            }
-        };
+            };
     }
+
+    /// <summary>
+    /// The Realtime tool that lets the Agent fetch content from OTHER
+    /// chapters/nodes of the SAME course, on demand, whenever the student
+    /// asks about something not covered in the current lesson's own
+    /// material (e.g. reviewing "Control de edición" but asking about
+    /// "canal de denuncia", a different node). Deliberately NOT solved by
+    /// stuffing every other chapter's full content into the system prompt
+    /// -- for a course with many chapters that would be enormous (and
+    /// costly/latent) on EVERY session, most of it irrelevant to any given
+    /// conversation. Instead this reuses the same embedded-chunk vector
+    /// search already built for TutorService's text-based cross-node RAG
+    /// (see NodeKnowledgeIndexService/SearchNodeKnowledgeFunction) --
+    /// cheap (one embedding call + a vector search per actual question) and
+    /// scales to any course size. Only offered when the index has other
+    /// chapters to search (see knowledgeSearchAvailable in RunAsync).
+    /// </summary>
+    private static object BuildKnowledgeSearchTool() => new
+    {
+        type = "function",
+        name = "search_other_chapters",
+        description = "Busca contenido de OTROS capitulos/lecciones de este mismo curso (no de esta " +
+            "leccion actual) cuando el estudiante pregunte por un tema, dato o nombre que NO esta " +
+            "cubierto en el material de esta leccion. El curso tiene muchos otros capitulos con " +
+            "contenido distinto (ver la lista en tus instrucciones) -- esta es la UNICA forma de " +
+            "consultarlos. Usala SIEMPRE que la pregunta del estudiante parezca ser sobre otro tema " +
+            "del curso en lugar de esta leccion -- nunca inventes ni asumas que sabes que dice otro " +
+            "capitulo sin buscarlo primero aqui.",
+        parameters = new
+        {
+            type = "object",
+            properties = new
+            {
+                query = new
+                {
+                    type = "string",
+                    description = "La pregunta o tema exacto que menciono el estudiante, reformulado brevemente si hace falta para buscarlo."
+                }
+            },
+            required = new[] { "query" }
+        }
+    };
+
+    /// <summary>
+    /// The Realtime tool that lets the Agent signal (product decision
+    /// 2026-08-07) that it just walked the student through the ENTIRE
+    /// lesson from beginning to end, with genuine active-recall engagement
+    /// (not a session the student barely started or cut short). The
+    /// frontend answers this tool call AND, separately, calls the
+    /// EngramReviewComplete endpoint to persist an
+    /// <see cref="HumanOS.Models.Learning.EngramReviewCompletion"/> row --
+    /// this refreshes the Brain page's forgetting-curve memory signal back
+    /// to full strength, exactly like a graded practice attempt would. Has
+    /// no parameters -- it is purely a one-time signal the model decides to
+    /// send at most ONCE per conversation, never mid-lesson.
+    /// </summary>
+    private static object BuildCompleteReviewTool() => new
+    {
+        type = "function",
+        name = "complete_review",
+        description = "Llama a esta funcion UNA SOLA VEZ, y solo cuando genuinamente hayas repasado " +
+            "con el estudiante TODO el contenido esencial de la leccion completa de principio a fin " +
+            "(no solo una parte), con verdadero recuerdo activo de su parte (el estudiante participo, " +
+            "respondio, o confirmo que recordaba las ideas -- no una sesion que apenas empezo o que se " +
+            "corto a la mitad). NUNCA la llames si la conversacion fue breve, parcial, o si el " +
+            "estudiante se fue/cerro la sesion antes de terminar el repaso completo. Llamala justo " +
+            "despues de tu resumen final de cierre, no antes.",
+        parameters = new { type = "object", properties = new { } }
+    };
 
 
     /// <summary>
@@ -324,7 +410,9 @@ public sealed class EngramReviewSessionFunction
         LearningAssessmentResult? latestAssessment,
         InstructorRuntimeOrchestrator.NodeAttemptSummary? latestAttempt,
         List<InstructorRuntimeOrchestrator.IllustrationRef> illustrations,
-        ExampleCard? focusCard = null)
+        ExampleCard? focusCard = null,
+        List<string>? otherChapterNames = null,
+        bool knowledgeSearchAvailable = false)
     {
         var lesson = new StringBuilder();
         foreach (var step in summary.Steps)
@@ -416,6 +504,23 @@ public sealed class EngramReviewSessionFunction
                 ella -- NUNCA le preguntes por la lección en general ni menciones otras tarjetas.
                 """;
 
+        // Course-wide chapter awareness (2026-08-06) -- see BuildKnowledgeSearchTool's
+        // doc comment for the full rationale: only chapter NAMES are listed here (cheap),
+        // never their content -- the real content is fetched on demand via the
+        // search_other_chapters tool, only for the topics the student actually asks about.
+        var otherChaptersBlock = !knowledgeSearchAvailable || otherChapterNames is not { Count: > 0 }
+            ? string.Empty
+            : $"""
+
+                OTROS CAPÍTULOS DE ESTE CURSO (solo para que sepas que existen -- NO tienes su contenido
+                aquí, solo sus nombres):
+                {string.Join("\n", otherChapterNames.Select(n => $"- {n}"))}
+                Si el estudiante pregunta algo que suene a uno de estos temas (o cualquier cosa que no
+                esté en el MATERIAL COMPLETO DE LA LECCIÓN de abajo), usa la función
+                "search_other_chapters" para buscar el contenido real antes de responder -- nunca
+                inventes ni asumas qué dice otro capítulo.
+                """;
+
         var studentContext = $"""
             CONTEXTO DEL ESTUDIANTE (información de fondo para TI, el agente — úsala para personalizar
             el tono y saber en qué apoyarte más, pero NO la recites como si fuera una lista o un
@@ -462,6 +567,12 @@ public sealed class EngramReviewSessionFunction
               escena exacta -- nunca digas que no puedes mostrar imágenes ni respondas solo en voz a
               ese tipo de pedido. Generar la imagen toma unos segundos: puedes decir algo breve como
               "dame un segundo, te lo dibujo" mientras se genera.
+            {(knowledgeSearchAvailable ? "- Si el estudiante pregunta algo que NO está en el MATERIAL COMPLETO DE LA LECCIÓN de abajo (por ejemplo, algo de otro capítulo del curso), SIEMPRE llama primero a search_other_chapters con su pregunta -- nunca inventes ni asumas contenido de otro capítulo sin buscarlo, y nunca digas simplemente que \"no tienes esa información\" sin haber buscado antes." : "")}
+            - Cuando -- y SOLO cuando -- de verdad hayas repasado con él TODO el contenido esencial de
+              la lección completa de principio a fin, con recuerdo activo genuino de su parte, llama a
+              la función complete_review justo después de tu resumen final de cierre (una sola vez,
+              nunca a mitad de la conversación). Si la conversación fue corta, parcial, o el estudiante
+              se despide antes de terminar el repaso completo, NO la llames.
             """;
 
         return $"""
@@ -509,6 +620,7 @@ public sealed class EngramReviewSessionFunction
             {illustrationCatalog}
             {cardFocus}
             {studentContext}
+            {otherChaptersBlock}
 
             MATERIAL COMPLETO DE LA LECCIÓN (tu única fuente de verdad -- no inventes nada fuera de
             esto):

@@ -109,6 +109,21 @@ public sealed class Capability
     /// </summary>
     public int? AssessmentQuestionsPerRound { get; set; }
 
+    /// <summary>
+    /// The Deep Dive step's own card-count cap for every node in this
+    /// capability (2026-08-06 fix), persisted so it can be re-applied when
+    /// a node is added to the graph LATER via AddCapabilityGraphNodeFunction
+    /// — previously this value only ever lived as a one-off request
+    /// parameter passed through the initial course-creation pipeline
+    /// (<see cref="Agents.Studio.ExperienceDesignerAgent.DesignBlueprintAsync"/>'s
+    /// own <c>maxDeepDiveCardsPerNode</c> parameter) and was never saved
+    /// anywhere, so any node added after course creation had no limit
+    /// applied and the LLM tended to generate close to the agent's own
+    /// hard cap of 10 cards. Null (the default) means "no limit" — same
+    /// as before this field existed. When set, must be between 1 and 10.
+    /// </summary>
+    public int? MaxDeepDiveCardsPerNode { get; set; }
+
     /// <summary>Which of the employer-assigned career-plan training tracks
     /// this capability belongs to (2026-08-01 — "cursos de empresa"
     /// feature): "job-skills" | "soft-skills" | "department-processes" |

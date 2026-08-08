@@ -144,7 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const res = await fetch('/api/me', {
+      // '/api' relies on a local dev proxy (see vite.config.ts); production
+      // builds have no proxy, so this must hit the deployed backend directly.
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? '/api'}/me`, {
         headers: { 'X-Azure-OID': oid, 'X-Azure-TID': tid },
         cache: 'no-store',
       });

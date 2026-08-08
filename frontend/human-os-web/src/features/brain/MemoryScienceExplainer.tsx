@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, CircleDashed, Percent, Zap, FlaskConical, Sparkles, Smartphone } from 'lucide-react';
+import { ChevronDown, ChevronUp, Circle, Percent, Zap, FlaskConical, Sparkles, Smartphone } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { COLOR_STOPS } from './memoryScience';
 
@@ -77,7 +77,7 @@ export function MemoryScienceExplainer() {
                 <ul className="space-y-2.5">
                   <li className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <div className="flex items-start gap-2.5">
-                      <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                      <Circle className="mt-0.5 h-4 w-4 shrink-0 fill-current text-emerald-400" />
                       <span>{t('brain.explainerLegendRing')}</span>
                     </div>
                     <div className="ml-6 flex flex-wrap items-center gap-3">

@@ -346,6 +346,9 @@ namespace HumanOS.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<int?>("MaxDeepDiveCardsPerNode")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(400)
@@ -2137,6 +2140,26 @@ namespace HumanOS.Migrations
                         .IsUnique();
 
                     b.ToTable("AssessmentRounds");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.EngramReviewCompletion", b =>
+                {
+                    b.Property<Guid>("EngramReviewCompletionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CapabilityGraphNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("EngramReviewCompletionId");
+
+                    b.ToTable("EngramReviewCompletions");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Learning.LearningAssessmentResult", b =>

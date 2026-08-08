@@ -111,9 +111,65 @@ public sealed class SkillService
                     .OrderBy(l => l.JobRoleTitle)
                     .ToList());
 
+        var matches = await GetMatchedCapabilitiesAsync(skills, cancellationToken);
+
         return skills
-            .Select(s => ToResponse(s, linksBySkill.GetValueOrDefault(s.SkillId, [])))
+            .Select(s => ToResponse(s, linksBySkill.GetValueOrDefault(s.SkillId, []), matches.GetValueOrDefault(s.SkillId)))
             .ToList();
+    }
+
+    /// <summary>For each given Skill, finds the active Capability (if any)
+    /// that already satisfies it — same two-step matching
+    /// PersonCareerPlanService.AutoMatchCapabilitiesAsync uses for career-plan
+    /// roadmap steps: (1) EXPLICIT — Capability.TargetSkill equals this
+    /// skill's Name (case-insensitive), Category matches (or is null on the
+    /// Capability, for backward compatibility); (2) FALLBACK — Capability.Name
+    /// equals this skill's Name, Category matches (or is null). No tenant
+    /// filter on Capabilities, same as AutoMatchCapabilitiesAsync — the
+    /// catalog is shared, a course authored anywhere can close this gap.
+    /// Powers the "Curso creado" vs "Generar curso" indicator on the Skill
+    /// catalog page.</summary>
+    public async Task<Dictionary<Guid, (Guid CapabilityId, string CapabilityName)?>> GetMatchedCapabilitiesAsync(
+        IReadOnlyList<Skill> skills,
+        CancellationToken cancellationToken = default)
+    {
+        // Value type is a NULLABLE tuple, not just a tuple: GetValueOrDefault
+        // on a Dictionary<K, (Guid, string)> (non-nullable tuple) returns
+        // default((Guid, string)) = (Guid.Empty, null) for a missing key, which
+        // then implicitly wraps into a non-null (Guid.Empty, null) nullable
+        // tuple below — silently serializing MatchedCapabilityId as all-zeros
+        // instead of a real null. Nullable<T>'s own default IS null, so this
+        // dictionary shape makes GetValueOrDefault correct for unmatched skills.
+        var result = new Dictionary<Guid, (Guid, string)?>();
+        if (skills.Count == 0)
+        {
+            return result;
+        }
+
+        var activeCapabilities = await _dbContext.Capabilities
+            .AsNoTracking()
+            .Where(c => c.IsActive)
+            .Select(c => new { c.CapabilityId, c.Name, c.Category, c.TargetSkill })
+            .ToListAsync(cancellationToken);
+
+        foreach (var skill in skills)
+        {
+            var explicitMatch = activeCapabilities.FirstOrDefault(
+                c => c.TargetSkill is not null
+                    && (c.Category is null || c.Category == skill.Category)
+                    && string.Equals(c.TargetSkill.Trim(), skill.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            var match = explicitMatch ?? activeCapabilities.FirstOrDefault(
+                c => (c.Category is null || c.Category == skill.Category)
+                    && string.Equals(c.Name.Trim(), skill.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (match is not null)
+            {
+                result[skill.SkillId] = (match.CapabilityId, match.Name);
+            }
+        }
+
+        return result;
     }
 
     public async Task<SkillResponse> CreateAsync(
@@ -352,7 +408,9 @@ public sealed class SkillService
             .OrderBy(l => l.JobRoleTitle)
             .ToListAsync(cancellationToken);
 
-        return ToResponse(skill, links);
+        var matches = await GetMatchedCapabilitiesAsync([skill], cancellationToken);
+
+        return ToResponse(skill, links, matches.GetValueOrDefault(skill.SkillId));
     }
 
     private async Task<List<Guid>> ValidateJobRoleIdsAsync(Guid tenantId, List<Guid>? jobRoleIds, CancellationToken cancellationToken)
@@ -395,7 +453,10 @@ public sealed class SkillService
         return name.Trim();
     }
 
-    private static SkillResponse ToResponse(Skill skill, IReadOnlyList<SkillJobRoleLinkResponse> jobRoles) => new()
+    private static SkillResponse ToResponse(
+        Skill skill,
+        IReadOnlyList<SkillJobRoleLinkResponse> jobRoles,
+        (Guid CapabilityId, string CapabilityName)? matchedCapability = null) => new()
     {
         SkillId = skill.SkillId,
         TenantId = skill.TenantId,
@@ -406,6 +467,8 @@ public sealed class SkillService
         JobRoles = jobRoles,
         CreatedDate = skill.CreatedDate,
         UpdatedDate = skill.UpdatedDate,
+        MatchedCapabilityId = matchedCapability?.CapabilityId,
+        MatchedCapabilityName = matchedCapability?.CapabilityName,
     };
 
     // ── Shared with JobRoleService/PersonCareerPlanService ────────────────
