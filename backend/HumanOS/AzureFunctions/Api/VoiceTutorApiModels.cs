@@ -62,6 +62,28 @@ public sealed class VoiceTutorSessionRequest
     /// student already mastered this card. Ignored for every other
     /// StepType/path.</summary>
     public bool IsReviewOnly { get; set; }
+
+    /// <summary>Traditional Course path (2026-08-09) — a single
+    /// <c>CapabilityLesson</c> (a "subchapter", NOT its whole parent
+    /// chapter — matches Graph mode's per-node granularity). Provide this
+    /// ALONE, instead of LearningSessionStepId/CapabilityGraphNodeId —
+    /// takes priority over both if somehow given together. The voice
+    /// Agent reads this ONE lesson's cards and holds a free Q&amp;A/
+    /// study-help conversation grounded in it; never grades (the parent
+    /// chapter's final exam is a separate, deterministic multiple-choice
+    /// flow — see ChapterExamAgent/gradeChapterExam).</summary>
+    public Guid? TraditionalCourseLessonId { get; set; }
+
+    /// <summary>Structured Learning path (2026-08-10) — a single
+    /// <c>StructuredLearningSectionStep</c> (Hypothesis/Teaching only,
+    /// same scope rule as every other path). Provide this ALONE, instead
+    /// of every other target field — takes priority over all of them if
+    /// somehow given together. The voice Agent reads that step's own
+    /// Content aloud and holds a free study-help conversation grounded in
+    /// it; never grades (Recall/Assessment for Structured Learning stay
+    /// text-only, same rationale as Graph's own Recall/Assessment voice
+    /// exclusion).</summary>
+    public Guid? StructuredLearningSectionStepId { get; set; }
 }
 
 public sealed class VoiceTutorSessionResponseDto

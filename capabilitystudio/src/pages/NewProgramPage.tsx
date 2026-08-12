@@ -112,7 +112,7 @@ export default function NewProgramPage() {
             <div className="space-y-3">
               {logoPreviewUrl && (
                 <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <img src={logoPreviewUrl} alt={t('newProgram.logoAlt')} className="h-20 w-20 shrink-0 rounded-xl object-cover" />
+                  <img src={logoPreviewUrl} alt={t('newProgram.logoAlt')} className="h-20 w-20 shrink-0 rounded-xl object-contain object-center" />
                   <div className="min-w-0 flex-1">
                     {logoAccepted ? (
                       <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-400">

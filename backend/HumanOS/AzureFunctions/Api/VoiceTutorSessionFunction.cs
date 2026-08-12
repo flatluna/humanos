@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Graph;
@@ -89,6 +90,22 @@ public sealed class VoiceTutorSessionFunction
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.BadRequest, "MissingFields", "The request body is required.", cancellationToken);
+        }
+
+        // Traditional Course path (2026-08-09) — a single CapabilityLesson
+        // (subchapter), no graph/blueprint/session at all. Scoped to ONE
+        // lesson, not its whole parent chapter, to match Graph mode's
+        // per-node granularity. Handled entirely separately from the
+        // ExperienceStepType-oriented flow below.
+        if (body.TraditionalCourseLessonId.HasValue)
+        {
+            return await RunTraditionalLessonAsync(request, body.TraditionalCourseLessonId.Value, body.PersonName, cancellationToken);
+        }
+
+        if (body.StructuredLearningSectionStepId.HasValue)
+        {
+            return await RunStructuredLearningStepAsync(
+                request, body.StructuredLearningSectionStepId.Value, body.PersonName, body.ExampleCardIndex, body.IsReviewOnly, cancellationToken);
         }
 
         ExperienceStepType stepType;
@@ -280,6 +297,446 @@ public sealed class VoiceTutorSessionFunction
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.BadGateway, "VoiceSessionMintFailed", ex.Message, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Traditional Course path (2026-08-09) — mints a voice session
+    /// grounded in ONE <c>CapabilityLesson</c>'s reading cards (a
+    /// subchapter), not its whole parent chapter — matches Graph mode's
+    /// per-node granularity. No LearningSession/blueprint/ExampleCards/
+    /// tools involved at all — this is a free study-help conversation,
+    /// never a grading channel (the chapter's final exam stays a
+    /// separate, deterministic multiple-choice flow).
+    /// </summary>
+    private async Task<HttpResponseData> RunTraditionalLessonAsync(
+        HttpRequestData request, Guid lessonId, string? personName, CancellationToken cancellationToken)
+    {
+        var lesson = await _dbContext.CapabilityLessons
+            .AsNoTracking()
+            .Include(l => l.Cards)
+            .Include(l => l.CapabilityChapter)
+            .FirstOrDefaultAsync(l => l.CapabilityLessonId == lessonId, cancellationToken);
+
+        if (lesson is null || lesson.CapabilityChapter is null)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.NotFound, "LessonNotFound", "No lesson was found with that id.", cancellationToken);
+        }
+
+        var courseContext = await _dbContext.Capabilities
+            .AsNoTracking()
+            .Where(c => c.CapabilityId == lesson.CapabilityChapter.CapabilityId)
+            .Select(c => new { c.Name, c.ContentLanguageCode })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var contentBuilder = new StringBuilder();
+        foreach (var card in lesson.Cards.OrderBy(c => c.SortOrder))
+        {
+            contentBuilder.AppendLine($"### {card.Title}");
+            contentBuilder.AppendLine(card.Text);
+            contentBuilder.AppendLine();
+        }
+
+        var instructions = BuildTraditionalLessonInstructions(
+            lesson.Title, lesson.CapabilityChapter.Title, contentBuilder.ToString(), personName, courseContext?.Name, courseContext?.ContentLanguageCode);
+
+        try
+        {
+            var session = await _voiceSessionService.CreateEphemeralSessionAsync(instructions, cancellationToken);
+
+            return await FunctionResponseFactory.SuccessResponseAsync(request, new VoiceTutorSessionResponseDto
+            {
+                ClientSecret = session.ClientSecret,
+                RealtimeCallsUrl = session.RealtimeCallsUrl,
+                Model = session.Model,
+                Voice = session.Voice,
+                ExpiresAtUnixSeconds = session.ExpiresAtUnixSeconds
+            }, cancellationToken: cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadGateway, "VoiceSessionMintFailed", ex.Message, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Traditional Course lesson (subchapter) voice-tutor prompt
+    /// (2026-08-09) — a separate, self-contained guardrail block (same
+    /// rationale as <see cref="BuildInstructions"/>'s own doc comment: a
+    /// separate Realtime session needs its own complete guardrails,
+    /// nothing shared at runtime). PROACTIVELY TEACHES this ONE lesson's
+    /// own reading-card content out loud, like a teacher giving a class —
+    /// NOT a passive wait-for-questions Q&amp;A bot (2026-08-09 explicit
+    /// product decision: the Agent must give the actual lesson, then
+    /// take questions) — grounded strictly in this lesson (its parent
+    /// chapter's OTHER lessons are out of scope, matching Graph mode's
+    /// per-node granularity); never grades (the parent chapter's final
+    /// exam is a separate deterministic multiple-choice flow), never
+    /// invents facts outside the given content.
+    /// </summary>
+    private static string BuildTraditionalLessonInstructions(
+        string lessonTitle, string chapterTitle, string lessonContent, string? personName, string? courseName, string? contentLanguageCode)
+    {
+        var isEnglish = string.Equals(contentLanguageCode, "en", StringComparison.OrdinalIgnoreCase);
+        var languageRule = isEnglish
+            ? "- LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn, for the entire " +
+              "conversation, in a warm, brief and encouraging tone, no matter what language the student uses."
+            : "- IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos, " +
+              "durante toda la conversación, con un tono cercano, breve y alentador, sin importar en qué " +
+              "idioma te hable el estudiante.";
+
+        var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
+        var course = string.IsNullOrWhiteSpace(courseName) ? null : courseName.Trim();
+        var greeting = isEnglish
+            ? $"{(name is null ? "Hi" : $"Hi, {name}")}. Let's go over \"{lessonTitle}\"" +
+              (course is null ? "." : $", from the course \"{course}\".")
+            : $"{(name is null ? "Hola" : $"Hola, {name}")}. Vamos a ver \"{lessonTitle}\"" +
+              (course is null ? "." : $", del curso \"{course}\".");
+
+        var openingRule = isEnglish
+            ? $"Start talking YOURSELF immediately upon connecting, without waiting for the student to speak " +
+              $"first. Your first sentence must be exactly: \"{greeting}\" — then, WITHOUT waiting to be " +
+              "asked, immediately start TEACHING the lesson content below out loud, straight through from " +
+              "start to finish in one continuous class, in your own words, like a teacher giving a real class."
+            : $"Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el estudiante " +
+              $"diga algo primero. Tu primera frase debe ser exactamente: \"{greeting}\" — y sin esperar a que " +
+              "te lo pidan, empieza de inmediato a ENSEÑAR el contenido de la lección en voz alta, de principio " +
+              "a fin en una sola clase continua, con tus propias palabras, como un profesor dando una clase de verdad.";
+
+        return isEnglish
+            ? $"""
+                You are an AI Agent acting as a TEACHER giving a live class on one lesson (a "subchapter")
+                of a traditional, reading-based course (no per-card quiz here — just this lesson's material
+                to teach; a chapter-wide multiple-choice exam covers "{chapterTitle}" separately later,
+                which you have no part in).
+
+                {openingRule}
+
+                Your job for the rest of the conversation:
+                - TONE — match the lesson content's own voice exactly: if it's warm, personal and kind
+                  (e.g. it opens with something like "Welcome, sweet friend, we are so happy you're here!"),
+                  YOU must sound that warm and kind too, the whole time — friendly, courteous, encouraging,
+                  never cold, never abrupt, never rushed or robotic. Keep that same warm tone consistently
+                  from your first word to your last, including when answering questions and when you say
+                  goodbye at the end.
+                - Actually TEACH the lesson: give the WHOLE class straight through, from start to finish, in
+                  ONE continuous delivery — explain it in your own words like a real class, not just reading
+                  it verbatim, but everything you say must still be strictly grounded ONLY in the content
+                  below (never invent facts, numbers, examples, or content that isn't there).
+                - Do NOT pause after each paragraph/sentence/topic to check if the student understood or has
+                  questions — that is the single most important rule in this prompt. Only stop mid-class if
+                  the student actively interrupts you out loud with a question; if they do, answer it
+                  (grounded strictly in the content below), then immediately resume teaching where you left off.
+                - ONLY once you have finished teaching the ENTIRE lesson content, ask ONE time whether the
+                  student has any questions.
+                - If they ask a question, answer it (grounded strictly in the content below), then ask once
+                  more if they have any other questions. Repeat this only as many times as the student keeps
+                  asking — never loop or repeat the class content itself.
+                - As soon as the student says they have no (more) questions, STOP immediately: say once,
+                  clearly, "Press Next to continue" (in the required language) and then stop talking. Do not
+                  re-teach the lesson, do not ask again if they understood, do not keep the conversation going.
+                - NEVER grade the student, quiz them, or claim to affect their progress/exam — the chapter's
+                  final exam is a separate, deterministic flow you have no authority over.
+
+                LESSON CONTENT (your only source of truth):
+                {lessonContent}
+
+                {languageRule}
+                """
+            : $"""
+                Eres un Agente de IA que actúa como PROFESOR dando una clase en vivo sobre una lección (un
+                "subcapítulo") de un curso tradicional de lectura (aquí no hay examen por tarjeta — solo el
+                material de esta lección para enseñar; el examen de opción múltiple cubre todo el capítulo
+                "{chapterTitle}" por separado más adelante, y no participas en él).
+
+                {openingRule}
+
+                Tu trabajo durante el resto de la conversación:
+                - TONO — iguala exactamente el tono del propio contenido de la lección: si es cálido, cercano
+                  y amable (por ejemplo si empieza con algo como "Bienvenido, querido amigo, ¡qué felices
+                  estamos de tenerte aquí!"), TÚ debes sonar igual de cálido y amable todo el tiempo — cortés,
+                  cercano, alentador, nunca frío, nunca brusco, nunca apurado ni robótico. Mantén ese mismo
+                  tono cálido de forma consistente desde tu primera palabra hasta la última, incluso al
+                  responder preguntas y al despedirte al final.
+                - ENSEÑA de verdad la lección: da la clase COMPLETA de corrido, de principio a fin, en UNA
+                  sola entrega continua — explícala con tus propias palabras como en una clase real, no solo
+                  leyéndola textual, pero todo lo que digas debe basarse ÚNICAMENTE en el contenido de abajo
+                  (nunca inventes datos, cifras, ejemplos ni contenido que no esté ahí).
+                - NO hagas pausas después de cada párrafo/frase/tema para preguntar si el estudiante entendió
+                  o tiene dudas — esta es la regla más importante de todo este prompt. Solo detente a mitad de
+                  la clase si el estudiante te interrumpe en voz alta con una pregunta; si lo hace, respóndela
+                  (basándote estrictamente en el contenido de abajo) y retoma la clase de inmediato donde la
+                  dejaste.
+                - SOLO cuando termines de enseñar TODO el contenido de la lección, pregunta UNA vez si el
+                  estudiante tiene dudas.
+                - Si pregunta algo, respóndelo (basándote estrictamente en el contenido de abajo) y luego
+                  pregunta una vez más si tiene alguna otra duda. Repite esto solo mientras el estudiante siga
+                  preguntando — nunca repitas ni vuelvas a dar la clase en bucle.
+                - En cuanto el estudiante diga que no tiene (más) dudas, DETENTE de inmediato: di una sola vez,
+                  claramente, "Presiona Siguiente para continuar" y deja de hablar. No vuelvas a enseñar la
+                  lección, no vuelvas a preguntar si entendió, no sigas la conversación.
+                - NUNCA calificas al estudiante, ni le tomas examen, ni afirmas poder afectar su progreso o su
+                  examen — el examen final del capítulo es un flujo aparte, determinista, sobre el que no tienes autoridad.
+
+                CONTENIDO DE LA LECCIÓN (tu única fuente de verdad):
+                {lessonContent}
+
+                {languageRule}
+                """;
+    }
+
+    /// <summary>
+    /// Structured Learning path (2026-08-10) — mints a voice session
+    /// grounded in ONE <c>StructuredLearningSectionStep</c>'s own Content
+    /// (Hypothesis/Teaching) or ExampleCards (DeepDive, added same day —
+    /// reuses Graph's OWN <see cref="BuildInstructions"/>/
+    /// <see cref="BuildDeepDiveTools"/> as-is, since this pipeline's
+    /// ExampleCard JSON shape is identical to Graph's). No session/
+    /// blueprint at all — this pipeline has no student-session model yet
+    /// — just this one step's already-generated text/cards. Structured
+    /// Learning documents don't carry a stored content language (unlike
+    /// Graph's Capability.ContentLanguageCode), so DeepDive's language
+    /// hard-rule is resolved with a cheap heuristic (<see cref="DetectLanguageCode"/>)
+    /// instead — Hypothesis/Teaching's own prompt sidesteps this by just
+    /// asking the agent to match whatever language the content is written in.
+    /// </summary>
+    private async Task<HttpResponseData> RunStructuredLearningStepAsync(
+        HttpRequestData request, Guid sectionStepId, string? personName, int? exampleCardIndex, bool isReviewOnly, CancellationToken cancellationToken)
+    {
+        var step = await _dbContext.StructuredLearningSectionSteps
+            .AsNoTracking()
+            .Include(s => s.Section)
+            .ThenInclude(sec => sec.Document)
+            .FirstOrDefaultAsync(s => s.StructuredLearningSectionStepId == sectionStepId, cancellationToken);
+
+        if (step is null || step.Section is null)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.NotFound, "StepNotFound", "No StructuredLearningSectionStep was found with that id.", cancellationToken);
+        }
+
+        if (step.StepType == Models.Capabilities.Studio.StructuredLearningStepType.DeepDive)
+        {
+            List<ExampleCard>? exampleCards;
+            try
+            {
+                exampleCards = string.IsNullOrWhiteSpace(step.StepDataJson)
+                    ? null
+                    : JsonSerializer.Deserialize<List<ExampleCard>>(step.StepDataJson);
+            }
+            catch (JsonException)
+            {
+                exampleCards = null;
+            }
+
+            if (exampleCards is null || exampleCards.Count == 0)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity, "BlueprintStepMissing", "This section has no example cards for its Deep Dive step.", cancellationToken);
+            }
+
+            if (exampleCardIndex is null || exampleCardIndex < 0 || exampleCardIndex >= exampleCards.Count)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request,
+                    HttpStatusCode.BadRequest,
+                    "MissingFields",
+                    $"ExampleCardIndex is required for a DeepDive voice session and must be between 0 and {exampleCards.Count - 1}.",
+                    cancellationToken);
+            }
+
+            var detectedLanguageCode = DetectLanguageCode(string.Join(" ", exampleCards.Select(c => c.Text)));
+            var effectiveIsReviewOnly = isReviewOnly;
+            var deepDiveInstructions = BuildInstructions(
+                ExperienceStepType.DeepDive, step.Content, personName, nodeName: null, courseName: null,
+                detectedLanguageCode, exampleCards, exampleCardIndex, effectiveIsReviewOnly);
+            var deepDiveTools = effectiveIsReviewOnly ? null : BuildDeepDiveTools();
+
+            try
+            {
+                var deepDiveSession = await _voiceSessionService.CreateEphemeralSessionAsync(deepDiveInstructions, cancellationToken, deepDiveTools);
+
+                return await FunctionResponseFactory.SuccessResponseAsync(request, new VoiceTutorSessionResponseDto
+                {
+                    ClientSecret = deepDiveSession.ClientSecret,
+                    RealtimeCallsUrl = deepDiveSession.RealtimeCallsUrl,
+                    Model = deepDiveSession.Model,
+                    Voice = deepDiveSession.Voice,
+                    ExpiresAtUnixSeconds = deepDiveSession.ExpiresAtUnixSeconds
+                }, cancellationToken: cancellationToken);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadGateway, "VoiceSessionMintFailed", ex.Message, cancellationToken);
+            }
+        }
+
+        if (step.StepType != Models.Capabilities.Studio.StructuredLearningStepType.Hypothesis
+            && step.StepType != Models.Capabilities.Studio.StructuredLearningStepType.Teaching)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request,
+                HttpStatusCode.BadRequest,
+                "VoiceNotYetSupportedForStep",
+                $"Voice Tutor is only available for Hypothesis, Teaching and DeepDive steps so far (this step is {step.StepType}).",
+                cancellationToken);
+        }
+
+        var instructions = BuildStructuredLearningStepInstructions(
+            step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document.DocumentName);
+
+        try
+        {
+            var session = await _voiceSessionService.CreateEphemeralSessionAsync(instructions, cancellationToken);
+
+            return await FunctionResponseFactory.SuccessResponseAsync(request, new VoiceTutorSessionResponseDto
+            {
+                ClientSecret = session.ClientSecret,
+                RealtimeCallsUrl = session.RealtimeCallsUrl,
+                Model = session.Model,
+                Voice = session.Voice,
+                ExpiresAtUnixSeconds = session.ExpiresAtUnixSeconds
+            }, cancellationToken: cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadGateway, "VoiceSessionMintFailed", ex.Message, cancellationToken);
+        }
+    }
+
+    /// <summary>Very cheap English-vs-Spanish heuristic (2026-08-10) — counts
+    /// hits of a handful of extremely common function words unique to each
+    /// language. ONLY used for Structured Learning's DeepDive voice path,
+    /// which (unlike Graph's Capability) has no stored content language.
+    /// Defaults to Spanish on a tie/empty text (matches Capability's own
+    /// "es" default elsewhere in this codebase).</summary>
+    private static string DetectLanguageCode(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "es";
+        }
+
+        var padded = $" {text.ToLowerInvariant()} ";
+        string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this "];
+        string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu " ];
+
+        var englishHits = englishWords.Count(w => padded.Contains(w));
+        var spanishHits = spanishWords.Count(w => padded.Contains(w));
+
+        return englishHits > spanishHits ? "en" : "es";
+    }
+
+    /// <summary>
+    /// Structured Learning step voice-tutor prompt (2026-08-10, language bug
+    /// fixed same day) — mirrors <see cref="BuildTraditionalLessonInstructions"/>
+    /// almost verbatim (same "teach proactively, then take questions" product
+    /// decision, same bilingual full-template split), just grounded in ONE
+    /// section step's Content instead of a lesson's reading cards.
+    ///
+    /// BUG FIX: the opening greeting used to be hardcoded Spanish ("Hola...")
+    /// regardless of the section's own content language — reported live
+    /// (2026-08-10) as "el agente está hablando español, este curso se creó
+    /// en inglés". A hardcoded-Spanish FIRST utterance anchors the whole
+    /// realtime conversation in Spanish even when the rest of the prompt asks
+    /// the model to "match the content's language" — the model's very first
+    /// words already committed it to the wrong language. Structured Learning
+    /// documents don't carry a stored ContentLanguageCode the way Graph
+    /// Capabilities do, so language is now resolved via the same cheap
+    /// heuristic used for DeepDive (<see cref="DetectLanguageCode"/>) instead.
+    /// </summary>
+    private static string BuildStructuredLearningStepInstructions(
+        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName)
+    {
+        var isEnglish = DetectLanguageCode(stepContent) == "en";
+        var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
+        var document = string.IsNullOrWhiteSpace(documentName) ? null : documentName.Trim();
+
+        var greeting = isEnglish
+            ? (name is null ? $"Hi. Let's go over \"{subchapterTitle}\"" : $"Hi, {name}. Let's go over \"{subchapterTitle}\"")
+            : (name is null ? $"Hola. Vamos a ver \"{subchapterTitle}\"" : $"Hola, {name}. Vamos a ver \"{subchapterTitle}\"");
+        var greetingWithDocument = isEnglish
+            ? (document is null ? $"{greeting}." : $"{greeting}, from \"{document}\".")
+            : (document is null ? $"{greeting}." : $"{greeting}, de \"{document}\".");
+
+        if (isEnglish)
+        {
+            return $"""
+                You are an AI Agent acting as a TEACHER giving a live class on one section of a document
+                ("{chapterTitle}" → "{subchapterTitle}"). There are no cards or quiz here — just this
+                section's content to teach; this section's Recall practice and assessment are a separate
+                text flow you have no authority over.
+
+                Start talking YOURSELF immediately upon connecting, without waiting for the student to speak
+                first. Your first sentence must be exactly: "{greetingWithDocument}" — then, WITHOUT waiting
+                to be asked, immediately start TEACHING the content below out loud, straight through from
+                start to finish in one continuous class, in your own words, like a teacher giving a real class.
+
+                Your job for the rest of the conversation:
+                - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn, for the entire
+                  conversation, no matter what language the student uses.
+                - TONE — match the content's own voice exactly: if it's warm and personal, YOU must sound
+                  that warm too, the whole time — friendly, courteous, encouraging, never cold or robotic.
+                - Actually TEACH the section: give the WHOLE class straight through, from start to finish,
+                  in ONE continuous delivery — explain it in your own words like a real class, but everything
+                  you say must still be strictly grounded ONLY in the content below (never invent facts,
+                  numbers, examples, or content that isn't there).
+                - Do NOT pause after each paragraph/sentence/topic to check if the student understood — that
+                  is the single most important rule in this prompt. Only stop if the student actively
+                  interrupts you out loud with a question; answer it (grounded strictly in the content
+                  below), then immediately resume teaching where you left off.
+                - ONLY once you have finished teaching the ENTIRE content, ask ONE time whether the student
+                  has any questions. If they ask something, answer it and ask once more if they have another
+                  question — repeat only as long as the student keeps asking, never repeat the class itself.
+                - As soon as the student says they have no (more) questions, STOP immediately: say once,
+                  clearly, "Press Next to continue" and stop talking.
+                - NEVER grade the student or claim to affect their progress — this section's Recall and
+                  assessment are a separate text flow you have no authority over.
+
+                SECTION CONTENT (your only source of truth):
+                {stepContent}
+                """;
+        }
+
+        return $"""
+            Eres un Agente de IA que actúa como PROFESOR dando una clase en vivo sobre una sección de un
+            documento ("{chapterTitle}" → "{subchapterTitle}"). No hay tarjetas ni quiz aquí — solo el
+            contenido de esta sección para enseñar; el repaso (Recall) y la evaluación de esta sección son
+            un flujo de texto aparte sobre el que no tienes autoridad.
+
+            Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el estudiante
+            diga algo primero. Tu primera frase debe ser exactamente: "{greetingWithDocument}" — y sin
+            esperar a que te lo pidan, empieza de inmediato a ENSEÑAR el contenido de abajo en voz alta, de
+            principio a fin en una sola clase continua, con tus propias palabras, como un profesor dando una
+            clase de verdad.
+
+            Tu trabajo durante el resto de la conversación:
+            - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos, durante
+              toda la conversación, sin importar en qué idioma te hable el estudiante.
+            - TONO — iguala exactamente el tono del propio contenido: si es cálido y cercano, TÚ debes sonar
+              igual de cálido todo el tiempo — cortés, alentador, nunca frío ni robótico.
+            - ENSEÑA de verdad la sección: da la clase COMPLETA de corrido, de principio a fin, en UNA sola
+              entrega continua — explícala con tus propias palabras como en una clase real, pero todo lo que
+              digas debe basarse ÚNICAMENTE en el contenido de abajo (nunca inventes datos, cifras, ejemplos
+              ni contenido que no esté ahí).
+            - NO hagas pausas después de cada párrafo/frase/tema para preguntar si el estudiante entendió —
+              esta es la regla más importante de todo este prompt. Solo detente si el estudiante te
+              interrumpe en voz alta con una pregunta; respóndela (basándote estrictamente en el contenido de
+              abajo) y retoma la clase de inmediato donde la dejaste.
+            - SOLO cuando termines de enseñar TODO el contenido, pregunta UNA vez si el estudiante tiene
+              dudas. Si pregunta algo, respóndelo y luego pregunta una vez más si tiene otra duda — repite
+              solo mientras el estudiante siga preguntando, nunca repitas la clase en bucle.
+            - En cuanto el estudiante diga que no tiene (más) dudas, DETENTE de inmediato: di una sola vez,
+              claramente, "Presiona Siguiente para continuar" y deja de hablar.
+            - NUNCA calificas al estudiante ni afirmas poder afectar su progreso — el repaso y la evaluación
+              de esta sección son un flujo de texto aparte sobre el que no tienes autoridad.
+
+            CONTENIDO DE LA SECCIÓN (tu única fuente de verdad):
+            {stepContent}
+            """;
     }
 
     /// <summary>

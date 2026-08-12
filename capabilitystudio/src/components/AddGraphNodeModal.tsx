@@ -268,7 +268,7 @@ export default function AddGraphNodeModal({
                       <img
                         src={uploadedImagePreviewUrl}
                         alt=""
-                        className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                        className="h-16 w-16 shrink-0 rounded-lg object-contain object-center"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-slate-300">{uploadedImageFile?.name}</p>

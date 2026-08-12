@@ -1,6 +1,7 @@
+import { useRef, useState, useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, GitBranch, BookOpen, FileText, ChevronDown } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -26,7 +27,7 @@ export default function Layout() {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between gap-6">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-cover shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
+            <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain object-center shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
             <div className="leading-tight">
               <div className="font-semibold tracking-tight text-white">Engrams.one</div>
               <div className="text-[11px] text-slate-400">Engram</div>
@@ -109,13 +110,7 @@ export default function Layout() {
                 {t('nav.newProgram')}
               </Link>
             ) : (
-              <Link
-                to="/new"
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
-              >
-                <Plus className="h-4 w-4" strokeWidth={2.5} />
-                {t('nav.newCapability')}
-              </Link>
+              <NewCapabilityMenu />
             )}
           </div>
         </div>
@@ -130,6 +125,84 @@ export default function Layout() {
       <footer className="border-t border-white/10 py-6 text-center text-xs text-slate-500">
         {t('nav.footer')}
       </footer>
+    </div>
+  );
+}
+
+/** "+ Nueva ruta de aprendizaje" CTA, now a small dropdown since Studio has
+ * two course-creation methods (2026-08-09): the original Graph/Memory
+ * Paradox wizard (/new) and the simpler Traditional chapters+exam wizard
+ * (/new-traditional). */
+function NewCapabilityMenu() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
+      >
+        <Plus className="h-4 w-4" strokeWidth={2.5} />
+        {t('nav.newCapability')}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="animate-fade-in absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-xl">
+          <Link
+            to="/new"
+            onClick={() => setOpen(false)}
+            className="flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+          >
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/15">
+              <GitBranch className="h-4 w-4 text-brand-300" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-white">{t('nav.newGraphCapability')}</div>
+              <div className="text-xs text-slate-400">{t('chooseCreationMode.graphDescription')}</div>
+            </div>
+          </Link>
+          <Link
+            to="/new-traditional"
+            onClick={() => setOpen(false)}
+            className="flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+          >
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500/15">
+              <BookOpen className="h-4 w-4 text-accent-400" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-white">{t('nav.newTraditionalCourse')}</div>
+              <div className="text-xs text-slate-400">{t('chooseCreationMode.traditionalDescription')}</div>
+            </div>
+          </Link>
+          <Link
+            to="/new-structured-learning"
+            onClick={() => setOpen(false)}
+            className="flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+          >
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15">
+              <FileText className="h-4 w-4 text-emerald-400" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-white">{t('nav.newStructuredLearning')}</div>
+              <div className="text-xs text-slate-400">{t('chooseCreationMode.structuredLearningDescription')}</div>
+            </div>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

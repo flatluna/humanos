@@ -11,6 +11,9 @@ export interface BackendCapability {
   Name: string;
   Description: string | null;
   IsActive: boolean;
+  /** "GraphMemoryParadox" | "TraditionalChapters" — which course-creation
+   * method produced this capability. See Capability.LearningMode. */
+  LearningMode: 'GraphMemoryParadox' | 'TraditionalChapters';
   /** "es" or "en" — the language this capability's entire generated
    * content was authored in. See Capability.ContentLanguageCode. */
   ContentLanguageCode: string;

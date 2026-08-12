@@ -167,7 +167,7 @@ export default function CapabilityDetailPage() {
           <img
             src={apiImageUrl(`/capabilities/${capability.CapabilityId}/cover-image`)}
             alt=""
-            className="h-full w-full object-cover opacity-80"
+            className="h-full w-full object-contain object-center opacity-80"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />

@@ -73,7 +73,7 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
   if (sections.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center p-10 text-center">
-        <p className="text-sm text-white/50">No hay resultados para tu búsqueda.</p>
+        <p className="text-sm text-white/50">Ninguna neurona coincide con tu búsqueda.</p>
       </div>
     );
   }
@@ -157,7 +157,11 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
                               <span
                                 className={`flex items-center gap-0.5 text-xs font-bold ${automatic ? 'text-violet-300' : ''}`}
                                 style={automatic ? undefined : { color: memoryColor }}
-                                title={automatic ? 'Dominio automático — casi no se olvida' : undefined}
+                                title={
+                                  automatic
+                                    ? 'Esta habilidad ya se volvió automática (como andar en bici) tras suficiente práctica — casi no se desvanece.'
+                                    : undefined
+                                }
                               >
                                 {automatic && <Zap className="h-3 w-3" />}
                                 {automatic ? 'Automático' : `${percent}%`}
@@ -178,7 +182,7 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
       </div>
       <div className="mt-2 flex items-center gap-1.5 pb-2 text-[11px] text-white/30">
         <Sparkles className="h-3 w-3" />
-        <span>Elige un engrama para ver el detalle o hablar con tu agente.</span>
+        <span>Selecciona una neurona para ver qué aprendiste y hablar con tu Agente sobre ese tema.</span>
       </div>
     </div>
   );

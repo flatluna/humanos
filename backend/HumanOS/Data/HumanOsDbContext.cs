@@ -285,6 +285,64 @@ public sealed class HumanOsDbContext : DbContext
     /// <see cref="JobRoleSkill"/>.</summary>
     public DbSet<JobRoleSkill> JobRoleSkills => Set<JobRoleSkill>();
 
+    /// <summary>Traditional (Coursera-style) course chapters — see
+    /// <see cref="Models.Capabilities.Traditional.CapabilityChapter"/>.</summary>
+    public DbSet<Models.Capabilities.Traditional.CapabilityChapter> CapabilityChapters =>
+        Set<Models.Capabilities.Traditional.CapabilityChapter>();
+
+    public DbSet<Models.Capabilities.Traditional.CapabilityLesson> CapabilityLessons =>
+        Set<Models.Capabilities.Traditional.CapabilityLesson>();
+
+    public DbSet<Models.Capabilities.Traditional.CapabilityLessonCard> CapabilityLessonCards =>
+        Set<Models.Capabilities.Traditional.CapabilityLessonCard>();
+
+    public DbSet<Models.Capabilities.Traditional.CapabilityChapterExamQuestion> CapabilityChapterExamQuestions =>
+        Set<Models.Capabilities.Traditional.CapabilityChapterExamQuestion>();
+
+    public DbSet<Models.Capabilities.Traditional.CapabilityTraditionalIllustration> CapabilityTraditionalIllustrations =>
+        Set<Models.Capabilities.Traditional.CapabilityTraditionalIllustration>();
+
+    /// <summary>Step 1 of the new TOC-driven Studio pipeline — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningDocument"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningDocument> StructuredLearningDocuments =>
+        Set<Models.Capabilities.Studio.StructuredLearningDocument>();
+
+    public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentProgramMembership> StructuredLearningDocumentProgramMemberships =>
+        Set<Models.Capabilities.Studio.StructuredLearningDocumentProgramMembership>();
+
+    public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentSection> StructuredLearningDocumentSections =>
+        Set<Models.Capabilities.Studio.StructuredLearningDocumentSection>();
+
+    /// <summary>Schema-only for now — populated by a future, separate
+    /// LLM-based ontology-extraction step (not Step 1).</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningEntity> StructuredLearningEntities =>
+        Set<Models.Capabilities.Studio.StructuredLearningEntity>();
+
+    public DbSet<Models.Capabilities.Studio.StructuredLearningConnection> StructuredLearningConnections =>
+        Set<Models.Capabilities.Studio.StructuredLearningConnection>();
+
+    /// <summary>Step 3 output — see <see cref="Models.Capabilities.Studio.StructuredLearningSectionStep"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningSectionStep> StructuredLearningSectionSteps =>
+        Set<Models.Capabilities.Studio.StructuredLearningSectionStep>();
+
+    /// <summary>Step 3 DeepDive card illustration metadata — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningIllustration"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningIllustration> StructuredLearningIllustrations =>
+        Set<Models.Capabilities.Studio.StructuredLearningIllustration>();
+
+    /// <summary>Real-time Assessment (2026-08-10) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningAssessmentRound"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningAssessmentRound> StructuredLearningAssessmentRounds =>
+        Set<Models.Capabilities.Studio.StructuredLearningAssessmentRound>();
+
+    public DbSet<Models.Capabilities.Studio.StructuredLearningAssessmentQuestionAttempt> StructuredLearningAssessmentQuestionAttempts =>
+        Set<Models.Capabilities.Studio.StructuredLearningAssessmentQuestionAttempt>();
+
+    /// <summary>Real-time Recall (2026-08-10) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningRecallAttempt"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningRecallAttempt> StructuredLearningRecallAttempts =>
+        Set<Models.Capabilities.Studio.StructuredLearningRecallAttempt>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

@@ -1,5 +1,6 @@
 using HumanOS.Contracts.Programs;
 using HumanOS.Data;
+using HumanOS.Models.Capabilities.Studio;
 using HumanOS.Models.Programs;
 using Microsoft.EntityFrameworkCore;
 
@@ -347,6 +348,89 @@ public sealed class ProgramService
                 PhaseLabel = pc.PhaseLabel,
                 Objectives = pc.Objectives,
                 Requirements = pc.Requirements,
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<bool> AttachStructuredLearningDocumentAsync(
+        Guid programId,
+        Guid structuredLearningDocumentId,
+        CancellationToken cancellationToken = default)
+    {
+        var programExists = await _dbContext.Programs.AnyAsync(p => p.ProgramId == programId, cancellationToken);
+        if (!programExists)
+        {
+            return false;
+        }
+
+        var documentExists = await _dbContext.StructuredLearningDocuments.AnyAsync(d => d.StructuredLearningDocumentId == structuredLearningDocumentId, cancellationToken);
+        if (!documentExists)
+        {
+            return false;
+        }
+
+        var alreadyLinked = await _dbContext.StructuredLearningDocumentProgramMemberships
+            .AnyAsync(m => m.ProgramId == programId && m.StructuredLearningDocumentId == structuredLearningDocumentId, cancellationToken);
+        if (alreadyLinked)
+        {
+            return true;
+        }
+
+        var nextSortOrder = await _dbContext.StructuredLearningDocumentProgramMemberships
+            .Where(m => m.ProgramId == programId)
+            .Select(m => (int?)m.SortOrder)
+            .MaxAsync(cancellationToken) ?? 0;
+
+        _dbContext.StructuredLearningDocumentProgramMemberships.Add(new StructuredLearningDocumentProgramMembership
+        {
+            StructuredLearningDocumentProgramMembershipId = Guid.NewGuid(),
+            ProgramId = programId,
+            StructuredLearningDocumentId = structuredLearningDocumentId,
+            SortOrder = nextSortOrder + 1,
+            CreatedDate = DateTime.UtcNow,
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> DetachStructuredLearningDocumentAsync(
+        Guid programId,
+        Guid structuredLearningDocumentId,
+        CancellationToken cancellationToken = default)
+    {
+        var membership = await _dbContext.StructuredLearningDocumentProgramMemberships
+            .SingleOrDefaultAsync(m => m.ProgramId == programId && m.StructuredLearningDocumentId == structuredLearningDocumentId, cancellationToken);
+
+        if (membership is null)
+        {
+            return false;
+        }
+
+        _dbContext.StructuredLearningDocumentProgramMemberships.Remove(membership);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<CapabilityProgramMembershipResponse>> GetProgramsForStructuredLearningDocumentAsync(
+        Guid structuredLearningDocumentId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.StructuredLearningDocumentProgramMemberships
+            .AsNoTracking()
+            .Where(m => m.StructuredLearningDocumentId == structuredLearningDocumentId)
+            .Include(m => m.Program)
+            .OrderBy(m => m.Program.Name)
+            .Select(m => new CapabilityProgramMembershipResponse
+            {
+                ProgramId = m.ProgramId,
+                ProgramCode = m.Program.Code,
+                ProgramName = m.Program.Name,
+                SortOrder = m.SortOrder,
+                IsRequired = true,
+                PhaseLabel = null,
+                Objectives = null,
+                Requirements = null,
             })
             .ToListAsync(cancellationToken);
     }

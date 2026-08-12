@@ -124,7 +124,7 @@ export default function ProgramDetailPage() {
           <img
             src={apiImageUrl(`/programs/${program.ProgramId}/logo`)}
             alt=""
-            className="h-full w-full object-cover opacity-80"
+            className="h-full w-full object-contain object-center opacity-80"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />

@@ -47,6 +47,15 @@ public sealed class GetCapabilityCoverImageFunction
             .Select(g => g.CoverImageStoragePath)
             .FirstOrDefaultAsync(cancellationToken);
 
+        // Traditional-mode capabilities have no CapabilityGraph row at all —
+        // fall back to their own cover illustration (see
+        // TraditionalIllustrationPurpose.Cover) when nothing was found above.
+        storagePath ??= await _dbContext.CapabilityTraditionalIllustrations
+            .AsNoTracking()
+            .Where(i => i.CapabilityId == capabilityId && i.Purpose == Models.Capabilities.Traditional.TraditionalIllustrationPurpose.Cover)
+            .Select(i => i.StoragePath)
+            .FirstOrDefaultAsync(cancellationToken);
+
         if (storagePath is null)
         {
             return await FunctionResponseFactory.ErrorResponseAsync(

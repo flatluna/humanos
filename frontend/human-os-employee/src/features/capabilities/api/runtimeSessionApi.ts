@@ -130,16 +130,26 @@ export function advanceStep(learningSessionNodeId: string): Promise<BackendRunti
   });
 }
 
-// === "Aprobar (demo HR)" (2026-08-02) — HRAdmin-only, real per-caller
-// server-side check (see HrForceAdvanceStepFunction.cs), unlike Capability
-// Studio's blanket AllowStudioAutoApprove flag. Lets an HRAdmin
-// force-complete the currently Active gated step (DeepDive/Recall/
-// Production/Assessment) of a REAL employee's session, to demo/advance a
-// course live without waiting for real mastery. Explicit user request:
-// "esto es solo para usuarios que tienen admin HR ... esto no es para
-// todos" — the UI only renders this for user.orgRole === 'HRAdmin'
-// (NodeWorkflowPage.tsx), and the backend independently re-checks the
-// SAME thing from the real signed-in identity, not just the UI's say-so. ===
+// Self-service "siguiente tarjeta" on the LAST Deep Dive card (2026-08-05,
+// see RuntimeSkipDeepDiveStepFunction.cs) — unlike advanceStep above, this
+// is allowed while DeepDive is Active (that generic endpoint explicitly
+// rejects it) but ONLY for DeepDive; the backend independently re-checks
+// the active step really is DeepDive before skipping it ungraded.
+export function skipDeepDiveStep(learningSessionNodeId: string): Promise<BackendRuntimeStep> {
+  return rPost<BackendRuntimeStep>('/instructor-runtime/steps/deepdive-skip', {
+    LearningSessionNodeId: learningSessionNodeId,
+  });
+}
+
+// === "Aprobar (demo HR)" (2026-08-02, ported from human-os-employee) —
+// HRAdmin-only, real per-caller server-side check (see
+// HrForceAdvanceStepFunction.cs). Lets an HRAdmin force-complete the
+// currently Active gated step (DeepDive/Recall/Production/Assessment) of
+// their own or an employee's session, to demo/advance a course live
+// without waiting for real mastery. The UI only renders this for
+// user.orgRole === 'HRAdmin' (NodeWorkflowPage.tsx), and the backend
+// independently re-checks the SAME thing from the real signed-in
+// identity, not just the UI's say-so. ===
 
 export interface ForceAdvanceStepResponseDto {
   NextStep?: BackendRuntimeStep | null;
@@ -147,13 +157,11 @@ export interface ForceAdvanceStepResponseDto {
 }
 
 // This ONE call deliberately bypasses rPost/apiPost (the bare fetch
-// wrapper this file otherwise uses, which sends NO auth headers at all —
-// every other runtime call here just passes personId explicitly in the
-// body/query instead). HrForceAdvanceStepFunction.cs re-verifies the
-// REAL signed-in identity server-side via the X-Azure-OID/X-Azure-TID
-// headers, so it must go through the shared axios `apiClient` (see
-// src/api/index.ts), whose interceptor actually attaches those headers
-// (plus a bearer token) from the live MSAL session.
+// wrapper this file otherwise uses, which sends NO auth headers at all)
+// — HrForceAdvanceStepFunction.cs re-verifies the REAL signed-in identity
+// server-side via the X-Azure-OID/X-Azure-TID headers, so it must go
+// through the shared axios `apiClient` (see src/api/index.ts), whose
+// interceptor actually attaches those headers from the live MSAL session.
 export async function forceAdvanceStep(learningSessionNodeId: string): Promise<ForceAdvanceStepResponseDto> {
   const { data } = await apiClient.post(`/instructor-runtime/nodes/${learningSessionNodeId}/hr-force-advance`);
   return toPascalCaseDeep(data) as ForceAdvanceStepResponseDto;
@@ -186,13 +194,25 @@ export interface VoiceTutorSessionDto {
 }
 
 export function requestVoiceTutorSession(
-  target: { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
+  target:
+    | { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
+    | { capabilityGraphNodeId: string; stepType: ExperienceStepType; exampleCardIndex?: number; isReviewOnly?: boolean }
 ): Promise<VoiceTutorSessionDto> {
-  return rPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
-    LearningSessionStepId: target.learningSessionStepId,
-    CurrentPromptText: target.promptText,
-    ExampleCardIndex: target.exampleCardIndex,
-  });
+  return rPost<VoiceTutorSessionDto>(
+    '/instructor-runtime/tutor/voice-session',
+    'learningSessionStepId' in target
+      ? {
+          LearningSessionStepId: target.learningSessionStepId,
+          CurrentPromptText: target.promptText,
+          ExampleCardIndex: target.exampleCardIndex,
+        }
+      : {
+          CapabilityGraphNodeId: target.capabilityGraphNodeId,
+          StepType: target.stepType,
+          ExampleCardIndex: target.exampleCardIndex,
+          IsReviewOnly: target.isReviewOnly,
+        }
+  );
 }
 
 // === "Reactivar Engrama" (2026-07-24) === A second, distinct Agent
@@ -225,6 +245,26 @@ export interface GeneratedVisualAidImageDto {
 export function requestGeneratedVisualAidImage(prompt: string): Promise<GeneratedVisualAidImageDto> {
   return rPost<GeneratedVisualAidImageDto>('/instructor-runtime/tutor/visual-aid/generate-image', {
     Prompt: prompt,
+  });
+}
+
+// Cross-chapter RAG lookup (2026-08-06) for the search_other_chapters Realtime
+// tool — lets the voice Agent fetch content from a DIFFERENT node/chapter of
+// the same course on demand, instead of the whole course being stuffed into
+// every session's instructions. See SearchNodeKnowledgeFunction.cs.
+export interface NodeKnowledgeSnippetDto {
+  NodeName: string;
+  Content: string;
+}
+
+export interface NodeKnowledgeSearchResultDto {
+  Snippets: NodeKnowledgeSnippetDto[];
+}
+
+export function searchNodeKnowledge(capabilityGraphNodeId: string, query: string): Promise<NodeKnowledgeSearchResultDto> {
+  return rPost<NodeKnowledgeSearchResultDto>('/instructor-runtime/tutor/knowledge/search', {
+    CapabilityGraphNodeId: capabilityGraphNodeId,
+    Query: query,
   });
 }
 

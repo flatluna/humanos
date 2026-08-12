@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Sparkles, Layers } from 'lucide-react';
+import { Search, Sparkles, Layers, GitBranch, BookOpen } from 'lucide-react';
 import { getCapabilities, type BackendCapability } from '../lib/api/capabilitiesApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
+import { getStructuredLearningDocuments, type StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
 import CapabilityCard from '../components/CapabilityCard';
+import StructuredLearningDocumentCard from '../components/StructuredLearningDocumentCard';
 import SubjectPill from '../components/SubjectPill';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { getSubjectIcon } from '../lib/subjectVisuals';
@@ -11,11 +13,13 @@ import { getSubjectIcon } from '../lib/subjectVisuals';
 export default function HomePage() {
   const { t } = useTranslation();
   const [capabilities, setCapabilities] = useState<BackendCapability[]>([]);
+  const [structuredLearningDocuments, setStructuredLearningDocuments] = useState<StructuredLearningDocumentSummary[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSubject, setActiveSubject] = useState<string | null>(null);
   const [activeLanguage, setActiveLanguage] = useState<'es' | 'en' | null>(null);
+  const [activeLearningMode, setActiveLearningMode] = useState<BackendCapability['LearningMode'] | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -23,11 +27,12 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
 
-    Promise.all([getCapabilities(), getSubjects()])
-      .then(([caps, subs]) => {
+    Promise.all([getCapabilities(), getSubjects(), getStructuredLearningDocuments().catch(() => [])])
+      .then(([caps, subs, structuredDocs]) => {
         if (cancelled) return;
         setCapabilities(caps);
         setSubjects(subs);
+        setStructuredLearningDocuments(structuredDocs);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -50,6 +55,7 @@ export default function HomePage() {
     return capabilities.filter((c) => {
       if (activeSubject && c.SubjectCode !== activeSubject) return false;
       if (activeLanguage && (c.ContentLanguageCode ?? 'es') !== activeLanguage) return false;
+      if (activeLearningMode && c.LearningMode !== activeLearningMode) return false;
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         if (!c.Name.toLowerCase().includes(q) && !(c.LearningSummary ?? '').toLowerCase().includes(q)) {
@@ -58,7 +64,18 @@ export default function HomePage() {
       }
       return true;
     });
-  }, [capabilities, activeSubject, activeLanguage, search]);
+}, [capabilities, activeSubject, activeLanguage, activeLearningMode, search]);
+
+  // Structured Learning documents have no Subject/Language/LearningMode
+  // metadata yet (no Capability record — see repo memory), so they're only
+  // excluded by the free-text search, and only shown under "All methods"/
+  // "All subjects" (any other filter hides them, since they can't match).
+  const filteredStructuredLearningDocuments = useMemo(() => {
+    if (activeSubject || activeLearningMode) return [];
+    if (!search.trim()) return structuredLearningDocuments;
+    const q = search.trim().toLowerCase();
+    return structuredLearningDocuments.filter((d) => d.DocumentName.toLowerCase().includes(q));
+  }, [structuredLearningDocuments, activeSubject, activeLearningMode, search]);
 
   return (
     <div>
@@ -114,6 +131,22 @@ export default function HomePage() {
           </div>
         )}
 
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+          <SubjectPill label={t('home.allModes')} active={activeLearningMode === null} onClick={() => setActiveLearningMode(null)} icon={<Layers className="h-3.5 w-3.5" />} />
+          <SubjectPill
+            label={t('home.graphMode')}
+            active={activeLearningMode === 'GraphMemoryParadox'}
+            onClick={() => setActiveLearningMode('GraphMemoryParadox')}
+            icon={<GitBranch className="h-3.5 w-3.5" />}
+          />
+          <SubjectPill
+            label={t('home.traditionalMode')}
+            active={activeLearningMode === 'TraditionalChapters'}
+            onClick={() => setActiveLearningMode('TraditionalChapters')}
+            icon={<BookOpen className="h-3.5 w-3.5" />}
+          />
+        </div>
+
         <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
           <SubjectPill label={t('home.allLanguages')} active={activeLanguage === null} onClick={() => setActiveLanguage(null)} />
           <SubjectPill label={t('home.spanish')} active={activeLanguage === 'es'} onClick={() => setActiveLanguage('es')} />
@@ -128,14 +161,17 @@ export default function HomePage() {
           </div>
         )}
 
-        {!loading && !error && filtered.length === 0 && (
+        {!loading && !error && filtered.length === 0 && filteredStructuredLearningDocuments.length === 0 && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center text-slate-400">
             {t('home.noResults')}
           </div>
         )}
 
-        {!loading && !error && filtered.length > 0 && (
+        {!loading && !error && (filtered.length > 0 || filteredStructuredLearningDocuments.length > 0) && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredStructuredLearningDocuments.map((document) => (
+              <StructuredLearningDocumentCard key={document.StructuredLearningDocumentId} document={document} />
+            ))}
             {filtered.map((capability) => (
               <CapabilityCard key={capability.CapabilityId} capability={capability} />
             ))}

@@ -1169,7 +1169,7 @@ function StepReviewBody({ data, t }: { data: StepReviewDto; t: (key: string, opt
                 <img
                   src={apiImageUrl(`/illustrations/${card.IllustrationId}/image`)}
                   alt={card.Title}
-                  className="mb-1.5 h-24 w-full rounded-lg object-cover"
+                  className="mb-1.5 h-24 w-full rounded-lg object-contain object-center"
                 />
               ) : (
                 card.Emoji && <div className="mb-1.5 text-2xl leading-none">{card.Emoji}</div>

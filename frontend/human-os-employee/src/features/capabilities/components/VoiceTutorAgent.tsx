@@ -36,6 +36,9 @@ const STATE_LABELS: Record<VoiceState, string> = {
  */
 export default function VoiceTutorAgent({
   learningSessionStepId,
+  capabilityGraphNodeId,
+  stepType,
+  isReviewOnly,
   promptText,
   onTranscript,
   onExplanationAccepted,
@@ -43,19 +46,25 @@ export default function VoiceTutorAgent({
   autoConnect = true,
   compact = false,
 }: {
-  learningSessionStepId: string;
+  /** Live-session path: the student is actually on (or has already completed) this step. */
+  learningSessionStepId?: string;
+  /** Blueprint-only path (no LearningSessionStep row exists yet/anymore for this
+   * step, e.g. free DeepDive practice from the stepper) — reads straight from
+   * the node's blueprint instead. Provide this pair INSTEAD of learningSessionStepId. */
+  capabilityGraphNodeId?: string;
+  stepType?: 'Hypothesis' | 'Teaching' | 'DeepDive';
+  /** Blueprint-only DeepDive only: no grading tool is offered, the Agent just talks about the card. */
+  isReviewOnly?: boolean;
   promptText?: string;
   onTranscript?: (transcript: string) => void;
-  /** Deep Dive only (2026-07-30, ported from Capability Studio): fired
-   * when the voice Agent itself calls the `mark_explanation_understood`
-   * Realtime tool — i.e. the exact moment IT decides (per its own
-   * hard-capped instructions) the student's spoken explanation is good
-   * enough. The caller should forward this straight to the same
-   * deterministic grading endpoint used for a typed answer
-   * (submitDeepDiveAttempt) — this callback only ever signals WHEN to
-   * grade, never the grade itself. */
+  /** Deep Dive only: fired when the voice Agent itself calls the
+   * `mark_explanation_understood` Realtime tool — i.e. the exact moment
+   * IT decides the student's spoken explanation is good enough. Forward
+   * this straight to the same deterministic grading endpoint used for a
+   * typed answer (submitDeepDiveAttempt) — this callback only signals
+   * WHEN to grade, never the grade itself. */
   onExplanationAccepted?: (explanation: string) => void;
-  /** Only for the Deep Dive step (2026-07-29) — which ExampleCard's "habla
+  /** Only for the Examples step (2026-07-29) — which ExampleCard's "habla
    * con tu maestro" button was pressed, so the voice Agent explains THAT
    * specific example (with its result) instead of the step's own generic
    * content. */
@@ -71,7 +80,9 @@ export default function VoiceTutorAgent({
   // Stable identity for "which step is this widget currently about" — used
   // to reset/re-auto-connect when the parent page swaps in a different
   // step without remounting this component instance.
-  const targetKey = exampleCardIndex !== undefined ? learningSessionStepId + ':' + exampleCardIndex : learningSessionStepId;
+  const targetKey =
+    (learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`) +
+    (exampleCardIndex !== undefined ? ':' + exampleCardIndex : '');
 
   const [state, setState] = useState<VoiceState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -87,21 +98,6 @@ export default function VoiceTutorAgent({
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  // Grace-period timer that ramps the mic gain back up a short beat after
-  // the Agent's audio goes quiet — see monitorRemoteAudioLevel below.
-  const micGraceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Real barge-in support (2026-07-24, ported from EngramReviewAgent.tsx):
-  // instead of hard-muting the mic track while the Agent talks (which
-  // fully blocks genuine interruption, not just echo), the raw mic is
-  // routed through a GainNode before being sent over the peer connection.
-  // While the Agent is speaking the gain is ducked way down (not to zero)
-  // so ordinary speaker-bleed echo stays below the server VAD's
-  // `threshold`, but a real, clearly louder interruption from the student
-  // still crosses it and triggers `interrupt_response: true` server-side
-  // like a normal conversation.
-  const micGainNodeRef = useRef<GainNode | null>(null);
-  const micProcessingContextRef = useRef<AudioContext | null>(null);
-  const micProcessedStreamRef = useRef<MediaStream | null>(null);
   // Dedup guard for the Deep Dive `mark_explanation_understood` tool call —
   // Azure can legitimately report the SAME completed function call via both
   // `response.output_item.done` and `response.done`; only ever act on a
@@ -115,20 +111,11 @@ export default function VoiceTutorAgent({
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    if (micGraceTimeoutRef.current !== null) {
-      clearTimeout(micGraceTimeoutRef.current);
-      micGraceTimeoutRef.current = null;
-    }
     dataChannelRef.current = null;
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
-    micProcessedStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micProcessedStreamRef.current = null;
-    micGainNodeRef.current = null;
-    micProcessingContextRef.current?.close().catch(() => undefined);
-    micProcessingContextRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
     setState('idle');
@@ -165,35 +152,22 @@ export default function VoiceTutorAgent({
       const average = sum / buffer.length;
       const isAgentSpeaking = average > 12;
 
-      // FIXED 2026-07-24 — replaced the earlier hard mic-mute (see below)
-      // with GainNode-based "ducking": confirmed real-world setup is
-      // laptop/desktop speakers + mic (no headphones), which leaks enough
-      // acoustic echo of the Agent's OWN voice back into the mic that
-      // browser echoCancellation alone doesn't fully cancel it. But fully
-      // muting the mic while the Agent spoke also blocked genuine
-      // barge-in entirely (the server's VAD never saw ANY mic audio to
-      // judge). Ducking to a low (not zero) gain lets a real, clearly
-      // louder interruption still cross the server's VAD `threshold` while
-      // ordinary quieter speaker-bleed echo mostly stays below it. Ramped
-      // smoothly (setTargetAtTime) to avoid audible clicks/zipper noise.
-      const micGain = micGainNodeRef.current;
-      if (micGain) {
-        const ctx = micProcessingContextRef.current;
-        const now = ctx?.currentTime ?? 0;
-        if (isAgentSpeaking) {
-          micGain.gain.setTargetAtTime(0.12, now, 0.05);
-          if (micGraceTimeoutRef.current !== null) {
-            clearTimeout(micGraceTimeoutRef.current);
-            micGraceTimeoutRef.current = null;
-          }
-        } else if (micGain.gain.value < 0.9 && micGraceTimeoutRef.current === null) {
-          micGraceTimeoutRef.current = setTimeout(() => {
-            const ctx2 = micProcessingContextRef.current;
-            micGainNodeRef.current?.gain.setTargetAtTime(1, ctx2?.currentTime ?? 0, 0.05);
-            micGraceTimeoutRef.current = null;
-          }, 500);
-        }
-      }
+      // CHANGED 2026-07-25 (explicit user request: "quiero que cuando el
+      // usuario hable el agente se calle, que permita yo interrumpa") — the
+      // mic stays live the ENTIRE time, including while the Agent is
+      // speaking, so the server's own VAD (`turn_detection: server_vad`,
+      // `interrupt_response: true`, configured in the data channel's
+      // `session.update` below) can detect real speech and auto-cancel/
+      // truncate the Agent's in-progress response — true voice barge-in.
+      // `input_audio_buffer.speech_started` (handled in the data channel's
+      // onmessage below) pauses local playback immediately for a snappy
+      // felt interruption as soon as the server detects it. A prior
+      // GainNode-based mic-ducking approach was removed (2026-08-05) — it
+      // suppressed the student's real voice enough that the server's VAD
+      // never crossed threshold, so real interruption stopped working
+      // entirely (regression vs. Capability Studio's already-fixed
+      // behavior). Trade-off accepted: speaker+mic setups without
+      // headphones can occasionally self-interrupt on acoustic echo.
 
       // If the agent's audio resumes (a new response), make sure local
       // playback isn't left paused from a previous manual/auto interrupt.
@@ -215,7 +189,11 @@ export default function VoiceTutorAgent({
     setState('connecting');
     handledToolCallIdsRef.current.clear();
     try {
-      const session = await requestVoiceTutorSession({ learningSessionStepId, promptText, exampleCardIndex });
+      const session = await requestVoiceTutorSession(
+        learningSessionStepId
+          ? { learningSessionStepId, promptText, exampleCardIndex }
+          : { capabilityGraphNodeId: capabilityGraphNodeId!, stepType: stepType!, exampleCardIndex, isReviewOnly }
+      );
 
       // Explicit (not just `true`) so the browser can't skip echo
       // cancellation — without it, the mic picks up the Agent's own voice
@@ -231,24 +209,10 @@ export default function VoiceTutorAgent({
       });
       localStreamRef.current = micStream;
 
-      // Route the raw mic through a GainNode so it can be ducked (not hard
-      // muted) while the Agent is speaking — see monitorRemoteAudioLevel.
-      // The peer connection sends the PROCESSED stream's track, never the
-      // raw hardware mic track directly.
-      const micProcessingContext = new AudioContext();
-      micProcessingContextRef.current = micProcessingContext;
-      const micSource = micProcessingContext.createMediaStreamSource(micStream);
-      const micGainNode = micProcessingContext.createGain();
-      micGainNode.gain.value = 1;
-      micGainNodeRef.current = micGainNode;
-      const micDestination = micProcessingContext.createMediaStreamDestination();
-      micSource.connect(micGainNode).connect(micDestination);
-      micProcessedStreamRef.current = micDestination.stream;
-
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
 
-      micDestination.stream.getTracks().forEach((track) => peerConnection.addTrack(track, micDestination.stream));
+      micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
 
       peerConnection.ontrack = (event) => {
         const [remoteStream] = event.streams;
@@ -285,12 +249,10 @@ export default function VoiceTutorAgent({
           onTranscript(payload.transcript.trim());
         }
 
-        // Deep Dive's `mark_explanation_understood` tool call — the Agent
-        // decides itself (per its own instructions) when the student's
-        // spoken explanation is good enough; this only signals WHEN to
-        // grade, never the grade itself (grading always goes through the
-        // same deterministic submitDeepDiveAttempt endpoint as a typed
-        // answer).
+        // Deep Dive's `mark_explanation_understood` tool call — same
+        // "check both possible completed-item events" defensiveness as
+        // the transcript handling above, since it's unclear ahead of time
+        // which one Azure will use for a given session.
         if (onExplanationAccepted) {
           const items =
             payload.type === 'response.output_item.done' && payload.item
@@ -326,28 +288,33 @@ export default function VoiceTutorAgent({
         }
       };
       dataChannel.onopen = () => {
-        // Real barge-in: keep the mic live and let the server's own VAD
-        // decide when the student is genuinely interrupting (as opposed to
-        // acoustic echo of the Agent's own voice leaking into the mic).
-        // `interrupt_response: true` (the API default, set explicitly here)
-        // makes the server auto-cancel the in-progress response and
-        // auto-truncate its unplayed audio the moment real speech is
-        // detected — WebRTC connections need no manual truncate bookkeeping
-        // client-side for this. The `threshold` stays high enough that
-        // ordinary speaker-bleed echo (with browser echoCancellation on)
-        // usually doesn't cross it, while a real, clearly louder
-        // interruption does.
+        // FIXED 2026-08-05 (matches Capability Studio's 2026-07-25 fix,
+        // never ported here): this GA Realtime session schema nests
+        // turn_detection under `session.audio.input.turn_detection` (same
+        // place as transcription), NOT at the top level like the legacy
+        // Realtime API. The previous top-level `session: { turn_detection }`
+        // sent here was silently ignored by the server, so this redundant
+        // client-side reinforcement never actually did anything — the
+        // backend already sets this correctly at session creation (see
+        // RealtimeVoiceSessionService.cs), so real barge-in still worked,
+        // but this client-side override was dead code. Kept for clarity/
+        // defensiveness, now with the correct nested shape.
         dataChannel.send(
           JSON.stringify({
             type: 'session.update',
             session: {
-              turn_detection: {
-                type: 'server_vad',
-                threshold: 0.75,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 700,
-                create_response: true,
-                interrupt_response: true,
+              audio: {
+                input: {
+                  turn_detection: {
+                    type: 'server_vad',
+                    threshold: 0.85,
+                    prefix_padding_ms: 300,
+                    silence_duration_ms: 700,
+                    create_response: true,
+                    interrupt_response: true,
+                  },
+                  noise_reduction: { type: 'near_field' },
+                },
               },
             },
           })
@@ -392,7 +359,7 @@ export default function VoiceTutorAgent({
       teardown();
       setState('error');
     }
-  }, [learningSessionStepId, promptText, onTranscript, onExplanationAccepted, monitorRemoteAudioLevel, teardown]);
+  }, [learningSessionStepId, capabilityGraphNodeId, stepType, isReviewOnly, promptText, onTranscript, onExplanationAccepted, exampleCardIndex, monitorRemoteAudioLevel, teardown]);
 
   const isActive = state === 'connected' || state === 'listening' || state === 'speaking';
   const isBusy = state === 'connecting';

@@ -1,0 +1,72 @@
+using System.Text.Json.Serialization;
+using HumanOS.Agents.Studio;
+
+namespace HumanOS.Services;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TraditionalCourseStage
+{
+    Running,
+    Completed,
+    Failed
+}
+
+/// <summary>Status snapshot for one in-progress or finished Traditional
+/// Course run — same non-blocking polling pattern as
+/// <see cref="PdfCapabilityGraphRunStatus"/>.</summary>
+public sealed class TraditionalCourseRunStatus
+{
+    public Guid RunId { get; set; }
+
+    public TraditionalCourseStage Stage { get; set; }
+
+    public string CurrentStepDescription { get; set; } = string.Empty;
+
+    public string? ErrorMessage { get; set; }
+
+    public TraditionalCourseResult? Result { get; set; }
+
+    public static TraditionalCourseRunStatus Running(Guid runId, string step) => new()
+    {
+        RunId = runId,
+        Stage = TraditionalCourseStage.Running,
+        CurrentStepDescription = step
+    };
+
+    public static TraditionalCourseRunStatus Failed(Guid runId, string error) => new()
+    {
+        RunId = runId,
+        Stage = TraditionalCourseStage.Failed,
+        ErrorMessage = error
+    };
+
+    public static TraditionalCourseRunStatus Completed(Guid runId, TraditionalCourseResult result) => new()
+    {
+        RunId = runId,
+        Stage = TraditionalCourseStage.Completed,
+        CurrentStepDescription = "Completado",
+        Result = result
+    };
+}
+
+/// <summary>Final summary of a completed Traditional Course run.</summary>
+public sealed class TraditionalCourseResult
+{
+    public Guid CapabilityId { get; set; }
+
+    public string CourseName { get; set; } = string.Empty;
+
+    public int PageCount { get; set; }
+
+    public int ChapterCount { get; set; }
+
+    public int LessonCount { get; set; }
+
+    public int CardCount { get; set; }
+
+    public int ExamQuestionCount { get; set; }
+
+    public int IllustrationsGeneratedCount { get; set; }
+
+    public List<AgentTokenUsage> TokenUsage { get; set; } = [];
+}

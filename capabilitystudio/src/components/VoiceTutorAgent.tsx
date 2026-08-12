@@ -53,6 +53,8 @@ export default function VoiceTutorAgent({
   exampleCardIndex,
   reviewOnly,
   reviewSession,
+  traditionalCourseLessonId,
+  structuredLearningSectionStepId,
   startLabel,
   autoConnect = true,
   compact = false,
@@ -94,6 +96,18 @@ export default function VoiceTutorAgent({
    * invites questions. Provide this INSTEAD of learningSessionStepId/
    * capabilityGraphNodeId+stepType; takes priority over both if given. */
   reviewSession?: { personId: string; capabilityGraphNodeId: string };
+  /** Traditional Course path (2026-08-09) — a single CapabilityLesson id
+   * (a "subchapter" — NOT its whole parent chapter, matches Graph mode's
+   * per-node granularity). Provide this ALONE instead of
+   * learningSessionStepId/capabilityGraphNodeId+stepType/reviewSession;
+   * takes priority over all of them if given. */
+  traditionalCourseLessonId?: string;
+  /** Structured Learning path (2026-08-10) — a single
+   * StructuredLearningSectionStep id (Hypothesis/Teaching/DeepDive).
+   * Provide this ALONE instead of every other target prop; for DeepDive,
+   * also pass `exampleCardIndex` (and `reviewOnly` for the read-only
+   * already-mastered-card path). */
+  structuredLearningSectionStepId?: string;
   /** Overrides the default idle-button label (e.g. "Talk to the agent")
    * with custom already-localized text — used by the review flow to say
    * something like "Listen to this lesson" instead. */
@@ -109,7 +123,8 @@ export default function VoiceTutorAgent({
   // used to reset/re-auto-connect when the parent page swaps in a
   // different step (either a live step or a different peeked step)
   // without remounting this component instance.
-  const targetKey = `${learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`}:${exampleCardIndex ?? ''}`;
+  const targetKey =
+    traditionalCourseLessonId ?? structuredLearningSectionStepId ?? `${learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`}:${exampleCardIndex ?? ''}`;
 
   const [state, setState] = useState<VoiceState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -218,7 +233,11 @@ export default function VoiceTutorAgent({
     setState('connecting');
     handledToolCallIdsRef.current.clear();
     try {
-      const session = reviewSession
+      const session = traditionalCourseLessonId
+        ? await requestVoiceTutorSession({ traditionalCourseLessonId, personName })
+        : structuredLearningSectionStepId
+        ? await requestVoiceTutorSession({ structuredLearningSectionStepId, personName, exampleCardIndex, isReviewOnly: reviewOnly })
+        : reviewSession
         ? await requestEngramReviewSession(reviewSession.personId, reviewSession.capabilityGraphNodeId)
         : learningSessionStepId
         ? await requestVoiceTutorSession({ learningSessionStepId, promptText, personName, exampleCardIndex })
@@ -419,6 +438,8 @@ export default function VoiceTutorAgent({
     reviewSession,
     monitorRemoteAudioLevel,
     teardown,
+    traditionalCourseLessonId,
+    structuredLearningSectionStepId,
   ]);
 
   const isActive = state === 'connected' || state === 'listening' || state === 'speaking';

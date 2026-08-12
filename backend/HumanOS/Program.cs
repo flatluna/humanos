@@ -270,6 +270,82 @@ var host = new HostBuilder()
         services.AddSingleton<PdfCapabilityGraphPipelineService>();
         services.AddSingleton<PdfCapabilityGraphOrchestrator>();
 
+        // Traditional-course pipeline (2026-08-09) — Studio's second,
+        // simpler course-creation method: linear Chapters -> Lessons made
+        // of reading Cards (no Recall/Production), ending each chapter with
+        // ONE deterministic multiple-choice exam. Reuses every extraction/
+        // grounding/illustration agent above; only LessonCardAgent/
+        // ChapterExamAgent are new. Same Singleton rationale as the Graph
+        // pipeline above (keeps in-memory runs alive across HTTP calls).
+        services.AddSingleton<HumanOS.Agents.Studio.LessonCardAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.ChapterExamAgent>();
+        services.AddSingleton<TraditionalCoursePipelineService>();
+        services.AddSingleton<TraditionalCoursePipelineOrchestrator>();
+
+        // Structured Learning Document pipeline (2026-08-10) — Studio's
+        // THIRD course-creation method, Step 1/2 only so far: deterministic
+        // (no-LLM-generation) Chapter->Section extraction with a semantic
+        // embedding per section, for content whose own TOC/index should be
+        // walked as-is rather than turned into a concept/skill graph (e.g.
+        // policy/compliance documents). Reuses PdfContentExtractionService/
+        // DocumentChapterSplitter/CapabilityEmbeddingService as-is; brand
+        // new persistence + its own separate in-memory run slot — never
+        // touches the Graph or Traditional pipelines above.
+        services.AddSingleton<StructuredLearningExtractionService>();
+        services.AddSingleton<StructuredLearningExtractionOrchestrator>();
+
+        // Step 3 (2026-08-10) — designs the 6-step pedagogical sequence for
+        // ONE section at a time, grounded ONLY in that section's own text.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningSectionDesignerAgent>();
+        services.AddSingleton<StructuredLearningPedagogyService>();
+        services.AddSingleton<StructuredLearningPedagogyOrchestrator>();
+
+        // Real-time Recall/Assessment (2026-08-10) — replaces the earlier
+        // design where the section designer above baked a FIXED list of
+        // Recall items/Assessment questions once at generation time (same
+        // static content shown to every student, every time). Mirrors the
+        // proven Graph/Memory Paradox pattern (AdaptiveAssessmentAgent/
+        // TutorAgentV2 + RecallLoopGate) — see StructuredLearningAssessmentEngine.cs/
+        // StructuredLearningRecallEngine.cs doc comments. Agents singleton
+        // (no per-request state, same as every other agent); engines
+        // scoped (take a DbContext per call, same as AdaptiveAssessmentEngine/
+        // TutorService above).
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningAssessmentAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningRecallAgent>();
+        services.AddScoped<StructuredLearningAssessmentEngine>();
+        services.AddScoped<StructuredLearningRecallEngine>();
+
+        // Real-time Deep Dive (2026-08-10) — same rationale as Recall/
+        // Assessment above, ported from Graph's TutorService.SubmitDeepDiveAttemptAsync
+        // + DeepDiveLoopGate (reused as-is).
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningDeepDiveAgent>();
+        services.AddScoped<StructuredLearningDeepDiveEngine>();
+
+        // "Edit mode" review tools (2026-08-10) — mirrors Graph's
+        // BlueprintReviewService/BlueprintStepEditorAgent/ExampleCardEditorAgent.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningStepEditorAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningExampleCardEditorAgent>();
+        services.AddScoped<StructuredLearningReviewService>();
+
+        // "Edit mode" add-section feature (2026-08-11) — mirrors Graph's
+        // GraphNodeAdditionAgent/AddCapabilityGraphNodeFunction. Singleton
+        // (uses IDbContextFactory internally, same as StructuredLearningPedagogyService
+        // above, whose own RunAsync it reuses as-is to generate the new
+        // section's steps).
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningSectionAdditionAgent>();
+        services.AddSingleton<StructuredLearningSectionAdditionService>();
+
+        // "Edit mode" delete-section feature (2026-08-11) — mirrors Graph's
+        // CapabilityGraphPersistenceService.DeleteNodeAsync. Singleton (uses
+        // IDbContextFactory internally, same as the addition service above).
+        services.AddSingleton<StructuredLearningSectionDeletionService>();
+
+        // "Edit mode" delete-document feature (2026-08-11) — permanently
+        // removes a structured-learning document and all of its generated
+        // content. Singleton (uses IDbContextFactory internally to handle
+        // the cross-table cascade cleanup atomically).
+        services.AddSingleton<StructuredLearningDocumentDeletionService>();
+
         // On-demand "Profundizar" (Knowledge Expansion) feature (2026-07-20,
         // see /memories/repo/... knowledge-expansion notes): learner-triggered
         // deeper explanation combining the LLM's own knowledge with a live

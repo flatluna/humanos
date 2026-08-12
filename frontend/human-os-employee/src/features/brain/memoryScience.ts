@@ -145,3 +145,90 @@ export function computeGlobalMemoryScore(rootGroups: RootGroup[]): number | null
   if (count === 0) return null;
   return Math.round((sum / count) * 100);
 }
+
+/** One day's point on the "Mi Evolución" growth timeline. Ported verbatim
+ * from human-os-web's memoryScience.ts (2026-08-08). */
+export interface EngramCountHistoryPoint {
+  /** ISO yyyy-MM-dd for this day (local time, midnight). */
+  date: string;
+  /** Cumulative number of distinct engrams mastered on/before this day —
+   * a simple growth counter, never goes down (unlike memory freshness,
+   * which is what Mi Cerebro's own gauge already covers). Shown as an
+   * always-visible "total so far" badge, not the bar height. */
+  cumulativeCount: number;
+  /** Engrams mastered on THIS exact calendar day — the real day-by-day
+   * activity signal, and what the chart's bar height plots (a cumulative
+   * count would flatten every day's actual effort into one ever-growing
+   * number, hiding what was actually done "today"). */
+  dailyCount: number;
+  /** Average best-assessment score (0-100) of ONLY the engrams mastered on
+   * THIS day (not a cumulative/all-time average), so the bar's color
+   * genuinely reflects that day's performance. null when dailyCount is 0. */
+  avgScore: number | null;
+  /** Names of engrams whose most recent completion landed on this exact
+   * calendar day — drives the little "brain" marker on that day's bar. */
+  events: string[];
+}
+
+/** Timezone-safe UTC-ms parse for backend datetime strings with no "Z"/
+ * offset suffix (e.g. "2026-08-06T01:17:58.68") — the native `new Date(...)`
+ * parser would otherwise treat them as LOCAL time. */
+function toUtcMs(dateString: string): number {
+  const hasTimezone = /[Zz]|[+-]\d{2}:\d{2}$/.test(dateString);
+  return new Date(hasTimezone ? dateString : `${dateString}Z`).getTime();
+}
+
+/** Builds a daily "engrams mastered" activity time series for the last
+ * `days` days (ending today) straight from data the Brain page already
+ * fetches — no new backend endpoint needed. Each point separates that
+ * day's own activity (dailyCount/avgScore, what the bars plot) from the
+ * running lifetime total (cumulativeCount, shown as a separate badge). */
+export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): EngramCountHistoryPoint[] {
+  const masteredNodes: { name: string; lastCompletedDate: string; finalScore?: number }[] = [];
+  for (const root of rootGroups) {
+    for (const cluster of root.clusters) {
+      for (const node of cluster.nodes) {
+        if (node.lastCompletedDate) {
+          masteredNodes.push({ name: node.name, lastCompletedDate: node.lastCompletedDate, finalScore: node.finalScore });
+        }
+      }
+    }
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const points: EngramCountHistoryPoint[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(today.getTime() - i * DAY_MS);
+    // A node counts for THIS day if it was mastered any time up through the
+    // END of this calendar day — not just before its midnight start —
+    // otherwise a node mastered later today wouldn't count on today's point.
+    const endOfDayMs = day.getTime() + DAY_MS - 1;
+    let cumulativeCount = 0;
+    const events: string[] = [];
+    let dailyScoreSum = 0;
+    let dailyScoreCount = 0;
+    for (const node of masteredNodes) {
+      const masteredAtMs = toUtcMs(node.lastCompletedDate);
+      if (masteredAtMs > endOfDayMs) continue; // not mastered yet as of this day
+      cumulativeCount += 1;
+      const masteredToday = masteredAtMs >= day.getTime() && masteredAtMs <= endOfDayMs;
+      if (masteredToday) {
+        events.push(node.name);
+        if (typeof node.finalScore === 'number') {
+          dailyScoreSum += node.finalScore;
+          dailyScoreCount += 1;
+        }
+      }
+    }
+    points.push({
+      date: day.toISOString().slice(0, 10),
+      cumulativeCount,
+      dailyCount: events.length,
+      avgScore: dailyScoreCount > 0 ? Math.round(dailyScoreSum / dailyScoreCount) : null,
+      events,
+    });
+  }
+  return points;
+}

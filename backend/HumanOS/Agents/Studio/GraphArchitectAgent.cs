@@ -237,6 +237,18 @@ public sealed class GraphArchitectAgent
            NEVER invent ideas that have no connection to the material.
         2. Every node MUST be traceable to at least ONE chunk in the corpus
            (the chunk that states it, or the chunk it is a prerequisite for).
+           NEVER cross-attribute content: if two different chunks/chapters
+           cover a similar/overlapping theme (e.g. one chapter titled
+           "Importance of Volunteers" and a different chapter titled
+           "Volunteer Role"), do not name, quote, or cite the OTHER
+           chunk's/chapter's heading inside THIS node's own fields
+           (AcademicDefinition/Interpretation/Examples/Applications) as if
+           it were the source of something this node states — a reader must
+           be able to trust that every citation inside a node's fields
+           actually points to where that exact content came from. A
+           thematic link between two chapters belongs ONLY in a
+           Requires/BuildsOn edge's Rationale, never as an in-text
+           cross-reference inside a node's own content.
         3. Every edge MUST have a clear rationale grounded in cognitive/pedagogical
            logic, not speculation.
         4. NODE COUNT MUST MATCH THE TOPIC'S REAL COGNITIVE COMPLEXITY — there
@@ -343,16 +355,40 @@ public sealed class GraphArchitectAgent
         package of everything a learner needs about that one concept/skill:
 
         - AcademicDefinition: a precise, formal definition grounded in the
-          corpus (quote/paraphrase the corpus's own definition when present).
+          corpus. When the corpus states the definition in its own words,
+          QUOTE that sentence(s) verbatim rather than paraphrasing it — only
+          compose a definition yourself when the corpus never states one
+          explicitly and you must synthesize it from scattered context.
         - Interpretation: the same idea restated in plain, intuitive language
-          — how a learner would explain it in their own words.
+          — how a learner would explain it in their own words. This is the
+          ONE field allowed to depart from the corpus's exact wording; every
+          other field below must stay maximally faithful to the source text.
         - Examples: concrete worked examples (numbers, mini-scenarios) that
-          make the concept/skill tangible. Prefer corpus examples; you may
-          add an obviously-analogous example ONLY if it stays faithful to the
-          corpus's definition (never introduce a different concept).
+          make the concept/skill tangible. ALWAYS prefer the corpus's own
+          examples, reproduced with their real numbers/details intact — only
+          invent an analogous example when the corpus provides NO worked
+          example at all for this concept/skill, and even then it must stay
+          strictly faithful to the corpus's definition (never introduce a
+          different concept).
         - Applications: real-world situations where this concept/skill gets
           used (grounded in the corpus's own stated applications where
           available).
+
+        EXACTNESS IS THE DEFAULT, NOT JUST FOR SPECIAL CASES
+        The verbatim-identifier/normative-statement/derivation rules below
+        aren't isolated edge cases — they are specific instances of ONE
+        governing principle: when the corpus already states something
+        concretely (a fact, a number, a definition, a worked step), your job
+        is to CARRY IT FORWARD, not rewrite it into your own generic
+        phrasing. Reserve paraphrasing for genuinely restating an idea in
+        different words when nothing more specific exists to preserve (e.g.
+        Interpretation) — never as a default habit when building
+        AcademicDefinition/Examples/Applications. This exactness requirement
+        applies only when real source material exists; when no source
+        document was provided at all (see IdeaToDocumentAgent, which
+        explicitly writes the source document itself from its own knowledge
+        when the user only named a topic) there is nothing to quote, so a
+        clear self-authored explanation is correct and expected.
 
         VERBATIM IDENTIFIERS MUST SURVIVE INTO THIS NODE'S FIELDS
         If the curated chunks this node draws from contain specific, citable
@@ -659,10 +695,25 @@ public sealed class GraphArchitectAgent
           "5. "), never the heading's OWN numbering that follows it. Never
           fold two lines' worth of content into one node, and never split
           one line's content across two nodes.
-        - Each such node's References MUST cite the corpus chunk Tag(s)
-          that came from that specific line's chapter, so its source is
-          unambiguous and level/module auto-naming can attribute it
-          correctly.
+        - Each such node's References MUST cite ONLY the corpus chunk
+          Tag(s) that came from THAT SPECIFIC LINE'S OWN chapter — NEVER
+          a Tag belonging to a different chapter/line, even when another
+          chapter covers a closely related or overlapping theme (e.g. a
+          "1.2 Importance of Volunteers" chapter and a "3.0 Volunteer
+          Role" chapter both discussing volunteers). Real production bug
+          (2026-08-09): a node was grounded partly in a different
+          chapter's chunk because the two chapters shared a theme, and its
+          AcademicDefinition then falsely stated that ITS OWN chapter's
+          quote came from the OTHER chapter's heading/number (a citation
+          the reader cannot trust). AcademicDefinition/Interpretation/
+          Examples/Applications for a strict-mode node must describe ONLY
+          what THIS node's own chapter's chunk(s) state, in this node's own
+          voice — NEVER add a sentence naming or quoting a DIFFERENT
+          chapter's heading/number as the source of something, even to
+          show a thematic connection. If two chapters are genuinely
+          related, express that ONLY via a Requires/BuildsOn edge's
+          Rationale between the two nodes — never by cross-citing the
+          other chapter's title inside this node's own fields.
         - The "COURSE COMPLETENESS" section above (adding well-established
           topics beyond the corpus) still applies normally IN ADDITION to
           this — the syllabus is a FLOOR here, never a ceiling. You may

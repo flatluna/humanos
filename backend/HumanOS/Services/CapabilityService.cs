@@ -91,6 +91,24 @@ public sealed class CapabilityService
             .ThenBy(c => c.Code)
             .ToListAsync(cancellationToken);
 
+        // Traditional-mode capabilities have no CapabilityGraph row at all
+        // (cover image + summary live on their own tables instead) — batch
+        // both lookups once here rather than per-row, since this list can
+        // include many capabilities.
+        var traditionalCapabilityIds = capabilities
+            .Where(c => c.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters)
+            .Select(c => c.CapabilityId)
+            .ToList();
+        var traditionalCoverCapabilityIds = traditionalCapabilityIds.Count == 0
+            ? []
+            : await _dbContext.CapabilityTraditionalIllustrations
+                .AsNoTracking()
+                .Where(i => traditionalCapabilityIds.Contains(i.CapabilityId) &&
+                    i.Purpose == Models.Capabilities.Traditional.TraditionalIllustrationPurpose.Cover)
+                .Select(i => i.CapabilityId)
+                .ToListAsync(cancellationToken);
+        var traditionalCoverCapabilityIdSet = traditionalCoverCapabilityIds.ToHashSet();
+
         return capabilities.Select(c => new CapabilityResponse
         {
             CapabilityId = c.CapabilityId,
@@ -106,6 +124,7 @@ public sealed class CapabilityService
                 ?? c.Translations?.FirstOrDefault(t => t.LanguageCode == "en")?.Description
                 ?? c.Description,
             IsActive = c.IsActive,
+            LearningMode = c.LearningMode.ToString(),
             ContentLanguageCode = c.ContentLanguageCode,
             PedagogicalAudience = c.PedagogicalAudience,
             IncludeExamplesStep = c.IncludeExamplesStep,
@@ -125,8 +144,12 @@ public sealed class CapabilityService
                 : ComputeGraphLevelCount(c.CapabilityGraph),
             ModuleCount = c.Levels.Sum(l => l.Modules.Count),
             NodeCount = c.CapabilityGraph?.Nodes.Count ?? 0,
-            HasCoverImage = !string.IsNullOrEmpty(c.CapabilityGraph?.CoverImageStoragePath),
-            LearningSummary = Truncate(c.CapabilityGraph?.ExecutiveSummary, 95),
+            HasCoverImage = c.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters
+                ? traditionalCoverCapabilityIdSet.Contains(c.CapabilityId)
+                : !string.IsNullOrEmpty(c.CapabilityGraph?.CoverImageStoragePath),
+            LearningSummary = c.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters
+                ? Truncate(c.Description, 95)
+                : Truncate(c.CapabilityGraph?.ExecutiveSummary, 95),
             Levels = [.. c.Levels.OrderBy(l => l.SortOrder).Select(l => l.Layer)],
             OwnerPersonId = c.OwnerPersonId,
             OwnerTenantId = c.OwnerTenantId,

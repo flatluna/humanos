@@ -289,7 +289,7 @@ export default function PreviewNodeBlueprintView({ mode }: { mode: PreviewMode }
                       <img
                         src={apiImageUrl(`/illustrations/${card.IllustrationId}/image`)}
                         alt={card.Title}
-                        className="mb-2 h-32 w-full rounded-lg object-cover"
+                        className="mb-2 h-32 w-full rounded-lg object-contain object-center"
                       />
                     ) : (
                       card.Emoji && <div className="mb-2 text-3xl leading-none">{card.Emoji}</div>

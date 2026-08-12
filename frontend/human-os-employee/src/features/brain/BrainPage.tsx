@@ -3,13 +3,14 @@ import { Link } from 'react-router';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
-import { Brain, Search, Sparkles, X, Bot, Layers, RotateCcw, AlertTriangle, Shuffle } from 'lucide-react';
+import { Brain, Search, Sparkles, X, Bot, Layers, LayoutGrid, Share2, RotateCcw, AlertTriangle, Shuffle } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import { getNodeSummary, type NodeSummaryDto } from '@/features/capabilities/api/runtimeSessionApi';
 import { API_BASE_URL } from '@/features/capabilities/api/httpClient';
 import EngramReviewAgent from '@/features/capabilities/components/EngramReviewAgent';
+import { BrainGraph } from './BrainGraph';
 import { BrainRecallGrid } from './BrainRecallGrid';
 import { MemoryScoreGauge } from './MemoryScoreGauge';
 import { MemoryScienceExplainer } from './MemoryScienceExplainer';
@@ -50,11 +51,13 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
  * the same markup four times. */
 function FilterChipRow({
   label,
+  allLabel,
   options,
   value,
   onChange,
 }: {
   label: string;
+  allLabel: string;
   options: { value: string; label: string; color?: string }[];
   value: string | null;
   onChange: (value: string | null) => void;
@@ -62,7 +65,7 @@ function FilterChipRow({
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-        {label}:
+        {label}
       </span>
       <button
         type="button"
@@ -73,7 +76,7 @@ function FilterChipRow({
             : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.12]'
         }`}
       >
-        Todas
+        {allLabel}
       </button>
       {options.map((opt) => (
         <button
@@ -218,6 +221,7 @@ export function BrainPage() {
   const [engramOpen, setEngramOpen] = useState(false);
   const [cardModalIndex, setCardModalIndex] = useState<number | null>(null);
   const [cardAgentActive, setCardAgentActive] = useState(false);
+  const [view, setView] = useState<'grid' | 'graph'>('grid');
   const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
   const [courseFilter, setCourseFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -377,7 +381,7 @@ export function BrainPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mi Cerebro</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Lo que ya dominas de tus cursos asignados — y qué se está debilitando.
+            Cada neurona brillante de abajo es algo que ya dominaste — un mapa real de tu propio conocimiento.
           </p>
         </div>
       </div>
@@ -388,15 +392,15 @@ export function BrainPage() {
         <div className="mt-6 flex flex-wrap items-stretch gap-3">
           <div className="grid grid-cols-3 gap-3 sm:max-w-lg">
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Engramas</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Neuronas activas</p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalNeurons}</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Cursos</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Áreas de conocimiento</p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalAreas}</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Por repasar</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Para repasar pronto</p>
               <p className="mt-1 text-2xl font-bold text-amber-500 dark:text-amber-400">{totalNeedsReview}</p>
             </Card>
           </div>
@@ -412,25 +416,31 @@ export function BrainPage() {
         <Card className="mt-4 flex items-start gap-3 border-dashed p-4">
           <Bot className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Próximamente: pregúntale a tu agente sobre todo lo que ya dominas a la vez.
+            Preguntar sobre todo lo que has aprendido a la vez llegará pronto. Por ahora, elige una neurona específica
+            para hablar sobre ella.
           </p>
         </Card>
       )}
 
-      {loading && <LoadingBackdrop title="Cargando tu cerebro..." description="Reuniendo todo lo que ya dominas." />}
+      {loading && (
+        <LoadingBackdrop
+          title="Construyendo tu red de conocimiento"
+          description="Conectando tu aprendizaje bilingüe en todos tus Engramas..."
+        />
+      )}
 
       {isEmpty && (
         <Card className="mt-8 flex flex-col items-center gap-3 p-10 text-center">
           <Brain className="h-10 w-10 text-slate-300 dark:text-slate-600" />
-          <p className="text-base font-semibold text-slate-900 dark:text-white">Todavía no tienes engramas dominados.</p>
+          <p className="text-base font-semibold text-slate-900 dark:text-white">Todavía no has dominado ningún nodo.</p>
           <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
-            A medida que domines temas en tus cursos, aparecerán aquí como engramas que puedes repasar.
+            Completa tu primer nodo en un Engrama para verlo brillar aquí.
           </p>
           <Link
             to="/capabilities"
             className="mt-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
-            Ver mis cursos
+            Explorar Engramas
           </Link>
         </Card>
       )}
@@ -443,19 +453,46 @@ export function BrainPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar un engrama..."
+                placeholder="Busca un tema que ya aprendiste..."
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
               />
+            </div>
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 dark:border-white/10 dark:bg-white/[0.03]">
+              <button
+                type="button"
+                onClick={() => setView('grid')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  view === 'grid'
+                    ? 'bg-gradient-to-r from-brand-500 to-accent-500 text-white shadow'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Grilla
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('graph')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  view === 'graph'
+                    ? 'bg-gradient-to-r from-brand-500 to-accent-500 text-white shadow'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Grafo
+              </button>
             </div>
           </div>
 
           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            Elige un engrama para ver el detalle o hablar con tu agente.
+            Selecciona una neurona para ver qué aprendiste y hablar con tu Agente sobre ese tema.
           </p>
 
           {subjectOptions.length > 1 && (
             <FilterChipRow
-              label="Filtrar por área"
+              label="Materia:"
+              allLabel="Todas"
               value={subjectFilter}
               onChange={setSubjectFilter}
               options={subjectOptions.map((s) => ({ value: s.code, label: s.name, color: getSubjectColor(s.code) }))}
@@ -464,7 +501,8 @@ export function BrainPage() {
 
           {courseOptions.length > 1 && (
             <FilterChipRow
-              label="Filtrar por curso"
+              label="Curso:"
+              allLabel="Todos"
               value={courseFilter}
               onChange={setCourseFilter}
               options={courseOptions.map((c) => ({ value: c.id, label: c.name }))}
@@ -473,7 +511,8 @@ export function BrainPage() {
 
           {categoryOptions.length > 0 && (
             <FilterChipRow
-              label="Filtrar por tipo de curso"
+              label="Tipo de curso:"
+              allLabel="Todos"
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={categoryOptions.map((c) => ({ value: c.code, label: c.name }))}
@@ -481,7 +520,8 @@ export function BrainPage() {
           )}
 
           <FilterChipRow
-            label="Estado del engrama"
+            label="Estado:"
+            allLabel="Todas"
             value={statusFilter === 'all' ? null : statusFilter}
             onChange={(v) => setStatusFilter((v as StatusFilter) ?? 'all')}
             options={[
@@ -529,7 +569,11 @@ export function BrainPage() {
           </div>
 
           <div className="relative mt-4 h-[560px] w-full overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(ellipse_at_center,_#1e1b4b_0%,_#0f172a_55%,_#020617_100%)] shadow-2xl sm:h-[680px]">
-            <BrainRecallGrid rootGroups={filteredRootGroups} query={query} onSelectNeuron={handleSelectNode} />
+            {view === 'grid' ? (
+              <BrainRecallGrid rootGroups={filteredRootGroups} query={query} onSelectNeuron={handleSelectNode} />
+            ) : (
+              <BrainGraph rootGroups={filteredRootGroups} query={query} onSelectNeuron={handleSelectNode} />
+            )}
           </div>
         </>
       )}
@@ -562,7 +606,7 @@ export function BrainPage() {
                   type="button"
                   onClick={() => setSelectedNode(null)}
                   className="rounded-full p-1 text-white/60 hover:bg-white/10 hover:text-white"
-                  aria-label="Cerrar panel"
+                  aria-label="Cerrar"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -581,7 +625,7 @@ export function BrainPage() {
                 </div>
               )}
 
-              {summaryLoading && <p className="mt-6 text-sm text-white/50">Cargando resumen...</p>}
+              {summaryLoading && <p className="mt-6 text-sm text-white/50">Cargando...</p>}
 
               {!summaryLoading && summary && (
                 <div className="mt-6 grid grid-cols-2 gap-3">
@@ -591,7 +635,7 @@ export function BrainPage() {
                     value={typeof summary.FinalScore === 'number' ? `${summary.FinalScore}/100` : '—'}
                   />
                   <SummaryStat
-                    label="Primera vez dominado"
+                    label="Dominado desde"
                     value={
                       summary.FirstCompletedDate
                         ? new Date(summary.FirstCompletedDate).toLocaleDateString('es', { dateStyle: 'medium' })
@@ -615,7 +659,7 @@ export function BrainPage() {
                 className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Sparkles className="h-4 w-4" />
-                Hablar con tu agente
+                Habla con tu Agente sobre esto
               </button>
 
               {deepDiveCards.length > 0 && (
@@ -657,7 +701,7 @@ export function BrainPage() {
                 className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 <RotateCcw className="h-4 w-4" />
-                Rehacer los 5 pasos
+                Rehacer los 5 pasos (sube el score)
               </Link>
             </motion.div>
           </>

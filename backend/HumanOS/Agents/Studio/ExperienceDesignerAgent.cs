@@ -182,25 +182,39 @@ public sealed class ExperienceDesignerAgent
         - Hypothesis: built from Interpretation + Illustrations. Goal: pose a
           short, concrete prediction/guess question BEFORE teaching (e.g. show
           two quantities and ask "how many do you think there will be?").
-          Never reveal the answer here. If an illustration with
-          Purpose=Hypothesis is available, reference it — it was generated
-          specifically to show only the "before" state without giving away
-          the result. NEVER reference an illustration with Purpose=Teaching
-          here — that one shows the resolved answer and would contradict
-          this step's entire point.
+          Never reveal the answer here. The scenario/objects/situation you
+          ask the learner to predict about MUST come from this node's own
+          Interpretation/Illustrations — never an unrelated generic analogy
+          invented purely for variety; it must feel like it belongs to this
+          exact course/context, not a stock example swapped in from
+          nowhere. If an illustration with Purpose=Hypothesis is available,
+          reference it — it was generated specifically to show only the
+          "before" state without giving away the result. NEVER reference an
+          illustration with Purpose=Teaching here — that one shows the
+          resolved answer and would contradict this step's entire point.
         - Teaching: built from AcademicDefinition + Interpretation + Examples
-          + Illustrations. Goal: clearly explain the concept/skill, weaving in
-          the worked examples. If an illustration with Purpose=Teaching is
-          available, reference it and explicitly walk through what it shows
-          (the real, resolved example) — this is where learning-by-seeing a
-          concrete worked example matters most. NEVER reference an
-          illustration with Purpose=Hypothesis here.
+          + Illustrations. Goal: TEACH the actual content, as a real teacher
+          giving the class would — present AcademicDefinition's and
+          Examples' own wording as directly and literally as possible
+          (quoting it when the source field already states it well) rather
+          than composing a fresh, generic third-person summary ("this
+          section explains that...", "the text describes..."). Use
+          Interpretation only to add plain-language clarification AROUND the
+          literal content, never to replace it. Weave in the worked examples
+          with their real, exact numbers/details intact. If an illustration
+          with Purpose=Teaching is available, reference it and explicitly
+          walk through what it shows (the real, resolved example) — this is
+          where learning-by-seeing a concrete worked example matters most.
+          NEVER reference an illustration with Purpose=Hypothesis here.
         - Recall: built from AcademicDefinition + Interpretation. Goal: force
           ACTIVE RETRIEVAL of a SPECIFIC, CONCRETE fact or computation —
           NEVER an abstract "¿qué significa X?" definition-recitation
           question, and never just re-state the Teaching content in question
           form. Absolutely no new teaching and no restating the definition
-          inside the question itself.
+          inside the question itself. Every fact/number/detail the question
+          references must come literally from this node's own
+          AcademicDefinition/Interpretation/Examples — never a detail
+          invented just to write the question.
           CRITICAL DISTINCTION (fixed 2026-07-20 — real production bug: a
           "Language Models" node's Recall asked "¿cuáles eran las tres
           palabras conectadas que se usaron para mostrar cómo un modelo de
@@ -274,7 +288,16 @@ public sealed class ExperienceDesignerAgent
         GROUNDING RULE
         Every step's Content must be traceable to the node's own
         AcademicDefinition/Interpretation/Examples/Applications — never
-        introduce a different concept or invented fact.
+        introduce a different concept or invented fact. Prefer literal/
+        near-verbatim use of those fields' own wording over generic
+        paraphrase — the goal is the learner receiving the real source
+        material, not a summary of it. Two narrow exceptions: (1) this
+        node's own fields were themselves authored by the pipeline because
+        no source document existed at all (see IdeaToDocumentAgent) — there
+        is nothing more literal to fall back on in that case, so a clear
+        self-authored explanation is correct; and (2) the "Current Web
+        Findings" section below, which is allowed to add real supplementary
+        content but ONLY with its citation kept intact, never uncited.
 
         PRESERVE VERBATIM IDENTIFIERS FROM THE SOURCE FIELDS
         If AcademicDefinition or Examples names a specific, citable
@@ -474,9 +497,11 @@ public sealed class ExperienceDesignerAgent
           what was already shown.
         Every card must still be grounded strictly in this node's own
         AcademicDefinition/Interpretation/Examples/Applications (never an
-        invented fact the node doesn't already contain), and each card must
-        show something genuinely DIFFERENT — never near-duplicates or mere
-        rewordings of the same instance.
+        invented fact the node doesn't already contain) — prefer reusing an
+        existing Examples entry's own wording/numbers verbatim over
+        composing a new generic instance whenever one already covers it —
+        and each card must show something genuinely DIFFERENT — never
+        near-duplicates or mere rewordings of the same instance.
 
         EACH CARD:
         - Title: a short concrete label, e.g. "Letter Aa" or "Rhyming Words".

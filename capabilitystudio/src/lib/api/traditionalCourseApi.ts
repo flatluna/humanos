@@ -1,0 +1,157 @@
+import { apiPost, apiGet } from './httpClient';
+import type { CapabilityOutlineChapter } from './pdfPipelineApi';
+
+/** Studio's second, simpler course-creation method: linear Chapters ->
+ * Lessons of reading Cards (no Recall/Aplícalo), ending each chapter with
+ * ONE multiple-choice exam — see backend's TraditionalCoursePipelineService.
+ * Request/response shapes mirror pdfPipelineApi.ts's conventions exactly. */
+
+export interface StartTraditionalCourseRequest {
+  tenantId: string;
+  capabilityDomainId: string;
+  capabilityName: string;
+  capabilityDescription?: string | null;
+  /** Required for the PDF entry point. Mutually exclusive with `description`. */
+  fileName?: string | null;
+  contentBase64?: string | null;
+  /** Required for the "Texto/idea" entry point. Mutually exclusive with `fileName`/`contentBase64`. */
+  description?: string | null;
+  subjectId?: string | null;
+  enableWebEnrichment?: boolean;
+  languageCode?: 'es' | 'en';
+  pedagogicalAudience?: 'YoungLearner' | null;
+  /** How many multiple-choice questions each chapter's final exam has. 1-20, defaults to 5. */
+  questionsPerChapterExam?: number;
+  strictSyllabusMode?: boolean;
+  /** The designer's reviewed/approved (possibly hand-edited) chapter/lesson
+   * outline, as returned by previewCapabilityOutline (same generic Chapter/
+   * Node preview endpoint the Graph wizard uses — a "Node" here just means
+   * "Lesson"). When provided, the backend uses it VERBATIM instead of
+   * re-running detection. */
+  approvedOutline?: CapabilityOutlineChapter[] | null;
+  /** Only used together with an approvedOutline from the "Texto/idea" entry
+   * point — see pdfPipelineApi.ts's identical field for the full rationale. */
+  preExpandedDocumentText?: string | null;
+  logoImageBase64?: string | null;
+  /** Optional visual reference for chapter/lesson/exam illustrations. */
+  uploadedImageBase64?: string | null;
+  uploadedImageContentType?: string | null;
+  /** Only meaningful when uploadedImageBase64 is set — tells the model how to use the image. */
+  referenceImageUsageInstruction?: string | null;
+  acceptedLegalDisclosure: boolean;
+  isGlobal?: boolean;
+}
+
+export type TraditionalCourseStage = 'Running' | 'Completed' | 'Failed';
+
+export interface TraditionalCourseResult {
+  CapabilityId: string;
+  CourseName: string;
+  PageCount: number;
+  ChapterCount: number;
+  LessonCount: number;
+  CardCount: number;
+  ExamQuestionCount: number;
+  IllustrationsGeneratedCount: number;
+  TokenUsage: unknown[];
+}
+
+export interface TraditionalCourseRunStatus {
+  RunId: string;
+  Stage: TraditionalCourseStage;
+  CurrentStepDescription: string;
+  ErrorMessage: string | null;
+  Result: TraditionalCourseResult | null;
+}
+
+/** Starts a new Traditional Course run (PDF or idea/description entry
+ * point). Returns immediately (Stage: 'Running') — poll
+ * getTraditionalCourseStatus for progress. */
+export function startTraditionalCourse(request: StartTraditionalCourseRequest): Promise<TraditionalCourseRunStatus> {
+  return apiPost<TraditionalCourseRunStatus>('/studio/traditional-course/create', request);
+}
+
+export function getTraditionalCourseStatus(runId: string): Promise<TraditionalCourseRunStatus> {
+  return apiGet<TraditionalCourseRunStatus>(`/studio/traditional-course/${runId}/status`);
+}
+
+/** The single currently in-progress Traditional Course run, if any — same
+ * "only one at a time" rationale as getActiveCapabilityGraphRun, but a
+ * SEPARATE run slot from the Graph pipeline (both can't run within their
+ * own kind at once, but a Graph run and a Traditional run don't conflict
+ * with each other). Returns null when nothing is currently running. */
+export function getActiveTraditionalCourseRun(): Promise<TraditionalCourseRunStatus | null> {
+  return apiGet<TraditionalCourseRunStatus | null>('/studio/traditional-course/active');
+}
+
+export interface TraditionalCourseCard {
+  CardId: string;
+  Title: string;
+  Text: string;
+  SortOrder: number;
+  IllustrationId: string | null;
+}
+
+export interface TraditionalCourseLesson {
+  LessonId: string;
+  Title: string;
+  SortOrder: number;
+  Cards: TraditionalCourseCard[];
+}
+
+export interface TraditionalCourseExamQuestion {
+  QuestionId: string;
+  QuestionText: string;
+  Options: string[];
+  SortOrder: number;
+  IllustrationId: string | null;
+}
+
+export interface TraditionalCourseChapter {
+  ChapterId: string;
+  Title: string;
+  SortOrder: number;
+  Lessons: TraditionalCourseLesson[];
+  ExamQuestions: TraditionalCourseExamQuestion[];
+}
+
+export interface TraditionalCourseDetail {
+  CapabilityId: string;
+  Name: string;
+  Description: string | null;
+  CoverIllustrationId: string | null;
+  Chapters: TraditionalCourseChapter[];
+}
+
+/** Full content of a Traditional Course for Studio's preview page / the
+ * student runtime — NEVER includes the exam answer key (see
+ * gradeChapterExam). */
+export function getTraditionalCourse(capabilityId: string): Promise<TraditionalCourseDetail> {
+  return apiGet<TraditionalCourseDetail>(`/capabilities/${capabilityId}/traditional-course`);
+}
+
+export interface ChapterExamAnswer {
+  questionId: string;
+  selectedOptionIndex: number;
+}
+
+export interface ChapterExamQuestionResult {
+  QuestionId: string;
+  IsCorrect: boolean;
+  CorrectOptionIndex: number;
+  SelectedOptionIndex: number | null;
+}
+
+export interface ChapterExamGradeResult {
+  ChapterId: string;
+  TotalQuestions: number;
+  CorrectCount: number;
+  ScorePercent: number;
+  Questions: ChapterExamQuestionResult[];
+}
+
+/** Stateless grading — no attempt history is persisted server-side; the
+ * caller submits its answers and gets the score back in the same call. */
+export function gradeChapterExam(chapterId: string, answers: ChapterExamAnswer[]): Promise<ChapterExamGradeResult> {
+  return apiPost<ChapterExamGradeResult>(`/studio/traditional-course/chapters/${chapterId}/grade-exam`, { answers });
+}

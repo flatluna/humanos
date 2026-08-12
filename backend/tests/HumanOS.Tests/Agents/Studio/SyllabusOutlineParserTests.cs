@@ -459,4 +459,200 @@ public class SyllabusOutlineParserTests
         result.Modules.Should().HaveCount(3);
         result.Modules.Should().OnlyContain(m => m.Subsections.Count == 0);
     }
+
+    /// <summary>
+    /// Real-world regression (2026-08-09): a PDF-to-Markdown extraction that
+    /// wraps every heading in "[text](url)" link syntax (some with an empty
+    /// leading "[]()" artifact), styles one subsection heading with ONLY
+    /// bold ("**3.2 ...**", no "#" at all), and word-wraps another heading
+    /// across two physical lines. The bug this locks in: Tier 0 used to
+    /// reject or silently drop "1.1", "3.2" and "3.3" because none of its
+    /// regexes tolerated link/bold decoration — falling through to the
+    /// LLM-based Tier 1, which itself dropped those same subsections.
+    /// </summary>
+    [Fact]
+    public void Parse_HeadingsWrappedInMarkdownLinksAndBold_DetectsEveryChapterAndSubsection()
+    {
+        const string text = """
+            # [1.0 Introduction]()
+
+            ## [1.1 Purpose of the Policy]()
+
+            Welcome, sweet friend—we are so happy you're here!
+
+            ## [1.2 Importance of Volunteers in
+            the Program]()
+
+            Volunteers like you are such a blessing.
+
+            ---
+
+            # []()[3.0 Volunteer Role: Companion and Support Within the Group]()
+
+            ## []()[3.1 Companionship and Support During Group
+            Activities]()
+
+            We love to think of our volunteers as kind, friendly companions.
+
+            **3.2 General Responsibilities**
+
+            Your role is a truly lovely one, dear.
+
+            # []()[3.3 When a Volunteer May Lead Activities]()
+
+            Sometimes, you might be invited to lead an activity.
+            """;
+
+        var result = SyllabusOutlineParser.Parse(text);
+
+        result.IsConfidentStructure.Should().BeTrue(because: result.RejectionReason);
+        result.Modules.Should().HaveCount(2);
+
+        result.Modules[0].Number.Should().Be(1);
+        result.Modules[0].Subsections.Select(s => s.Number).Should().Equal("1.1", "1.2");
+        result.Modules[0].Subsections[0].Title.Should().Be("Purpose of the Policy");
+        result.Modules[0].Subsections[1].Title.Should().Be("Importance of Volunteers in the Program");
+
+        result.Modules[1].Number.Should().Be(3);
+        result.Modules[1].Title.Should().Contain("Volunteer Role");
+        result.Modules[1].Subsections.Select(s => s.Number).Should().Equal("3.1", "3.2", "3.3");
+        result.Modules[1].Subsections[0].Title.Should().Be("Companionship and Support During Group Activities");
+        result.Modules[1].Subsections[1].Title.Should().Be("General Responsibilities");
+        result.Modules[1].Subsections[2].Title.Should().Be("When a Volunteer May Lead Activities");
+    }
+
+    /// <summary>
+    /// Real-world regression (2026-08-09): the SAME document as above, but
+    /// now preceded by its own Word-exported "Content" (Table of Contents)
+    /// section — each entry a Markdown link whose text bakes in the page
+    /// number too (e.g. "[1.0 Introduction. 1](#_Toc237186034)"). The bug
+    /// this locks in: the coverage gate compared against the DEDUPED
+    /// (later-wins) offset of the body's own "1.0" heading — which sits
+    /// AFTER this whole TOC block — so on a short document the TOC alone
+    /// could push that occurrence past the 70% "way too late" threshold
+    /// and reject Tier 0 entirely, even though the very first sighting
+    /// (the TOC's own "1.0" entry) legitimately appears right at the top.
+    /// Falling through to Tier 1 (LLM) then dropped the source document's
+    /// own "1.0"/"1.1"/etc. numbering from every returned title, since the
+    /// LLM only returns prose titles, not the exact numbering scheme.
+    /// </summary>
+    [Fact]
+    public void Parse_PrecededByWordExportedTableOfContents_StillDetectsStructureWithNumbering()
+    {
+        const string text = """
+            Content
+
+            [1.0 Introduction. 1](#_Toc237186034)
+
+            [1.1 Purpose of the Policy. 1](#_Toc237186035)
+
+            [1.2 Importance of Volunteers in the Program... 1](#_Toc237186036)
+
+            [3.0 Volunteer Role: Companion and Support Within the
+            Group. 1](#_Toc237186037)
+
+            [3.1 Companionship and Support During Group Activities. 1](#_Toc237186038)
+
+            [3.2 General Responsibilities. 2](#_Toc237186039)
+
+            [3.3 When a Volunteer May Lead Activities. 2](#_Toc237186040)
+
+            # [1.0 Introduction]()
+
+            ## [1.1 Purpose of the Policy]()
+
+            Welcome, sweet friend—we are so happy you're here!
+
+            ## [1.2 Importance of Volunteers in
+            the Program]()
+
+            Volunteers like you are such a blessing.
+
+            ---
+
+            # []()[3.0 Volunteer Role: Companion and Support Within the Group]()
+
+            ## []()[3.1 Companionship and Support During Group
+            Activities]()
+
+            We love to think of our volunteers as kind, friendly companions.
+
+            **3.2 General Responsibilities**
+
+            Your role is a truly lovely one, dear.
+
+            # []()[3.3 When a Volunteer May Lead Activities]()
+
+            Sometimes, you might be invited to lead an activity.
+            """;
+
+        var result = SyllabusOutlineParser.Parse(text);
+
+        result.IsConfidentStructure.Should().BeTrue(because: result.RejectionReason);
+        result.Modules.Should().HaveCount(2);
+
+        result.Modules[0].Title.Should().Be("1.0 Introduction");
+        result.Modules[0].Subsections.Select(s => s.Number).Should().Equal("1.1", "1.2");
+        result.Modules[0].Subsections[0].Title.Should().Be("Purpose of the Policy");
+        result.Modules[0].Subsections[1].Title.Should().Be("Importance of Volunteers in the Program");
+
+        result.Modules[1].Title.Should().Be("3.0 Volunteer Role: Companion and Support Within the Group");
+        result.Modules[1].Subsections.Select(s => s.Number).Should().Equal("3.1", "3.2", "3.3");
+        result.Modules[1].Subsections[0].Title.Should().Be("Companionship and Support During Group Activities");
+        result.Modules[1].Subsections[1].Title.Should().Be("General Responsibilities");
+        result.Modules[1].Subsections[2].Title.Should().Be("When a Volunteer May Lead Activities");
+    }
+
+    /// <summary>
+    /// Real-world regression (2026-08-09), confirmed via live diagnostic
+    /// logging against an actual uploaded PDF: the SAME document/numbering
+    /// as the two tests above, but this is what the real text-extraction
+    /// pipeline actually produced — EVERY line break collapsed, so the
+    /// document's own dot-leader Table of Contents ("1.1 Purpose of the
+    /// Policy .......... 1") and the body content that follows it are one
+    /// single continuous block of prose with no newlines anywhere. Neither
+    /// <see cref="SyllabusOutlineParser"/>'s keyword nor bare-numeric
+    /// line-based conventions can ever match this (both require a heading
+    /// to start its own line), so Tier 0 used to report 0 modules detected
+    /// and fall through to Tier 1 (LLM), which dropped the source
+    /// document's own numbering from every title.
+    /// </summary>
+    [Fact]
+    public void Parse_FlattenedNoLineBreaksWithDotLeaderToc_StillDetectsStructureWithNumbering()
+    {
+        const string text =
+            "The Haven Program - Volunteer Orientation and Safeguarding Policy v.1.0 " +
+            "The Haven Program - Volunteer Orientation and Safeguarding Policy Version 1.0 | Last Updated: August 2026 " +
+            "Page:1 Content 1.0 Introduction ................................................... 1 " +
+            "1.1 Purpose of the Policy .......................................................... 1 " +
+            "1.2 Importance of Volunteers in the Program ...................................... 1 " +
+            "3.0 Volunteer Role: Companion and Support Within the Group ...................... 1 " +
+            "3.1 Companionship and Support During Group Activities ........................... 1 " +
+            "3.2 General Responsibilities ..................................................... 2 " +
+            "3.3 When a Volunteer May Lead Activities ......................................... 2 " +
+            "1.0 Introduction 1.1 Purpose of the Policy Welcome, sweet friend-we are so happy you're here! " +
+            "The Haven is a place built on warmth, dignity, respect, and safety. " +
+            "1.2 Importance of Volunteers in the Program Volunteers like you are such a blessing. " +
+            "3.0 Volunteer Role: Companion and Support Within the Group Your role matters so much. " +
+            "3.1 Companionship and Support During Group Activities We love to think of our volunteers as kind, friendly companions. " +
+            "3.2 General Responsibilities Your role is a truly lovely one, dear. " +
+            "3.3 When a Volunteer May Lead Activities Sometimes, you might be invited to lead an activity.";
+
+        var result = SyllabusOutlineParser.Parse(text);
+
+        result.IsConfidentStructure.Should().BeTrue(because: result.RejectionReason);
+        result.Modules.Should().HaveCount(2);
+
+        result.Modules[0].Number.Should().Be(1);
+        result.Modules[0].Subsections.Select(s => s.Number).Should().Equal("1.1", "1.2");
+        result.Modules[0].Subsections[0].Title.Should().Be("Purpose of the Policy");
+        result.Modules[0].Subsections[1].Title.Should().Be("Importance of Volunteers in the Program");
+
+        result.Modules[1].Number.Should().Be(3);
+        result.Modules[1].Title.Should().Contain("Volunteer Role");
+        result.Modules[1].Subsections.Select(s => s.Number).Should().Equal("3.1", "3.2", "3.3");
+        result.Modules[1].Subsections[0].Title.Should().Be("Companionship and Support During Group Activities");
+        result.Modules[1].Subsections[1].Title.Should().Be("General Responsibilities");
+        result.Modules[1].Subsections[2].Title.Should().Be("When a Volunteer May Lead Activities");
+    }
 }

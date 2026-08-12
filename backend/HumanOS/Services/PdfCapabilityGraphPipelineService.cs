@@ -27,12 +27,20 @@ namespace HumanOS.Services;
 ///      chapter) — this keeps grounding scoped and lets each chunk's Tag
 ///      be annotated with its chapter's order/title.
 ///   4. MERGE all chapters' curated chunks into ONE CuratedCorpus.
-///   5. Design the graph with a SINGLE GraphArchitectAgent call over the
-///      merged corpus (never once per chapter) — this is what lets the
-///      LLM create cross-chapter Requires/BuildsOn edges. The document's
-///      chapter order is passed along as an optional signal, never a
-///      rigid per-chapter node structure (graph stays flat/plain — see
-///      the "Opción B" design decision).
+///   5. Design the graph. Default/free-form mode: a SINGLE GraphArchitectAgent
+///      call over the merged corpus — this is what lets the LLM create
+///      cross-chapter Requires/BuildsOn edges and decide node
+///      count/merging from the whole document at once (graph stays
+///      flat/plain — see the "Opción B" design decision). STRICT SYLLABUS
+///      mode instead calls GraphArchitectAgent ONCE PER CHAPTER, each time
+///      with ONLY that chapter's own curated corpus (2026-08-09 fix — see
+///      /memories/repo/humanos-graph-architect-cross-chapter-bug.md):
+///      node identity is already fixed 1:1 per chapter/line in this mode,
+///      so there is no benefit to whole-document visibility, and a real
+///      bug showed the merged call can cross-cite a different, thematically
+///      similar chapter's heading inside another chapter's node content.
+///      Requires edges are then just the deterministic chapter order
+///      (no LLM call needed for them in this mode).
 ///   6. Generate + upload illustrations (best-effort).
 ///   7. Persist the graph (CapabilityGraphPersistenceService).
 ///   8. Per node: OPTIONAL Grounding-with-Bing-Search lookup (only for
@@ -652,6 +660,13 @@ public sealed class PdfCapabilityGraphPipelineService
         // (e.g. 3 levels all named "Introduction" instead of 1).
         var levelNumberByTitle = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+        // Per-chapter curated corpora, kept SEPARATE from the merged one
+        // below (2026-08-09 cross-chapter isolation fix — see Step 5):
+        // strict-syllabus mode calls GraphArchitectAgent once PER CHAPTER,
+        // each seeing ONLY its own chunks, so it physically cannot cross-
+        // cite a different chapter's heading while authoring this one.
+        var perChapterCorpora = new List<CuratedCorpus>();
+
         for (var i = 0; i < chapterMaterials.Count; i++)
         {
             var chapterNumber = i + 1;
@@ -714,6 +729,8 @@ public sealed class PdfCapabilityGraphPipelineService
             {
                 summaryParts.Add(curationResult.Corpus.Summary);
             }
+
+            perChapterCorpora.Add(curationResult.Corpus);
         }
 
         var mergedCorpus = new CuratedCorpus
@@ -722,7 +739,7 @@ public sealed class PdfCapabilityGraphPipelineService
             Chunks = allChunks
         };
 
-        // ==================== 5. DESIGN THE GRAPH (single call) ====================
+        // ==================== 5. DESIGN THE GRAPH ====================
         reportProgress("Diseñando el grafo de aprendizaje");
 
         // Extra grounding context (2026-07-23) when this Capability is
@@ -765,12 +782,80 @@ public sealed class PdfCapabilityGraphPipelineService
             }
         }
 
-        var documentChapterOrder = hasRealChapters ? string.Join("\n", chapterOrderLines) : null;
-        var graphResult = await _graphArchitect.ExtractGraphAsync(
-            capabilityName, mergedCorpus, documentChapterOrder, programContext, languageCode, strictSyllabusMode, cancellationToken);
+        CapabilityGraphResponse graph;
+        if (strictSyllabusMode && hasRealChapters)
+        {
+            // 2026-08-09 cross-chapter isolation fix — real production bug:
+            // a single merged-corpus call let GraphArchitectAgent see two
+            // thematically-similar chapters (e.g. "1.2 Importance of
+            // Volunteers" and "3.0 Volunteer Role") side by side and
+            // cross-cite one chapter's heading inside the other's node
+            // content. Strict-syllabus mode already fixes node identity
+            // 1:1 per chapter/line (StrictSyllabusModeAddendum), so there
+            // is no need to expose the WHOLE document at once — call
+            // GraphArchitectAgent ONCE PER CHAPTER, each time with ONLY
+            // that chapter's own curated corpus and its own single
+            // "chapter order" line, so the model physically cannot see
+            // (and therefore cannot cross-cite) any other chapter's
+            // content while authoring this one. See
+            // /memories/repo/humanos-graph-architect-cross-chapter-bug.md.
+            reportProgress("Diseñando el grafo de aprendizaje (por capítulo)");
+            var perChapterNodes = new List<GraphNodeDto>();
+            string? graphName = null;
+            string? graphDescription = null;
 
-        var graph = graphResult.Graph;
-        tokenUsage.Add(WithModuleId(graphResult.TokenUsage, capabilityName));
+            for (var i = 0; i < perChapterCorpora.Count; i++)
+            {
+                var chapterResult = await _graphArchitect.ExtractGraphAsync(
+                    capabilityName, perChapterCorpora[i], chapterOrderLines[i], programContext, languageCode,
+                    strictSyllabusMode: true, cancellationToken);
+                tokenUsage.Add(WithModuleId(chapterResult.TokenUsage, $"Cap.{i + 1} {chapterMaterials[i].ChapterTitle}"));
+
+                graphName ??= chapterResult.Graph.Name;
+                graphDescription ??= chapterResult.Graph.Description;
+                perChapterNodes.AddRange(chapterResult.Graph.Nodes);
+            }
+
+            // Deterministic SortOrder + linear prerequisite chain (no extra
+            // LLM call): each node requires the one immediately before it
+            // in document order — correct here because strict mode exists
+            // precisely for documents whose own chapter order IS the
+            // required learning order.
+            var edges = new List<GraphEdgeDto>();
+            for (var i = 0; i < perChapterNodes.Count; i++)
+            {
+                perChapterNodes[i].SortOrder = i + 1;
+                if (i > 0)
+                {
+                    edges.Add(new GraphEdgeDto
+                    {
+                        SourceNodeId = perChapterNodes[i].NodeId,
+                        SourceNodeName = perChapterNodes[i].Name,
+                        TargetNodeId = perChapterNodes[i - 1].NodeId,
+                        TargetNodeName = perChapterNodes[i - 1].Name,
+                        RelationshipType = EdgeRelationshipType.Requires,
+                        Rationale = "Sigue el orden secuencial del documento/syllabus original."
+                    });
+                }
+            }
+
+            graph = new CapabilityGraphResponse
+            {
+                Name = graphName ?? $"{capabilityName} Learning Graph",
+                Description = graphDescription,
+                Nodes = perChapterNodes,
+                Edges = edges
+            };
+        }
+        else
+        {
+            var documentChapterOrder = hasRealChapters ? string.Join("\n", chapterOrderLines) : null;
+            var graphResult = await _graphArchitect.ExtractGraphAsync(
+                capabilityName, mergedCorpus, documentChapterOrder, programContext, languageCode, strictSyllabusMode, cancellationToken);
+
+            graph = graphResult.Graph;
+            tokenUsage.Add(WithModuleId(graphResult.TokenUsage, capabilityName));
+        }
 
         // Best-effort, deterministic (no extra LLM call) attempt to group
         // graph nodes into "climb levels" that match the source document's

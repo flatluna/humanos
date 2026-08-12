@@ -22,6 +22,12 @@ public sealed class CapabilityResponse
 
     public bool IsActive { get; set; }
 
+    /// <summary>"GraphMemoryParadox" | "TraditionalChapters" — which
+    /// course-creation method produced this capability, so the frontend
+    /// knows which detail/preview page to route to. See
+    /// Capability.LearningMode.</summary>
+    public string LearningMode { get; set; } = "GraphMemoryParadox";
+
     /// <summary>"es" or "en" — the language this capability's entire
     /// generated content was authored in. See Capability.ContentLanguageCode.</summary>
     public string ContentLanguageCode { get; set; } = "es";

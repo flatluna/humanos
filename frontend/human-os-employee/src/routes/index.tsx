@@ -52,6 +52,12 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/brain').then((m) => ({ Component: m.BrainPage })),
       },
       {
+        // "Mi Evolución" (2026-08-08) — cumulative engrams-mastered growth
+        // chart, ported from human-os-web's /my-evolution.
+        path: 'my-evolution',
+        lazy: () => import('@/features/my-evolution').then((m) => ({ Component: m.MyEvolutionPage })),
+      },
+      {
         // "Mi Perfil" (2026-08-02) — self-service profile view/edit, ported
         // pattern-wise from human-os-enterprise's EmployeeDetailPage resume
         // section, but scoped to only the signed-in employee's own

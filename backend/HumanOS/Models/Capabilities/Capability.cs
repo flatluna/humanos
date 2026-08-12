@@ -2,10 +2,17 @@ namespace HumanOS.Models.Capabilities;
 
 using System.ComponentModel.DataAnnotations;
 using HumanOS.Models.Capabilities.Graph;
+using HumanOS.Models.Capabilities.Traditional;
 
 public sealed class Capability
 {
     public Guid CapabilityId { get; set; }
+
+    /// <summary>Which Studio course-creation method produced this
+    /// Capability's content (2026-08-09) — see <see cref="CourseLearningMode"/>.
+    /// Default GraphMemoryParadox for backward compatibility with every
+    /// capability created before this field existed.</summary>
+    public CourseLearningMode LearningMode { get; set; } = CourseLearningMode.GraphMemoryParadox;
 
     public Guid CapabilityDomainId { get; set; }
 
@@ -203,6 +210,12 @@ public sealed class Capability
     /// <summary>
     /// Capability Graph para esta Capability (relación 1:1, opcional en PASO 1).
     /// En PASO 2, GraphArchitectAgent poblará estos grafos automáticamente.
+    /// Only populated when <see cref="LearningMode"/> is GraphMemoryParadox.
     /// </summary>
     public CapabilityGraph? CapabilityGraph { get; set; }
+
+    /// <summary>Ordered chapters of a <see cref="CourseLearningMode.TraditionalChapters"/>
+    /// course — only populated when <see cref="LearningMode"/> is
+    /// TraditionalChapters.</summary>
+    public ICollection<CapabilityChapter> TraditionalChapters { get; set; } = [];
 }

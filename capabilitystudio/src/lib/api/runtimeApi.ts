@@ -412,15 +412,41 @@ export function requestVoiceTutorSession(
          * plain explain-and-invite-questions conversation, never a quiz. */
         isReviewOnly?: boolean;
       }
+    | {
+        /** Traditional Course path (2026-08-09) — a single CapabilityLesson
+         * (a "subchapter", NOT its whole parent chapter — matches Graph
+         * mode's per-node granularity). See
+         * VoiceTutorSessionFunction.RunTraditionalLessonAsync. */
+        traditionalCourseLessonId: string;
+        personName?: string;
+      }
+    | {
+        /** Structured Learning path (2026-08-10) — a single
+         * StructuredLearningSectionStep id (Hypothesis/Teaching/DeepDive).
+         * See VoiceTutorSessionFunction.RunStructuredLearningStepAsync. */
+        structuredLearningSectionStepId: string;
+        personName?: string;
+        /** DeepDive only — which ExampleCard (see StepDataJson) to quiz on. */
+        exampleCardIndex?: number;
+        /** DeepDive only — read-only card review, no grading tool offered. */
+        isReviewOnly?: boolean;
+      }
 ): Promise<VoiceTutorSessionDto> {
   return apiPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
     LearningSessionStepId: 'learningSessionStepId' in target ? target.learningSessionStepId : undefined,
     CurrentPromptText: 'learningSessionStepId' in target ? target.promptText : undefined,
     CapabilityGraphNodeId: 'capabilityGraphNodeId' in target ? target.capabilityGraphNodeId : undefined,
     StepType: 'capabilityGraphNodeId' in target ? target.stepType : undefined,
+    TraditionalCourseLessonId: 'traditionalCourseLessonId' in target ? target.traditionalCourseLessonId : undefined,
+    StructuredLearningSectionStepId: 'structuredLearningSectionStepId' in target ? target.structuredLearningSectionStepId : undefined,
     PersonName: target.personName,
-    ExampleCardIndex: target.exampleCardIndex,
-    IsReviewOnly: 'capabilityGraphNodeId' in target ? target.isReviewOnly ?? false : false,
+    ExampleCardIndex: 'exampleCardIndex' in target ? target.exampleCardIndex : undefined,
+    IsReviewOnly:
+      'capabilityGraphNodeId' in target
+        ? target.isReviewOnly ?? false
+        : 'structuredLearningSectionStepId' in target
+        ? target.isReviewOnly ?? false
+        : false,
   });
 }
 
