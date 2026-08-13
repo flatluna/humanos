@@ -12,6 +12,15 @@ public sealed class StructuredLearningSectionStepDto
 {
     public StructuredLearningStepType StepType { get; set; }
 
+    public sealed class HypothesisQuestionDto
+    {
+        public string Question { get; set; } = string.Empty;
+
+        public List<string> Options { get; set; } = [];
+
+        public int? CorrectIndex { get; set; }
+    }
+
     /// <summary>Used by Hypothesis/Teaching/Production. Leave empty for
     /// DeepDive (whose real content lives in ExampleCards below) and for
     /// Recall/Assessment (2026-08-10 — these two no longer get ANY
@@ -23,6 +32,11 @@ public sealed class StructuredLearningSectionStepDto
     /// bank baked once here, so practice never repeats the same
     /// questions).</summary>
     public string Content { get; set; } = string.Empty;
+
+    /// <summary>ONLY for Hypothesis — a two-question, four-option MCQ bank
+    /// derived directly from this step's source text. Each item must include
+    /// exactly 4 options and one correct answer index.</summary>
+    public List<HypothesisQuestionDto>? HypothesisQuestions { get; set; }
 
     /// <summary>A text prompt for generating this step's real illustration
     /// — REQUIRED (never null/empty) for Teaching, since Teaching always
@@ -38,6 +52,15 @@ public sealed class StructuredLearningSectionStepDto
 
     /// <summary>ONLY for StepType=DeepDive.</summary>
     public List<StructuredLearningExampleCardDto>? ExampleCards { get; set; }
+}
+
+public sealed class HypothesisQuestionDto
+{
+    public string Question { get; set; } = string.Empty;
+
+    public List<string> Options { get; set; } = [];
+
+    public int CorrectIndex { get; set; }
 }
 
 public sealed class StructuredLearningExampleCardDto
@@ -63,6 +86,17 @@ public sealed class StructuredLearningExampleCardDto
 
 public sealed class StructuredLearningSectionDesignResponse
 {
+    /// <summary>One-sentence capability this engram is building inside its chapter.
+    /// The chapter title acts as the schema/category bucket; this field names the
+    /// concrete capability the learner is developing in this section.</summary>
+    public string Capability { get; set; } = string.Empty;
+
+    /// <summary>Business-rule style statements inferred from this section before
+    /// ontology generation. These are stored on the section row and kept light-weight
+    /// until a later, explicit ontology stage decides how to lift them into entities
+    /// and relationships.</summary>
+    public List<StructuredLearningStatement> Statements { get; set; } = [];
+
     public List<StructuredLearningSectionStepDto> Steps { get; set; } = [];
 }
 
@@ -94,6 +128,26 @@ public sealed class StructuredLearningSectionDesignerAgent
         Activities"). You receive ONLY this section's own text — never other
         sections, never the whole document — and must build every step from
         it alone.
+
+        BEFORE generating the steps, determine the core capability this
+        engram is creating for the learner. Use the chapter title as the
+        schema/category bucket and write a single sentence in the output
+        field `Capability` describing the capability being developed. The
+        format should be: "The [role/person] can [concrete action/skill],
+        [supporting clause]." Example: "The volunteer can encourage a
+        participant, help them remain engaged, and support their inclusion
+        without taking over."
+
+        ALSO, immediately after that capability decision, identify the
+        section's business-rule-like statements that can be derived from the
+        section text before any ontology work. Write them as a list in the
+        output field `Statements`. Each item should be a concise rule or
+        norm grounded in the source text and include the main rule text plus
+        the key metadata needed later: `StatementType`, `Statement`,
+        `SourceText`, `ConditionEntity`, `ConditionAttribute`,
+        `ConditionOperator`, `ConditionValue`, `ActorEntity`, `Action`,
+        `Modality`, and `PossibleOutcomes` when relevant. Keep the list
+        short and evidence-based; do not invent rules beyond the section.
 
         OPTIONAL "ADDITIONAL ILLUSTRATION GUIDANCE" (only present sometimes):
         if the prompt includes a block with this exact heading, it means a
@@ -140,12 +194,30 @@ public sealed class StructuredLearningSectionDesignerAgent
 
         ============================================================
         STEP 1 — HYPOTHESIS
-        A short, concrete prediction/guess question posed BEFORE teaching.
-        Base the scenario on this section's own subject matter — never an
-        unrelated generic analogy. NEVER reveal the answer/outcome here —
-        that would defeat the entire purpose of this step.
-        - You MUST begin the Hypothesis Content with the exact prefix:
+        This is the Memory Paradox hypothesis stage: the student has NOT yet seen
+        the section's source text, and we are using this step to prime thinking
+        before teaching begins. This is NOT a reading-comprehension quiz and NOT
+        a literal "according to the text" exercise.
+        - The student must answer before any teaching or source text is shown.
+        - The Hypothesis Content must begin with the exact prefix:
           "ContractVersion: 2026-08-11-v1-source-faithful-professor"
+        - After that prefix, write a short, direct student-facing prompt that
+          invites a prediction, judgment, or hypothesis based on common-sense
+          reasoning about the scenario. Examples: "What values do you think
+          define The Haven?" or "Who do you think this guide could help?"
+        - The questions must be written as thinking questions, not as text-finding
+          questions. Never ask: "According to the text...", "According to the
+          lesson...", "According to the passage...", or any wording that implies
+          the learner has already read the section.
+        - Do NOT include the source paragraph, chapter text, or verbatim lesson
+          wording in Hypothesis Content. The student is not reading the text yet.
+        - Provide exactly 2 questions in HypothesisQuestions, each with exactly
+          4 options and a single correct answer index (0-3).
+        - The questions should still reflect the section's underlying ideas, but
+          they must be framed as prediction/inference questions that help the
+          student think before teaching starts.
+        - NEVER reveal the answer/outcome here in the text itself — the point
+          is to surface what the student already knows before teaching.
         - IllustrationPrompt is REQUIRED — always provide one, depicting the
           concrete scenario/question you just posed. Never invent a scene
           not grounded in this step's own Content.

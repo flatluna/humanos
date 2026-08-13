@@ -119,28 +119,35 @@ public class StructuredLearningDocumentDeletionServiceTests
             await ctx.SaveChangesAsync();
         }
 
+        var service = new StructuredLearningDocumentDeletionService(new FixedDbContextFactory(options));
+        var documentId = Guid.Empty;
+
         await using (var ctx = new HumanOsDbContext(options))
         {
-            var service = new StructuredLearningDocumentDeletionService(new FixedDbContextFactory(ctx));
-            var documentId = await ctx.StructuredLearningDocuments.Select(d => d.StructuredLearningDocumentId).SingleAsync();
-            var deleted = await service.DeleteDocumentAsync(documentId, CancellationToken.None);
+            documentId = await ctx.StructuredLearningDocuments.Select(d => d.StructuredLearningDocumentId).SingleAsync();
+        }
 
-            deleted.Should().BeTrue();
-            ctx.StructuredLearningDocuments.Should().BeEmpty();
-            ctx.StructuredLearningDocumentSections.Should().BeEmpty();
-            ctx.StructuredLearningSectionSteps.Should().BeEmpty();
-            ctx.StructuredLearningIllustrations.Should().BeEmpty();
-            ctx.StructuredLearningAssessmentRounds.Should().BeEmpty();
-            ctx.StructuredLearningAssessmentQuestionAttempts.Should().BeEmpty();
-            ctx.StructuredLearningRecallAttempts.Should().BeEmpty();
+        var deleted = await service.DeleteDocumentAsync(documentId, CancellationToken.None);
+
+        deleted.Should().BeTrue();
+
+        await using (var verificationContext = new HumanOsDbContext(options))
+        {
+            verificationContext.StructuredLearningDocuments.Should().BeEmpty();
+            verificationContext.StructuredLearningDocumentSections.Should().BeEmpty();
+            verificationContext.StructuredLearningSectionSteps.Should().BeEmpty();
+            verificationContext.StructuredLearningIllustrations.Should().BeEmpty();
+            verificationContext.StructuredLearningAssessmentRounds.Should().BeEmpty();
+            verificationContext.StructuredLearningAssessmentQuestionAttempts.Should().BeEmpty();
+            verificationContext.StructuredLearningRecallAttempts.Should().BeEmpty();
         }
     }
 
-    private sealed class FixedDbContextFactory(HumanOsDbContext dbContext) : IDbContextFactory<HumanOsDbContext>
+    private sealed class FixedDbContextFactory(DbContextOptions<HumanOsDbContext> options) : IDbContextFactory<HumanOsDbContext>
     {
-        public HumanOsDbContext CreateDbContext() => dbContext;
+        public HumanOsDbContext CreateDbContext() => new(options);
 
         public ValueTask<HumanOsDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
-            => new(dbContext);
+            => new(new HumanOsDbContext(options));
     }
 }

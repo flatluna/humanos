@@ -20,7 +20,7 @@ const en: StudioTranslations = {
     newCapability: 'New learning path',
     newGraphCapability: 'Memory Graph',
     newTraditionalCourse: 'Traditional chapters',
-    newStructuredLearning: 'Structured sections',
+    newStructuredLearning: 'Memory engrams',
     backToHumanOS: 'Back to Engrams',
     footer: 'Engrams.one · Human OS · Runtime v2 (Curator → GraphArchitect)',
   },
@@ -571,8 +571,8 @@ const en: StudioTranslations = {
     graphDescription: 'Interconnected nodes with Recall, Apply, and adaptive assessment — ideal for deeply mastering a topic and making it stick in long-term memory.',
     traditionalTitle: 'Traditional chapters',
     traditionalDescription: 'Chapters → lessons with reading cards and a multiple-choice final exam per chapter — classic Coursera-style format.',
-    structuredLearningTitle: 'Structured sections',
-    structuredLearningDescription: 'Walks the document\'s own table of contents as-is, chapter by section — ideal for policies, processes, or compliance content where the document\'s own order already is the right structure.',
+    structuredLearningTitle: 'Memory engrams',
+    structuredLearningDescription: 'Breaks the material into memory units that follow the document’s structure, section by section. This is best for policies, procedures, onboarding, and compliance content where each section is a distinct memory engram to learn and review in order.',
     select: 'Choose',
   },
   newTraditionalCourse: {
@@ -744,6 +744,7 @@ const en: StudioTranslations = {
     pedagogyRegeneratingAll: 'Regenerating...',
     pedagogyNoStepsYet: 'No steps generated yet for this section.',
     pedagogyViewCourseButton: 'View course',
+    stepGeneratedLive: 'Generated live during practice — no fixed content to review here.',
   },
   structuredLearningCourse: {
     loading: 'Loading document...',

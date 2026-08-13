@@ -146,6 +146,7 @@ public sealed class StructuredLearningSectionAdditionService
             TenantId = document.TenantId,
             SortOrder = newSortOrder,
             ChapterTitle = chapterTitle,
+            Capability = string.IsNullOrWhiteSpace(response.Capability) ? $"The learner can engage with this topic in the {chapterTitle} chapter." : response.Capability,
             SubchapterTitle = response.SubchapterTitle,
             Text = response.Text,
             TotalCharacters = response.Text.Length,

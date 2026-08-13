@@ -186,7 +186,7 @@ function PedagogySection({ documentId }: { documentId: string }) {
   const [recallItemsRequired, setRecallItemsRequired] = useState(3);
   const [includeProduction, setIncludeProduction] = useState(true);
   const [assessmentQuestionType, setAssessmentQuestionType] = useState<StructuredLearningAssessmentQuestionType>('MultipleChoice');
-  const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState(5);
+  const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState(2);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [referenceImageUsageInstruction, setReferenceImageUsageInstruction] = useState('');
@@ -460,7 +460,7 @@ function PedagogySection({ documentId }: { documentId: string }) {
             min={1}
             max={10}
             value={assessmentQuestionsPerRound}
-            onChange={(e) => setAssessmentQuestionsPerRound(Number.parseInt(e.target.value, 10) || 5)}
+            onChange={(e) => setAssessmentQuestionsPerRound(Number.parseInt(e.target.value, 10) || 2)}
             className="input"
           />
         </ConfigField>
@@ -574,6 +574,172 @@ function PedagogySection({ documentId }: { documentId: string }) {
   );
 }
 
+type HypothesisQuestion = {
+  question: string;
+  options: string[];
+  correctIndex: number | null;
+};
+
+function parseHypothesisQuestions(step: StructuredLearningDocumentDetail['Sections'][number]['Steps'][number]): HypothesisQuestion[] | null {
+  if (!step) return null;
+
+  try {
+    if (!step.StepDataJson) return null;
+
+    const parsed = JSON.parse(step.StepDataJson) as unknown;
+    const questionList = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { questions?: unknown })?.questions)
+        ? (parsed as { questions: unknown[] }).questions
+        : Array.isArray((parsed as { Questions?: unknown })?.Questions)
+          ? (parsed as { Questions: unknown[] }).Questions
+          : null;
+
+    if (!questionList) return null;
+
+    const normalized = questionList
+      .map((item) => {
+        const q = item as Record<string, unknown>;
+        const question = typeof q.question === 'string'
+          ? q.question
+          : typeof q.Question === 'string'
+            ? q.Question
+            : typeof q.prompt === 'string'
+              ? q.prompt
+              : typeof q.Prompt === 'string'
+                ? q.Prompt
+                : '';
+        const optionList = Array.isArray(q.options)
+          ? q.options
+          : Array.isArray(q.Options)
+            ? q.Options
+            : Array.isArray(q.choices)
+              ? q.choices
+              : Array.isArray(q.Choices)
+                ? q.Choices
+                : [];
+        const options = optionList
+          .map((option) => (typeof option === 'string' ? option : String(option ?? '').trim()))
+          .filter((option) => option.length > 0);
+        const correctIndex = typeof q.correctIndex === 'number'
+          ? q.correctIndex
+          : typeof q.CorrectIndex === 'number'
+            ? q.CorrectIndex
+            : typeof q.correctAnswerIndex === 'number'
+              ? q.correctAnswerIndex
+              : typeof q.CorrectAnswerIndex === 'number'
+                ? q.CorrectAnswerIndex
+                : null;
+
+        if (!question.trim() || options.length === 0) return null;
+
+        return {
+          question: question.trim(),
+          options,
+          correctIndex: correctIndex != null && correctIndex >= 0 && correctIndex < options.length ? correctIndex : null,
+        };
+      })
+      .filter((question): question is HypothesisQuestion => question !== null);
+
+    return normalized.length > 0 ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildFallbackHypothesisQuestions(text: string): HypothesisQuestion[] {
+  const trimmed = (text || '').replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim();
+  const baseQuestion = trimmed.length > 120
+    ? 'Which idea is the text mainly trying to communicate?'
+    : 'What is the main idea the text is explaining?';
+
+  const secondQuestion = trimmed.length > 120
+    ? 'Which answer is best supported by the details in the text?'
+    : 'Which statement is best supported by the text?';
+
+  return [
+    {
+      question: baseQuestion,
+      options: [
+        'The text explains a core idea or concept using a concrete example.',
+        'The text is only a list of unrelated formulas.',
+        'The text is mainly about avoiding the topic entirely.',
+        'The text only describes a single visual without any concept.',
+      ],
+      correctIndex: 0,
+    },
+    {
+      question: secondQuestion,
+      options: [
+        'The text supports a clear explanation with concrete details that help understanding.',
+        'The text gives no useful information at all.',
+        'The text is only a random opinion with no evidence.',
+        'The text is asking the student to ignore the explanation and move on.',
+      ],
+      correctIndex: 0,
+    },
+  ];
+}
+
+function HypothesisQuestionCard({ step }: { step: StructuredLearningDocumentDetail['Sections'][number]['Steps'][number] }) {
+  const parsedQuestions = parseHypothesisQuestions(step);
+  const questions = parsedQuestions ?? buildFallbackHypothesisQuestions(step?.Content ?? '');
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+
+  return (
+    <div className="mt-3 space-y-4">
+      <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+        <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Check your understanding</p>
+        <div className="space-y-4">
+          {questions.map((question, index) => {
+            const selectedIndex = selectedAnswers[index];
+
+            return (
+              <div key={`${question.question}-${index}`} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <p className="text-sm font-medium text-white">{index + 1}. {question.question}</p>
+                <div className="mt-3 space-y-2">
+                  {question.options.map((option, optionIndex) => {
+                    const isSelected = selectedIndex === optionIndex;
+                    const isCorrect = question.correctIndex !== null && optionIndex === question.correctIndex;
+                    const reveal = selectedIndex !== undefined;
+
+                    return (
+                      <button
+                        key={`${question.question}-${optionIndex}`}
+                        type="button"
+                        onClick={() => setSelectedAnswers((previous) => ({ ...previous, [index]: optionIndex }))}
+                        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                          reveal && isCorrect
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                            : isSelected
+                              ? 'border-brand-500/50 bg-brand-500/10 text-white'
+                              : 'border-white/10 bg-white/[0.02] text-slate-200 hover:border-white/20 hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
+                          reveal && isCorrect
+                            ? 'bg-emerald-500/20 text-emerald-100'
+                            : isSelected
+                              ? 'bg-brand-500/20 text-brand-100'
+                              : 'bg-white/5 text-slate-300'
+                        }`}>
+                          {String.fromCharCode(65 + optionIndex)}
+                        </span>
+                        <span className="flex-1">{option}</span>
+                        {reveal && isCorrect && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200">Correct</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SectionViewer({ section }: { section: StructuredLearningDocumentDetail['Sections'][number] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -617,7 +783,13 @@ function SectionViewer({ section }: { section: StructuredLearningDocumentDetail[
                     {step.ModelName && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-200">Model: {step.ModelName}</span>}
                   </div>
                 )}
-                {step.Content && <p className="mt-2 text-sm text-slate-200 whitespace-pre-wrap">{step.Content}</p>}
+                {step.StepType === 'Hypothesis' ? (
+                  <HypothesisQuestionCard step={step} />
+                ) : step.Content ? (
+                  <p className="mt-2 text-sm text-slate-200 whitespace-pre-wrap">{step.Content}</p>
+                ) : (step.StepType === 'Recall' || step.StepType === 'Assessment') ? (
+                  <p className="mt-2 text-sm text-slate-500">{t('structuredLearningRunProgress.stepGeneratedLive')}</p>
+                ) : null}
                 {step.StepType === 'DeepDive' && step.StepDataJson ? (
                   <DeepDiveCards stepDataJson={step.StepDataJson} />
                 ) : step.StepType !== 'Hypothesis' && step.StepType !== 'Teaching' && step.StepDataJson ? (

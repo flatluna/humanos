@@ -18,7 +18,7 @@ const es = {
     newCapability: 'Nueva ruta de aprendizaje',
     newGraphCapability: 'Grafo de Memoria',
     newTraditionalCourse: 'Capítulos tradicionales',
-    newStructuredLearning: 'Secciones estructuradas',
+    newStructuredLearning: 'Engramas de memoria',
     backToHumanOS: 'Volver a Engrams',
     footer: 'Engrams.one · Human OS · Runtime v2 (Curador → GraphArchitect)',
   },
@@ -740,6 +740,7 @@ const es = {
     pedagogyRegenerateAllButton: 'Generar de nuevo (todas las secciones)',
     pedagogyRegeneratingAll: 'Regenerando...',
     pedagogyNoStepsYet: 'Todavía no hay pasos generados para esta sección.',
+    stepGeneratedLive: 'Se genera en vivo durante la práctica — no hay contenido fijo que revisar aquí.',
     pedagogyViewCourseButton: 'Ver el curso',
   },
   structuredLearningCourse: {

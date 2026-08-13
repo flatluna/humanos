@@ -15,6 +15,11 @@ public sealed class StructuredLearningSectionAdditionResponse
     /// subchapters (given below), placed logically after them.</summary>
     public string SubchapterTitle { get; set; } = string.Empty;
 
+    /// <summary>One sentence naming the capability this engram belongs to.
+    /// Use the chapter title as the schema/category bucket, and define the
+    /// concrete capability the learner is developing in this section.</summary>
+    public string Capability { get; set; } = string.Empty;
+
     /// <summary>Prose covering the topic, matching the SCOPE/LENGTH the
     /// professor's own instruction implies (short instruction -> short
     /// result) — plays the role a real excerpt of the source document
@@ -49,13 +54,20 @@ public sealed class StructuredLearningSectionAdditionAgent
         free-text instruction describing what this new section should cover.
 
         Your job:
-        1. SubchapterTitle: follow the EXACT numbering convention already used by the other
+        1. Capability: infer the core capability this section is creating for the learner.
+           Use the chapter title as the schema/category bucket and define the actual capability
+           embodied by this engram in one sentence, in the format:
+           "The [role/person] can [concrete action/skill], [supporting clause]."
+           Example: "The volunteer can encourage a participant, help them remain engaged, and
+           support their inclusion without taking over."
+           This capability must match the content and chapter being created.
+        2. SubchapterTitle: follow the EXACT numbering convention already used by the other
            subchapters in this chapter (e.g. if they are "3.1 ...", "3.2 ...", "3.3 ...", this
            new one continues as "3.4 ..."). Place it logically — usually appended after the
            existing ones, unless the instruction clearly asks for something that belongs
            earlier in the sequence (still pick the next unused number in that case; ordering in
            the document is handled separately from numbering).
-        2. Text — LENGTH AND SCOPE DISCIPLINE (read this carefully, it is the #1 rule):
+        3. Text — LENGTH AND SCOPE DISCIPLINE (read this carefully, it is the #1 rule):
            Match the SCOPE and LENGTH the professor's own instruction implies — do not
            default to an exhaustive, textbook-length treatise. A short, specific instruction
            (one sentence, a short statement, a simple value/policy line) must produce a SHORT

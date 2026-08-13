@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, GitBranch, BookOpen, FileText, ChevronDown } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, BookOpen, FileText, ChevronDown } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -162,19 +162,6 @@ function NewCapabilityMenu() {
 
       {open && (
         <div className="animate-fade-in absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-xl">
-          <Link
-            to="/new"
-            onClick={() => setOpen(false)}
-            className="flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/5"
-          >
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/15">
-              <GitBranch className="h-4 w-4 text-brand-300" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-white">{t('nav.newGraphCapability')}</div>
-              <div className="text-xs text-slate-400">{t('chooseCreationMode.graphDescription')}</div>
-            </div>
-          </Link>
           <Link
             to="/new-traditional"
             onClick={() => setOpen(false)}

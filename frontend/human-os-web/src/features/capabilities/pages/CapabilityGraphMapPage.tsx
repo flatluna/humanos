@@ -187,7 +187,10 @@ export default function CapabilityGraphMapPage() {
 
     getCapabilityGraph(capabilityId, personId)
       .then((data) => {
-        if (!cancelled) setGraph(data);
+        if (!cancelled) {
+          setGraph(data);
+          setGraphBlueprintOnly(false);
+        }
       })
       .catch(() => {
         if (!cancelled) setError(t.graphNotFound);

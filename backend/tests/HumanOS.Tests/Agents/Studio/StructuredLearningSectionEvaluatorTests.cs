@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Text.Json;
 using FluentAssertions;
 using HumanOS.Agents.Studio;
 using HumanOS.Models.Capabilities.Studio;
@@ -152,11 +154,240 @@ public class StructuredLearningSectionEvaluatorTests
     }
 
     [Fact]
+    public void CapabilityMetadata_IsOneSentenceAndActionOriented()
+    {
+        var capability = "The volunteer can encourage a participant, help them remain engaged, and support their inclusion without taking over.";
+
+        capability.Should().NotBeNullOrWhiteSpace();
+        capability.Should().Contain("can");
+        capability.Should().Contain("volunteer");
+        capability.Should().NotContain("\n");
+        capability.Should().EndWith(".");
+    }
+
+    [Fact]
     public void CheckHypothesisContractVersion_UsesLatestVersionMarker()
     {
         const string hypothesis = "ContractVersion: 2026-08-11-v1-source-faithful-professor - How should a volunteer support a participant during a group activity?";
 
         StructuredLearningSectionEvaluator.CheckHypothesisContractVersion(hypothesis).Should().BeTrue();
+    }
+
+    [Fact]
+    public void BuildStepDataJson_HypothesisIncludesTwoQuestionSet()
+    {
+        var step = new StructuredLearningSectionStepDto
+        {
+            StepType = StructuredLearningStepType.Hypothesis,
+            Content = "Volunteers walk beside participants and help them stay engaged.",
+            HypothesisQuestions =
+            [
+                new StructuredLearningSectionStepDto.HypothesisQuestionDto
+                {
+                    Question = "What is the main role of a volunteer in the group?",
+                    Options = ["They guide the activity and keep the participant engaged.", "They replace the teacher completely.", "They avoid participating in the group.", "They only watch from the side."],
+                    CorrectIndex = 0
+                },
+                new StructuredLearningSectionStepDto.HypothesisQuestionDto
+                {
+                    Question = "Which action best supports a participant?",
+                    Options = ["Cheering them on and helping them stay engaged.", "Ignoring them.", "Taking over their task.", "Leaving the group."],
+                    CorrectIndex = 0
+                }
+            ]
+        };
+
+        var json = StructuredLearningPedagogyService.BuildStepDataJson(step);
+
+        json.Should().NotBeNullOrEmpty();
+        json.Should().Contain("question");
+        json.Should().Contain("correctIndex");
+        json.Should().NotContain("Volunteers walk beside participants");
+        step.Content.Should().Be("Volunteers walk beside participants and help them stay engaged.");
+    }
+
+    [Fact]
+    public void StructuredLearningAssessmentEngine_BuildQuestionGenerationPrompt_UsesTwoQuestionDefaultWhenConfigMissing()
+    {
+        var method = typeof(StructuredLearningAssessmentEngine)
+            .GetMethod("BuildQuestionGenerationPrompt", BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull();
+
+        var sectionContextType = typeof(StructuredLearningAssessmentEngine)
+            .GetNestedType("SectionContext", BindingFlags.NonPublic);
+        sectionContextType.Should().NotBeNull();
+
+        var sectionContext = Activator.CreateInstance(sectionContextType!);
+        sectionContextType!.GetProperty("ChapterTitle")!.SetValue(sectionContext, "Companionship and Support");
+        sectionContextType.GetProperty("SubchapterTitle")!.SetValue(sectionContext, "How volunteers help in group activities");
+        sectionContextType.GetProperty("TeachingContent")!.SetValue(sectionContext,
+            "Volunteers walk beside participants during group activities and help them stay engaged while they participate.");
+        sectionContextType.GetProperty("QuestionType")!.SetValue(sectionContext, StructuredLearningAssessmentQuestionType.MultipleChoice);
+
+        var prompt = (string?)method!.Invoke(null, [sectionContext, 1, Array.Empty<string>(), Array.Empty<string>()]);
+
+        prompt.Should().NotBeNullOrWhiteSpace();
+        prompt.Should().Contain("Question number: 1 of 2");
+    }
+
+    [Fact]
+    public void StructuredLearningSectionDesignResponse_Statements_DefaultToEmptyCollection()
+    {
+        var response = new StructuredLearningSectionDesignResponse();
+
+        response.Statements.Should().NotBeNull();
+        response.Statements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void StructuredLearningDocumentSection_Statements_DefaultToEmptyCollection()
+    {
+        var section = new StructuredLearningDocumentSection();
+
+        section.Statements.Should().NotBeNull();
+        section.Statements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void StructuredLearningDocumentSection_ConditionalStatement_StoresRuleMetadata()
+    {
+        var sectionId = Guid.NewGuid();
+        var statement = new StructuredLearningStatement
+        {
+            StatementId = Guid.NewGuid(),
+            SectionId = sectionId,
+            StatementType = "ConditionalApprovalRule",
+            Statement = "Manager approval is required if the expense exceeds $100.",
+            SourceText = "Expenses exceeding $100 require manager approval.",
+            ConditionEntity = "Expense",
+            ConditionAttribute = "Amount",
+            ConditionOperator = "GreaterThan",
+            ConditionValue = "100",
+            ConditionUnit = "USD",
+            ActorEntity = "Manager",
+            ActorType = "Human",
+            Action = "Approve",
+            TargetEntity = "Expense",
+            Modality = "Required",
+            PossibleOutcomes = ["Approved", "Rejected"]
+        };
+
+        statement.StatementType.Should().Be("ConditionalApprovalRule");
+        statement.ConditionEntity.Should().Be("Expense");
+        statement.ConditionOperator.Should().Be("GreaterThan");
+        statement.PossibleOutcomes.Should().Contain("Approved").And.Contain("Rejected");
+        statement.SectionId.Should().Be(sectionId);
+    }
+
+    [Fact]
+    public void StructuredLearningDocumentSection_Statements_SerializeAndDeserializeRoundTrip()
+    {
+        var sectionId = Guid.NewGuid();
+        var section = new StructuredLearningDocumentSection
+        {
+            StructuredLearningDocumentSectionId = Guid.NewGuid(),
+            StructuredLearningDocumentId = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            ChapterTitle = "Expenses",
+            SubchapterTitle = "Approval rules",
+            Text = "Expenses exceeding $100 require manager approval.",
+            Capability = "The manager can approve expenses responsibly.",
+            Statements =
+            [
+                new StructuredLearningStatement
+                {
+                    StatementId = Guid.NewGuid(),
+                    SectionId = sectionId,
+                    StatementType = "ConditionalApprovalRule",
+                    Statement = "Manager approval is required if the expense exceeds $100.",
+                    SourceText = "Expenses exceeding $100 require manager approval.",
+                    ConditionEntity = "Expense",
+                    ConditionAttribute = "Amount",
+                    ConditionOperator = "GreaterThan",
+                    ConditionValue = "100",
+                    ConditionUnit = "USD",
+                    ActorEntity = "Manager",
+                    ActorType = "Human",
+                    Action = "Approve",
+                    TargetEntity = "Expense",
+                    Modality = "Required",
+                    PossibleOutcomes = ["Approved", "Rejected"]
+                }
+            ]
+        };
+
+        var json = JsonSerializer.Serialize(section, new JsonSerializerOptions { WriteIndented = true });
+        var roundTripped = JsonSerializer.Deserialize<StructuredLearningDocumentSection>(json);
+
+        roundTripped.Should().NotBeNull();
+        roundTripped!.Statements.Should().HaveCount(1);
+        roundTripped.Statements[0].StatementType.Should().Be("ConditionalApprovalRule");
+        roundTripped.Statements[0].PossibleOutcomes.Should().Contain("Approved");
+        roundTripped.Capability.Should().Be("The manager can approve expenses responsibly.");
+    }
+
+    [Fact]
+    public void StructuredLearningDocumentSection_Statements_BackwardCompatibility_UsesEmptyCollectionWhenMissing()
+    {
+        const string json = """
+        {
+          "StructuredLearningDocumentSectionId": "b8af2d78-8f5e-4e6a-b311-0e1b18f0ca5b",
+          "StructuredLearningDocumentId": "f19b0fc6-c4c9-4f88-83a7-4cbdbd46d8a8",
+          "TenantId": "5dda1155-16a8-4256-9c36-4c0df158784f",
+          "ChapterTitle": "Expenses",
+          "SubchapterTitle": "Approval rules",
+          "Text": "Expenses exceeding $100 require manager approval.",
+          "Capability": "The manager can approve expenses responsibly."
+        }
+        """;
+
+        var section = JsonSerializer.Deserialize<StructuredLearningDocumentSection>(json);
+
+        section.Should().NotBeNull();
+        section!.Statements.Should().NotBeNull();
+        section.Statements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void StructuredLearningAssessmentEngine_BuildQuestionGenerationPrompt_RequiresPostTeachingMultipleChoice()
+    {
+        var method = typeof(StructuredLearningAssessmentEngine)
+            .GetMethod("BuildQuestionGenerationPrompt", BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull();
+
+        var sectionContextType = typeof(StructuredLearningAssessmentEngine)
+            .GetNestedType("SectionContext", BindingFlags.NonPublic);
+        sectionContextType.Should().NotBeNull();
+
+        var sectionContext = Activator.CreateInstance(sectionContextType!);
+        sectionContextType!.GetProperty("ChapterTitle")!.SetValue(sectionContext, "Companionship and Support");
+        sectionContextType.GetProperty("SubchapterTitle")!.SetValue(sectionContext, "How volunteers help in group activities");
+        sectionContextType.GetProperty("TeachingContent")!.SetValue(sectionContext,
+            "Volunteers walk beside participants during group activities and help them stay engaged while they participate.");
+        sectionContextType.GetProperty("QuestionType")!.SetValue(sectionContext, StructuredLearningAssessmentQuestionType.MultipleChoice);
+        sectionContextType.GetProperty("QuestionsPerRound")!.SetValue(sectionContext, 2);
+
+        var prompt = (string?)method!.Invoke(null, [sectionContext, 1, Array.Empty<string>(), Array.Empty<string>()]);
+
+        prompt.Should().NotBeNullOrWhiteSpace();
+        prompt.Should().Contain("post-teaching");
+        prompt.Should().Contain("student has already seen the teaching");
+        prompt.Should().Contain("do not ask literal recall");
+        prompt.Should().NotContain("According to the text");
+    }
+
+    [Fact]
+    public async Task CheckGroundedInSourceAsync_GroundedTeachingWithNaturalParaphrase_Passes()
+    {
+        const string teaching =
+            "Alright everyone, let's look at this: the volunteer walks beside you during group activities, " +
+            "helping you stay engaged and supporting you as you take part alongside everyone else.";
+
+        var passed = await StructuredLearningSectionEvaluator.CheckGroundedInSourceAsync(teaching, SourceText);
+
+        passed.Should().BeTrue();
     }
 
     [Fact]

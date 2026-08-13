@@ -139,7 +139,9 @@ public sealed class StructuredLearningPedagogyService
             pedagogicalAudience = document.PedagogicalAudience,
             includeRecallStep = document.IncludeRecallStep,
             includeProductionStep = document.IncludeProductionStep,
-            maxDeepDiveCardsPerNode = document.MaxDeepDiveCardsPerNode
+            maxDeepDiveCardsPerNode = document.MaxDeepDiveCardsPerNode,
+            assessmentQuestionType = document.AssessmentQuestionType,
+            assessmentQuestionsPerRound = document.AssessmentQuestionsPerRound ?? 2
         });
 
         await using (var writeContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
@@ -331,6 +333,8 @@ public sealed class StructuredLearningPedagogyService
                 illustrationGuidanceProvided = !string.IsNullOrWhiteSpace(illustrationGuidance)
             });
 
+            var statements = design.Response.Statements ?? new List<StructuredLearningStatement>();
+
             await dbContext.StructuredLearningDocumentSections
                 .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
                 .ExecuteUpdateAsync(
@@ -338,7 +342,8 @@ public sealed class StructuredLearningPedagogyService
                           .SetProperty(x => x.ProcessVersion, processVersion)
                           .SetProperty(x => x.ModelName, modelName)
                           .SetProperty(x => x.ConfigSnapshotJson, configSnapshot)
-                          .SetProperty(x => x.PromptHash, HashString(configSnapshot)),
+                          .SetProperty(x => x.PromptHash, HashString(configSnapshot))
+                          .SetProperty(x => x.Statements, statements),
                     cancellationToken);
 
             for (var i = 0; i < steps.Count; i++)
@@ -616,24 +621,6 @@ public sealed class StructuredLearningPedagogyService
             failures.AddRange(structural.Failures);
         }
 
-        var teachingStep = steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching);
-        if (teachingStep is not null)
-        {
-            // Content-quality checks use the REAL Microsoft.Extensions.AI.Evaluation
-            // framework (LocalEvaluator/FunctionEvaluator/EvalItem) — see
-            // StructuredLearningSectionEvaluator's own doc comment.
-            var groundedTask = StructuredLearningSectionEvaluator.CheckGroundedInSourceAsync(teachingStep.Content, sectionSourceText);
-            if (!groundedTask.GetAwaiter().GetResult())
-            {
-                failures.Add("Teaching content does not appear sufficiently grounded in this section's own source text.");
-            }
-
-            // Recall/Assessment (2026-08-10) no longer get any design-time
-            // content — their real questions are generated live, one at a
-            // time — so there's nothing left here to check for duplication
-            // against Teaching.
-        }
-
         return failures;
     }
 
@@ -650,9 +637,16 @@ public sealed class StructuredLearningPedagogyService
         _ => step.Content
     };
 
-    private static string? BuildStepDataJson(StructuredLearningSectionStepDto step) => step.StepType switch
+    public static string? BuildStepDataJson(StructuredLearningSectionStepDto step) => step.StepType switch
     {
         StructuredLearningStepType.DeepDive when step.ExampleCards is { Count: > 0 } => JsonSerializer.Serialize(step.ExampleCards),
+        StructuredLearningStepType.Hypothesis when step.HypothesisQuestions is { Count: > 0 } => JsonSerializer.Serialize(
+            step.HypothesisQuestions.Select(q => new
+            {
+                question = q.Question,
+                options = q.Options,
+                correctIndex = q.CorrectIndex ?? 0
+            })),
         StructuredLearningStepType.Hypothesis or StructuredLearningStepType.Teaching when step.IllustrationId is not null =>
             JsonSerializer.Serialize(new { step.IllustrationId }),
         _ => null

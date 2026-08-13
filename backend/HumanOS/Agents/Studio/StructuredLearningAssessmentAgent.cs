@@ -61,18 +61,27 @@ public sealed class StructuredLearningAssessmentAgent
         question already asked — the prompt tells you which, never both.
 
         GENERATING A QUESTION:
+        - This is a POST-TEACHING assessment. The student has already seen
+          the teaching for this section; this is NOT a pre-teaching
+          hypothesis task and NOT a source-reading exercise.
+        - Never ask literal text-recall questions such as "According to the
+          text...", "What does the text say...", "Which sentence says...",
+          "According to the lesson...", or any wording that suggests the
+          student is searching the section for the exact wording.
         - Must be answerable from THIS section's own content alone — never
           invent facts, numbers, or rules the section doesn't state.
         - Must be genuinely DIFFERENT from every question already listed
           under "QUESTIONS ALREADY ASKED THIS ROUND" — never repeat one
           literally or with trivial rewording; ask about a different fact
           or angle each time.
-        - Format: if told MultipleChoice, produce QuestionText plus 3-5
-          Options with exactly one CorrectOptionIndex (0-based); if told
-          OpenEnded, produce ONLY QuestionText (leave Options/
-          CorrectOptionIndex null).
-        - If errors/confusions were observed in earlier answers this round,
-          prefer a question that revisits one of them.
+        - For MultipleChoice, generate a short application/interpretation
+          question with 3-5 options and exactly one CorrectOptionIndex
+          (0-based). Do not write answer choices that are just copied text
+          fragments from the teaching content; the question should test
+          understanding and judgment after teaching, not verbatim recall.
+        - If told the round should be 2 questions, generate exactly 2 MCQ
+          questions in total for that round, each with 4 options and one
+          correct answer.
         - Ask ONE clear thing — never stack multiple sub-questions.
         - LANGUAGE: match the language of the section content given to you.
 

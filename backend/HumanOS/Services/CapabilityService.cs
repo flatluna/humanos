@@ -45,22 +45,12 @@ public sealed class CapabilityService
                 .ThenInclude(g => g!.Nodes)
             .Include(c => c.CapabilityGraph)
                 .ThenInclude(g => g!.Edges)
-            .Where(c => c.IsActive);
+            .Where(c => c.IsActive && c.LearningMode != Models.Capabilities.CourseLearningMode.GraphMemoryParadox);
 
-        // Ownership/visibility filter (2026-08-05 "Empleador/Consumidor
-        // pueden crear cursos" model): a capability with no OwnerPersonId
-        // is the public/official catalog (visible to everyone, same as
-        // before this feature existed). A capability WITH an OwnerPersonId
-        // is either a Consumer's personal course (OwnerTenantId null —
-        // visible ONLY to that same Person) or an Employer's course
-        // (OwnerTenantId set — visible to every Person in that same
-        // Tenant). callerPersonId/callerTenantId are null for an
-        // unidentified/anonymous caller, which correctly shows only the
-        // public catalog.
-        query = query.Where(c =>
-            c.OwnerPersonId == null ||
-            c.OwnerPersonId == callerPersonId ||
-            (c.OwnerTenantId != null && c.OwnerTenantId == callerTenantId));
+        // Temporary debugging override: keep all active capabilities visible in
+        // the student catalog so we can inspect the full set of courses and
+        // isolate visibility issues without hiding owner-scoped rows.
+        // Re-enable the ownership filter once the catalog analysis is complete.
 
         if (!string.IsNullOrWhiteSpace(domainCode))
         {

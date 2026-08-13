@@ -64,6 +64,180 @@ const STEP_META: Record<string, { labelKey: string; Icon: typeof Lightbulb }> = 
   Assessment: { labelKey: 'stepAssessment', Icon: ClipboardCheck },
 };
 
+type HypothesisQuestion = {
+  question: string;
+  options: string[];
+  correctIndex: number | null;
+};
+
+function parseHypothesisQuestions(step: StructuredLearningStepDetail): HypothesisQuestion[] | null {
+  if (!step || !step.StepDataJson) return null;
+
+  try {
+    const parsed = JSON.parse(step.StepDataJson) as unknown;
+    const questionList = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { questions?: unknown })?.questions)
+        ? (parsed as { questions: unknown[] }).questions
+        : Array.isArray((parsed as { Questions?: unknown })?.Questions)
+          ? (parsed as { Questions: unknown[] }).Questions
+          : null;
+
+    if (!questionList) return null;
+
+    const normalized = questionList
+      .map((item) => {
+        const q = item as Record<string, unknown>;
+        const question = typeof q.question === 'string'
+          ? q.question
+          : typeof q.Question === 'string'
+            ? q.Question
+            : typeof q.prompt === 'string'
+              ? q.prompt
+              : typeof q.Prompt === 'string'
+                ? q.Prompt
+                : '';
+        const optionList = Array.isArray(q.options)
+          ? q.options
+          : Array.isArray(q.Options)
+            ? q.Options
+            : Array.isArray(q.choices)
+              ? q.choices
+              : Array.isArray(q.Choices)
+                ? q.Choices
+                : [];
+        const options = optionList
+          .map((option) => (typeof option === 'string' ? option : String(option ?? '').trim()))
+          .filter((option) => option.length > 0);
+        const correctIndex = typeof q.correctIndex === 'number'
+          ? q.correctIndex
+          : typeof q.CorrectIndex === 'number'
+            ? q.CorrectIndex
+            : typeof q.correctAnswerIndex === 'number'
+              ? q.correctAnswerIndex
+              : typeof q.CorrectAnswerIndex === 'number'
+                ? q.CorrectAnswerIndex
+                : null;
+
+        if (!question.trim() || options.length === 0) return null;
+
+        return {
+          question: question.trim(),
+          options,
+          correctIndex: correctIndex != null && correctIndex >= 0 && correctIndex < options.length ? correctIndex : null,
+        };
+      })
+      .filter((question): question is HypothesisQuestion => question !== null);
+
+    return normalized.length > 0 ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+function HypothesisQuestionCard({ step }: { step: StructuredLearningStepDetail }) {
+  const questions = parseHypothesisQuestions(step);
+  const storageKey = step.StructuredLearningSectionStepId ? `structured-learning-hypothesis:${step.StructuredLearningSectionStepId}` : 'structured-learning-hypothesis:demo';
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (!step.StructuredLearningSectionStepId) return;
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Record<string, unknown>;
+      const restored = Object.entries(parsed).reduce<Record<number, number>>((acc, [key, value]) => {
+        const index = Number(key);
+        const choice = Number(value);
+        if (Number.isInteger(index) && Number.isInteger(choice)) {
+          acc[index] = choice;
+        }
+        return acc;
+      }, {});
+      setSelectedAnswers(restored);
+      setSubmitted(Boolean(parsed.submitted));
+    } catch {
+      // Ignore invalid local demo data.
+    }
+  }, [storageKey, step.StructuredLearningSectionStepId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ ...selectedAnswers, submitted }));
+    } catch {
+      // Local storage unavailable in this demo environment.
+    }
+  }, [selectedAnswers, storageKey, submitted]);
+
+  if (!questions || questions.length === 0) return null;
+
+  const answeredCount = Object.keys(selectedAnswers).length;
+  const isComplete = questions.length > 0 && answeredCount === questions.length && questions.every((_, index) => selectedAnswers[index] !== undefined);
+
+  return (
+    <div className="mt-4 space-y-4 rounded-2xl border border-brand-500/20 bg-brand-500/[0.04] p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-300">Before we start</p>
+
+      {submitted ? (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+          Thank you for your responses. We now will start learning.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {questions.map((question, index) => {
+            const selectedIndex = selectedAnswers[index];
+
+            return (
+              <div key={`${question.question}-${index}`} className="rounded-xl border border-white/10 bg-slate-950/20 p-3">
+                <p className="text-sm font-medium text-white">{index + 1}. {question.question}</p>
+                <div className="mt-3 space-y-2">
+                  {question.options.map((option, optionIndex) => {
+                    const isSelected = selectedIndex === optionIndex;
+
+                    return (
+                      <button
+                        key={`${question.question}-${optionIndex}`}
+                        type="button"
+                        onClick={() => setSelectedAnswers((previous) => ({ ...previous, [index]: optionIndex }))}
+                        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                          isSelected
+                            ? 'border-brand-500/50 bg-brand-500/10 text-white'
+                            : 'border-white/10 bg-white/[0.02] text-slate-200 hover:border-white/20 hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
+                          isSelected ? 'bg-brand-500/20 text-brand-100' : 'bg-white/5 text-slate-300'
+                        }`}>
+                          {String.fromCharCode(65 + optionIndex)}
+                        </span>
+                        <span className="flex-1">{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+            <p className="text-xs text-slate-300">{answeredCount}/{questions.length} answered</p>
+            <button
+              type="button"
+              disabled={!isComplete}
+              onClick={() => setSubmitted(true)}
+              className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-brand-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Save responses
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Structured Learning's per-section detail view (2026-08-10, rewritten
  * per explicit user feedback: this must be a STEP-BY-STEP wizard, exactly
@@ -330,7 +504,7 @@ function StepContent({
 
   return (
     <div className="space-y-4">
-      {(step.StepType === 'Hypothesis' || step.StepType === 'Teaching') && (
+      {step.StepType === 'Teaching' && (
         <VoiceTutorAgent
           structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
           startLabel={t('structuredLearningCourse.talkToTutor')}
@@ -341,7 +515,13 @@ function StepContent({
         {(step.StepType === 'Hypothesis' || step.StepType === 'Teaching') && <StepIllustration stepDataJson={step.StepDataJson} />}
         <div className="p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-400">{t(`structuredLearningCourse.${meta.labelKey}`)}</p>
-          {step.Content && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{step.Content}</p>}
+          {step.StepType === 'Hypothesis' && step.Content && (
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+              {step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content}
+            </p>
+          )}
+          {step.StepType === 'Hypothesis' && !isEditing && <HypothesisQuestionCard step={step} />}
+          {step.StepType !== 'Hypothesis' && step.Content && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{step.Content}</p>}
 
           {isEditing && isEditableStepType && (
             <>

@@ -194,8 +194,12 @@ function SummaryModal({
       .then((data) => {
         if (!cancelled) setGraph(data);
       })
-      .catch(() => {
-        if (!cancelled) setError(t.summaryLoadError);
+      .catch((err) => {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : String(err ?? '');
+          const isMissingSummary = /GraphNotFound|No CapabilityGraph found|404|NotFound/i.test(message);
+          setError(isMissingSummary ? t.summaryNoExecutiveSummary : t.summaryLoadError);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

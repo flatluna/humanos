@@ -24,6 +24,11 @@ public sealed class StructuredLearningDocumentSection
 
     public string ChapterTitle { get; set; } = string.Empty;
 
+    /// <summary>One-sentence capability this engram is building inside the chapter.
+    /// The chapter title acts as the schema/category bucket, while this field
+    /// names the actual capability the learner is developing.</summary>
+    public string Capability { get; set; } = string.Empty;
+
     public string SubchapterTitle { get; set; } = string.Empty;
 
     /// <summary>Full, verbatim text of this section — never paraphrased.</summary>
@@ -63,6 +68,11 @@ public sealed class StructuredLearningDocumentSection
     public string? ConfigSnapshotJson { get; set; }
 
     public DateTime CreatedDate { get; set; }
+
+    /// <summary>Business-rule style statements inferred from this section before
+    /// ontology generation. Stored as JSON in the same row to keep the schema
+    /// backward-compatible while preserving a lightweight, section-scoped rule list.</summary>
+    public List<StructuredLearningStatement> Statements { get; set; } = [];
 
     public StructuredLearningDocument Document { get; set; } = null!;
 

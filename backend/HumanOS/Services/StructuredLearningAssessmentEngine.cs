@@ -31,7 +31,7 @@ namespace HumanOS.Services;
 /// </summary>
 public sealed class StructuredLearningAssessmentEngine
 {
-    private const int DefaultQuestionsPerRound = 5;
+    private const int DefaultQuestionsPerRound = 2;
     private const int MinQuestionsPerRound = 1;
     private const int MaxQuestionsPerRound = 10;
     private const int PassThreshold = 80;
@@ -376,6 +376,9 @@ public sealed class StructuredLearningAssessmentEngine
     {
         var builder = new StringBuilder();
         builder.AppendLine("TASK: Generate a new assessment question (do NOT grade anything).");
+        builder.AppendLine("RULE: This is a POST-TEACHING assessment. The student has already seen the teaching for this section.");
+        builder.AppendLine("RULE: do not ask literal recall or text-search questions. Never use direct source-reference wording or sentence-lookup phrasing.");
+        builder.AppendLine("RULE: The question must test understanding/application after teaching, not read-back comprehension or source-text lookup.");
         builder.AppendLine($"Format required: {context.QuestionType}");
         builder.AppendLine($"Question number: {questionIndex} of {context.QuestionsPerRound}");
         builder.AppendLine();
@@ -384,6 +387,12 @@ public sealed class StructuredLearningAssessmentEngine
         builder.AppendLine("SECTION CONTENT:");
         builder.AppendLine(context.TeachingContent);
         builder.AppendLine();
+
+        if (context.QuestionType == StructuredLearningAssessmentQuestionType.MultipleChoice)
+        {
+            builder.AppendLine("MCQ REQUIREMENTS: produce questions that check understanding of the taught idea, not sentence recall. Each question must have 4 options and exactly one correct answer. Avoid answer choices that are just copied verbatim phrases from the teaching text.");
+            builder.AppendLine("If this is the first question in the round, make it a clear, high-quality post-teaching check. If the student has already answered earlier questions in this round, avoid repeating the same angle and focus on a different application or implication.");
+        }
 
         if (alreadyAsked.Count > 0)
         {

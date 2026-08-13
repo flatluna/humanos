@@ -1,4 +1,4 @@
-import { apiPost, apiGet } from './httpClient';
+import { apiDelete, apiPost, apiGet } from './httpClient';
 import type { CapabilityOutlineChapter } from './pdfPipelineApi';
 
 /** Studio's second, simpler course-creation method: linear Chapters ->
@@ -128,6 +128,50 @@ export interface TraditionalCourseDetail {
  * gradeChapterExam). */
 export function getTraditionalCourse(capabilityId: string): Promise<TraditionalCourseDetail> {
   return apiGet<TraditionalCourseDetail>(`/capabilities/${capabilityId}/traditional-course`);
+}
+
+export function addTraditionalCourseChapter(capabilityId: string, title: string): Promise<TraditionalCourseChapter> {
+  return apiPost<TraditionalCourseChapter>(`/studio/traditional-course/${capabilityId}/chapters/add`, { title });
+}
+
+export function addTraditionalCourseLesson(chapterId: string, title: string): Promise<TraditionalCourseLesson> {
+  return apiPost<TraditionalCourseLesson>(`/studio/traditional-course/chapters/${chapterId}/lessons/add`, { title });
+}
+
+export function addTraditionalCourseLessonCard(lessonId: string, title: string, text?: string): Promise<TraditionalCourseCard> {
+  return apiPost<TraditionalCourseCard>(`/studio/traditional-course/lessons/${lessonId}/cards/add`, { title, text });
+}
+
+export function deleteTraditionalCourseChapter(chapterId: string): Promise<void> {
+  return apiDelete<void>(`/studio/traditional-course/chapters/${chapterId}`);
+}
+
+export function deleteTraditionalCourseLesson(lessonId: string): Promise<void> {
+  return apiDelete<void>(`/studio/traditional-course/lessons/${lessonId}`);
+}
+
+export function editTraditionalCourseChapterTitle(chapterId: string, instruction: string): Promise<TraditionalCourseChapter> {
+  return apiPost<TraditionalCourseChapter>(`/studio/traditional-course/chapters/${chapterId}/title/edit`, { instruction });
+}
+
+export function setTraditionalCourseChapterTitle(chapterId: string, title: string, confirmed: boolean): Promise<TraditionalCourseChapter> {
+  return apiPost<TraditionalCourseChapter>(`/studio/traditional-course/chapters/${chapterId}/title`, { title, confirmed });
+}
+
+export function editTraditionalCourseLessonTitle(lessonId: string, instruction: string): Promise<TraditionalCourseLesson> {
+  return apiPost<TraditionalCourseLesson>(`/studio/traditional-course/lessons/${lessonId}/title/edit`, { instruction });
+}
+
+export function setTraditionalCourseLessonTitle(lessonId: string, title: string, confirmed: boolean): Promise<TraditionalCourseLesson> {
+  return apiPost<TraditionalCourseLesson>(`/studio/traditional-course/lessons/${lessonId}/title`, { title, confirmed });
+}
+
+export function editTraditionalCourseCardText(cardId: string, instruction: string): Promise<TraditionalCourseCard> {
+  return apiPost<TraditionalCourseCard>(`/studio/traditional-course/cards/${cardId}/text/edit`, { instruction });
+}
+
+export function setTraditionalCourseCardText(cardId: string, text: string, confirmed: boolean): Promise<TraditionalCourseCard> {
+  return apiPost<TraditionalCourseCard>(`/studio/traditional-course/cards/${cardId}/text`, { text, confirmed });
 }
 
 export interface ChapterExamAnswer {

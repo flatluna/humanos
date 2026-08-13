@@ -1826,6 +1826,11 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
+                    b.Property<string>("Capability")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("ChapterTitle")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -1876,6 +1881,10 @@ namespace HumanOS.Migrations
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
+
+                    b.Property<string>("Statements")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("StructuredLearningDocumentId")
                         .HasColumnType("uniqueidentifier");

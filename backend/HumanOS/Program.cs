@@ -327,6 +327,13 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningExampleCardEditorAgent>();
         services.AddScoped<StructuredLearningReviewService>();
 
+        // Traditional course edit tools (2026-08-12) — same review pattern as
+        // the structured-learning tools: AI rewrite and direct manual save for
+        // chapter titles, lesson titles, and lesson card text.
+        services.AddSingleton<HumanOS.Agents.Studio.TraditionalCourseReviewAgent>();
+        services.AddScoped<TraditionalCourseReviewService>();
+        services.AddSingleton<TraditionalCourseDeletionService>();
+
         // "Edit mode" add-section feature (2026-08-11) — mirrors Graph's
         // GraphNodeAdditionAgent/AddCapabilityGraphNodeFunction. Singleton
         // (uses IDbContextFactory internally, same as StructuredLearningPedagogyService

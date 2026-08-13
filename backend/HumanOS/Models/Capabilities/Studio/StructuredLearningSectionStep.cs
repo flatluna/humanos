@@ -20,12 +20,14 @@ public sealed class StructuredLearningSectionStep
     public string Content { get; set; } = string.Empty;
 
     /// <summary>Structured sub-items for this step, as JSON — shape
-    /// depends on <see cref="StepType"/>: DeepDive → array of example
-    /// cards (Title/Text/Emoji); Recall → array of distinct recall item
+    /// depends on <see cref="StepType"/>: Hypothesis → array of MCQ
+    /// questions (question + options + correct index) generated from the
+    /// same source excerpt; DeepDive → array of example cards
+    /// (Title/Text/Emoji); Recall → array of distinct recall item
     /// strings; Assessment → array of questions (text + options/correct
-    /// index when MultipleChoice). Null for Hypothesis/Teaching/Production,
-    /// which only ever need <see cref="Content"/>. Same lightweight
-    /// "metadata-as-JSON-blob" convention as Graph's
+    /// index when MultipleChoice). Teaching/Production usually only need
+    /// <see cref="Content"/> unless they also carry an illustration id.
+    /// Same lightweight "metadata-as-JSON-blob" convention as Graph's
     /// <see cref="HumanOS.Models.Capabilities.Graph.ExampleCard"/> (no
     /// separate DB table per sub-item type).</summary>
     public string? StepDataJson { get; set; }

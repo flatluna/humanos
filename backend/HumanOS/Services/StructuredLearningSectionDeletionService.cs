@@ -37,7 +37,6 @@ public sealed class StructuredLearningSectionDeletionService
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         var section = await dbContext.StructuredLearningDocumentSections
-            .AsNoTracking()
             .FirstOrDefaultAsync(
                 s => s.StructuredLearningDocumentSectionId == sectionId && s.StructuredLearningDocumentId == documentId,
                 cancellationToken);
@@ -47,28 +46,34 @@ public sealed class StructuredLearningSectionDeletionService
             return false;
         }
 
-        // SqlServerRetryingExecutionStrategy (EnableRetryOnFailure) refuses a
-        // user-managed transaction directly — the strategy itself must own
-        // and retry the whole atomic unit via ExecuteAsync (same pattern as
-        // CapabilityGraphPersistenceService.DeleteNodeAsync).
         var strategy = dbContext.Database.CreateExecutionStrategy();
 
         await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-            await dbContext.StructuredLearningIllustrations
+            var illustrations = await dbContext.StructuredLearningIllustrations
                 .Where(i => i.StructuredLearningDocumentSectionId == sectionId)
-                .ExecuteDeleteAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
 
-            await dbContext.StructuredLearningDocumentSections
-                .Where(s => s.StructuredLearningDocumentSectionId == sectionId)
-                .ExecuteDeleteAsync(cancellationToken);
+            if (illustrations.Count > 0)
+            {
+                dbContext.StructuredLearningIllustrations.RemoveRange(illustrations);
+            }
 
-            await dbContext.StructuredLearningDocumentSections
+            dbContext.StructuredLearningDocumentSections.Remove(section);
+
+            var laterSections = await dbContext.StructuredLearningDocumentSections
                 .Where(s => s.StructuredLearningDocumentId == documentId && s.SortOrder > section.SortOrder)
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.SortOrder, x => x.SortOrder - 1), cancellationToken);
+                .OrderBy(s => s.SortOrder)
+                .ToListAsync(cancellationToken);
 
+            foreach (var later in laterSections)
+            {
+                later.SortOrder -= 1;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         });
 

@@ -222,6 +222,7 @@ public sealed class StructuredLearningExtractionService
                 TenantId = tenantId,
                 SortOrder = i,
                 ChapterTitle = item.LevelTitle ?? item.ChapterTitle ?? documentName,
+                Capability = item.LevelTitle ?? item.ChapterTitle ?? documentName,
                 SubchapterTitle = item.ChapterTitle ?? string.Empty,
                 Text = item.Content,
                 TotalCharacters = characterCount,

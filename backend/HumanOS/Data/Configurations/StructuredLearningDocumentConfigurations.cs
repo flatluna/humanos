@@ -1,3 +1,4 @@
+using System.Text.Json;
 using HumanOS.Models.Capabilities.Studio;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -101,6 +102,10 @@ public sealed class StructuredLearningDocumentSectionConfiguration
             .HasMaxLength(500)
             .IsRequired();
 
+        builder.Property(x => x.Capability)
+            .HasMaxLength(500)
+            .IsRequired();
+
         builder.Property(x => x.SubchapterTitle)
             .HasMaxLength(500)
             .IsRequired();
@@ -142,6 +147,14 @@ public sealed class StructuredLearningDocumentSectionConfiguration
 
         builder.Property(x => x.ConfigSnapshotJson)
             .HasColumnType("nvarchar(max)");
+
+        builder.Property(x => x.Statements)
+            .HasColumnType("nvarchar(max)")
+            .HasConversion(
+                value => JsonSerializer.Serialize(value ?? new List<StructuredLearningStatement>(), new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+                json => string.IsNullOrWhiteSpace(json)
+                    ? new List<StructuredLearningStatement>()
+                    : JsonSerializer.Deserialize<List<StructuredLearningStatement>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new List<StructuredLearningStatement>());
 
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
