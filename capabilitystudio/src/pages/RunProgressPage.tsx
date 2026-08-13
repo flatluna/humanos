@@ -65,7 +65,7 @@ export default function RunProgressPage() {
           <XCircle className="mx-auto h-14 w-14 text-red-400" />
           <h2 className="text-xl font-semibold text-white">{t('runProgress.failed')}</h2>
           <p className="text-slate-400">{status?.ErrorMessage ?? t('runProgress.unexpectedError')}</p>
-          <Link to="/new" className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-400 hover:text-brand-300">
+          <Link to="/new-traditional" className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-400 hover:text-brand-300">
             {t('runProgress.tryAgain')} <ArrowRight className="h-4 w-4" />
           </Link>
         </div>

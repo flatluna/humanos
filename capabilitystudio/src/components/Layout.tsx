@@ -129,10 +129,8 @@ export default function Layout() {
   );
 }
 
-/** "+ Nueva ruta de aprendizaje" CTA, now a small dropdown since Studio has
- * two course-creation methods (2026-08-09): the original Graph/Memory
- * Paradox wizard (/new) and the simpler Traditional chapters+exam wizard
- * (/new-traditional). */
+/** "Nueva ruta de aprendizaje" CTA: only the modern Studio creation flows remain
+ * visible here to avoid confusion with the legacy curator/blueprint pipeline. */
 function NewCapabilityMenu() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
