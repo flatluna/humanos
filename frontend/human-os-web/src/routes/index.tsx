@@ -70,8 +70,33 @@ export const router = createBrowserRouter([
         ],
       },
       {
+        path: 'structured-learning',
+        children: [
+          {
+            path: ':documentId',
+            lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.StructuredLearningCoursePage })),
+          },
+          {
+            path: ':documentId/sections/:sectionId',
+            lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.StructuredLearningSectionPage })),
+          },
+        ],
+      },
+      {
         path: 'my-capabilities',
         lazy: () => import('@/features/my-capabilities').then((m) => ({ Component: m.MyCapabilitiesPage })),
+      },
+      {
+        path: 'ai-agents',
+        lazy: () => import('@/features/ai-agents/pages/AiAgentsPage').then((m) => ({ Component: m.default })),
+      },
+      {
+        path: 'ai-agents/topic/:subjectId/:topicId',
+        lazy: () => import('@/features/ai-agents/pages/AiAgentTopicPage').then((m) => ({ Component: m.default })),
+      },
+      {
+        path: 'ai-agents/course/:documentId',
+        lazy: () => import('@/features/ai-agents/pages/AiAgentCoursePage').then((m) => ({ Component: m.default })),
       },
       {
         path: 'programs',

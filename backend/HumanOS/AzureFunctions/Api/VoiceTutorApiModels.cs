@@ -84,6 +84,15 @@ public sealed class VoiceTutorSessionRequest
     /// text-only, same rationale as Graph's own Recall/Assessment voice
     /// exclusion).</summary>
     public Guid? StructuredLearningSectionStepId { get; set; }
+
+    /// <summary>Structured Learning Q&amp;A path only (2026-08-18) — when
+    /// true alongside <see cref="StructuredLearningSectionStepId"/>, the
+    /// voice Agent greets ONCE, then waits silently for the student's
+    /// spoken question instead of teaching the whole section content
+    /// end-to-end. Used by AI Agents' course chat page, where the student
+    /// picks either voice OR text to ask a question about the course —
+    /// never a full narrated lecture. Ignored for every other path.</summary>
+    public bool IsQaMode { get; set; }
 }
 
 public sealed class VoiceTutorSessionResponseDto

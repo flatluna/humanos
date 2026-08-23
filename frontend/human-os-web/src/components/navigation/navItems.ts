@@ -62,7 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     labelKey: 'nav.groupSupport',
-    items: [{ to: '/agents', icon: Bot, labelKey: 'nav.agents' }],
+    items: [{ to: '/ai-agents', icon: Bot, labelKey: 'nav.agents' }],
   },
 ];
 

@@ -79,6 +79,15 @@ export default function TraditionalRunProgressPage() {
             <p className="mt-2 text-slate-400">{t('traditionalRunProgress.successMessage')}</p>
           </div>
 
+          {status.Result.ExecutiveSummary && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                {t('traditionalRunProgress.executiveSummaryLabel')}
+              </h3>
+              <p className="mt-1.5 text-sm text-slate-200">{status.Result.ExecutiveSummary}</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <ResultStat icon={Layers} label={t('traditionalRunProgress.chapters')} value={status.Result.ChapterCount} />
             <ResultStat icon={BookOpen} label={t('traditionalRunProgress.lessons')} value={status.Result.LessonCount} />

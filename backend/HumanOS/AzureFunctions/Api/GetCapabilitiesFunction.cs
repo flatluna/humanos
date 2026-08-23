@@ -39,7 +39,16 @@ public sealed class GetCapabilitiesFunction
         // this feature existed.
         Guid? callerPersonId = null;
         Guid? callerTenantId = null;
-        if (request.Headers.TryGetValues("X-Azure-OID", out var oidValues) && !string.IsNullOrWhiteSpace(oidValues.FirstOrDefault()) &&
+
+        // Studio sessions launched from a parent app that has no HumanOS
+        // Person record (e.g. an NGO admin) carry their tenant directly via
+        // this header instead — see capabilitystudio's getIdentityHeaders().
+        if (request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+            Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId))
+        {
+            callerTenantId = studioTenantId;
+        }
+        else if (request.Headers.TryGetValues("X-Azure-OID", out var oidValues) && !string.IsNullOrWhiteSpace(oidValues.FirstOrDefault()) &&
             request.Headers.TryGetValues("X-Azure-TID", out var tidValues) && !string.IsNullOrWhiteSpace(tidValues.FirstOrDefault()))
         {
             var callerPerson = await _personService.GetByAzureIdentityAsync(oidValues.First(), tidValues.First(), cancellationToken);

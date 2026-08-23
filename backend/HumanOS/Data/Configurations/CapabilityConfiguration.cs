@@ -31,6 +31,9 @@ public sealed class CapabilityConfiguration
         builder.Property(x => x.Description)
             .HasMaxLength(4000);
 
+        builder.Property(x => x.ExecutiveSummary)
+            .HasColumnType("nvarchar(max)");
+
         builder.Property(x => x.IsActive)
             .HasDefaultValue(true)
             .IsRequired();

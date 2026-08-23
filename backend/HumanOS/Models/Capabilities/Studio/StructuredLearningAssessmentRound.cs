@@ -29,6 +29,11 @@ public class StructuredLearningAssessmentRound
 
     public Guid StructuredLearningDocumentSectionId { get; set; }
 
+    /// <summary>Null for capabilitystudio's author/reviewer preview (no
+    /// real student) — set for the real student runtime in human-os-web
+    /// (2026-08-13).</summary>
+    public Guid? PersonId { get; set; }
+
     public int RoundNumber { get; set; }
 
     public StructuredLearningAssessmentRoundStatus Status { get; set; } = StructuredLearningAssessmentRoundStatus.InProgress;

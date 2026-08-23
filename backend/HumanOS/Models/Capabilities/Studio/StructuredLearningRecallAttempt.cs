@@ -21,6 +21,11 @@ public class StructuredLearningRecallAttempt
 
     public Guid StructuredLearningDocumentSectionId { get; set; }
 
+    /// <summary>Null for capabilitystudio's author/reviewer preview (no
+    /// real student) — set for the real student runtime in human-os-web
+    /// (2026-08-13).</summary>
+    public Guid? PersonId { get; set; }
+
     /// <summary>The question this attempt answers (asked by the PREVIOUS turn).</summary>
     public string TutorPromptShown { get; set; } = string.Empty;
 

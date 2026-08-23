@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Sparkles, Layers, GitBranch, BookOpen } from 'lucide-react';
-import { getCapabilities, type BackendCapability } from '../lib/api/capabilitiesApi';
+import { Search, Sparkles, Layers, GitBranch, BookOpen, Trash2, AlertTriangle, X } from 'lucide-react';
+import { deleteCapability, getCapabilities, type BackendCapability } from '../lib/api/capabilitiesApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
-import { getStructuredLearningDocuments, type StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
+import { deleteStructuredLearningDocument, getStructuredLearningDocuments, type StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
 import CapabilityCard from '../components/CapabilityCard';
 import StructuredLearningDocumentCard from '../components/StructuredLearningDocumentCard';
 import SubjectPill from '../components/SubjectPill';
@@ -21,6 +21,11 @@ export default function HomePage() {
   const [activeLanguage, setActiveLanguage] = useState<'es' | 'en' | null>(null);
   const [activeLearningMode, setActiveLearningMode] = useState<BackendCapability['LearningMode'] | null>(null);
   const [search, setSearch] = useState('');
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
+  const [selectedCapabilityIds, setSelectedCapabilityIds] = useState<Set<string>>(new Set());
+  const [deletingDocuments, setDeletingDocuments] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +56,7 @@ export default function HomePage() {
     return subjects.filter((s) => codes.has(s.Code));
   }, [capabilities, subjects]);
 
-  const filtered = useMemo(() => {
+  const filteredCapabilities = useMemo(() => {
     return capabilities.filter((c) => {
       if (activeSubject && c.SubjectCode !== activeSubject) return false;
       if (activeLanguage && (c.ContentLanguageCode ?? 'es') !== activeLanguage) return false;
@@ -64,18 +69,65 @@ export default function HomePage() {
       }
       return true;
     });
-}, [capabilities, activeSubject, activeLanguage, activeLearningMode, search]);
+  }, [capabilities, activeSubject, activeLanguage, activeLearningMode, search]);
 
-  // Structured Learning documents have no Subject/Language/LearningMode
-  // metadata yet (no Capability record — see repo memory), so they're only
-  // excluded by the free-text search, and only shown under "All methods"/
-  // "All subjects" (any other filter hides them, since they can't match).
   const filteredStructuredLearningDocuments = useMemo(() => {
     if (activeSubject || activeLearningMode) return [];
     if (!search.trim()) return structuredLearningDocuments;
     const q = search.trim().toLowerCase();
     return structuredLearningDocuments.filter((d) => d.DocumentName.toLowerCase().includes(q));
   }, [structuredLearningDocuments, activeSubject, activeLearningMode, search]);
+
+  const unifiedCatalog = useMemo(() => {
+    const items = [
+      ...filteredCapabilities.map((capability) => ({
+        kind: 'capability' as const,
+        sortDate: capability.UpdatedDate || capability.CreatedDate,
+        item: capability,
+      })),
+      ...filteredStructuredLearningDocuments.map((document) => ({
+        kind: 'structured-learning' as const,
+        sortDate: document.CreatedDate,
+        item: document,
+      })),
+    ];
+
+    return items.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime());
+  }, [filteredCapabilities, filteredStructuredLearningDocuments]);
+
+  const toggleDocument = (documentId: string) => {
+    setSelectedDocumentIds((current) => {
+      const next = new Set(current);
+      if (next.has(documentId)) next.delete(documentId);
+      else next.add(documentId);
+      return next;
+    });
+  };
+
+  const deleteSelectedDocuments = async () => {
+    const documentIds = Array.from(selectedDocumentIds);
+    const capabilityIds = Array.from(selectedCapabilityIds);
+    if ((documentIds.length === 0 && capabilityIds.length === 0) || deletingDocuments) return;
+
+    setDeletingDocuments(true);
+    setError(null);
+    try {
+      await Promise.all([
+        ...documentIds.map((id) => deleteStructuredLearningDocument(id)),
+        ...capabilityIds.map((id) => deleteCapability(id)),
+      ]);
+      setStructuredLearningDocuments((documents) => documents.filter((document) => !selectedDocumentIds.has(document.StructuredLearningDocumentId)));
+      setCapabilities((capabilities) => capabilities.filter((capability) => !selectedCapabilityIds.has(capability.CapabilityId)));
+      setSelectedDocumentIds(new Set());
+      setSelectedCapabilityIds(new Set());
+      setDeleteConfirmation('');
+      setDeleteModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the selected courses.');
+    } finally {
+      setDeletingDocuments(false);
+    }
+  };
 
   return (
     <div>
@@ -153,6 +205,24 @@ export default function HomePage() {
           <SubjectPill label={t('home.english')} active={activeLanguage === 'en'} onClick={() => setActiveLanguage('en')} />
         </div>
 
+        {(selectedDocumentIds.size > 0 || selectedCapabilityIds.size > 0) && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+            <span className="text-sm text-red-100">{selectedDocumentIds.size + selectedCapabilityIds.size} course{selectedDocumentIds.size + selectedCapabilityIds.size === 1 ? '' : 's'} selected</span>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmation('');
+                setDeleteModalOpen(true);
+              }}
+              disabled={deletingDocuments}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deletingDocuments ? 'Deleting...' : 'Delete selected'}
+            </button>
+          </div>
+        )}
+
         {loading && <LoadingSpinner label={t('home.loading')} />}
 
         {!loading && error && (
@@ -161,23 +231,87 @@ export default function HomePage() {
           </div>
         )}
 
-        {!loading && !error && filtered.length === 0 && filteredStructuredLearningDocuments.length === 0 && (
+        {!loading && !error && unifiedCatalog.length === 0 && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center text-slate-400">
             {t('home.noResults')}
           </div>
         )}
 
-        {!loading && !error && (filtered.length > 0 || filteredStructuredLearningDocuments.length > 0) && (
+        {!loading && !error && unifiedCatalog.length > 0 && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredStructuredLearningDocuments.map((document) => (
-              <StructuredLearningDocumentCard key={document.StructuredLearningDocumentId} document={document} />
-            ))}
-            {filtered.map((capability) => (
-              <CapabilityCard key={capability.CapabilityId} capability={capability} />
-            ))}
+            {unifiedCatalog.map((entry) =>
+              entry.kind === 'structured-learning' ? (
+                <StructuredLearningDocumentCard
+                  key={entry.item.StructuredLearningDocumentId}
+                  document={entry.item}
+                  selected={selectedDocumentIds.has(entry.item.StructuredLearningDocumentId)}
+                  onToggle={() => toggleDocument(entry.item.StructuredLearningDocumentId)}
+                />
+              ) : (
+                  <CapabilityCard
+                    key={entry.item.CapabilityId}
+                    capability={entry.item}
+                    selected={selectedCapabilityIds.has(entry.item.CapabilityId)}
+                    onToggle={() => setSelectedCapabilityIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(entry.item.CapabilityId)) next.delete(entry.item.CapabilityId);
+                      else next.add(entry.item.CapabilityId);
+                      return next;
+                    })}
+                  />
+              )
+            )}
           </div>
         )}
       </section>
+
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-courses-title">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-red-400/25 bg-slate-900 shadow-2xl shadow-black/50">
+            <div className="border-b border-white/10 px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/15 text-red-300 ring-1 ring-red-400/25">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 id="delete-courses-title" className="text-lg font-semibold text-white">Delete selected courses</h2>
+                    <p className="mt-0.5 text-sm text-slate-400">This action cannot be undone.</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setDeleteModalOpen(false)} disabled={deletingDocuments} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                You are about to permanently delete <strong>{selectedDocumentIds.size + selectedCapabilityIds.size}</strong> course{selectedDocumentIds.size + selectedCapabilityIds.size === 1 ? '' : 's'}, including their sections, progress, illustrations, and generated content.
+              </div>
+              <div>
+                <label htmlFor="delete-confirmation" className="block text-sm font-medium text-slate-200">Type <strong className="text-red-300">Delete</strong> to confirm</label>
+                <input
+                  id="delete-confirmation"
+                  type="text"
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  disabled={deletingDocuments}
+                  autoFocus
+                  placeholder="Delete"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-white outline-none transition placeholder:text-slate-600 focus:border-red-400/60 focus:ring-2 focus:ring-red-500/20 disabled:opacity-50"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-1">
+                <button type="button" onClick={() => setDeleteModalOpen(false)} disabled={deletingDocuments} className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-50">Cancel</button>
+                <button type="button" onClick={deleteSelectedDocuments} disabled={deleteConfirmation !== 'Delete' || deletingDocuments} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40">
+                  <Trash2 className="h-4 w-4" />
+                  {deletingDocuments ? 'Deleting...' : 'Delete permanently'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

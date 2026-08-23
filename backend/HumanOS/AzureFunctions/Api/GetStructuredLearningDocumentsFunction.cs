@@ -12,6 +12,8 @@ public sealed class StructuredLearningDocumentSummaryDto
 
     public string DocumentName { get; set; } = string.Empty;
 
+    public string? ExecutiveSummary { get; set; }
+
     public int SectionCount { get; set; }
 
     public DateTime CreatedDate { get; set; }
@@ -49,6 +51,7 @@ public sealed class GetStructuredLearningDocumentsFunction
             {
                 StructuredLearningDocumentId = d.StructuredLearningDocumentId,
                 DocumentName = d.DocumentName,
+                ExecutiveSummary = d.ExecutiveSummary,
                 CreatedDate = d.CreatedDate,
                 SectionCount = d.Sections.Count,
                 CoverIllustrationId = _dbContext.StructuredLearningIllustrations

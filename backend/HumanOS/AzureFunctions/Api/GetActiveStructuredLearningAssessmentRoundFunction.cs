@@ -31,7 +31,10 @@ public sealed class GetActiveStructuredLearningAssessmentRoundFunction
         Guid sectionId,
         CancellationToken cancellationToken)
     {
-        var round = await _engine.GetActiveRoundAsync(_dbContext, sectionId, cancellationToken);
+        var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        Guid? personId = Guid.TryParse(query["personId"], out var parsedPersonId) ? parsedPersonId : null;
+
+        var round = await _engine.GetActiveRoundAsync(_dbContext, sectionId, personId, cancellationToken);
         return await FunctionResponseFactory.SuccessResponseAsync(
             request, round is null ? null : StructuredLearningAssessmentApiMappers.ToDto(round), cancellationToken: cancellationToken);
     }

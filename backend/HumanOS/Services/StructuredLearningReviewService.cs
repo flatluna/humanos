@@ -77,6 +77,25 @@ public sealed class StructuredLearningReviewService
         step.Content = result.UpdatedContent;
         step.IsHumanApproved = false;
         step.HumanApprovedAtUtc = null;
+
+        if (!string.IsNullOrWhiteSpace(result.IllustrationPrompt))
+        {
+            var purpose = stepType switch
+            {
+                StructuredLearningStepType.Hypothesis => StructuredLearningIllustrationPurpose.Hypothesis,
+                StructuredLearningStepType.Teaching => StructuredLearningIllustrationPurpose.Teaching,
+                _ => StructuredLearningIllustrationPurpose.Teaching
+            };
+
+            var newIllustrationId = await TryGenerateIllustrationAsync(
+                dbContext, section, result.IllustrationPrompt, section.SubchapterTitle, cancellationToken, purpose);
+
+            if (newIllustrationId is not null)
+            {
+                step.StepDataJson = JsonSerializer.Serialize(new { IllustrationId = newIllustrationId });
+            }
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return ToStepResult(step);
@@ -258,7 +277,8 @@ public sealed class StructuredLearningReviewService
         StructuredLearningDocumentSection section,
         string illustrationPrompt,
         string caption,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        StructuredLearningIllustrationPurpose purpose = StructuredLearningIllustrationPurpose.DeepDiveCard)
     {
         if (string.IsNullOrWhiteSpace(illustrationPrompt) || !_imageService.IsConfigured || !_illustrationStorage.IsConfigured)
         {
@@ -288,7 +308,7 @@ public sealed class StructuredLearningReviewService
                 StoragePath = storagePath,
                 Prompt = illustrationPrompt,
                 Caption = caption,
-                Purpose = StructuredLearningIllustrationPurpose.DeepDiveCard,
+                Purpose = purpose,
                 ImageModel = generated.ImageModel,
                 Width = generated.Width,
                 Height = generated.Height,

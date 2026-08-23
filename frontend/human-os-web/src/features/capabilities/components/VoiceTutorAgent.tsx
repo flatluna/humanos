@@ -38,13 +38,18 @@ export default function VoiceTutorAgent({
   learningSessionStepId,
   capabilityGraphNodeId,
   stepType,
+  structuredLearningSectionStepId,
   isReviewOnly,
+  isQaMode,
   promptText,
   onTranscript,
+  onAgentTranscript,
   onExplanationAccepted,
   exampleCardIndex,
   autoConnect = true,
   compact = false,
+  inputOnly = false,
+  initialResponse = true,
 }: {
   /** Live-session path: the student is actually on (or has already completed) this step. */
   learningSessionStepId?: string;
@@ -53,10 +58,22 @@ export default function VoiceTutorAgent({
    * the node's blueprint instead. Provide this pair INSTEAD of learningSessionStepId. */
   capabilityGraphNodeId?: string;
   stepType?: 'Hypothesis' | 'Teaching' | 'DeepDive';
+  /** Structured Learning path (2026-08-14) — a single
+   * StructuredLearningSectionStep id (Hypothesis/Teaching/DeepDive).
+   * Provide this ALONE instead of learningSessionStepId/
+   * capabilityGraphNodeId+stepType; for DeepDive, also pass
+   * `exampleCardIndex` (and `isReviewOnly` for an already-mastered card). */
+  structuredLearningSectionStepId?: string;
   /** Blueprint-only DeepDive only: no grading tool is offered, the Agent just talks about the card. */
   isReviewOnly?: boolean;
+  /** Structured Learning path only (2026-08-18) — Q&A mode: the Agent
+   * greets once then waits for a spoken question, instead of teaching
+   * the whole section. Used by AI Agents' course chat page's "Voz" mode. */
+  isQaMode?: boolean;
   promptText?: string;
   onTranscript?: (transcript: string) => void;
+  /** Transcript of the Realtime agent's spoken answer. */
+  onAgentTranscript?: (transcript: string) => void;
   /** Deep Dive only: fired when the voice Agent itself calls the
    * `mark_explanation_understood` Realtime tool — i.e. the exact moment
    * IT decides the student's spoken explanation is good enough. Forward
@@ -76,12 +93,16 @@ export default function VoiceTutorAgent({
   /** Renders a small inline button instead of the full glowing-orb card —
    * used for the per-ExampleCard "habla con tu maestro" button. */
   compact?: boolean;
+  /** When true, Realtime only captures/transcribes the student's voice.
+   * The owning page sends that transcript to its grounded text agent. */
+  inputOnly?: boolean;
+  /** Keep listening for VAD turns without speaking on connection. */
+  initialResponse?: boolean;
 }) {
-  // Stable identity for "which step is this widget currently about" — used
   // to reset/re-auto-connect when the parent page swaps in a different
   // step without remounting this component instance.
   const targetKey =
-    (learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`) +
+    (learningSessionStepId ?? structuredLearningSectionStepId ?? `${capabilityGraphNodeId}:${stepType}`) +
     (exampleCardIndex !== undefined ? ':' + exampleCardIndex : '');
 
   const [state, setState] = useState<VoiceState>('idle');
@@ -192,6 +213,8 @@ export default function VoiceTutorAgent({
       const session = await requestVoiceTutorSession(
         learningSessionStepId
           ? { learningSessionStepId, promptText, exampleCardIndex }
+          : structuredLearningSectionStepId
+          ? { structuredLearningSectionStepId, exampleCardIndex, isReviewOnly, isQaMode }
           : { capabilityGraphNodeId: capabilityGraphNodeId!, stepType: stepType!, exampleCardIndex, isReviewOnly }
       );
 
@@ -247,6 +270,9 @@ export default function VoiceTutorAgent({
           payload.transcript.trim()
         ) {
           onTranscript(payload.transcript.trim());
+          if (!inputOnly && !initialResponse && dataChannelRef.current?.readyState === 'open') {
+            dataChannelRef.current.send(JSON.stringify({ type: 'response.create' }));
+          }
         }
 
         // Deep Dive's `mark_explanation_understood` tool call — same
@@ -286,6 +312,15 @@ export default function VoiceTutorAgent({
             }
           }
         }
+
+        if (
+          onAgentTranscript &&
+          (payload.type === 'response.audio_transcript.done' || payload.type === 'response.output_audio_transcript.done') &&
+          typeof payload.transcript === 'string' &&
+          payload.transcript.trim()
+        ) {
+          onAgentTranscript(payload.transcript.trim());
+        }
       };
       dataChannel.onopen = () => {
         // FIXED 2026-08-05 (matches Capability Studio's 2026-07-25 fix,
@@ -310,7 +345,7 @@ export default function VoiceTutorAgent({
                     threshold: 0.85,
                     prefix_padding_ms: 300,
                     silence_duration_ms: 700,
-                    create_response: true,
+                    create_response: initialResponse && !inputOnly,
                     interrupt_response: true,
                   },
                   noise_reduction: { type: 'near_field' },
@@ -330,7 +365,10 @@ export default function VoiceTutorAgent({
         // greeting" instruction lives in the session's own instructions
         // (see VoiceTutorSessionFunction.BuildInstructions), so it stays in
         // effect for the whole session, not just this call.
-        dataChannel.send(JSON.stringify({ type: 'response.create' }));
+        if (!inputOnly && initialResponse) {
+          dataChannel.send(JSON.stringify({ type: 'response.create' }));
+        }
+
       };
 
       const offer = await peerConnection.createOffer();
@@ -359,7 +397,7 @@ export default function VoiceTutorAgent({
       teardown();
       setState('error');
     }
-  }, [learningSessionStepId, capabilityGraphNodeId, stepType, isReviewOnly, promptText, onTranscript, onExplanationAccepted, exampleCardIndex, monitorRemoteAudioLevel, teardown]);
+  }, [learningSessionStepId, capabilityGraphNodeId, stepType, structuredLearningSectionStepId, isReviewOnly, isQaMode, promptText, onTranscript, onAgentTranscript, onExplanationAccepted, exampleCardIndex, inputOnly, initialResponse, monitorRemoteAudioLevel, teardown]);
 
   const isActive = state === 'connected' || state === 'listening' || state === 'speaking';
   const isBusy = state === 'connecting';

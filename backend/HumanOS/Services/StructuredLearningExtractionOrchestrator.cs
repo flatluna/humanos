@@ -60,8 +60,10 @@ public sealed class StructuredLearningExtractionOrchestrator
     public StructuredLearningExtractionRunStatus Start(
         byte[] pdfBytes,
         string fileName,
+        string documentName,
         Guid tenantId,
-        List<CapabilityOutlineChapterDto> approvedOutline)
+        List<CapabilityOutlineChapterDto> approvedOutline,
+        StructuredLearningCreationOptions? creationOptions = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -77,11 +79,13 @@ public sealed class StructuredLearningExtractionOrchestrator
                 var result = await _extraction.RunFromPdfAsync(
                     pdfBytes,
                     fileName,
+                    documentName,
                     tenantId,
                     runId,
                     approvedOutline,
                     step => session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, step)),
-                    CancellationToken.None);
+                    CancellationToken.None,
+                    creationOptions);
 
                 session.UpdateStatus(StructuredLearningExtractionRunStatus.Completed(runId, result));
             }
@@ -105,7 +109,8 @@ public sealed class StructuredLearningExtractionOrchestrator
         List<CapabilityOutlineChapterDto> approvedOutline,
         string? preExpandedDocumentText,
         string languageCode,
-        bool strictSyllabusMode)
+        bool strictSyllabusMode,
+        StructuredLearningCreationOptions? creationOptions = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -128,7 +133,8 @@ public sealed class StructuredLearningExtractionOrchestrator
                     languageCode,
                     strictSyllabusMode,
                     step => session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, step)),
-                    CancellationToken.None);
+                    CancellationToken.None,
+                    creationOptions);
 
                 session.UpdateStatus(StructuredLearningExtractionRunStatus.Completed(runId, result));
             }

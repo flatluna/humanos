@@ -59,6 +59,12 @@ public sealed class StructuredLearningAssessmentEngine
         public int? FinalScore { get; set; }
         public int TotalQuestions { get; set; } = DefaultQuestionsPerRound;
 
+        /// <summary>Set only once the round is Passed/Failed — lets callers
+        /// (e.g. the Brain page's forgetting-curve ring) know exactly when
+        /// this section was last mastered, same field Capability Graph's own
+        /// LastCompletedDate already provides.</summary>
+        public DateTime? CompletedDate { get; set; }
+
         /// <summary>Null once the round is Passed/Failed (nothing left to answer).</summary>
         public QuestionInfo? CurrentQuestion { get; set; }
     }
@@ -96,15 +102,18 @@ public sealed class StructuredLearningAssessmentEngine
 
     /// <summary>Starts a brand-new round and generates its first question.
     /// Call this the first time a student reaches the Assessment step for
-    /// a section (when <see cref="GetActiveRoundAsync"/> returns null).</summary>
-    public async Task<RoundState> StartRoundAsync(HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken = default)
+    /// a section (when <see cref="GetActiveRoundAsync"/> returns null).
+    /// <paramref name="personId"/> is null only for capabilitystudio's
+    /// author/reviewer preview — the real student runtime always passes
+    /// it so each student's rounds stay separate.</summary>
+    public async Task<RoundState> StartRoundAsync(HumanOsDbContext dbContext, Guid sectionId, Guid? personId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
         var context = await LoadSectionContextAsync(dbContext, sectionId, cancellationToken);
 
         var priorRoundNumbers = await dbContext.StructuredLearningAssessmentRounds
-            .Where(r => r.StructuredLearningDocumentSectionId == sectionId)
+            .Where(r => r.StructuredLearningDocumentSectionId == sectionId && r.PersonId == personId)
             .Select(r => r.RoundNumber)
             .ToListAsync(cancellationToken);
 
@@ -115,7 +124,7 @@ public sealed class StructuredLearningAssessmentEngine
         {
             var previousRound = await dbContext.StructuredLearningAssessmentRounds
                 .Include(r => r.Questions)
-                .Where(r => r.StructuredLearningDocumentSectionId == sectionId && r.RoundNumber == roundNumber - 1)
+                .Where(r => r.StructuredLearningDocumentSectionId == sectionId && r.PersonId == personId && r.RoundNumber == roundNumber - 1)
                 .FirstOrDefaultAsync(cancellationToken);
 
             priorRoundErrors = previousRound?.Questions
@@ -127,6 +136,7 @@ public sealed class StructuredLearningAssessmentEngine
         var round = new StructuredLearningAssessmentRound
         {
             StructuredLearningDocumentSectionId = sectionId,
+            PersonId = personId,
             RoundNumber = roundNumber,
             Status = StructuredLearningAssessmentRoundStatus.InProgress
         };
@@ -150,14 +160,16 @@ public sealed class StructuredLearningAssessmentEngine
 
     /// <summary>Returns the MOST RECENT round for this section (so a page
     /// reload can resume mid-round, or show the last completed round's
-    /// pass/fail summary), or null if no round has ever been started.</summary>
-    public async Task<RoundState?> GetActiveRoundAsync(HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken = default)
+    /// pass/fail summary), or null if no round has ever been started.
+    /// Filters by <paramref name="personId"/> so each student sees only
+    /// their own rounds (null for capabilitystudio's author preview).</summary>
+    public async Task<RoundState?> GetActiveRoundAsync(HumanOsDbContext dbContext, Guid sectionId, Guid? personId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
         var round = await dbContext.StructuredLearningAssessmentRounds
             .Include(r => r.Questions)
-            .Where(r => r.StructuredLearningDocumentSectionId == sectionId)
+            .Where(r => r.StructuredLearningDocumentSectionId == sectionId && r.PersonId == personId)
             .OrderByDescending(r => r.RoundNumber)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -180,6 +192,7 @@ public sealed class StructuredLearningAssessmentEngine
             Status = round.Status,
             FinalScore = round.FinalScore,
             TotalQuestions = context.QuestionsPerRound,
+            CompletedDate = round.CompletedDate,
             CurrentQuestion = currentQuestion is null ? null : ToQuestionInfo(currentQuestion)
         };
     }
@@ -309,6 +322,7 @@ public sealed class StructuredLearningAssessmentEngine
         var newRound = new StructuredLearningAssessmentRound
         {
             StructuredLearningDocumentSectionId = round.StructuredLearningDocumentSectionId,
+            PersonId = round.PersonId,
             RoundNumber = newRoundNumber,
             Status = StructuredLearningAssessmentRoundStatus.InProgress
         };

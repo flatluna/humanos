@@ -58,19 +58,25 @@ public sealed class StructuredLearningPedagogyService
     private readonly GraphIllustrationImageService _imageService;
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
     private readonly HumanOS.Agents.Studio.PdfImageDescriptionAgent _imageDescriptionAgent;
+    private readonly StructuredLearningGenerationUsageService _usageService;
+    private readonly StructuredLearningKnowledgeFactGenerationService _knowledgeFactGeneration;
 
     public StructuredLearningPedagogyService(
         StructuredLearningSectionDesignerAgent designer,
         IDbContextFactory<HumanOsDbContext> dbContextFactory,
         IConfiguration configuration,
         GraphIllustrationImageService imageService,
-        HumanOS.Agents.Studio.PdfImageDescriptionAgent imageDescriptionAgent)
+        HumanOS.Agents.Studio.PdfImageDescriptionAgent imageDescriptionAgent,
+        StructuredLearningGenerationUsageService usageService,
+        StructuredLearningKnowledgeFactGenerationService knowledgeFactGeneration)
     {
         _designer = designer;
         _dbContextFactory = dbContextFactory;
         _configuration = configuration;
         _imageService = imageService;
         _imageDescriptionAgent = imageDescriptionAgent;
+        _usageService = usageService;
+        _knowledgeFactGeneration = knowledgeFactGeneration;
         // Same rationale as TraditionalCoursePipelineService: this service
         // only needs IConfiguration, so it's constructed directly rather
         // than injected (it's registered Scoped in DI, incompatible with
@@ -139,6 +145,7 @@ public sealed class StructuredLearningPedagogyService
             pedagogicalAudience = document.PedagogicalAudience,
             includeRecallStep = document.IncludeRecallStep,
             includeProductionStep = document.IncludeProductionStep,
+            includeAssessmentStep = document.IncludeAssessmentStep,
             maxDeepDiveCardsPerNode = document.MaxDeepDiveCardsPerNode,
             assessmentQuestionType = document.AssessmentQuestionType,
             assessmentQuestionsPerRound = document.AssessmentQuestionsPerRound ?? 2
@@ -247,59 +254,144 @@ public sealed class StructuredLearningPedagogyService
 
         try
         {
-            var design = await _designer.DesignAsync(
-                section.ChapterTitle,
-                section.SubchapterTitle,
-                section.Text,
-                languageCode,
-                document.PedagogicalAudience,
-                includeDeepDiveStep,
-                document.MaxDeepDiveCardsPerNode,
-                document.IncludeRecallStep,
-                document.IncludeProductionStep,
-                cancellationToken,
-                illustrationGuidance);
+            var knowledgeFacts = await LoadKnowledgeFactsAsync(dbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
 
-            var steps = design.Response.Steps;
-            var failures = ValidateGeneratedSteps(steps, document, includeDeepDiveStep, section.Text);
-
-            if (failures.Count > 0)
+            // Knowledge Facts are only REQUIRED when the designer actually
+            // opted into the Knowledge Graph for this document (2026-08-21
+            // fix) — when IncludeKnowledgeGraphEntities is false, the
+            // designer explicitly chose to skip that step, so a section
+            // legitimately having zero facts is expected, not an error;
+            // pedagogy must still proceed (grounded in the section's own
+            // Text alone, exactly like before Knowledge Facts existed).
+            if (document.IncludeKnowledgeGraphEntities)
             {
-                // Retry once — occasionally the model drops/reorders a step
-                // (e.g. skips DeepDive) despite the explicit instructions;
-                // a single retry resolves the vast majority of these (same
-                // cheap-retry pattern as StructuredLearningRecallEngine's
-                // own null-score retry).
-                var retryDesign = await _designer.DesignAsync(
-                    section.ChapterTitle,
-                    section.SubchapterTitle,
-                    section.Text,
-                    languageCode,
-                    document.PedagogicalAudience,
-                    includeDeepDiveStep,
-                    document.MaxDeepDiveCardsPerNode,
-                    document.IncludeRecallStep,
-                    document.IncludeProductionStep,
-                    cancellationToken,
-                    illustrationGuidance);
+                // Auto-recovery: the designer very often clicks "Generate
+                // Pedagogy" before ever running Knowledge Facts for a
+                // section — rather than hard-failing with "No persisted
+                // Knowledge Facts...", try generating them once here first,
+                // so pedagogy just works as long as the section's own
+                // Knowledge Graph (entities/connections) already exists. If
+                // the section genuinely has no entities/connections to
+                // derive facts from, this legitimately still returns zero
+                // facts and we fail below exactly as before.
+                if (knowledgeFacts.Count == 0 && _knowledgeFactGeneration.IsConfigured)
+                {
+                    try
+                    {
+                        await _knowledgeFactGeneration.GenerateValidateAndPersistAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+                        knowledgeFacts = await LoadKnowledgeFactsAsync(dbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Best-effort — falls through to the existing failure path below.
+                    }
+                }
 
-                var retrySteps = retryDesign.Response.Steps;
-                var retryFailures = ValidateGeneratedSteps(retrySteps, document, includeDeepDiveStep, section.Text);
+                var coreFactCount = knowledgeFacts.Count(fact => string.Equals(fact.Importance, "Core", StringComparison.OrdinalIgnoreCase));
+                if (knowledgeFacts.Count == 0 || coreFactCount == 0 || knowledgeFacts.Any(fact => fact.KnowledgeFactId == Guid.Empty || fact.GraphPath.Count == 0))
+                {
+                    var error = knowledgeFacts.Count == 0
+                        ? "No persisted Knowledge Facts are available for this Engram."
+                        : coreFactCount == 0
+                            ? "No persisted Core Knowledge Fact is available for this Engram."
+                            : "A persisted Knowledge Fact has no resolvable Graph Path.";
+                    await MarkFailedAsync(dbContext, section.StructuredLearningDocumentSectionId, error, cancellationToken);
+                    return (false, 0, 0);
+                }
+            }
+
+            var coreFactCountForLog = knowledgeFacts.Count(fact => string.Equals(fact.Importance, "Core", StringComparison.OrdinalIgnoreCase));
+            var pathStepCount = knowledgeFacts.Sum(fact => fact.GraphPath.Count);
+            Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: loaded {knowledgeFacts.Count} Knowledge Facts ({coreFactCountForLog} Core, {knowledgeFacts.Count - coreFactCountForLog} Supporting) and {pathStepCount} GraphPathSteps from SQL.");
+            var designStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // Occasionally the model's structured-output JSON is malformed
+            // (e.g. writes an array/object into a field the schema declares
+            // as a plain string, such as a DeepDive step's Content) — that
+            // throws a raw JsonException from inside DesignAsync/RunAsync
+            // rather than an empty/invalid Steps list. Treat that the same
+            // as any other validation failure so it feeds into the SAME
+            // retry loop below instead of crashing the whole section on the
+            // very first attempt.
+            async Task<(StructuredLearningSectionDesignerAgent.DesignResult? Design, List<string> Failures)> TryDesignAsync()
+            {
+                try
+                {
+                    var attemptDesign = await _designer.DesignAsync(
+                        section.ChapterTitle,
+                        section.SubchapterTitle,
+                        section.Text,
+                        languageCode,
+                        document.PedagogicalAudience,
+                        includeDeepDiveStep,
+                        document.MaxDeepDiveCardsPerNode,
+                        document.IncludeRecallStep,
+                        document.IncludeProductionStep,
+                        document.IncludeAssessmentStep,
+                        cancellationToken,
+                        illustrationGuidance,
+                        knowledgeFacts);
+                    return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, section.Text, attemptDesign.Response.Capability));
+                }
+                catch (JsonException ex)
+                {
+                    return (null, [$"Malformed model response: {ex.Message}"]);
+                }
+            }
+
+            var (design, failures) = await TryDesignAsync();
+            var steps = design?.Response.Steps ?? [];
+
+            // Retry up to 2 more times (3 attempts total) — occasionally the
+            // model drops/reorders a step (e.g. skips DeepDive), writes
+            // ExampleCards too short despite the explicit instructions, or
+            // returns malformed JSON (see TryDesignAsync above). Some topics
+            // (e.g. terse math derivations) miss on the first retry too, so
+            // a single retry wasn't always enough; token usage across every
+            // successful attempt is accumulated onto the final result.
+            const int maxAttempts = 3;
+            for (var attempt = 2; failures.Count > 0 && attempt <= maxAttempts; attempt++)
+            {
+                var (retryDesign, retryFailures) = await TryDesignAsync();
+                if (retryDesign is null)
+                {
+                    failures = retryFailures;
+                    continue;
+                }
 
                 design = new StructuredLearningSectionDesignerAgent.DesignResult
                 {
                     Response = retryDesign.Response,
                     TokenUsage = new AgentTokenUsage
                     {
-                        AgentName = design.TokenUsage.AgentName,
-                        ModelName = design.TokenUsage.ModelName,
-                        InputTokens = design.TokenUsage.InputTokens + retryDesign.TokenUsage.InputTokens,
-                        OutputTokens = design.TokenUsage.OutputTokens + retryDesign.TokenUsage.OutputTokens,
-                        CachedInputTokens = design.TokenUsage.CachedInputTokens + retryDesign.TokenUsage.CachedInputTokens
+                        AgentName = retryDesign.TokenUsage.AgentName,
+                        ModelName = retryDesign.TokenUsage.ModelName,
+                        InputTokens = (design?.TokenUsage.InputTokens ?? 0) + retryDesign.TokenUsage.InputTokens,
+                        OutputTokens = (design?.TokenUsage.OutputTokens ?? 0) + retryDesign.TokenUsage.OutputTokens,
+                        CachedInputTokens = (design?.TokenUsage.CachedInputTokens ?? 0) + retryDesign.TokenUsage.CachedInputTokens
                     }
                 };
-                steps = retrySteps;
+                steps = retryDesign.Response.Steps;
                 failures = retryFailures;
+            }
+
+            if (design is null)
+            {
+                await MarkFailedAsync(dbContext, section.StructuredLearningDocumentSectionId, string.Join(" | ", failures), cancellationToken);
+                return (false, 0, 0);
+            }
+
+            designStopwatch.Stop();
+            try
+            {
+                await _usageService.RecordAsync(
+                    document.StructuredLearningDocumentId, section.StructuredLearningDocumentSectionId, "Pedagogy",
+                    "StructuredLearningSectionDesigner", design.TokenUsage.ModelName, design.TokenUsage.InputTokens,
+                    design.TokenUsage.OutputTokens, design.TokenUsage.CachedInputTokens, designStopwatch.ElapsedMilliseconds, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Usage logging must never break pedagogy generation itself.
             }
 
             if (failures.Count > 0)
@@ -328,12 +420,33 @@ public sealed class StructuredLearningPedagogyService
                 maxDeepDiveCards = document.MaxDeepDiveCardsPerNode,
                 includeRecallStep = document.IncludeRecallStep,
                 includeProductionStep = document.IncludeProductionStep,
+                includeAssessmentStep = document.IncludeAssessmentStep,
                 languageCode,
                 pedagogicalAudience = document.PedagogicalAudience,
                 illustrationGuidanceProvided = !string.IsNullOrWhiteSpace(illustrationGuidance)
             });
 
-            var statements = design.Response.Statements ?? new List<StructuredLearningStatement>();
+            var statements = (design.Response.Statements ?? [])
+                .Select(dto => new StructuredLearningStatement
+                {
+                    StatementId = Guid.NewGuid(),
+                    SectionId = section.StructuredLearningDocumentSectionId,
+                    StatementType = dto.StatementType,
+                    Statement = dto.Statement,
+                    SourceText = dto.SourceText,
+                    ConditionEntity = dto.ConditionEntity,
+                    ConditionAttribute = dto.ConditionAttribute,
+                    ConditionOperator = dto.ConditionOperator,
+                    ConditionValue = dto.ConditionValue,
+                    ConditionUnit = dto.ConditionUnit,
+                    ActorEntity = dto.ActorEntity,
+                    ActorType = dto.ActorType,
+                    Action = dto.Action,
+                    TargetEntity = dto.TargetEntity,
+                    Modality = dto.Modality,
+                    PossibleOutcomes = dto.PossibleOutcomes
+                })
+                .ToList();
 
             await dbContext.StructuredLearningDocumentSections
                 .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
@@ -393,6 +506,42 @@ public sealed class StructuredLearningPedagogyService
                 s => s.SetProperty(x => x.PedagogyStatus, StructuredLearningPedagogyStatus.Failed)
                       .SetProperty(x => x.PedagogyErrorMessage, errorMessage),
                 cancellationToken);
+    }
+
+    private static async Task<List<StructuredLearningPedagogyKnowledgeFactDto>> LoadKnowledgeFactsAsync(
+        HumanOsDbContext dbContext,
+        Guid sectionId,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.StructuredLearningKnowledgeFacts
+            .Where(fact => fact.EngramId == sectionId)
+            .Select(fact => new StructuredLearningPedagogyKnowledgeFactDto
+            {
+                KnowledgeFactId = fact.KnowledgeFactId,
+                Statement = fact.Statement,
+                FactType = fact.FactType,
+                Importance = fact.Importance,
+                DerivationType = fact.DerivationType,
+                EpistemicStatus = fact.EpistemicStatus,
+                Confidence = fact.Confidence,
+                GraphPath = fact.GraphPathSteps
+                    .OrderBy(step => step.StepOrder)
+                    .Select(step => new StructuredLearningPedagogyGraphPathStepDto
+                    {
+                        ConnectionId = step.ConnectionId,
+                        StepOrder = step.StepOrder,
+                        SourceEntityId = step.Connection.SourceEntityId,
+                        SourceEntityName = step.Connection.SourceEntity.Name,
+                        RelationshipCategory = step.Connection.RelationshipCategory,
+                        RelationshipLabel = step.Connection.RelationshipLabel,
+                        TargetEntityId = step.Connection.TargetEntityId,
+                        TargetEntityName = step.Connection.TargetEntity.Name,
+                        Evidence = step.Connection.Evidence,
+                        EpistemicStatus = step.Connection.EpistemicStatus,
+                        Confidence = step.Connection.Confidence
+                    }).ToList()
+            })
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>Generates real illustrations for the Hypothesis step, the
@@ -537,6 +686,33 @@ public sealed class StructuredLearningPedagogyService
 
         foreach (var card in cards)
         {
+            if (card.IllustrationPrompts is { Count: > 0 } stepPrompts)
+            {
+                var ids = new List<Guid>();
+                foreach (var stepPrompt in stepPrompts)
+                {
+                    if (string.IsNullOrWhiteSpace(stepPrompt))
+                    {
+                        continue;
+                    }
+
+                    imageIndex++;
+                    var id = await GenerateAndPersistIllustrationAsync(
+                        dbContext, tenantId, sectionId, imageIndex, stepPrompt, card.Title, StructuredLearningIllustrationPurpose.DeepDiveCard, referenceImageBytes, cancellationToken);
+                    if (id is not null)
+                    {
+                        ids.Add(id.Value);
+                    }
+                }
+
+                if (ids.Count > 0)
+                {
+                    card.IllustrationIds = ids;
+                }
+
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(card.IllustrationPrompt))
             {
                 continue;
@@ -561,9 +737,11 @@ public sealed class StructuredLearningPedagogyService
     {
         try
         {
+#pragma warning disable OPENAI001 // GeneratedImageQuality.LowQuality is an experimental SDK member (2.9.1) — explicitly opted into for speed.
             var generated = referenceImageBytes is { Length: > 0 }
-                ? await _imageService.GenerateFromReferenceAsync(illustrationPrompt, referenceImageBytes, cancellationToken)
-                : await _imageService.GenerateAsync(illustrationPrompt, logoImageBytes: null, cancellationToken);
+                ? await _imageService.GenerateFromReferenceAsync(illustrationPrompt, referenceImageBytes, cancellationToken, quality: OpenAI.Images.GeneratedImageQuality.LowQuality)
+                : await _imageService.GenerateAsync(illustrationPrompt, logoImageBytes: null, cancellationToken, quality: OpenAI.Images.GeneratedImageQuality.LowQuality);
+#pragma warning restore OPENAI001
             using var stream = generated.ImageBytes.ToStream();
             var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                 tenantId, capabilityId: sectionId, nodeId: sectionId, imageIndex, stream, cancellationToken: cancellationToken);
@@ -607,7 +785,8 @@ public sealed class StructuredLearningPedagogyService
         List<StructuredLearningSectionStepDto> steps,
         StructuredLearningDocument document,
         bool includeDeepDiveStep,
-        string sectionSourceText)
+        string sectionSourceText,
+        string capabilityStatement)
     {
         var failures = new List<string>();
 
@@ -615,10 +794,27 @@ public sealed class StructuredLearningPedagogyService
             steps.Select(s => (s.StepType, ContentForStructuralCheck(s))).ToList(),
             includeDeepDiveStep,
             document.IncludeRecallStep,
-            document.IncludeProductionStep);
+            document.IncludeProductionStep,
+            document.IncludeAssessmentStep);
         if (!structural.Passed)
         {
             failures.AddRange(structural.Failures);
+        }
+
+        var deepDiveStep = steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.DeepDive);
+        failures.AddRange(StructuredLearningSectionEvaluator.ValidateDeepDiveCards(
+            includeDeepDiveStep,
+            deepDiveStep?.ExampleCards?.Select(c => (c.Title, c.Text)).ToList()));
+
+        // Atomicity (2026-08-17, Paso 4) — catches an engram whose
+        // Capability statement bundles more than one teachable idea, which
+        // the chapter/engram-extraction splitters should have separated
+        // already; failing here triggers the same retry-once path as any
+        // other structural failure.
+        var atomicity = StructuredLearningSectionEvaluator.CheckCapabilityAtomicity(capabilityStatement);
+        if (!atomicity.Passed)
+        {
+            failures.Add(atomicity.Reason ?? "Capability statement is not atomic.");
         }
 
         return failures;

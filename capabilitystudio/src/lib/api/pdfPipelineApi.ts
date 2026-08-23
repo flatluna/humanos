@@ -285,6 +285,15 @@ export function startCapabilityGraphFromDescription(
 export interface CapabilityOutlineNode {
   Title: string;
   StartMarker: string;
+  /** Size estimate (2026-08-17) — verbatim character count of this node's
+   * own slice of the source text. */
+  TotalCharacters: number;
+  /** Real token count (same tokenizer used for actual generation) — lets
+   * you gauge cost/scope before approving. */
+  TotalTokens: number;
+  /** True when this node is a bare outline/index entry with no real
+   * developed content (2026-08-17) — offer AI content expansion for it. */
+  HasSparseContent: boolean;
 }
 
 /** One proposed CHAPTER (becomes a graph "level") — see
@@ -293,6 +302,10 @@ export interface CapabilityOutlineChapter {
   Title: string;
   StartMarker: string;
   Nodes: CapabilityOutlineNode[];
+  /** Sum of every node's TotalCharacters under this chapter. */
+  TotalCharacters: number;
+  /** Sum of every node's TotalTokens under this chapter. */
+  TotalTokens: number;
 }
 
 /** How the outline was obtained (2026-08-04 "Modo A" vs "Modo B"):
@@ -314,7 +327,30 @@ export interface CapabilityOutlinePreviewResult {
    * unchanged as preExpandedDocumentText on
    * startCapabilityGraphFromDescription when submitting approvedOutline. */
   ExpandedDocumentText: string | null;
+  /** Document Type Detection Engine (2026-08-17) — the engine's
+   * recommendation, e.g. "Law"/"Procedure"/"Unknown". Null only if the
+   * caller passed an explicit documentType override (see below). */
+  DetectedDocumentType: DocumentTypeName | null;
+  /** The winning classifier's score (0-1). Null when documentType was
+   * passed explicitly (no re-classification happened). */
+  DetectedDocumentTypeConfidence: number | null;
+  /** Document-wide sum of every node's TotalCharacters (2026-08-17) — lets
+   * the wizard show "~N characters / ~M tokens total" before approving. */
+  TotalCharacters: number;
+  /** Document-wide sum of every node's TotalTokens. */
+  TotalTokens: number;
 }
+
+/** Mirrors HumanOS.Services.DocumentClassification.DocumentType's names. */
+export type DocumentTypeName =
+  | 'Unknown'
+  | 'Contract'
+  | 'Law'
+  | 'Policy'
+  | 'Procedure'
+  | 'AcademicWithIndex'
+  | 'AcademicNarrative'
+  | 'ResearchPaper';
 
 /** Cheap, detection-only preview of a document's chapter/node structure —
  * runs ONLY text extraction + detection, WITHOUT the expensive
@@ -323,11 +359,32 @@ export interface CapabilityOutlinePreviewResult {
  * Pass either a PDF (fileName + contentBase64) or an idea/text description
  * (text + capabilityName — expanded via IdeaToDocumentAgent first, see
  * ExpandedDocumentText above, so detection runs against the real
- * generated document instead of the raw one-sentence idea). */
+ * generated document instead of the raw one-sentence idea). Optional
+ * `documentType` (2026-08-17): when the designer already confirmed a type
+ * in the wizard, pass it to skip re-classification and use its dedicated
+ * chapter-splitting strategy (Law/Contract/Procedure/ResearchPaper). */
 export function previewCapabilityOutline(
   request:
-    | { fileName: string; contentBase64: string }
-    | { text: string; capabilityName: string; languageCode?: 'es' | 'en'; strictSyllabusMode?: boolean }
+    | { fileName: string; contentBase64: string; documentType?: DocumentTypeName }
+    | { text: string; capabilityName: string; languageCode?: 'es' | 'en'; strictSyllabusMode?: boolean; documentType?: DocumentTypeName }
 ): Promise<CapabilityOutlinePreviewResult> {
   return apiPost<CapabilityOutlinePreviewResult>('/studio/capability-graph/preview-outline', request);
+}
+
+/** Opt-in "Mejorar títulos con IA" (2026-08-17) — the ONLY LLM call in the
+ * otherwise-free outline-preview flow, and only when the designer
+ * explicitly requests it. ALWAYS one batched call regardless of chapter/
+ * node count — never one call per article. StartMarker/TotalCharacters/
+ * TotalTokens are preserved unchanged; only Title fields are replaced.
+ * Best-effort: returns the original chapters unchanged on any failure. */
+export function refineOutlineTitles(
+  documentType: DocumentTypeName | null,
+  chapters: CapabilityOutlineChapter[],
+  customInstruction?: string,
+): Promise<CapabilityOutlineChapter[]> {
+  return apiPost<CapabilityOutlineChapter[]>('/studio/capability-graph/preview-outline/refine-titles', {
+    documentType: documentType ?? undefined,
+    customInstruction: customInstruction?.trim() || undefined,
+    chapters,
+  });
 }

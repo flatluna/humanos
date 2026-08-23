@@ -157,6 +157,7 @@ public sealed class CapabilityEnrollmentService
             Description = capability.Description,
             SubjectCode = capability.Subject?.Code,
             SubjectName = capability.Subject?.Name,
+            HasCoverImage = !string.IsNullOrEmpty(capability.CapabilityGraph?.CoverImageStoragePath),
             Category = capability.Category,
             EnrolledDate = enrollment.EnrolledDate,
             Status = status,

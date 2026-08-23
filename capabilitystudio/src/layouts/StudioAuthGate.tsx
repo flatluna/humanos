@@ -1,53 +1,102 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { InteractionStatus } from '@azure/msal-browser';
-import { useMsal } from '@azure/msal-react';
 import { useAuth } from '../auth/AuthContext';
 import { AccessDenied } from '../components/AccessDenied';
+import { getIdentityHeaders } from '../auth';
+import { hasValidLaunchSession } from '../auth/launchSession';
 
-const REDIRECT_GUARD_KEY = 'humanos.studio.loginRedirect.startedAt';
-const REDIRECT_GUARD_MAX_AGE_MS = 30_000;
-
-/** Shell gate for the whole Studio app: real MSAL session (silent SSO —
- *  same CIAM tenant/app registration as the other three Human OS apps),
- *  then Studio's own access rule (canAuthorCourses — Consumer or HRAdmin
- *  only, 2026-08-05), then the routed content. Mirrors
- *  human-os-enterprise's EnterpriseAppLayout gate. */
+/** Shell gate for the whole Studio app (2026-08-19): Studio no longer
+ *  supports standalone MSAL login — it can only be opened via a parent
+ *  app's "Studio" button, which lands on /launch and establishes a
+ *  launch session (signed JWT, see auth/launchSession.ts). No launch
+ *  session, no access — there is no login screen to fall back to. */
 export default function StudioAuthGate() {
-  const { isAuthenticated, isLoading, backendError, noAccount, canAuthorCourses, user, login, refreshUser } =
-    useAuth();
-  const { inProgress } = useMsal();
-  const redirectStarted = useRef(false);
+  const { signedInEmail } = useAuth();
+  const hasLaunchSession = hasValidLaunchSession();
+  const [studioAccess, setStudioAccess] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      sessionStorage.removeItem(REDIRECT_GUARD_KEY);
-      redirectStarted.current = false;
+    if (!hasLaunchSession) {
+      setStudioAccess(null);
       return;
     }
 
-    if (isLoading || inProgress !== InteractionStatus.None || redirectStarted.current) {
-      return;
-    }
+    let cancelled = false;
+    const accessUrl = `${import.meta.env.VITE_PRODUCT_ACCESS_API_URL ?? 'http://localhost:7072/api'}/me/product-access`;
+    const identityHeaders = getIdentityHeaders();
+    const contextUrl = `${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:7071/api'}/me/studio-context`;
+    const verifyLegacyMembership = async () => {
+      const oid = identityHeaders['X-Azure-OID'];
+      const email = signedInEmail ?? '';
+      if (!oid && !email) throw new Error('No identity available');
+      const query = oid ? `oid=${encodeURIComponent(oid)}` : `email=${encodeURIComponent(email)}`;
+      const membershipResponse = await fetch(`http://localhost:7072/api/user/tenant?${query}`, { cache: 'no-store' });
+      if (!membershipResponse.ok) throw new Error(`Membership request failed: ${membershipResponse.status}`);
+      return true;
+    };
 
-    const now = Date.now();
-    const startedAtRaw = sessionStorage.getItem(REDIRECT_GUARD_KEY);
-    const startedAt = startedAtRaw ? Number.parseInt(startedAtRaw, 10) : 0;
-    const guardActive = Number.isFinite(startedAt) && now - startedAt < REDIRECT_GUARD_MAX_AGE_MS;
+    const resolveAccess = async () => {
+      try {
+        const contextResponse = await fetch(contextUrl, { headers: identityHeaders, cache: 'no-store' });
+        if (contextResponse.ok) {
+          const contextBody = await contextResponse.text();
+          const headerTenantId = contextResponse.headers.get('X-Studio-Tenant-Id');
+          const headerTenantName = contextResponse.headers.get('X-Studio-Tenant-Name');
+          if (headerTenantId) sessionStorage.setItem('humanos.studio.inheritedTenantId', headerTenantId);
+          if (headerTenantName) sessionStorage.setItem('humanos.studio.inheritedTenantName', headerTenantName);
+          if (contextBody.trim()) {
+            const context = JSON.parse(contextBody) as {
+              tenantId?: string;
+              organizationName?: string;
+              permissions?: { studioView?: boolean };
+            };
+            console.info('[StudioContext] inherited tenant', {
+              tenantId: context.tenantId,
+              studioView: context.permissions?.studioView,
+            });
+            if (context.tenantId) {
+              sessionStorage.setItem('humanos.studio.inheritedTenantId', context.tenantId);
+            }
+            if (context.organizationName) {
+              sessionStorage.setItem('humanos.studio.inheritedTenantName', context.organizationName);
+            }
+            if (context.permissions?.studioView === true) return true;
+          }
+        }
 
-    if (guardActive) {
-      return;
-    }
+        const response = await fetch(accessUrl, { headers: identityHeaders, cache: 'no-store' });
+        if (response.ok) {
+          const body = await response.text();
+          if (body.trim()) {
+            const data = JSON.parse(body) as { permissions?: { studioView?: boolean } };
+            if (data.permissions?.studioView === true) return true;
+          }
+        }
+      } catch {
+        // Fall through to the membership endpoint during rollout.
+      }
 
-    sessionStorage.setItem(REDIRECT_GUARD_KEY, now.toString());
-    redirectStarted.current = true;
-    void login().catch(() => {
-      sessionStorage.removeItem(REDIRECT_GUARD_KEY);
-      redirectStarted.current = false;
-    });
-  }, [inProgress, isAuthenticated, isLoading, login]);
+      return verifyLegacyMembership();
+    };
 
-  if (!isAuthenticated || isLoading) {
+    resolveAccess()
+      .then((allowed) => {
+        if (!cancelled) setStudioAccess(allowed);
+      })
+      .catch(() => {
+        if (!cancelled) setStudioAccess(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLaunchSession, signedInEmail]);
+
+  if (!hasLaunchSession) {
+    return <AccessDenied reason="no-launch" />;
+  }
+
+  if (studioAccess === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-brand-400" />
@@ -55,29 +104,7 @@ export default function StudioAuthGate() {
     );
   }
 
-  if (backendError) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 px-4 text-center">
-        <p className="text-lg font-semibold text-white">No pudimos conectar con el servidor</p>
-        <p className="max-w-md text-sm text-slate-400">
-          Tu sesión es válida, pero el backend no respondió correctamente. Verifica tu conexión e inténtalo de nuevo.
-        </p>
-        <button
-          type="button"
-          onClick={() => void refreshUser()}
-          className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-white/90"
-        >
-          Reintentar
-        </button>
-      </div>
-    );
-  }
-
-  if (noAccount || !user) {
-    return <AccessDenied reason="no-account" />;
-  }
-
-  if (!canAuthorCourses) {
+  if (!studioAccess) {
     return <AccessDenied reason="role" />;
   }
 

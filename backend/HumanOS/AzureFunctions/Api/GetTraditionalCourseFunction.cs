@@ -82,6 +82,8 @@ public sealed class GetTraditionalCourseFunction
 
         public string? Description { get; set; }
 
+        public string? ExecutiveSummary { get; set; }
+
         public Guid? CoverIllustrationId { get; set; }
 
         public List<ChapterDto> Chapters { get; set; } = [];
@@ -97,7 +99,7 @@ public sealed class GetTraditionalCourseFunction
         var capability = await _dbContext.Capabilities
             .AsNoTracking()
             .Where(c => c.CapabilityId == capabilityId && c.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters)
-            .Select(c => new { c.CapabilityId, c.Name, c.Description })
+            .Select(c => new { c.CapabilityId, c.Name, c.Description, c.ExecutiveSummary })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (capability is null)
@@ -159,6 +161,7 @@ public sealed class GetTraditionalCourseFunction
             CapabilityId = capability.CapabilityId,
             Name = capability.Name,
             Description = capability.Description,
+            ExecutiveSummary = capability.ExecutiveSummary,
             CoverIllustrationId = coverIllustrationId,
             Chapters = chapters
         };

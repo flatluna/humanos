@@ -25,6 +25,8 @@ public sealed class StructuredLearningSectionAdditionService
     private readonly StructuredLearningSectionAdditionAgent _agent;
     private readonly CapabilityEmbeddingService _embeddingService;
     private readonly StructuredLearningPedagogyService _pedagogyService;
+    private readonly StructuredLearningEntityExtractionService _entityExtraction;
+    private readonly StructuredLearningConnectionExtractionService _connectionExtraction;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly GptEncoding _tokenEncoding = GptEncoding.GetEncoding("cl100k_base");
 
@@ -32,11 +34,15 @@ public sealed class StructuredLearningSectionAdditionService
         StructuredLearningSectionAdditionAgent agent,
         CapabilityEmbeddingService embeddingService,
         StructuredLearningPedagogyService pedagogyService,
+        StructuredLearningEntityExtractionService entityExtraction,
+        StructuredLearningConnectionExtractionService connectionExtraction,
         IDbContextFactory<HumanOsDbContext> dbContextFactory)
     {
         _agent = agent;
         _embeddingService = embeddingService;
         _pedagogyService = pedagogyService;
+        _entityExtraction = entityExtraction;
+        _connectionExtraction = connectionExtraction;
         _dbContextFactory = dbContextFactory;
     }
 
@@ -171,6 +177,38 @@ public sealed class StructuredLearningSectionAdditionService
                 UploadedImageContentType = uploadedImageContentType,
                 ReferenceImageUsageInstruction = referenceImageUsageInstruction
             });
+
+        // Knowledge Graph (2026-08-14): keeps entities/tokens/cost/timing
+        // up to date automatically, same as the original Step 2 extraction
+        // — the professor never has to remember to trigger a backfill.
+        // Respects the document's own Step 1 opt-in choice. Best-effort: a
+        // failure here must never fail section creation itself
+        // (ExtractForSectionAsync already records its own usage).
+        if (document.IncludeKnowledgeGraphEntities && _entityExtraction.IsConfigured)
+        {
+            try
+            {
+                await _entityExtraction.ExtractForSectionAsync(newSection.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Same graceful-skip rationale as StructuredLearningExtractionService's own GenerateKnowledgeGraphAsync.
+            }
+        }
+
+        // Edges (2026-08-14): must run AFTER entity extraction above, since
+        // it only offers this section's own just-linked entities as candidates.
+        if (document.IncludeKnowledgeGraphEntities && document.IncludeKnowledgeGraphConnections && _connectionExtraction.IsConfigured)
+        {
+            try
+            {
+                await _connectionExtraction.ExtractForSectionAsync(newSection.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Same graceful-skip rationale as entity extraction above.
+            }
+        }
 
         return newSection.StructuredLearningDocumentSectionId;
     }

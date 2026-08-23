@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
@@ -11,6 +11,8 @@ import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import { getNodeSummary, type NodeSummaryDto } from '@/features/capabilities/api/runtimeSessionApi';
 import { API_BASE_URL } from '@/features/capabilities/api/httpClient';
 import EngramReviewAgent from '@/features/capabilities/components/EngramReviewAgent';
+import VoiceTutorAgent from '@/features/capabilities/components/VoiceTutorAgent';
+import { getStructuredLearningDocument } from '@/features/capabilities/api/structuredLearningRuntimeApi';
 import { BrainGraph } from './BrainGraph';
 import { BrainRecallGrid } from './BrainRecallGrid';
 import { MemoryScoreGauge } from './MemoryScoreGauge';
@@ -109,6 +111,9 @@ type DeepDiveCardView = {
   text: string;
   emoji?: string;
   illustrationId?: string | null;
+  /** Ordered step-by-step illustrations (e.g. a math derivation) — when
+   * present, shown instead of the single illustrationId as a sequence. */
+  illustrationIds?: string[] | null;
 };
 
 /** Full detail of one Deep Dive card, launched from the "Tarjetas de
@@ -123,13 +128,16 @@ function DeepDiveCardModal({
   card,
   personId,
   capabilityGraphNodeId,
+  structuredLearningDeepDiveStepId,
   agentActive,
   onClose,
   onAskAgent,
 }: {
   card: DeepDiveCardView;
   personId: string;
-  capabilityGraphNodeId: string;
+  /** Provide exactly one of these two — whichever course type this card belongs to. */
+  capabilityGraphNodeId?: string;
+  structuredLearningDeepDiveStepId?: string;
   agentActive: boolean;
   onClose: () => void;
   onAskAgent: () => void;
@@ -147,9 +155,22 @@ function DeepDiveCardModal({
           <X className="h-5 w-5" />
         </button>
 
-        {card.illustrationId ? (
+        {card.illustrationIds && card.illustrationIds.length > 0 ? (
+          <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {card.illustrationIds.map((id, i) => (
+              <div key={id} className="space-y-1">
+                <img
+                  src={`${API_BASE_URL}/illustrations/${structuredLearningDeepDiveStepId ? 'structured-learning/' : ''}${id}/image`}
+                  alt={`${card.title} — step ${i + 1}`}
+                  className="h-auto max-h-48 w-full rounded-xl object-contain bg-black/20"
+                />
+                <p className="text-center text-[11px] font-medium text-white/50">Step {i + 1}</p>
+              </div>
+            ))}
+          </div>
+        ) : card.illustrationId ? (
           <img
-            src={`${API_BASE_URL}/illustrations/${card.illustrationId}/image`}
+            src={`${API_BASE_URL}/illustrations/${structuredLearningDeepDiveStepId ? 'structured-learning/' : ''}${card.illustrationId}/image`}
             alt={card.title}
             className="mb-3 h-auto max-h-56 w-full rounded-xl object-contain bg-black/20"
           />
@@ -162,13 +183,22 @@ function DeepDiveCardModal({
         {!agentActive && <RichText className="mt-2 text-sm text-white/70" html={card.text} />}
 
         {agentActive ? (
-          <EngramReviewAgent
-            personId={personId}
-            capabilityGraphNodeId={capabilityGraphNodeId}
-            exampleCardIndex={card.index}
-            embedded
-            onExit={onClose}
-          />
+          structuredLearningDeepDiveStepId ? (
+            <VoiceTutorAgent
+              structuredLearningSectionStepId={structuredLearningDeepDiveStepId}
+              exampleCardIndex={card.index}
+              isReviewOnly
+              autoConnect={false}
+            />
+          ) : (
+            <EngramReviewAgent
+              personId={personId}
+              capabilityGraphNodeId={capabilityGraphNodeId!}
+              exampleCardIndex={card.index}
+              embedded
+              onExit={onClose}
+            />
+          )
         ) : (
           <button
             type="button"
@@ -189,6 +219,7 @@ export function BrainPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const personId = user?.personId ?? '';
+  const navigate = useNavigate();
 
   const { data: rootGroups = [], isLoading: loading } = useBrainGraph(personId, i18n.language);
   const [query, setQuery] = useState('');
@@ -196,6 +227,14 @@ export function BrainPage() {
   const [selectedNode, setSelectedNode] = useState<SelectedNeuron | null>(null);
   const [summary, setSummary] = useState<NodeSummaryDto | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  // Structured Learning equivalent of `summary` — that course type has no
+  // NodeSummary backend endpoint, so its Deep Dive cards + Teaching step id
+  // (for the "talk to the agent" full review) are fetched straight from the
+  // section's own document detail instead (2026-08-14).
+  const [slDeepDiveCards, setSlDeepDiveCards] = useState<DeepDiveCardView[]>([]);
+  const [slDeepDiveStepId, setSlDeepDiveStepId] = useState<string | null>(null);
+  const [slTeachingStepId, setSlTeachingStepId] = useState<string | null>(null);
+  const [slTeachingIllustrationId, setSlTeachingIllustrationId] = useState<string | null>(null);
   const [engramOpen, setEngramOpen] = useState(false);
   const [cardModalIndex, setCardModalIndex] = useState<number | null>(null);
   const [cardAgentActive, setCardAgentActive] = useState(false);
@@ -318,10 +357,51 @@ export function BrainPage() {
 
   function handleSelectNode(node: SelectedNeuron) {
     setSelectedNode(node);
-    setSummary(null);
-    setSummaryLoading(true);
     setCardModalIndex(null);
     setCardAgentActive(false);
+
+    if (node.isStructuredLearning) {
+      // Structured Learning has no NodeSummary backend endpoint (that's a
+      // Capability Graph concept) — fetch the section's own Deep Dive
+      // cards + Teaching step id straight from the document detail
+      // instead, so this SAME review panel/modal (found in the original
+      // Capability Graph design) works for both course types.
+      setSummary(null);
+      setSlDeepDiveCards([]);
+      setSlDeepDiveStepId(null);
+      setSlTeachingStepId(null);
+      setSlTeachingIllustrationId(null);
+      getStructuredLearningDocument(node.structuredLearningDocumentId)
+        .then((doc) => {
+          const section = doc.Sections.find((s) => s.StructuredLearningDocumentSectionId === node.structuredLearningSectionId);
+          const deepDiveStep = section?.Steps.find((s) => s.StepType === 'DeepDive');
+          const teachingStep = section?.Steps.find((s) => s.StepType === 'Teaching');
+          setSlTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
+          setSlDeepDiveStepId(deepDiveStep?.StructuredLearningSectionStepId ?? null);
+          if (teachingStep?.StepDataJson) {
+            try {
+              setSlTeachingIllustrationId((JSON.parse(teachingStep.StepDataJson) as { IllustrationId?: string | null }).IllustrationId ?? null);
+            } catch {
+              setSlTeachingIllustrationId(null);
+            }
+          }
+          if (deepDiveStep?.StepDataJson) {
+            try {
+              const cards = JSON.parse(deepDiveStep.StepDataJson) as { Title: string; Text: string; Emoji?: string | null; IllustrationId?: string | null; IllustrationIds?: string[] | null }[];
+              setSlDeepDiveCards(
+                cards.map((c, index) => ({ index, title: c.Title, text: c.Text, emoji: c.Emoji ?? undefined, illustrationId: c.IllustrationId, illustrationIds: c.IllustrationIds }))
+              );
+            } catch {
+              setSlDeepDiveCards([]);
+            }
+          }
+        })
+        .catch(() => undefined);
+      return;
+    }
+
+    setSummary(null);
+    setSummaryLoading(true);
     getNodeSummary(personId, node.capabilityGraphNodeId)
       .then((data) => setSummary(data))
       .catch(() => setSummary(null))
@@ -333,6 +413,7 @@ export function BrainPage() {
   // browsing them needs no extra request. Only the DeepDive step ever has
   // cards; every other step type's ExampleCards field is undefined.
   const deepDiveCards: DeepDiveCardView[] = useMemo(() => {
+    if (selectedNode?.isStructuredLearning) return slDeepDiveCards;
     const step = summary?.Steps.find((s) => s.StepType === 'DeepDive');
     return (step?.ExampleCards ?? []).map((c, index) => ({
       index,
@@ -341,7 +422,7 @@ export function BrainPage() {
       emoji: c.Emoji,
       illustrationId: c.IllustrationId,
     }));
-  }, [summary]);
+  }, [summary, selectedNode, slDeepDiveCards]);
 
   function openRandomCard() {
     if (deepDiveCards.length === 0) return;
@@ -588,9 +669,9 @@ export function BrainPage() {
                 </div>
               )}
 
-              {summaryLoading && <p className="mt-6 text-sm text-white/50">{t('brain.loadingSummary')}</p>}
+              {summaryLoading && !selectedNode.isStructuredLearning && <p className="mt-6 text-sm text-white/50">{t('brain.loadingSummary')}</p>}
 
-              {!summaryLoading && summary && (
+              {!summaryLoading && summary && !selectedNode.isStructuredLearning && (
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   <SummaryStat label={t('brain.panelAttempts')} value={String(summary.AttemptCount)} />
                   <SummaryStat
@@ -610,6 +691,23 @@ export function BrainPage() {
                     value={
                       summary.LastCompletedDate
                         ? new Date(summary.LastCompletedDate).toLocaleDateString(i18n.language, { dateStyle: 'medium' })
+                        : '—'
+                    }
+                  />
+                </div>
+              )}
+
+              {selectedNode.isStructuredLearning && (
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <SummaryStat
+                    label={t('brain.panelScore')}
+                    value={typeof selectedNode.finalScore === 'number' ? `${selectedNode.finalScore}/100` : '—'}
+                  />
+                  <SummaryStat
+                    label={t('brain.panelLastCompleted')}
+                    value={
+                      selectedNode.lastCompletedDate
+                        ? new Date(selectedNode.lastCompletedDate).toLocaleDateString(i18n.language, { dateStyle: 'medium' })
                         : '—'
                     }
                   />
@@ -659,13 +757,24 @@ export function BrainPage() {
                 </div>
               )}
 
-              <Link
-                to={`/capabilities/${selectedNode.capabilityId}/nodes/${selectedNode.capabilityGraphNodeId}?from=brain`}
-                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
-              >
-                <RotateCcw className="h-4 w-4" />
-                {t('brain.redoFiveSteps')}
-              </Link>
+              {selectedNode.isStructuredLearning ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/structured-learning/${selectedNode.structuredLearningDocumentId}/sections/${selectedNode.structuredLearningSectionId}`)}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {t('brain.redoFiveSteps')}
+                </button>
+              ) : (
+                <Link
+                  to={`/capabilities/${selectedNode.capabilityId}/nodes/${selectedNode.capabilityGraphNodeId}?from=brain`}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {t('brain.redoFiveSteps')}
+                </Link>
+              )}
             </motion.div>
           </>
         )}
@@ -675,7 +784,8 @@ export function BrainPage() {
         <DeepDiveCardModal
           card={deepDiveCards[cardModalIndex]}
           personId={personId}
-          capabilityGraphNodeId={selectedNode.capabilityGraphNodeId}
+          capabilityGraphNodeId={selectedNode.isStructuredLearning ? undefined : selectedNode.capabilityGraphNodeId}
+          structuredLearningDeepDiveStepId={selectedNode.isStructuredLearning ? (slDeepDiveStepId ?? undefined) : undefined}
           agentActive={cardAgentActive}
           onClose={() => {
             setCardModalIndex(null);
@@ -686,11 +796,37 @@ export function BrainPage() {
       )}
 
       {engramOpen && selectedNode && (
-        <EngramReviewAgent
-          personId={personId}
-          capabilityGraphNodeId={selectedNode.capabilityGraphNodeId}
-          onExit={() => setEngramOpen(false)}
-        />
+        selectedNode.isStructuredLearning ? (
+          slTeachingStepId && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+              <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={() => setEngramOpen(false)}
+                  className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  aria-label={t('brain.closePanel')}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <h3 className="text-base font-semibold text-white">{selectedNode.name}</h3>
+                {slTeachingIllustrationId && (
+                  <img
+                    src={`${API_BASE_URL}/illustrations/structured-learning/${slTeachingIllustrationId}/image`}
+                    alt={selectedNode.name}
+                    className="mt-3 h-auto max-h-56 w-full rounded-xl object-contain bg-black/20"
+                  />
+                )}
+                <VoiceTutorAgent structuredLearningSectionStepId={slTeachingStepId} />
+              </div>
+            </div>
+          )
+        ) : (
+          <EngramReviewAgent
+            personId={personId}
+            capabilityGraphNodeId={selectedNode.capabilityGraphNodeId}
+            onExit={() => setEngramOpen(false)}
+          />
+        )
       )}
     </div>
   );

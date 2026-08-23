@@ -1,13 +1,21 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FileText, Layers } from 'lucide-react';
+import { FileText, Layers, Check } from 'lucide-react';
 import type { StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 
 /** Mirrors CapabilityCard's visual style (2026-08-10) — Structured
  * Learning documents have no Capability record yet (see repo memory), so
  * this is a separate lightweight card, purely additive to the catalog. */
-export default function StructuredLearningDocumentCard({ document }: { document: StructuredLearningDocumentSummary }) {
+export default function StructuredLearningDocumentCard({
+  document,
+  selected = false,
+  onToggle,
+}: {
+  document: StructuredLearningDocumentSummary;
+  selected?: boolean;
+  onToggle?: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const createdLabel = new Date(document.CreatedDate).toLocaleString(i18n.language, {
     dateStyle: 'medium',
@@ -19,6 +27,22 @@ export default function StructuredLearningDocumentCard({ document }: { document:
       to={`/structured-learning/${document.StructuredLearningDocumentId}`}
       className="group relative flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] transition-all hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-brand-500/10"
     >
+      {onToggle && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            onToggle();
+          }}
+          aria-label={selected ? `Deselect ${document.DocumentName}` : `Select ${document.DocumentName}`}
+          aria-pressed={selected}
+          className={`absolute left-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg border backdrop-blur-sm transition ${
+            selected ? 'border-brand-300 bg-brand-500 text-white' : 'border-white/30 bg-black/40 text-transparent hover:border-white/70'
+          }`}
+        >
+          <Check className="h-4 w-4" />
+        </button>
+      )}
       <div className="relative h-36 w-full overflow-hidden bg-gradient-to-br from-teal-600 to-emerald-700">
         {document.CoverIllustrationId ? (
           <img

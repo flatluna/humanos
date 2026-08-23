@@ -57,6 +57,7 @@ public sealed class TraditionalCoursePipelineService
     private readonly TocExtractionAgent _tocExtraction;
     private readonly LessonCardAgent _lessonCard;
     private readonly ChapterExamAgent _chapterExam;
+    private readonly DocumentContextAgent _documentContext;
     private readonly GraphIllustrationImageService _imageService;
     private readonly WebGroundingService _webGrounding;
     private readonly IdeaToDocumentAgent _ideaToDocument;
@@ -71,6 +72,7 @@ public sealed class TraditionalCoursePipelineService
         TocExtractionAgent tocExtraction,
         LessonCardAgent lessonCard,
         ChapterExamAgent chapterExam,
+        DocumentContextAgent documentContext,
         GraphIllustrationImageService imageService,
         WebGroundingService webGrounding,
         IdeaToDocumentAgent ideaToDocument,
@@ -83,6 +85,7 @@ public sealed class TraditionalCoursePipelineService
         _tocExtraction = tocExtraction;
         _lessonCard = lessonCard;
         _chapterExam = chapterExam;
+        _documentContext = documentContext;
         _imageService = imageService;
         _webGrounding = webGrounding;
         _ideaToDocument = ideaToDocument;
@@ -210,7 +213,7 @@ public sealed class TraditionalCoursePipelineService
         Guid? consentAcceptedByPersonId = null,
         string? consentAcceptedByName = null)
     {
-        reportProgress("Extrayendo texto del documento");
+        ReportProgress(reportProgress, languageCode, "Extracting text from the document", "Extrayendo texto del documento");
 
         var maxImagesToDescribe = _configuration.GetValue<int?>("MaxCapabilityPdfImagesToDescribe") ?? DefaultMaxImagesToDescribe;
         var maxImagesPerPage = _configuration.GetValue<int?>("MaxCapabilityPdfImagesPerPage") ?? DefaultMaxImagesPerPage;
@@ -263,7 +266,7 @@ public sealed class TraditionalCoursePipelineService
         }
         else
         {
-            reportProgress("Expandiendo la idea en un documento completo");
+            ReportProgress(reportProgress, languageCode, "Expanding the idea into a complete document", "Expandiendo la idea en un documento completo");
             var expansion = await _ideaToDocument.ExpandAsync(capabilityName, description, languageCode, strictSyllabusMode, cancellationToken);
             documentText = expansion.DocumentText;
         }
@@ -311,7 +314,7 @@ public sealed class TraditionalCoursePipelineService
         var normalizedLanguageCode = string.IsNullOrWhiteSpace(languageCode) ? "es" : languageCode.Trim().ToLowerInvariant();
 
         // ==================== 1. DETECT CHAPTERS + LESSONS ====================
-        reportProgress("Detectando capítulos y subcapítulos");
+        ReportProgress(reportProgress, normalizedLanguageCode, "Detecting chapters and lessons", "Detectando capítulos y subcapítulos");
 
         var source = new RawMaterialItem { Type = RawMaterialType.Pdf, Label = capabilityName, Content = documentText };
 
@@ -341,9 +344,12 @@ public sealed class TraditionalCoursePipelineService
 
         var tokenUsage = new ConcurrentBag<AgentTokenUsage>();
         var illustrationsGenerated = 0;
+        // One curated-text chunk per chapter, tagged by its title — the ONLY
+        // input the course-wide executive summary (step 2.5 below) is grounded in.
+        var curatedChapterChunks = new ConcurrentBag<CuratedChunk>();
 
         // ==================== 2. PER-CHAPTER CONTENT DESIGN (parallel) ====================
-        reportProgress("Diseñando lecciones y exámenes por capítulo");
+        ReportProgress(reportProgress, normalizedLanguageCode, "Designing lessons and chapter exams", "Diseñando lecciones y exámenes por capítulo");
 
         var builtChapters = new BuiltChapter[chapterOrder.Count];
         using var semaphore = new SemaphoreSlim(MaxConcurrentChapters);
@@ -442,6 +448,7 @@ public sealed class TraditionalCoursePipelineService
                 }
 
                 var chapterCuratedText = string.Join("\n\n---\n\n", chapterContentParts);
+                curatedChapterChunks.Add(new CuratedChunk { Tag = chapterKey, Content = chapterCuratedText });
                 var examResult = await _chapterExam.DesignAsync(chapterKey, chapterCuratedText, normalizedQuestionsPerChapterExam, normalizedLanguageCode, cancellationToken);
                 tokenUsage.Add(WithModuleId(examResult.TokenUsage, chapterKey));
 
@@ -496,8 +503,29 @@ public sealed class TraditionalCoursePipelineService
 
         await Task.WhenAll(chapterTasks);
 
+        // ==================== 2.5 COURSE-WIDE EXECUTIVE SUMMARY (best-effort) ====================
+        // ONE call over every chapter's own curated content — never a
+        // per-lesson gloss — mirrors DocumentContextAgent's exact role in the
+        // Structured Learning pipeline (see StructuredLearningExtractionService).
+        string? executiveSummary = null;
+        if (_documentContext.IsConfigured)
+        {
+            ReportProgress(reportProgress, normalizedLanguageCode, "Writing the course executive summary", "Redactando el resumen ejecutivo del curso");
+            try
+            {
+                var courseCorpus = new CuratedCorpus { Summary = string.Empty, Chunks = [.. curatedChapterChunks] };
+                var contextResult = await _documentContext.ExtractAsync(capabilityName, courseCorpus, normalizedLanguageCode, cancellationToken);
+                executiveSummary = contextResult.Context.ExecutiveSummary;
+                tokenUsage.Add(contextResult.TokenUsage);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Best-effort — never blocks course creation.
+            }
+        }
+
         // ==================== 3. CREATE THE CAPABILITY ROW ====================
-        reportProgress("Creando el curso");
+        ReportProgress(reportProgress, normalizedLanguageCode, "Creating the course", "Creando el curso");
 
         Guid capabilityId;
         await using (var setupDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
@@ -505,14 +533,14 @@ public sealed class TraditionalCoursePipelineService
             capabilityId = await EnsureCapabilityAsync(
                 setupDbContext, capabilityDomainId, capabilityName, subjectId, sourceDescription, capabilityDescription,
                 normalizedLanguageCode, pedagogicalAudience, ownerPersonId, ownerTenantId, consentAcceptedDate,
-                consentAcceptedByPersonId, consentAcceptedByName, cancellationToken);
+                consentAcceptedByPersonId, consentAcceptedByName, executiveSummary, cancellationToken);
         }
 
         // ==================== 4. COURSE COVER IMAGE (best-effort) ====================
         string? coverImageStoragePath = null;
         if (_imageService.IsConfigured && _illustrationStorage.IsConfigured)
         {
-            reportProgress("Generando imagen de portada del curso");
+            ReportProgress(reportProgress, normalizedLanguageCode, "Generating the course cover image", "Generando imagen de portada del curso");
             try
             {
                 var coverPrompt =
@@ -535,7 +563,7 @@ public sealed class TraditionalCoursePipelineService
         }
 
         // ==================== 5. PERSIST EVERYTHING ====================
-        reportProgress("Guardando el curso en la base de datos");
+        ReportProgress(reportProgress, normalizedLanguageCode, "Saving the course to the database", "Guardando el curso en la base de datos");
 
         int lessonCount = 0, cardCount = 0, examQuestionCount = 0;
         await using (var persistDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken))
@@ -639,6 +667,7 @@ public sealed class TraditionalCoursePipelineService
         {
             CapabilityId = capabilityId,
             CourseName = capabilityName,
+            ExecutiveSummary = executiveSummary,
             PageCount = pageCount,
             ChapterCount = builtChapters.Length,
             LessonCount = lessonCount,
@@ -685,6 +714,13 @@ public sealed class TraditionalCoursePipelineService
         CreatedDate = DateTime.UtcNow
     };
 
+    private static void ReportProgress(Action<string> reportProgress, string? languageCode, string englishMessage, string spanishMessage)
+    {
+        reportProgress(string.Equals(languageCode?.Trim(), "en", StringComparison.OrdinalIgnoreCase)
+            ? englishMessage
+            : spanishMessage);
+    }
+
     private static AgentTokenUsage WithModuleId(AgentTokenUsage usage, string moduleId) => new()
     {
         AgentName = usage.AgentName,
@@ -694,6 +730,50 @@ public sealed class TraditionalCoursePipelineService
         OutputTokens = usage.OutputTokens,
         CachedInputTokens = usage.CachedInputTokens
     };
+
+    /// <summary>Generates and persists ExecutiveSummary for an EXISTING
+    /// Traditional Course created before this feature existed (2026-08-21) —
+    /// grounded ONLY in that course's own already-persisted chapter/lesson
+    /// card text (never invented), one CuratedChunk per chapter. Throws if
+    /// the capability doesn't exist, isn't TraditionalChapters, or the
+    /// DocumentContextAgent isn't configured.</summary>
+    public async Task<string> BackfillExecutiveSummaryAsync(Guid capabilityId, CancellationToken cancellationToken = default)
+    {
+        if (!_documentContext.IsConfigured)
+        {
+            throw new InvalidOperationException(
+                "The DocumentContext agent is not configured. Set the 'AzureOpenAIEndpoint' and 'AzureOpenAIDeploymentName' application settings.");
+        }
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var capability = await dbContext.Capabilities.FirstOrDefaultAsync(
+            c => c.CapabilityId == capabilityId && c.LearningMode == CourseLearningMode.TraditionalChapters, cancellationToken)
+            ?? throw new InvalidOperationException($"No traditional-mode course found with CapabilityId '{capabilityId}'.");
+
+        var chapters = await dbContext.CapabilityChapters
+            .Include(c => c.Lessons).ThenInclude(l => l.Cards)
+            .Where(c => c.CapabilityId == capabilityId)
+            .OrderBy(c => c.SortOrder)
+            .ToListAsync(cancellationToken);
+
+        var chunks = chapters.Select(chapter => new CuratedChunk
+        {
+            Tag = chapter.Title,
+            Content = string.Join(
+                "\n\n",
+                chapter.Lessons.OrderBy(l => l.SortOrder).SelectMany(l => l.Cards.OrderBy(c => c.SortOrder))
+                    .Select(card => $"{card.Title}\n{card.Text}"))
+        }).ToList();
+
+        var corpus = new CuratedCorpus { Summary = string.Empty, Chunks = chunks };
+        var contextResult = await _documentContext.ExtractAsync(capability.Name, corpus, capability.ContentLanguageCode, cancellationToken);
+
+        capability.ExecutiveSummary = contextResult.Context.ExecutiveSummary;
+        capability.UpdatedDate = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return contextResult.Context.ExecutiveSummary;
+    }
 
     private static async Task<Guid> EnsureCapabilityAsync(
         HumanOsDbContext dbContext,
@@ -709,6 +789,7 @@ public sealed class TraditionalCoursePipelineService
         DateTime? consentAcceptedDate,
         Guid? consentAcceptedByPersonId,
         string? consentAcceptedByName,
+        string? executiveSummary,
         CancellationToken cancellationToken)
     {
         var domainExists = await dbContext.CapabilityDomains.AnyAsync(d => d.CapabilityDomainId == capabilityDomainId, cancellationToken);
@@ -737,6 +818,7 @@ public sealed class TraditionalCoursePipelineService
             Description = !string.IsNullOrWhiteSpace(userProvidedDescription)
                 ? userProvidedDescription
                 : $"Generado automáticamente a partir de {generationSourceDescription}.",
+            ExecutiveSummary = executiveSummary,
             IsActive = true,
             ContentLanguageCode = languageCode,
             PedagogicalAudience = string.IsNullOrWhiteSpace(pedagogicalAudience) ? null : pedagogicalAudience.Trim(),

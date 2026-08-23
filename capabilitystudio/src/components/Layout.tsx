@@ -1,7 +1,7 @@
-import { useRef, useState, useEffect } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useRef, useState, useEffect, type ReactNode } from 'react';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, BookOpen, FileText, ChevronDown } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, BookOpen, FileText, ChevronDown, Menu, X, Tags, Bot, UserCircle2 } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -17,15 +17,21 @@ const HUMAN_OS_ENTERPRISE_URL = import.meta.env.VITE_HUMAN_OS_ENTERPRISE_URL ?? 
 
 export default function Layout() {
   const { t } = useTranslation();
-  const location = useLocation();
   const { user, logout } = useAuth();
-  const onProgramsSection = location.pathname.startsWith('/programs');
-  const backToMainAppUrl = user?.tenantId ? HUMAN_OS_ENTERPRISE_URL : HUMAN_OS_WEB_URL;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [identityModalOpen, setIdentityModalOpen] = useState(false);
+  const inheritedTenantId = sessionStorage.getItem('humanos.studio.inheritedTenantId');
+  const inheritedTenantName = sessionStorage.getItem('humanos.studio.inheritedTenantName');
+  const backToMainAppUrl = user?.returnUrl ?? (user?.tenantId ? HUMAN_OS_ENTERPRISE_URL : HUMAN_OS_WEB_URL);
 
   return (
-    <div className="min-h-full flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between gap-6">
+    <div className="min-h-full flex flex-col bg-slate-950">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl lg:pl-64">
+        <div className="mx-auto flex max-w-[120rem] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <button type="button" onClick={() => setSidebarOpen((open) => !open)} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden" aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}>
+            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
           <Link to="/" className="flex items-center gap-2.5 group">
             <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain object-center shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
             <div className="leading-tight">
@@ -34,9 +40,9 @@ export default function Layout() {
             </div>
           </Link>
 
-          <nav className="hidden sm:flex items-center gap-1">
+          <nav className="hidden">
             <NavLink
-              to="/"
+              to="/catalog"
               end
               className={({ isActive }) =>
                 `flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -69,6 +75,17 @@ export default function Layout() {
               <Coins className="h-4 w-4 text-amber-400" />
               {t('nav.costs')}
             </NavLink>
+            <NavLink
+              to="/structured-learning-topics"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`
+              }
+            >
+              <LayoutGrid className="h-4 w-4 text-emerald-400" />
+              Dominios
+            </NavLink>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -82,13 +99,32 @@ export default function Layout() {
             </a>
             <LanguageSwitcher />
             <ThemeSwitcher />
-            {user && (
+            {inheritedTenantName || inheritedTenantId ? (
+              <span className="hidden lg:inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300" title={`Empresa heredada desde NGO: ${inheritedTenantId ?? ''}`}>
+                {inheritedTenantName ?? 'NGO'} · NGO
+              </span>
+            ) : user && (
               <span
                 title={user.tenantId ? `Empresa: ${user.tenantName}` : 'Cuenta individual'}
                 className="hidden lg:inline-flex items-center rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300"
               >
-                {user.tenantId ? `${user.tenantName} · ${user.orgRole}` : 'Cuenta individual'}
+                {user.tenantId ? `${user.tenantName} · ${user.memberType}` : 'Cuenta individual'}
               </span>
+            )}
+            {inheritedTenantId && (
+              <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300" title="Tenant heredado desde la aplicación de origen">
+                Tenant: {inheritedTenantId}
+              </span>
+            )}
+            {user && (
+              <button
+                type="button"
+                onClick={() => setIdentityModalOpen(true)}
+                title="Ver email, OID y tenant actuales"
+                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-violet-400 transition-colors hover:bg-violet-500/10 hover:text-violet-300"
+              >
+                <UserCircle2 className="h-5 w-5" />
+              </button>
             )}
             {user && (
               <button
@@ -101,37 +137,116 @@ export default function Layout() {
                 <LogOut className="h-4 w-4" />
               </button>
             )}
-            {onProgramsSection ? (
-              <Link
-                to="/programs/new"
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
-              >
-                <Plus className="h-4 w-4" strokeWidth={2.5} />
-                {t('nav.newProgram')}
-              </Link>
-            ) : (
-              <NewCapabilityMenu />
-            )}
           </div>
         </div>
       </header>
 
+      <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`mb-8 flex items-center gap-2.5 px-2 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+          <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain shadow-lg shadow-brand-500/30" />
+          {!sidebarCollapsed && <div className="leading-tight"><div className="font-semibold tracking-tight text-white">Engrams.one</div><div className="text-[11px] text-slate-400">Knowledge Studio</div></div>}
+          <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className={`hidden rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:block ${sidebarCollapsed ? 'absolute left-5 top-5' : 'ml-auto'}`} aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}>
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="space-y-1">
+              <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-sky-400" activeColor="bg-sky-500/15" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/programs" label={t('nav.programs')} color="text-violet-400" activeColor="bg-violet-500/15" onNavigate={() => setSidebarOpen(false)}><GraduationCap className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-emerald-400" activeColor="bg-emerald-500/15" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label="AI Agents" color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
+        </nav>
+        <div className="mt-8 border-t border-white/10 pt-4">
+          {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">Create</p>}
+          <div className="mt-2"><NewCapabilityMenu collapsed={sidebarCollapsed} /></div>
+        </div>
+      </aside>
+      {sidebarOpen && <button type="button" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/50 lg:hidden" />}
+
       <ActiveRunBanner />
 
-      <main className="flex-1 relative">
-        <Outlet />
+      <main className={`relative flex-1 transition-all duration-200 ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+        <div className="mx-auto max-w-[120rem]"><Outlet /></div>
       </main>
 
       <footer className="border-t border-white/10 py-6 text-center text-xs text-slate-500">
         {t('nav.footer')}
       </footer>
+
+      {identityModalOpen && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => setIdentityModalOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f1a1a] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white">Identidad actual</h2>
+              <button type="button" onClick={() => setIdentityModalOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Email</dt>
+                <dd className="mt-0.5 break-all font-mono text-slate-200">{user.email}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">OID</dt>
+                <dd className="mt-0.5 break-all font-mono text-slate-200">{user.oid ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Tenant ID</dt>
+                <dd className="mt-0.5 break-all font-mono text-slate-200">{inheritedTenantId ?? user.tenantId ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Tenant / Empresa</dt>
+                <dd className="mt-0.5 text-slate-200">{inheritedTenantName ?? user.tenantName ?? 'Cuenta individual'}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Volver a</dt>
+                <dd className="mt-0.5 break-all font-mono text-slate-200">{backToMainAppUrl}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function SidebarLink({
+  to,
+  end,
+  label,
+  collapsed,
+  color,
+  activeColor,
+  onNavigate,
+  children,
+}: {
+  to: string;
+  end?: boolean;
+  label: string;
+  collapsed?: boolean;
+  color: string;
+  activeColor: string;
+  onNavigate: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onNavigate}
+      title={collapsed ? label : undefined}
+      className={({ isActive }) => `group flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-colors ${collapsed ? 'justify-center' : 'gap-3'} ${isActive ? `${activeColor} text-white` : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+    >
+      <span className={`${color} transition-transform group-hover:scale-110`}>{children}</span>
+      {!collapsed && <span>{label}</span>}
+    </NavLink>
   );
 }
 
 /** "Nueva ruta de aprendizaje" CTA: only the modern Studio creation flows remain
  * visible here to avoid confusion with the legacy curator/blueprint pipeline. */
-function NewCapabilityMenu() {
+function NewCapabilityMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -151,11 +266,11 @@ function NewCapabilityMenu() {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
+        title={collapsed ? t('nav.newCapability') : undefined}
+        className={`flex items-center rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98] ${collapsed ? 'mx-auto justify-center px-2.5' : 'gap-2 px-4'}`}
       >
         <Plus className="h-4 w-4" strokeWidth={2.5} />
-        {t('nav.newCapability')}
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {!collapsed && <>{t('nav.newCapability')}<ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></>}
       </button>
 
       {open && (

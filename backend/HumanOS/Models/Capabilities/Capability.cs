@@ -29,6 +29,15 @@ public sealed class Capability
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Document-wide executive summary generated ONCE for a
+    /// <see cref="CourseLearningMode.TraditionalChapters"/> course (2026-08-21 —
+    /// same <see cref="Agents.Studio.DocumentContextAgent"/> used by the Graph
+    /// pipeline's <see cref="Graph.CapabilityGraph.ExecutiveSummary"/>). Null when
+    /// the course predates this field, the agent isn't configured, or the
+    /// best-effort call failed. Unused for GraphMemoryParadox courses, which
+    /// keep their own summary on <see cref="Graph.CapabilityGraph.ExecutiveSummary"/>.</summary>
+    public string? ExecutiveSummary { get; set; }
+
     /// <summary>The language this capability's ENTIRE generated content
     /// (graph node names/descriptions, blueprint step text, illustration
     /// prompts) was authored in — "es" or "en". Distinct from

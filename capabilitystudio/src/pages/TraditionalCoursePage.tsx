@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   BookOpen,
   FileText,
@@ -16,6 +16,7 @@ import {
   Pencil,
   Plus,
   Sparkles,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   addTraditionalCourseChapter,
@@ -222,10 +223,22 @@ export default function TraditionalCoursePage() {
           </div>
         )}
         <div className="p-6">
+          <Link
+            to="/catalog"
+            className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 transition hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('capabilityDetail.backToCatalog')}
+          </Link>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-2xl font-bold text-white">{course.Name}</h1>
               {course.Description && <p className="mt-2 text-slate-400">{course.Description}</p>}
+              {course.ExecutiveSummary && (
+                <p className="mt-2 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-sm text-slate-300">
+                  {course.ExecutiveSummary}
+                </p>
+              )}
             </div>
             <div className="flex flex-col items-start gap-3 sm:items-end">
               <PreviewModeSwitcher mode={mode} onChange={setMode} />

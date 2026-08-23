@@ -16,6 +16,8 @@ public sealed class EnrolledCapabilityResponse
     public string? Description { get; set; }
     public string? SubjectCode { get; set; }
     public string? SubjectName { get; set; }
+    /// <summary>True when the capability has a cover image available.</summary>
+    public bool HasCoverImage { get; set; }
 
     /// <summary>"job-skills" | "soft-skills" | "department-processes" |
     /// "hr-processes" | null. See Capability.Category. Powers the "tipo de

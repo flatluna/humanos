@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -18,9 +18,15 @@ import {
   Pencil,
   Trash2,
   Plus,
+  Network,
+  Video,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import {
   getStructuredLearningDocument,
+  getStructuredLearningHypothesisResponses,
+  submitStructuredLearningHypothesisResponses,
   submitStructuredLearningRecallAttempt,
   getStructuredLearningRecallState,
   startStructuredLearningAssessmentRound,
@@ -33,14 +39,26 @@ import {
   addStructuredLearningDeepDiveCard,
   editStructuredLearningDeepDiveCard,
   deleteStructuredLearningDeepDiveCard,
+  listStructuredLearningSectionVideos,
+  startStructuredLearningVideo,
+  getStructuredLearningVideoStatus,
+  deleteStructuredLearningVideo,
+  mergeStructuredLearningVideos,
+  cutStructuredLearningVideoSegments,
+  undoStructuredLearningVideoEdit,
+  setStructuredLearningStepTimeline,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
+  type StructuredLearningSectionVideo,
+  type StructuredLearningVideoRunStatus,
 } from '../lib/api/structuredLearningApi';
+import { getStructuredLearningKnowledgeFacts, type StructuredLearningKnowledgeFact } from '../lib/api/structuredLearningApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
+import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { usePreviewMode, withPreviewMode, type PreviewMode } from '../lib/previewMode';
 
 const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Recall', 'Production', 'Assessment'];
@@ -135,46 +153,57 @@ function parseHypothesisQuestions(step: StructuredLearningStepDetail): Hypothesi
   }
 }
 
-function HypothesisQuestionCard({ step }: { step: StructuredLearningStepDetail }) {
+function HypothesisQuestionCard({ sectionId, step }: { sectionId: string; step: StructuredLearningStepDetail }) {
   const questions = parseHypothesisQuestions(step);
-  const storageKey = step.StructuredLearningSectionStepId ? `structured-learning-hypothesis:${step.StructuredLearningSectionStepId}` : 'structured-learning-hypothesis:demo';
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Loads this student's previously saved answers, if any (2026-08-13 fix —
+  // replaces the OLD localStorage-only design: answers are now persisted
+  // server-side per StructuredLearningHypothesisResponse row so they survive
+  // reloads/devices and are visible to an instructor).
   useEffect(() => {
     if (!step.StructuredLearningSectionStepId) return;
-
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as Record<string, unknown>;
-      const restored = Object.entries(parsed).reduce<Record<number, number>>((acc, [key, value]) => {
-        const index = Number(key);
-        const choice = Number(value);
-        if (Number.isInteger(index) && Number.isInteger(choice)) {
-          acc[index] = choice;
-        }
-        return acc;
-      }, {});
-      setSelectedAnswers(restored);
-      setSubmitted(Boolean(parsed.submitted));
-    } catch {
-      // Ignore invalid local demo data.
-    }
-  }, [storageKey, step.StructuredLearningSectionStepId]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify({ ...selectedAnswers, submitted }));
-    } catch {
-      // Local storage unavailable in this demo environment.
-    }
-  }, [selectedAnswers, storageKey, submitted]);
+    getStructuredLearningHypothesisResponses(sectionId)
+      .then((saved) => {
+        if (saved.length === 0) return;
+        const restored = saved.reduce<Record<number, number>>((acc, r) => {
+          acc[r.QuestionIndex] = r.SelectedOptionIndex;
+          return acc;
+        }, {});
+        setSelectedAnswers(restored);
+        setSubmitted(true);
+      })
+      .catch(() => {
+        // No saved answers yet, or transient error — leave the form blank.
+      });
+  }, [sectionId, step.StructuredLearningSectionStepId]);
 
   if (!questions || questions.length === 0) return null;
 
   const answeredCount = Object.keys(selectedAnswers).length;
   const isComplete = questions.length > 0 && answeredCount === questions.length && questions.every((_, index) => selectedAnswers[index] !== undefined);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await submitStructuredLearningHypothesisResponses(
+        sectionId,
+        Object.entries(selectedAnswers).map(([questionIndex, selectedOptionIndex]) => ({
+          questionIndex: Number(questionIndex),
+          selectedOptionIndex,
+        }))
+      );
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="mt-4 space-y-4 rounded-2xl border border-brand-500/20 bg-brand-500/[0.04] p-4">
@@ -186,6 +215,7 @@ function HypothesisQuestionCard({ step }: { step: StructuredLearningStepDetail }
         </div>
       ) : (
         <div className="space-y-4">
+          {error && <p className="text-sm text-red-300">{error}</p>}
           {questions.map((question, index) => {
             const selectedIndex = selectedAnswers[index];
 
@@ -225,11 +255,11 @@ function HypothesisQuestionCard({ step }: { step: StructuredLearningStepDetail }
             <p className="text-xs text-slate-300">{answeredCount}/{questions.length} answered</p>
             <button
               type="button"
-              disabled={!isComplete}
-              onClick={() => setSubmitted(true)}
+              disabled={!isComplete || saving}
+              onClick={handleSave}
               className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-brand-500/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Save responses
+              {saving ? 'Saving…' : 'Save responses'}
             </button>
           </div>
         </div>
@@ -268,6 +298,8 @@ export default function StructuredLearningSectionPage() {
   // (DeepDive/Recall/Assessment) only bumps this once its own onComplete
   // fires; ungated steps bump it immediately on arrival (see effect below).
   const [maxReachedIndex, setMaxReachedIndex] = useState(0);
+  const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(false);
+  const [knowledgeGraphInitialView, setKnowledgeGraphInitialView] = useState<'graph' | 'facts'>('graph');
 
   useEffect(() => {
     if (!documentId) return;
@@ -356,7 +388,7 @@ export default function StructuredLearningSectionPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
       <Link to={withPreviewMode(`/structured-learning/${documentId}/course`, mode)} className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white">
         <ArrowLeft className="h-4 w-4" /> {t('structuredLearningCourse.backToMap')}
       </Link>
@@ -364,11 +396,51 @@ export default function StructuredLearningSectionPage() {
       <div className="mt-4 text-center">
         <p className="text-xs font-medium uppercase tracking-wide text-brand-400">{currentSection?.ChapterTitle}</p>
         <h1 className="mt-1 text-2xl font-bold text-white">{currentSection?.SubchapterTitle}</h1>
+        {documentId && sectionId && (
+          <button
+            type="button"
+            onClick={() => { setKnowledgeGraphInitialView('graph'); setShowKnowledgeGraph(true); }}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20"
+          >
+            <Network className="h-4 w-4" /> Ver Knowledge Graph
+          </button>
+        )}
+        {documentId && sectionId && (
+          <button
+            type="button"
+            onClick={() => { setKnowledgeGraphInitialView('facts'); setShowKnowledgeGraph(true); }}
+            className="ml-2 mt-4 inline-flex items-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/10 px-3 py-2 text-xs font-semibold text-brand-200 transition hover:border-brand-300/60 hover:bg-brand-500/20"
+          >
+            Ver Knowledge Facts
+          </button>
+        )}
         <div className="mt-4 flex justify-center">
           <PreviewModeSwitcher mode={mode} onChange={setMode} />
         </div>
         {mode === 'demo' && <p className="mt-2 text-xs text-amber-300">{t('structuredLearningMap.demoModeNotice')}</p>}
       </div>
+
+      {showKnowledgeGraph && documentId && sectionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Knowledge Graph">
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-emerald-400/25 bg-slate-950 p-4 shadow-2xl sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">Engram</p>
+                <h2 className="mt-1 text-lg font-semibold text-white">{knowledgeGraphInitialView === 'facts' ? 'Knowledge Facts' : 'Knowledge Graph'}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKnowledgeGraph(false)}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                aria-label="Cerrar Knowledge Graph"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <KnowledgeGraphSection documentId={documentId} sectionId={sectionId} initialView={knowledgeGraphInitialView} canRegenerateFacts={mode === 'edit'} />
+          </div>
+        </div>
+      )}
 
       {steps.length > 0 && (
         <StepProgress steps={steps} currentIndex={stepIndex} maxReachedIndex={maxReachedIndex} freeNavigation={mode !== 'real'} onSelectStep={goToStep} />
@@ -498,35 +570,68 @@ function StepContent({
   onStepUpdated: (updated: StructuredLearningStepDetail) => void;
 }) {
   const { t } = useTranslation();
+  const [knowledgeFacts, setKnowledgeFacts] = useState<StructuredLearningKnowledgeFact[]>([]);
+  const [knowledgeFactsLoading, setKnowledgeFactsLoading] = useState(false);
+  // Which kind of item the Learn wizard is currently showing (2026-08-22) —
+  // while it's on a Video, the tutor orb/static illustration/Knowledge Facts
+  // are hidden so only the video is on screen (mirrors the outer stepper's
+  // own "one thing at a time" rule).
+  const [teachingWizardItemType, setTeachingWizardItemType] = useState<'Text' | 'Video'>('Text');
   const meta = STEP_META[step.StepType] ?? { labelKey: step.StepType, Icon: BookOpenText };
   const isEditing = mode === 'edit';
   const isEditableStepType = step.StepType === 'Hypothesis' || step.StepType === 'Teaching' || step.StepType === 'Production';
 
+  useEffect(() => {
+    if (step.StepType !== 'Teaching') {
+      setKnowledgeFacts([]);
+      return;
+    }
+
+    setKnowledgeFactsLoading(true);
+    getStructuredLearningKnowledgeFacts(sectionId)
+      .then((response) => setKnowledgeFacts(response.KnowledgeFacts ?? []))
+      .catch(() => setKnowledgeFacts([]))
+      .finally(() => setKnowledgeFactsLoading(false));
+  }, [sectionId, step.StepType]);
+
+  const teachingShowsVideo = step.StepType === 'Teaching' && !isEditing && teachingWizardItemType === 'Video';
+
   return (
     <div className="space-y-4">
-      {step.StepType === 'Teaching' && (
+      {step.StepType === 'Teaching' && !teachingShowsVideo && (
         <VoiceTutorAgent
           structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
           startLabel={t('structuredLearningCourse.talkToTutor')}
+          autoConnect={!isEditing}
         />
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-        {(step.StepType === 'Hypothesis' || step.StepType === 'Teaching') && <StepIllustration stepDataJson={step.StepDataJson} />}
-        <div className="p-4">
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/30 shadow-2xl shadow-black/10">
+        {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && <StepIllustration stepDataJson={step.StepDataJson} />}
+        <div className="px-5 py-6 sm:px-8 sm:py-8">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-400">{t(`structuredLearningCourse.${meta.labelKey}`)}</p>
           {step.StepType === 'Hypothesis' && step.Content && (
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
-              {step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content}
-            </p>
+            <RichStepContent content={step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content} />
           )}
-          {step.StepType === 'Hypothesis' && !isEditing && <HypothesisQuestionCard step={step} />}
-          {step.StepType !== 'Hypothesis' && step.Content && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{step.Content}</p>}
+          {step.StepType === 'Hypothesis' && !isEditing && (
+            <HypothesisQuestionCard sectionId={sectionId} step={step} />
+          )}
+          {step.StepType === 'Teaching' && !isEditing ? (
+            <TeachingTimelineWizard sectionId={sectionId} step={step} onItemTypeChange={setTeachingWizardItemType} />
+          ) : (
+            step.StepType !== 'Hypothesis' && !(step.StepType === 'Production' && !isEditing) && step.Content && <RichStepContent content={step.Content} />
+          )}
+
+          {step.StepType === 'Teaching' && !isEditing && !teachingShowsVideo && (
+            <KnowledgeFactsBlock facts={knowledgeFacts} loading={knowledgeFactsLoading} />
+          )}
 
           {isEditing && isEditableStepType && (
             <>
               <StepEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
               <ManualEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
+              {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} />}
+              {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} />}
             </>
           )}
 
@@ -534,7 +639,7 @@ function StepContent({
             isEditing ? (
               <DeepDiveCardsEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
             ) : (
-              <DeepDiveQuiz sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} stepDataJson={step.StepDataJson} onComplete={onComplete} />
+              <DeepDiveQuiz sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} stepDataJson={step.StepDataJson} mode={mode} onComplete={onComplete} />
             )
           )}
           {step.StepType === 'Recall' &&
@@ -543,7 +648,9 @@ function StepContent({
             ) : (
               <RecallPractice sectionId={sectionId} onComplete={onComplete} />
             ))}
-          {step.StepType === 'Production' && !isEditing && <ProductionDraft />}
+          {step.StepType === 'Production' && !isEditing && (
+            <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.productionStepDisabledNotice')}</p>
+          )}
           {step.StepType === 'Assessment' &&
             (isEditing ? (
               <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.editModeGeneratedLive')}</p>
@@ -554,6 +661,89 @@ function StepContent({
       </div>
     </div>
   );
+}
+
+function KnowledgeFactsBlock({ facts, loading }: { facts: StructuredLearningKnowledgeFact[]; loading: boolean }) {
+  if (loading) {
+    return <p className="mt-8 text-sm text-slate-500">Cargando Knowledge Facts...</p>;
+  }
+
+  if (facts.length === 0) return null;
+
+  return (
+    <section className="mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.05] p-5" aria-labelledby="knowledge-facts-title">
+      <h3 id="knowledge-facts-title" className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-300">Knowledge Facts</h3>
+      <p className="mt-2 text-sm leading-6 text-emerald-100/80">Facts clave de este Engram</p>
+      <ul className="mt-4 space-y-3 text-[15px] leading-7 text-slate-200">
+        {facts.map((fact) => <li key={fact.KnowledgeFactId} className="border-l-2 border-emerald-400/40 pl-3">{fact.Statement}</li>)}
+      </ul>
+    </section>
+  );
+}
+
+function RichStepContent({ content }: { content: string }) {
+  const blocks = normalizeRichBlocks(content);
+
+  return (
+    <div className="mt-6 max-w-4xl space-y-6 text-[16px] leading-8 text-slate-200 sm:text-[17px]">
+      {blocks.map((block, index) => {
+        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+        const isList = lines.length > 0 && lines.every((line) => /^([-*]|\d+[.)])\s+/.test(line));
+        const heading = lines.length === 1 && (/^#{1,3}\s+/.test(lines[0]) || (lines[0].length < 90 && /:$/.test(lines[0])));
+
+        if (heading) {
+          const text = lines[0].replace(/^#{1,3}\s+/, '');
+          return <h3 key={index} className="pt-1 text-base font-semibold leading-6 text-white">{text}</h3>;
+        }
+
+        if (isList) {
+          const ordered = /^\d+[.)]/.test(lines[0]);
+          const List = ordered ? 'ol' : 'ul';
+          return (
+            <List key={index} className={`space-y-2 pl-6 ${ordered ? 'list-decimal' : 'list-disc'}`}>
+              {lines.map((line, lineIndex) => <li key={lineIndex} className="pl-1">{formatInlineText(line.replace(/^([-*]|\d+[.)])\s+/, ''))}</li>)}
+            </List>
+          );
+        }
+
+        return <p key={index}>{lines.map((line, lineIndex) => <span key={lineIndex}>{lineIndex > 0 && <br />}{formatInlineText(line)}</span>)}</p>;
+      })}
+    </div>
+  );
+}
+
+function splitLongBlock(block: string): string[] {
+  if (!block || block.length < 420) return [block];
+  const sentences = block.match(/[^.!?]+[.!?]+(?=\s|$)/g)?.map((sentence) => sentence.trim()).filter(Boolean);
+  if (!sentences || sentences.length < 3) return [block];
+  const groups: string[] = [];
+  for (let index = 0; index < sentences.length; index += 2) {
+    groups.push(sentences.slice(index, index + 2).join(' '));
+  }
+  return groups;
+}
+
+function normalizeRichBlocks(content: string): string[] {
+  const normalized = content
+    .replace(/\r\n/g, '\n')
+    .replace(/\s+•\s+/g, '\n• ')
+    .replace(/\s+(Why this matters)\s+/gi, '\n\n$1\n')
+    .replace(/\s+(Next, connect)\s+/gi, '\n\n$1 ')
+    .replace(/\s+(Foundations of AI:|What is generative AI\?|AI value also comes from other capabilities:|Responsible AI means)/g, '\n\n$1');
+
+  return normalized
+    .split(/\n\s*\n|\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .flatMap((block) => splitLongBlock(block));
+}
+
+function formatInlineText(value: string): ReactNode {
+  const parts = value.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
+  return parts.map((part, index) => {
+    const bold = /^\*\*[^*]+\*\*$/.test(part) || /^__[^_]+__$/.test(part);
+    return bold ? <strong key={index} className="font-semibold text-white">{part.slice(2, -2)}</strong> : <span key={index}>{part}</span>;
+  });
 }
 
 /** "Edit with AI" box (2026-08-10) — Structured Learning's Edit mode,
@@ -617,6 +807,915 @@ function StepEditBox({
         {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
         {t('structuredLearningCourse.editApply')}
       </button>
+    </div>
+  );
+}
+
+/** Visual frame-by-frame video trimmer (2026-08-22) — extracts a filmstrip
+ * of thumbnail frames client-side (via a hidden &lt;video&gt; + &lt;canvas&gt;,
+ * seeking through the clip) and overlays two draggable range handles for
+ * start/end, instead of making the reviewer type raw seconds. Calls the
+ * same trim endpoint on Apply. */
+function VideoFrameTrimModal({
+  illustrationId,
+  src,
+  onClose,
+  onApplied,
+}: {
+  illustrationId: string;
+  src: string;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+  const { t } = useTranslation();
+  const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [frames, setFrames] = useState<string[]>([]);
+  const [extracting, setExtracting] = useState(true);
+  const [scrubTime, setScrubTime] = useState(0);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deletedFrames, setDeletedFrames] = useState<Set<number>>(new Set());
+  const [frameCount, setFrameCount] = useState(2);
+  const FRAME_STEP_SECONDS = 0.5;
+
+  useEffect(() => {
+    const video = hiddenVideoRef.current;
+    if (!video) return;
+    let cancelled = false;
+
+    function waitForSeek(targetTime: number): Promise<void> {
+      return new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          video!.removeEventListener('seeked', onSeeked);
+          clearTimeout(timeoutId);
+          resolve();
+        };
+        const onSeeked = () => finish();
+        // Some browsers/servers can stall a seek indefinitely (e.g. a
+        // Range request that never resolves) — never let one bad frame
+        // hang the whole extraction, just move on after 4s.
+        const timeoutId = setTimeout(finish, 4000);
+        video!.addEventListener('seeked', onSeeked);
+        video!.currentTime = targetTime;
+      });
+    }
+
+    async function extractFrames() {
+      try {
+        await new Promise<void>((resolve) => {
+          if (video!.readyState >= 1 && !Number.isNaN(video!.duration)) resolve();
+          else {
+            video!.addEventListener('loadedmetadata', () => resolve(), { once: true });
+            video!.addEventListener('error', () => resolve(), { once: true });
+          }
+        });
+        if (cancelled) return;
+        const dur = video!.duration;
+        if (!dur || Number.isNaN(dur) || !Number.isFinite(dur)) {
+          setExtracting(false);
+          setError('Could not read video duration for frame preview.');
+          return;
+        }
+        setDuration(dur);
+
+        // One thumbnail every ~0.5s (capped so a long merged video doesn't
+        // try to extract hundreds of frames) so the reviewer can pick out
+        // and delete an exact bad moment, not just a coarse 1/14th slice.
+        const count = Math.min(Math.max(Math.round(dur / FRAME_STEP_SECONDS) + 1, 2), 120);
+        setFrameCount(count);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 96;
+        canvas.height = 54;
+        const ctx = canvas.getContext('2d');
+        const captured: string[] = [];
+
+        for (let i = 0; i < count; i += 1) {
+          if (cancelled) return;
+          const time = (i / (count - 1)) * Math.max(dur - 0.05, 0);
+          await waitForSeek(time);
+          if (cancelled) return;
+          try {
+            if (ctx) {
+              ctx.drawImage(video!, 0, 0, canvas.width, canvas.height);
+              captured.push(canvas.toDataURL('image/jpeg', 0.6));
+            }
+          } catch { /* skip an unreadable frame, keep going */ }
+        }
+        if (!cancelled) {
+          setFrames(captured);
+          setExtracting(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setExtracting(false);
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      }
+    }
+
+    extractFrames();
+    return () => { cancelled = true; };
+  }, []);
+
+  function seekPreview(time: number) {
+    if (previewVideoRef.current) previewVideoRef.current.currentTime = time;
+  }
+
+  function toggleFrameDeleted(index: number) {
+    setDeletedFrames((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  }
+
+  async function handleApply() {
+    setApplying(true);
+    setError(null);
+    try {
+      const step = duration / (frameCount - 1);
+      // Only individually marked frames are cut — the scrub position
+      // is just for navigation/preview, it does not delete anything.
+      const cutIntervals: [number, number][] = [];
+      for (const i of deletedFrames) {
+        const center = i * step;
+        cutIntervals.push([Math.max(center - step / 2, 0), Math.min(center + step / 2, duration)]);
+      }
+
+      if (cutIntervals.length === 0) {
+        setError('Mark at least one frame for deletion first.');
+        return;
+      }
+
+      cutIntervals.sort((a, b) => a[0] - b[0]);
+      const mergedCuts: [number, number][] = [];
+      for (const [s, e] of cutIntervals) {
+        const last = mergedCuts[mergedCuts.length - 1];
+        if (last && s <= last[1] + 0.01) last[1] = Math.max(last[1], e);
+        else mergedCuts.push([s, e]);
+      }
+      const keepRanges: { start: number; end: number }[] = [];
+      let cursor = 0;
+      for (const [s, e] of mergedCuts) {
+        if (s - cursor > 0.05) keepRanges.push({ start: cursor, end: s });
+        cursor = Math.max(cursor, e);
+      }
+      if (duration - cursor > 0.05) keepRanges.push({ start: cursor, end: duration });
+
+      if (keepRanges.length === 0) {
+        setError('Cannot delete the entire video.');
+        return;
+      }
+
+      await cutStructuredLearningVideoSegments(illustrationId, keepRanges);
+      onApplied();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold text-white">{t('structuredLearningCourse.videoTrimStart')}</p>
+          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:text-white" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <video ref={hiddenVideoRef} src={src} className="hidden" muted preload="auto" crossOrigin="anonymous" />
+        <video ref={previewVideoRef} src={src} controls className="mb-3 h-40 w-full rounded-lg bg-black" crossOrigin="anonymous" />
+
+        {extracting ? (
+          <div className="flex h-16 items-center justify-center gap-2 text-xs text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Extracting frames...
+          </div>
+        ) : (
+          <div className="relative mb-3 select-none">
+            <div className="flex overflow-x-auto rounded-lg border border-white/10">
+              {frames.map((f, i) => {
+                const frameTime = frameCount > 1 ? (i / (frameCount - 1)) * duration : 0;
+                const isScrubFrame = Math.abs(frameTime - scrubTime) < (duration / (frameCount - 1)) / 2;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => toggleFrameDeleted(i)}
+                    className="relative flex w-10 shrink-0 flex-col"
+                    aria-label="Toggle delete frame"
+                  >
+                    <span className={`relative h-14 w-10 ${isScrubFrame ? 'ring-2 ring-inset ring-violet-400' : ''}`}>
+                      <img
+                        src={f}
+                        alt=""
+                        className={`h-14 w-10 object-cover ${deletedFrames.has(i) ? 'opacity-30' : ''}`}
+                      />
+                      {deletedFrames.has(i) && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-red-600/40">
+                          <X className="h-3 w-3 text-white" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="border-t border-white/10 bg-slate-950 py-0.5 text-center text-[8px] leading-none text-slate-400">
+                      {frameTime.toFixed(1)}s
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <span className="w-14 shrink-0">{t('structuredLearningCourse.videoScrubLabel')}</span>
+            <input
+              type="range"
+              min={0}
+              max={duration}
+              step={0.05}
+              value={scrubTime}
+              onChange={(e) => { const v = parseFloat(e.target.value); setScrubTime(v); seekPreview(v); }}
+              className="flex-1 accent-violet-500"
+            />
+            <span className="w-12 shrink-0 text-right tabular-nums">{scrubTime.toFixed(1)}s</span>
+          </div>
+        </div>
+
+        {error && <p className="mb-2 text-xs text-red-300">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5">
+            {t('structuredLearningCourse.videoMergeCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={applying || extracting}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {t('structuredLearningCourse.videoTrimApply')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type TeachingTimelineItem =
+  | { Type: 'Text' }
+  | { Type: 'Video'; IllustrationId: string };
+
+function parseTeachingTimeline(timelineJson: string | null | undefined): TeachingTimelineItem[] | null {
+  if (!timelineJson) return null;
+  try {
+    const parsed = JSON.parse(timelineJson) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(
+      (item): item is TeachingTimelineItem =>
+        !!item && typeof item === 'object' && ((item as { Type?: string }).Type === 'Text' || (item as { Type?: string }).Type === 'Video')
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Author-facing order editor for the Teaching step's "wizard" (2026-08-22)
+ * — lets the reviewer arrange the step's narration paragraphs (auto-split
+ * from Content, same split RichStepContent uses) and its generated videos
+ * into ONE numbered sequence (1) Video, 2) Text, 3) Video, ...), saved as
+ * step.TimelineJson. In real/demo mode, TeachingTimelineWizard below then
+ * plays this exact sequence one item at a time instead of showing
+ * everything at once. */
+function TeachingTimelineEditor({
+  sectionId,
+  step,
+  onUpdated,
+}: {
+  sectionId: string;
+  step: StructuredLearningStepDetail;
+  onUpdated: (updated: StructuredLearningStepDetail) => void;
+}) {
+  const { t } = useTranslation();
+  const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
+  const [loadingVideos, setLoadingVideos] = useState(true);
+  const [order, setOrder] = useState<TeachingTimelineItem[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStructuredLearningSectionVideos(sectionId)
+      .then((list) => { if (!cancelled) setVideos(list); })
+      .catch(() => { if (!cancelled) setVideos([]); })
+      .finally(() => { if (!cancelled) setLoadingVideos(false); });
+    return () => { cancelled = true; };
+  }, [sectionId]);
+
+  useEffect(() => {
+    if (loadingVideos) return;
+    const saved = parseTeachingTimeline(step.TimelineJson);
+    // Only 3 kinds of item ever exist: the ONE whole Text block (Learn —
+    // full lesson text with Talk to tutor + image, always present, default
+    // first) and up to 4 individual Videos.
+    const allItems: TeachingTimelineItem[] = [
+      { Type: 'Text' },
+      ...videos.map((v): TeachingTimelineItem => ({ Type: 'Video', IllustrationId: v.IllustrationId })),
+    ];
+    if (saved && saved.length > 0) {
+      const validSaved = saved.filter((item) => item.Type === 'Text' || videos.some((v) => v.IllustrationId === item.IllustrationId));
+      const missing = allItems.filter(
+        (item) =>
+          !validSaved.some((s) =>
+            item.Type === 'Text' ? s.Type === 'Text' : s.Type === 'Video' && s.IllustrationId === item.IllustrationId
+          )
+      );
+      setOrder([...validSaved, ...missing]);
+    } else {
+      setOrder(allItems);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingVideos, step.StructuredLearningSectionStepId, videos.length]);
+
+  function itemLabel(item: TeachingTimelineItem): string {
+    if (item.Type === 'Text') return t('structuredLearningCourse.timelineTextItemLabel');
+    // Purpose is always "Teaching" for every video in this step — not a
+    // real per-video name — so label by creation order instead, otherwise
+    // every video in this list looks like the same duplicated item.
+    const videoIndex = videos.findIndex((v) => v.IllustrationId === item.IllustrationId);
+    return `🎬 ${t('structuredLearningCourse.timelineVideoItemLabel', { number: videoIndex + 1 })}`;
+  }
+
+  function move(index: number, delta: 1 | -1) {
+    setOrder((prev) => {
+      const next = [...prev];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      await setStructuredLearningStepTimeline(step.StructuredLearningSectionStepId, JSON.stringify(order));
+      onUpdated({ ...step, TimelineJson: JSON.stringify(order) });
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClear() {
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      await setStructuredLearningStepTimeline(step.StructuredLearningSectionStepId, null);
+      onUpdated({ ...step, TimelineJson: null });
+      setOrder([{ Type: 'Text' }, ...videos.map((v): TeachingTimelineItem => ({ Type: 'Video', IllustrationId: v.IllustrationId }))]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loadingVideos) return null;
+  if (videos.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/[0.04] p-3">
+      <p className="mb-1.5 text-xs font-semibold text-amber-300">{t('structuredLearningCourse.timelineOrderLabel')}</p>
+      <p className="mb-2 text-[11px] text-slate-400">{t('structuredLearningCourse.timelineOrderHint')}</p>
+      <ol className="space-y-1.5">
+        {order.map((item, index) => (
+          <li
+            key={item.Type === 'Text' ? 'text' : `video-${item.IllustrationId}`}
+            className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-xs text-slate-200"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/30 text-[10px] font-bold text-amber-200">
+              {index + 1}
+            </span>
+            <span className="flex-1 truncate">{itemLabel(item)}</span>
+            <button type="button" onClick={() => move(index, -1)} disabled={index === 0} className="rounded p-0.5 hover:bg-white/10 disabled:opacity-30" aria-label="Mover arriba">
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" onClick={() => move(index, 1)} disabled={index === order.length - 1} className="rounded p-0.5 hover:bg-white/10 disabled:opacity-30" aria-label="Mover abajo">
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </li>
+        ))}
+      </ol>
+      {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
+      {success && <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-300"><Check className="h-3 w-3" /> {t('structuredLearningCourse.timelineOrderSaved')}</p>}
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || order.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {t('structuredLearningCourse.timelineOrderSave')}
+        </button>
+        {step.TimelineJson && (
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={saving}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06] disabled:opacity-50"
+          >
+            {t('structuredLearningCourse.timelineOrderClear')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Student/reviewer-facing "wizard" playback (2026-08-22) of a Teaching
+ * step's Text-Tutor + Video items, one at a time with its own Previous/
+ * Next — always on for Teaching in real/demo mode. Uses the author's saved
+ * TeachingTimelineEditor order (step.TimelineJson) when set, otherwise
+ * falls back to the natural registration order: Text first, then each
+ * generated Video in creation order. */
+function TeachingTimelineWizard({
+  sectionId,
+  step,
+  onItemTypeChange,
+}: {
+  sectionId: string;
+  step: StructuredLearningStepDetail;
+  onItemTypeChange: (type: 'Text' | 'Video') => void;
+}) {
+  const { t } = useTranslation();
+  const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
+  const [loadingVideos, setLoadingVideos] = useState(true);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStructuredLearningSectionVideos(sectionId)
+      .then((list) => { if (!cancelled) setVideos(list); })
+      .catch(() => { if (!cancelled) setVideos([]); })
+      .finally(() => { if (!cancelled) setLoadingVideos(false); });
+    return () => { cancelled = true; };
+  }, [sectionId]);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [step.StructuredLearningSectionStepId]);
+
+  const saved = parseTeachingTimeline(step.TimelineJson);
+  const validSaved = saved?.filter((item) => item.Type === 'Text' || videos.some((v) => v.IllustrationId === item.IllustrationId)) ?? null;
+  const defaultItems: TeachingTimelineItem[] = [
+    { Type: 'Text' },
+    ...videos.map((v): TeachingTimelineItem => ({ Type: 'Video', IllustrationId: v.IllustrationId })),
+  ];
+  const missingFromSaved = validSaved
+    ? defaultItems.filter((item) => !validSaved.some((s) => (item.Type === 'Text' ? s.Type === 'Text' : s.Type === 'Video' && s.IllustrationId === item.IllustrationId)))
+    : [];
+  const items = validSaved && validSaved.length > 0 ? [...validSaved, ...missingFromSaved] : defaultItems;
+  const current = items[Math.min(index, items.length - 1)] as TeachingTimelineItem | undefined;
+
+  useEffect(() => {
+    if (current) onItemTypeChange(current.Type);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.Type === 'Video' ? current.IllustrationId : current?.Type]);
+
+  if (loadingVideos) return null;
+  if (!current) return null;
+
+  const isFirst = index === 0;
+  const isLast = index >= items.length - 1;
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {items.map((item, i) => (
+          <button
+            key={item.Type === 'Text' ? 'text' : `video-${item.IllustrationId}`}
+            type="button"
+            onClick={() => setIndex(i)}
+            className={`flex h-10 min-w-[2.5rem] items-center justify-center rounded-full border px-2.5 text-sm font-semibold transition ${
+              i === index
+                ? 'border-brand-400 bg-brand-500/20 text-brand-200'
+                : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20'
+            }`}
+          >
+            {item.Type === 'Video' ? <Video className="h-5 w-5" /> : i + 1}
+          </button>
+        ))}
+      </div>
+
+      {current.Type === 'Video' ? (
+        <video
+          src={apiImageUrl(`/illustrations/structured-learning/${current.IllustrationId}/image`)}
+          controls
+          className="w-full rounded-xl bg-black"
+        />
+      ) : (
+        <RichStepContent content={step.Content} />
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          disabled={isFirst}
+          onClick={() => setIndex((i) => Math.max(0, i - 1))}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> {t('structuredLearningCourse.wizardPrevious')}
+        </button>
+        <span className="text-[11px] text-slate-500">{index + 1} / {items.length}</span>
+        <button
+          type="button"
+          disabled={isLast}
+          onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          {t('structuredLearningCourse.wizardNext')} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** "Add video" box (2026-08-21, Google Veo) — Teaching step only, hard
+ * cap of 2 videos per section enforced server-side (real billed cost per
+ * call). Same async start/poll shape as pedagogy generation: kick off a
+ * run, poll every few seconds until Completed/Failed, then show the
+ * resulting .mp4. */
+function VideoGenerationBox({
+  sectionId,
+  step,
+}: {
+  sectionId: string;
+  step: StructuredLearningStepDetail;
+}) {
+  const { t } = useTranslation();
+  const [prompt, setPrompt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<StructuredLearningVideoRunStatus | null>(null);
+  const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
+  const [loadingVideos, setLoadingVideos] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [referenceImage, setReferenceImage] = useState<{ base64: string; contentType: string; previewUrl: string } | null>(null);
+  const [videoModel, setVideoModel] = useState<'veo' | 'omni'>('veo');
+  const [mergeMode, setMergeMode] = useState(false);
+  const [mergeSelection, setMergeSelection] = useState<string[]>([]);
+  const [merging, setMerging] = useState(false);
+  const [trimmingId, setTrimmingId] = useState<string | null>(null);
+  const [trimVersions, setTrimVersions] = useState<Record<string, number>>({});
+  const [undoingId, setUndoingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStructuredLearningSectionVideos(sectionId)
+      .then((list) => { if (!cancelled) setVideos(list); })
+      .catch(() => { if (!cancelled) setVideos([]); })
+      .finally(() => { if (!cancelled) setLoadingVideos(false); });
+    return () => { cancelled = true; };
+  }, [sectionId]);
+
+  useEffect(() => {
+    if (!runStatus || runStatus.Stage !== 'Running') return;
+    const interval = setInterval(async () => {
+      try {
+        const updated = await getStructuredLearningVideoStatus(runStatus.RunId);
+        setRunStatus(updated);
+        if (updated.Stage === 'Completed') {
+          listStructuredLearningSectionVideos(sectionId).then(setVideos).catch(() => {});
+        }
+      } catch (err) {
+        setRunStatus({ ...runStatus, Stage: 'Failed', ErrorMessage: err instanceof Error ? err.message : String(err) });
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [runStatus, sectionId]);
+
+  async function handleReferenceImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1] ?? '';
+      setReferenceImage({ base64, contentType: file.type || 'image/png', previewUrl: dataUrl });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleGenerate() {
+    if (!prompt.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const status = await startStructuredLearningVideo(
+        sectionId, prompt.trim(), step.StepType, videoModel, referenceImage?.base64, referenceImage?.contentType
+      );
+      setRunStatus(status);
+      setPrompt('');
+      setReferenceImage(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(illustrationId: string) {
+    setDeletingId(illustrationId);
+    try {
+      await deleteStructuredLearningVideo(illustrationId);
+      setVideos((prev) => prev.filter((v) => v.IllustrationId !== illustrationId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function toggleMergeSelection(illustrationId: string) {
+    setMergeSelection((prev) =>
+      prev.includes(illustrationId) ? prev.filter((id) => id !== illustrationId) : [...prev, illustrationId]
+    );
+  }
+
+  function moveMergeSelection(index: number, delta: 1 | -1) {
+    setMergeSelection((prev) => {
+      const next = [...prev];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  async function handleMerge() {
+    if (mergeSelection.length < 2) return;
+    setMerging(true);
+    setError(null);
+    try {
+      await mergeStructuredLearningVideos(sectionId, mergeSelection);
+      setMergeSelection([]);
+      setMergeMode(false);
+      const updated = await listStructuredLearningSectionVideos(sectionId);
+      setVideos(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  async function handleTrim(illustrationId: string) {
+    setTrimmingId(illustrationId);
+  }
+
+  function handleTrimApplied(illustrationId: string) {
+    setTrimVersions((prev) => ({ ...prev, [illustrationId]: (prev[illustrationId] ?? 0) + 1 }));
+    setTrimmingId(null);
+  }
+
+  async function handleUndo(illustrationId: string) {
+    setUndoingId(illustrationId);
+    setError(null);
+    try {
+      await undoStructuredLearningVideoEdit(illustrationId);
+      setTrimVersions((prev) => ({ ...prev, [illustrationId]: (prev[illustrationId] ?? 0) + 1 }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUndoingId(null);
+    }
+  }
+
+  const maxReached = videos.length >= 4;
+
+  return (
+    <div className="mt-4 rounded-xl border border-violet-400/20 bg-violet-500/[0.04] p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-300">
+          <Video className="h-3.5 w-3.5" /> {t('structuredLearningCourse.videoCountLabel', { count: videos.length })}
+        </p>
+        {videos.length >= 2 && (
+          <button
+            type="button"
+            onClick={() => { setMergeMode((v) => !v); setMergeSelection([]); }}
+            className="text-[11px] font-medium text-violet-300 underline hover:text-violet-200"
+          >
+            {mergeMode ? t('structuredLearningCourse.videoMergeCancel') : t('structuredLearningCourse.videoMergeStart')}
+          </button>
+        )}
+      </div>
+
+      {!loadingVideos && videos.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {videos.map((video) => (
+            <div key={video.IllustrationId} className="relative">
+              <video
+                src={apiImageUrl(`/illustrations/structured-learning/${video.IllustrationId}/image?v=${trimVersions[video.IllustrationId] ?? 0}`)}
+                controls={!mergeMode}
+                className="h-40 rounded-lg bg-black"
+              />
+              {mergeMode ? (
+                <button
+                  type="button"
+                  onClick={() => toggleMergeSelection(video.IllustrationId)}
+                  className={`absolute inset-0 flex items-center justify-center rounded-lg border-2 transition ${
+                    mergeSelection.includes(video.IllustrationId)
+                      ? 'border-violet-300 bg-violet-500/30'
+                      : 'border-transparent bg-black/0 hover:bg-black/20'
+                  }`}
+                  aria-label="Seleccionar para unir"
+                >
+                  {mergeSelection.includes(video.IllustrationId) && (
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-violet-300 bg-violet-500 text-sm font-bold text-white shadow-lg">
+                      {mergeSelection.indexOf(video.IllustrationId) + 1}
+                    </span>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(video.IllustrationId)}
+                  disabled={deletingId === video.IllustrationId}
+                  className="absolute -right-1.5 -top-1.5 rounded-full border border-white/20 bg-slate-900 p-1 text-white shadow-lg hover:bg-red-600 disabled:opacity-50"
+                  aria-label="Eliminar video"
+                >
+                  {deletingId === video.IllustrationId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                </button>
+              )}
+
+              {!mergeMode && (
+                <div className="absolute bottom-1.5 left-1.5 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleTrim(video.IllustrationId)}
+                    className="rounded-full border border-white/20 bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-slate-800"
+                  >
+                    {t('structuredLearningCourse.videoTrimStart')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUndo(video.IllustrationId)}
+                    disabled={undoingId === video.IllustrationId}
+                    className="rounded-full border border-white/20 bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {undoingId === video.IllustrationId ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : t('structuredLearningCourse.videoUndo')}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {trimmingId && (
+        <VideoFrameTrimModal
+          key={trimmingId}
+          illustrationId={trimmingId}
+          src={apiImageUrl(`/illustrations/structured-learning/${trimmingId}/image?v=${trimVersions[trimmingId] ?? 0}`)}
+          onClose={() => setTrimmingId(null)}
+          onApplied={() => handleTrimApplied(trimmingId)}
+        />
+      )}
+
+      {mergeMode && (
+        <div className="mb-2 space-y-2">
+          <p className="text-[11px] text-slate-400">{t('structuredLearningCourse.videoMergeInstructions', { count: mergeSelection.length })}</p>
+          {mergeSelection.length > 0 && (
+            <ol className="space-y-1">
+              {mergeSelection.map((id, index) => (
+                <li key={id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-slate-300">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-500/30 text-[10px] font-bold text-violet-200">{index + 1}</span>
+                  <span className="flex-1 truncate">{videos.find((v) => v.IllustrationId === id)?.Purpose ?? id}</span>
+                  <button type="button" onClick={() => moveMergeSelection(index, -1)} disabled={index === 0} className="rounded p-0.5 hover:bg-white/10 disabled:opacity-30" aria-label="Mover arriba">
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button type="button" onClick={() => moveMergeSelection(index, 1)} disabled={index === mergeSelection.length - 1} className="rounded p-0.5 hover:bg-white/10 disabled:opacity-30" aria-label="Mover abajo">
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button type="button" onClick={() => toggleMergeSelection(id)} className="rounded p-0.5 text-red-300 hover:bg-red-500/10" aria-label="Quitar">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleMerge}
+              disabled={mergeSelection.length < 2 || merging}
+              className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-violet-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {merging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+              {t('structuredLearningCourse.videoMergeButton')}
+            </button>
+          </div>
+          {error && <p className="text-xs text-red-300">{error}</p>}
+        </div>
+      )}
+
+      {maxReached ? (
+        <p className="text-xs text-slate-500">{t('structuredLearningCourse.videoMaxReached')}</p>
+      ) : (
+        <>
+          <div className="mb-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setVideoModel('veo')}
+              disabled={submitting || runStatus?.Stage === 'Running'}
+              className={`flex-1 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
+                videoModel === 'veo' ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
+              }`}
+            >
+              <span className="font-semibold">Veo 3.1 Fast</span> · $0.30/video
+            </button>
+            <button
+              type="button"
+              onClick={() => setVideoModel('omni')}
+              disabled={submitting || runStatus?.Stage === 'Running'}
+              className={`flex-1 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
+                videoModel === 'omni' ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
+              }`}
+            >
+              <span className="font-semibold">Gemini Omni Flash (Preview)</span> · $0.55/video
+            </button>
+          </div>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={2}
+            placeholder={t('structuredLearningCourse.videoPromptPlaceholder')}
+            className="input w-full"
+            disabled={submitting || runStatus?.Stage === 'Running'}
+          />
+          <div className="mt-2 flex items-center gap-2">
+            {referenceImage ? (
+              <div className="relative">
+                <img src={referenceImage.previewUrl} alt="Imagen de referencia" className="h-12 w-12 rounded-lg object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setReferenceImage(null)}
+                  disabled={submitting || runStatus?.Stage === 'Running'}
+                  className="absolute -right-1.5 -top-1.5 rounded-full border border-white/20 bg-slate-900 p-0.5 text-white shadow-lg hover:bg-red-600 disabled:opacity-50"
+                  aria-label="Quitar imagen de referencia"
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handleReferenceImageChange}
+                  disabled={submitting || runStatus?.Stage === 'Running'}
+                />
+                {t('structuredLearningCourse.videoUploadImage')}
+              </label>
+            )}
+          </div>
+          {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
+          {runStatus?.Stage === 'Running' && (
+            <p className="mt-1.5 flex items-center gap-1 text-xs text-violet-300"><Loader2 className="h-3 w-3 animate-spin" /> {t('structuredLearningCourse.videoGenerating')}</p>
+          )}
+          {runStatus?.Stage === 'Failed' && <p className="mt-1.5 text-xs text-red-300">{runStatus.ErrorMessage}</p>}
+          {runStatus?.Stage === 'Completed' && <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-300"><Check className="h-3 w-3" /> {t('structuredLearningCourse.videoGenerated')}</p>}
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={submitting || !prompt.trim() || runStatus?.Stage === 'Running'}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {submitting || runStatus?.Stage === 'Running' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+            {t('structuredLearningCourse.videoGenerateButton')}
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -820,8 +1919,14 @@ function DeepDiveCardsEditor({
     <div className="mt-3 space-y-3">
       {cards.map((card, index) => (
         <div key={index} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
-          {card.IllustrationId ? (
-            <img src={apiImageUrl(`/illustrations/structured-learning/${card.IllustrationId}/image`)} alt={card.Title} className="h-56 w-full rounded-t-xl bg-slate-950/50 object-contain object-center" />
+          {card.IllustrationIds && card.IllustrationIds.length > 0 ? (
+            <div className="grid grid-cols-2 gap-1 p-1">
+              {card.IllustrationIds.map((id, i) => (
+                <ZoomableIllustration key={id} illustrationId={id} alt={`${card.Title} — step ${i + 1}`} className="h-28 w-full rounded-lg bg-slate-950/50 object-contain object-center" />
+              ))}
+            </div>
+          ) : card.IllustrationId ? (
+            <ZoomableIllustration illustrationId={card.IllustrationId} alt={card.Title} className="h-56 w-full rounded-t-xl bg-slate-950/50 object-contain object-center" />
           ) : card.Emoji ? (
             <div className="flex h-24 w-full items-center justify-center bg-white/[0.03] text-4xl">{card.Emoji}</div>
           ) : null}
@@ -942,6 +2047,9 @@ interface DeepDiveCard {
   Text: string;
   Emoji?: string | null;
   IllustrationId?: string | null;
+  /** Ordered step-by-step illustrations (e.g. a math derivation) — when
+   * present, shown instead of the single IllustrationId as a sequence. */
+  IllustrationIds?: string[] | null;
 }
 
 function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
@@ -954,7 +2062,40 @@ function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
   }
   if (!illustrationId) return null;
 
-  return <img src={apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`)} alt="" className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center" />;
+  return <ZoomableIllustration illustrationId={illustrationId} alt="" className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center" />;
+}
+
+function ZoomableIllustration({ illustrationId, alt, className }: { illustrationId: string; alt: string; className: string }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  const src = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="group relative block w-full cursor-zoom-in" aria-label="Ampliar ilustración">
+        <img src={src} alt={alt} className={className} />
+        <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">Ampliar</span>
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Ilustración ampliada" onClick={() => setOpen(false)}>
+          <div className="relative flex max-h-[95vh] max-w-[95vw] items-center justify-center" onClick={(event) => event.stopPropagation()}>
+            <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
+            <button type="button" onClick={() => setOpen(false)} className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800" aria-label="Cerrar ilustración">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 /**
@@ -972,11 +2113,13 @@ function DeepDiveQuiz({
   sectionId,
   stepId,
   stepDataJson,
+  mode,
   onComplete,
 }: {
   sectionId: string;
   stepId: string;
   stepDataJson: string;
+  mode: PreviewMode;
   onComplete: () => void;
 }) {
   const { t } = useTranslation();
@@ -986,6 +2129,13 @@ function DeepDiveQuiz({
   } catch {
     cards = [];
   }
+
+  // Free card-to-card navigation in Review & acceptance/Edit (2026-08-23,
+  // explicit user request): the real-mode "explain what you just learned"
+  // grading gate (below) only applies to `real` — reviewers/authors get every
+  // card marked reviewable immediately (see the effect below), no submission
+  // required, same as clicking an already-mastered card in real mode.
+  const freeNavigation = mode !== 'real';
 
   const startedRef = useRef(false);
   const completedRef = useRef(false);
@@ -1007,6 +2157,12 @@ function DeepDiveQuiz({
   };
 
   useEffect(() => {
+    if (freeNavigation) {
+      // No grading/progress to fetch in Review & acceptance/Edit — the
+      // outer step is already ungated for these modes (see canAdvancePastCurrentStep).
+      markCompleteOnce();
+      return;
+    }
     if (startedRef.current) return;
     startedRef.current = true;
     getStructuredLearningDeepDiveState(sectionId)
@@ -1017,7 +2173,7 @@ function DeepDiveQuiz({
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sectionId]);
+  }, [sectionId, freeNavigation]);
 
   async function handleSubmit(overrideText?: string) {
     const text = (overrideText ?? response).trim();
@@ -1051,6 +2207,91 @@ function DeepDiveQuiz({
 
   if (error) return <p className="mt-3 text-sm text-red-300">{error}</p>;
   if (cards.length === 0) return null;
+
+  // Free card-to-card browsing in Review & acceptance/Edit (2026-08-23,
+  // explicit user request): no grading, no completion banner, no
+  // explain-and-submit gate at all — just the card's own content plus the
+  // tutor agent, with plain Previous/Next buttons between the cards.
+  if (freeNavigation) {
+    const freeCard = cards[Math.min(cardIndex, cards.length - 1)];
+    return (
+      <div className="mt-3 space-y-3">
+        {cards.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {cards.map((c, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setCardIndex(index)}
+                title={c.Title}
+                className={`flex h-7 min-w-[1.75rem] items-center justify-center rounded-full border px-2 text-[11px] font-semibold transition ${
+                  index === cardIndex
+                    ? 'border-brand-400 bg-brand-500/20 text-brand-200'
+                    : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.06]'
+                }`}
+              >
+                {index + 1}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          {freeCard.IllustrationIds && freeCard.IllustrationIds.length > 0 ? (
+            <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {freeCard.IllustrationIds.map((id, i) => (
+                <div key={id} className="space-y-1">
+                  <ZoomableIllustration
+                    illustrationId={id}
+                    alt={`${freeCard.Title} — step ${i + 1}`}
+                    className="h-auto max-h-48 w-full rounded-lg object-contain bg-black/20"
+                  />
+                  <p className="text-center text-[11px] font-medium text-slate-400">Step {i + 1}</p>
+                </div>
+              ))}
+            </div>
+          ) : freeCard.IllustrationId ? (
+            <ZoomableIllustration
+              illustrationId={freeCard.IllustrationId}
+              alt={freeCard.Title}
+              className="mb-2 h-auto max-h-72 w-full rounded-lg object-contain bg-black/20"
+            />
+          ) : (
+            freeCard.Emoji && <div className="mb-2 text-3xl leading-none">{freeCard.Emoji}</div>
+          )}
+          <p className="text-sm font-semibold text-white">{freeCard.Title}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{freeCard.Text}</p>
+
+          <VoiceTutorAgent
+            structuredLearningSectionStepId={stepId}
+            exampleCardIndex={cardIndex}
+            reviewOnly
+            autoConnect={false}
+            compact
+          />
+        </div>
+        {cards.length > 1 && (
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              disabled={cardIndex === 0}
+              onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {t('structuredLearningCourse.wizardPrevious')}
+            </button>
+            <button
+              type="button"
+              disabled={cardIndex === cards.length - 1}
+              onClick={() => setCardIndex((i) => Math.min(cards.length - 1, i + 1))}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {t('structuredLearningCourse.wizardNext')}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Complete (2026-08-10, explicit user request: "what happens if a
   // student wants to see Deep Dive again?") — still show every card as a
@@ -1129,9 +2370,22 @@ function DeepDiveQuiz({
       )}
 
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-        {card.IllustrationId ? (
-          <img
-            src={apiImageUrl(`/illustrations/structured-learning/${card.IllustrationId}/image`)}
+        {card.IllustrationIds && card.IllustrationIds.length > 0 ? (
+          <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {card.IllustrationIds.map((id, i) => (
+              <div key={id} className="space-y-1">
+                <ZoomableIllustration
+                  illustrationId={id}
+                  alt={`${card.Title} — step ${i + 1}`}
+                  className="h-auto max-h-48 w-full rounded-lg object-contain bg-black/20"
+                />
+                <p className="text-center text-[11px] font-medium text-slate-400">Step {i + 1}</p>
+              </div>
+            ))}
+          </div>
+        ) : card.IllustrationId ? (
+          <ZoomableIllustration
+            illustrationId={card.IllustrationId}
             alt={card.Title}
             className="mb-2 h-auto max-h-72 w-full rounded-lg object-contain bg-black/20"
           />
@@ -1222,7 +2476,20 @@ function DeepDiveCardReviewOverlay({
             <X className="h-5 w-5" />
           </button>
         </div>
-        {card.IllustrationId ? (
+        {card.IllustrationIds && card.IllustrationIds.length > 0 ? (
+          <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {card.IllustrationIds.map((id, i) => (
+              <div key={id} className="space-y-1">
+                <img
+                  src={apiImageUrl(`/illustrations/structured-learning/${id}/image`)}
+                  alt={`${card.Title} — step ${i + 1}`}
+                  className="h-auto max-h-48 w-full rounded-lg object-contain bg-black/20"
+                />
+                <p className="text-center text-[11px] font-medium text-slate-400">Step {i + 1}</p>
+              </div>
+            ))}
+          </div>
+        ) : card.IllustrationId ? (
           <img
             src={apiImageUrl(`/illustrations/structured-learning/${card.IllustrationId}/image`)}
             alt={card.Title}
@@ -1246,25 +2513,6 @@ function DeepDiveCardReviewOverlay({
   );
 }
 
-
-/** Local-only scratch pad — no backend evaluation exists yet for
- * Structured Learning's Production step. */
-function ProductionDraft() {
-  const { t } = useTranslation();
-  const [value, setValue] = useState('');
-  return (
-    <div className="mt-3">
-      <label className="mb-1.5 block text-xs font-medium text-slate-400">{t('structuredLearningCourse.productionDraftLabel')}</label>
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        rows={3}
-        placeholder={t('structuredLearningCourse.productionDraftPlaceholder')}
-        className="input w-full"
-      />
-    </div>
-  );
-}
 
 /** Interactive Recall practice — every turn grades the previous answer AND
  * generates a genuinely new question (StructuredLearningRecallEngine),

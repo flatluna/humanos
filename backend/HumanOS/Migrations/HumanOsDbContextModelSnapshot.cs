@@ -335,6 +335,9 @@ namespace HumanOS.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
+                    b.Property<string>("ExecutiveSummary")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IncludeExamplesStep")
                         .HasColumnType("bit");
 
@@ -1623,6 +1626,9 @@ namespace HumanOS.Migrations
                     b.Property<int?>("FinalScore")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("RoundNumber")
                         .HasColumnType("int");
 
@@ -1640,6 +1646,9 @@ namespace HumanOS.Migrations
                     b.HasIndex("StructuredLearningDocumentSectionId")
                         .HasDatabaseName("IX_StructuredLearningAssessmentRound_SectionId");
 
+                    b.HasIndex("PersonId", "StructuredLearningDocumentSectionId")
+                        .HasDatabaseName("IX_StructuredLearningAssessmentRound_Person_SectionId");
+
                     b.ToTable("StructuredLearningAssessmentRound", "dbo");
                 });
 
@@ -1650,13 +1659,33 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
+                    b.Property<double?>("Confidence")
+                        .HasColumnType("float");
+
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
+                    b.Property<string>("EpistemicStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("explicit");
+
                     b.Property<string>("Evidence")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RelationshipCategory")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Generic");
+
+                    b.Property<Guid?>("RelationshipClassId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("RelationshipLabel")
                         .IsRequired()
@@ -1715,18 +1744,66 @@ namespace HumanOS.Migrations
                     b.Property<int?>("AssessmentQuestionsPerRound")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("CapabilityDomainId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ConfigSnapshotJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ConfirmedDocumentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("CreatedByEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("CreatedByOid")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
+                    b.Property<string>("DetectedDocumentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double?>("DetectedDocumentTypeConfidence")
+                        .HasColumnType("float");
+
                     b.Property<string>("DocumentName")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("DocumentTypeConfirmedByUser")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("ExecutiveSummary")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IncludeAssessmentStep")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IncludeKnowledgeGraphConnections")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IncludeKnowledgeGraphEntities")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("IncludeProductionStep")
                         .ValueGeneratedOnAdd()
@@ -1737,6 +1814,16 @@ namespace HumanOS.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
+
+                    b.Property<bool>("IsGlobal")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<int?>("MaxDeepDiveCardsPerNode")
                         .HasColumnType("int");
@@ -1767,7 +1854,16 @@ namespace HumanOS.Migrations
                     b.Property<Guid>("SessionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TargetSkill")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TopicId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("StructuredLearningDocumentId")
@@ -1780,6 +1876,36 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("IX_StructuredLearningDocument_TenantId");
 
                     b.ToTable("StructuredLearningDocument", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentEnrollment", b =>
+                {
+                    b.Property<Guid>("StructuredLearningDocumentEnrollmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("EnrolledDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StructuredLearningDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningDocumentEnrollmentId")
+                        .HasName("PK_StructuredLearningDocumentEnrollment");
+
+                    b.HasIndex("StructuredLearningDocumentId");
+
+                    b.HasIndex("PersonId", "StructuredLearningDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StructuredLearningDocumentEnrollment_Person_Document");
+
+                    b.ToTable("StructuredLearningDocumentEnrollment", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentProgramMembership", b =>
@@ -1846,6 +1972,9 @@ namespace HumanOS.Migrations
 
                     b.Property<SqlVector<float>>("Embedding")
                         .HasColumnType("vector(1536)");
+
+                    b.Property<string>("KnowledgeGraphRootEntityName")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ModelName")
                         .HasMaxLength(200)
@@ -1926,6 +2055,10 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
+                    b.Property<string>("Aliases")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -1934,6 +2067,12 @@ namespace HumanOS.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<SqlVector<float>?>("Embedding")
+                        .HasColumnType("vector(1536)");
+
+                    b.Property<Guid?>("EntityClassId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("EntityType")
                         .IsRequired()
@@ -1945,27 +2084,243 @@ namespace HumanOS.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
-                    b.Property<Guid?>("PrimarySectionId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("NormalizedValue")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
-                    b.Property<Guid>("StructuredLearningDocumentId")
+                    b.Property<string>("OntologicalClass")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid?>("SubjectId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("TopicId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("StructuredLearningEntityId")
                         .HasName("PK_StructuredLearningEntity");
 
-                    b.HasIndex("PrimarySectionId");
+                    b.HasIndex("EntityClassId");
 
-                    b.HasIndex("StructuredLearningDocumentId")
-                        .HasDatabaseName("IX_StructuredLearningEntity_DocumentId");
+                    b.HasIndex("TenantId", "SubjectId")
+                        .HasDatabaseName("IX_StructuredLearningEntity_TenantId_SubjectId");
 
-                    b.HasIndex("TenantId")
-                        .HasDatabaseName("IX_StructuredLearningEntity_TenantId");
+                    b.HasIndex("TenantId", "NormalizedValue", "EntityType")
+                        .IsUnique()
+                        .HasDatabaseName("IX_StructuredLearningEntity_TenantId_NormalizedValue_EntityType");
 
                     b.ToTable("StructuredLearningEntity", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningEntityClass", b =>
+                {
+                    b.Property<Guid>("StructuredLearningEntityClassId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("DisplayLabel")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("GenericDescription")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningEntityClassId")
+                        .HasName("PK_StructuredLearningEntityClass");
+
+                    b.HasIndex("TenantId", "SubjectId", "NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("IX_StructuredLearningEntityClass_TenantId_SubjectId_NormalizedName");
+
+                    b.ToTable("StructuredLearningEntityClass", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningEntitySection", b =>
+                {
+                    b.Property<Guid>("StructuredLearningEntitySectionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("EndPosition")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("MatchConfidence")
+                        .HasColumnType("float");
+
+                    b.Property<string>("MatchReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<double?>("RelevanceScore")
+                        .HasColumnType("float");
+
+                    b.Property<string>("ResolutionStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("new");
+
+                    b.Property<string>("SourceText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("StartPosition")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("StructuredLearningDocumentSectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StructuredLearningEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningEntitySectionId")
+                        .HasName("PK_StructuredLearningEntitySection");
+
+                    b.HasIndex("StructuredLearningDocumentSectionId")
+                        .HasDatabaseName("IX_StructuredLearningEntitySection_SectionId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_StructuredLearningEntitySection_TenantId");
+
+                    b.HasIndex("StructuredLearningEntityId", "StructuredLearningDocumentSectionId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_StructuredLearningEntitySection_EntityId_SectionId");
+
+                    b.ToTable("StructuredLearningEntitySection", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningGenerationUsage", b =>
+                {
+                    b.Property<Guid>("StructuredLearningGenerationUsageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("AgentName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("CachedInputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<long>("ElapsedMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ModelName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StepName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("StructuredLearningDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("StructuredLearningDocumentSectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningGenerationUsageId")
+                        .HasName("PK_StructuredLearningGenerationUsage");
+
+                    b.HasIndex("StructuredLearningDocumentId")
+                        .HasDatabaseName("IX_StructuredLearningGenerationUsage_DocumentId");
+
+                    b.HasIndex("StructuredLearningDocumentSectionId")
+                        .HasDatabaseName("IX_StructuredLearningGenerationUsage_SectionId");
+
+                    b.ToTable("StructuredLearningGenerationUsage", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningHypothesisResponse", b =>
+                {
+                    b.Property<Guid>("StructuredLearningHypothesisResponseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<bool?>("IsCorrect")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("QuestionIndex")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SelectedOptionIndex")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("StructuredLearningDocumentSectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningHypothesisResponseId")
+                        .HasName("PK_StructuredLearningHypothesisResponse");
+
+                    b.HasIndex("StructuredLearningDocumentSectionId");
+
+                    b.HasIndex("PersonId", "StructuredLearningDocumentSectionId")
+                        .HasDatabaseName("IX_StructuredLearningHypothesisResponse_Person_SectionId");
+
+                    b.ToTable("StructuredLearningHypothesisResponse", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningIllustration", b =>
@@ -1994,6 +2349,13 @@ namespace HumanOS.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Image");
 
                     b.Property<string>("ProcessVersion")
                         .HasMaxLength(200)
@@ -2036,6 +2398,162 @@ namespace HumanOS.Migrations
                     b.ToTable("StructuredLearningIllustration", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningKnowledgeFact", b =>
+                {
+                    b.Property<Guid>("KnowledgeFactId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("DerivationType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("EngramId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EpistemicStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("FactType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Importance")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Statement")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("KnowledgeFactId")
+                        .HasName("PK_KnowledgeFacts");
+
+                    b.HasIndex("EngramId")
+                        .HasDatabaseName("IX_KnowledgeFacts_EngramId");
+
+                    b.HasIndex("EngramId", "Importance")
+                        .HasDatabaseName("IX_KnowledgeFacts_EngramId_Importance");
+
+                    b.ToTable("KnowledgeFacts", "dbo", t =>
+                        {
+                            t.HasCheckConstraint("CK_KnowledgeFacts_Confidence", "[Confidence] >= 0 AND [Confidence] <= 1");
+
+                            t.HasCheckConstraint("CK_KnowledgeFacts_DerivationType", "[DerivationType] IN ('Atomic','Composite')");
+
+                            t.HasCheckConstraint("CK_KnowledgeFacts_EpistemicStatus", "[EpistemicStatus] IN ('explicit','inferred')");
+
+                            t.HasCheckConstraint("CK_KnowledgeFacts_FactType", "[FactType] IN ('Definition','Structure','Relationship','Principle','Capability','Process','Function','Outcome','Application')");
+
+                            t.HasCheckConstraint("CK_KnowledgeFacts_Importance", "[Importance] IN ('Core','Supporting')");
+
+                            t.HasCheckConstraint("CK_KnowledgeFacts_Statement_NotEmpty", "LEN(LTRIM(RTRIM([Statement]))) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningKnowledgeFactGraphPathStep", b =>
+                {
+                    b.Property<Guid>("KnowledgeFactGraphPathStepId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("KnowledgeFactId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("StepOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("KnowledgeFactGraphPathStepId")
+                        .HasName("PK_KnowledgeFactGraphPathSteps");
+
+                    b.HasIndex("ConnectionId")
+                        .HasDatabaseName("IX_KnowledgeFactGraphPathSteps_ConnectionId");
+
+                    b.HasIndex("KnowledgeFactId", "ConnectionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_KnowledgeFactGraphPathSteps_KnowledgeFactId_ConnectionId");
+
+                    b.HasIndex("KnowledgeFactId", "StepOrder")
+                        .IsUnique()
+                        .HasDatabaseName("UX_KnowledgeFactGraphPathSteps_KnowledgeFactId_StepOrder");
+
+                    b.ToTable("KnowledgeFactGraphPathSteps", "dbo", t =>
+                        {
+                            t.HasCheckConstraint("CK_KnowledgeFactGraphPathSteps_StepOrder", "[StepOrder] >= 1 AND [StepOrder] <= 3");
+                        });
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningPersonSectionState", b =>
+                {
+                    b.Property<Guid>("StructuredLearningPersonSectionStateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int>("CurrentDeepDiveCardIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CurrentDeepDivePrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CurrentRecallPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StructuredLearningDocumentSectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningPersonSectionStateId")
+                        .HasName("PK_StructuredLearningPersonSectionState");
+
+                    b.HasIndex("StructuredLearningDocumentSectionId");
+
+                    b.HasIndex("PersonId", "StructuredLearningDocumentSectionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StructuredLearningPersonSectionState_Person_SectionId");
+
+                    b.ToTable("StructuredLearningPersonSectionState", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningRecallAttempt", b =>
                 {
                     b.Property<Guid>("StructuredLearningRecallAttemptId")
@@ -2047,6 +2565,9 @@ namespace HumanOS.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid?>("PersonId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("RecallScore")
                         .HasColumnType("int");
@@ -2068,7 +2589,60 @@ namespace HumanOS.Migrations
                     b.HasIndex("StructuredLearningDocumentSectionId")
                         .HasDatabaseName("IX_StructuredLearningRecallAttempt_SectionId");
 
+                    b.HasIndex("PersonId", "StructuredLearningDocumentSectionId")
+                        .HasDatabaseName("IX_StructuredLearningRecallAttempt_Person_SectionId");
+
                     b.ToTable("StructuredLearningRecallAttempt", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningRelationshipClass", b =>
+                {
+                    b.Property<Guid>("StructuredLearningRelationshipClassId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Generic");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("GenericDescription")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("NormalizedLabel")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningRelationshipClassId")
+                        .HasName("PK_StructuredLearningRelationshipClass");
+
+                    b.HasIndex("TenantId", "SubjectId", "NormalizedLabel")
+                        .IsUnique()
+                        .HasDatabaseName("IX_StructuredLearningRelationshipClass_TenantId_SubjectId_NormalizedLabel");
+
+                    b.ToTable("StructuredLearningRelationshipClass", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningSectionStep", b =>
@@ -2140,6 +2714,9 @@ namespace HumanOS.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("TimelineJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("StructuredLearningSectionStepId")
                         .HasName("PK_StructuredLearningSectionStep");
 
@@ -2150,6 +2727,65 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("IX_StructuredLearningSectionStep_TenantId");
 
                     b.ToTable("StructuredLearningSectionStep", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningTopic", b =>
+                {
+                    b.Property<Guid>("StructuredLearningTopicId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("StructuredLearningTopicId")
+                        .HasName("PK_StructuredLearningTopic");
+
+                    b.HasIndex("TenantId", "SubjectId")
+                        .HasDatabaseName("IX_StructuredLearningTopic_TenantId_SubjectId");
+
+                    b.ToTable("StructuredLearningTopic", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningVideoGenerationLog", b =>
+                {
+                    b.Property<Guid>("StructuredLearningVideoGenerationLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("StructuredLearningDocumentSectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("StructuredLearningVideoGenerationLogId");
+
+                    b.ToTable("StructuredLearningVideoGenerationLogs");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Subject", b =>
@@ -5320,6 +5956,25 @@ namespace HumanOS.Migrations
                     b.Navigation("TargetEntity");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentEnrollment", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("StructuredLearningDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Person");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentProgramMembership", b =>
                 {
                     b.HasOne("HumanOS.Models.Programs.LearningProgram", "Program")
@@ -5355,22 +6010,89 @@ namespace HumanOS.Migrations
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningEntity", b =>
                 {
-                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection", "PrimarySection")
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningEntityClass", null)
                         .WithMany()
-                        .HasForeignKey("PrimarySectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_StructuredLearningEntity_PrimarySection");
+                        .HasForeignKey("EntityClassId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_StructuredLearningEntity_EntityClass");
+                });
 
-                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocument", "Document")
-                        .WithMany("Entities")
-                        .HasForeignKey("StructuredLearningDocumentId")
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningEntitySection", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection", "Section")
+                        .WithMany()
+                        .HasForeignKey("StructuredLearningDocumentSectionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("FK_StructuredLearningEntity_Document");
+                        .HasConstraintName("FK_StructuredLearningEntitySection_Section");
 
-                    b.Navigation("Document");
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningEntity", "Entity")
+                        .WithMany("Occurrences")
+                        .HasForeignKey("StructuredLearningEntityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_StructuredLearningEntitySection_Entity");
 
-                    b.Navigation("PrimarySection");
+                    b.Navigation("Entity");
+
+                    b.Navigation("Section");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningHypothesisResponse", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection", "Section")
+                        .WithMany()
+                        .HasForeignKey("StructuredLearningDocumentSectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_StructuredLearningHypothesisResponse_Section");
+
+                    b.Navigation("Section");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningKnowledgeFact", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection", "Engram")
+                        .WithMany()
+                        .HasForeignKey("EngramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_KnowledgeFacts_Engram");
+
+                    b.Navigation("Engram");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningKnowledgeFactGraphPathStep", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningConnection", "Connection")
+                        .WithMany()
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_KnowledgeFactGraphPathSteps_Connection");
+
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningKnowledgeFact", "KnowledgeFact")
+                        .WithMany("GraphPathSteps")
+                        .HasForeignKey("KnowledgeFactId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_KnowledgeFactGraphPathSteps_KnowledgeFacts");
+
+                    b.Navigation("Connection");
+
+                    b.Navigation("KnowledgeFact");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningPersonSectionState", b =>
+                {
+                    b.HasOne("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection", "Section")
+                        .WithMany()
+                        .HasForeignKey("StructuredLearningDocumentSectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_StructuredLearningPersonSectionState_Section");
+
+                    b.Navigation("Section");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningRecallAttempt", b =>
@@ -6304,14 +7026,22 @@ namespace HumanOS.Migrations
                 {
                     b.Navigation("Connections");
 
-                    b.Navigation("Entities");
-
                     b.Navigation("Sections");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection", b =>
                 {
                     b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningEntity", b =>
+                {
+                    b.Navigation("Occurrences");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningKnowledgeFact", b =>
+                {
+                    b.Navigation("GraphPathSteps");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Capabilities.Subject", b =>

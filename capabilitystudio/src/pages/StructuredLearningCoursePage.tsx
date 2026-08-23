@@ -13,6 +13,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
 import AddStructuredLearningSectionModal from '../components/AddStructuredLearningSectionModal';
 import DeleteStructuredLearningSectionModal from '../components/DeleteStructuredLearningSectionModal';
+import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
+import StructuredLearningCostSection from '../components/StructuredLearningCostSection';
 import { usePreviewMode, withPreviewMode } from '../lib/previewMode';
 
 type SectionState = 'Locked' | 'Available' | 'Mastered';
@@ -213,6 +215,13 @@ export default function StructuredLearningCoursePage() {
         </div>
         {mode === 'demo' && <p className="mt-2 text-xs text-amber-300">{t('structuredLearningMap.demoModeNotice')}</p>}
       </div>
+
+      {documentId && (
+        <div className="mt-8 space-y-3">
+          <KnowledgeGraphSection documentId={documentId} />
+          {mode === 'edit' && <StructuredLearningCostSection documentId={documentId} />}
+        </div>
+      )}
 
       {levels.length > 0 && (
         <button

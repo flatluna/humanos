@@ -74,7 +74,10 @@ public sealed class StructuredLearningExampleCardDto
     /// <summary>A text prompt for generating this card's real illustration
     /// — always non-null/non-empty, grounded 100% in the card's own Text
     /// (never an invented scene). Reused/filled in the same way as
-    /// <see cref="LessonCardDto.IllustrationPrompt"/>.</summary>
+    /// <see cref="LessonCardDto.IllustrationPrompt"/>. Kept as a fallback
+    /// for single-image cards and for the Edit/Add-card agent path (which
+    /// only ever produces one image); the designer's own multi-step output
+    /// goes into <see cref="IllustrationPrompts"/> below instead.</summary>
     public string? IllustrationPrompt { get; set; }
 
     /// <summary>Set by StructuredLearningPedagogyService AFTER a real
@@ -82,6 +85,58 @@ public sealed class StructuredLearningExampleCardDto
     /// then (or if generation failed/isn't configured, in which case the
     /// UI falls back to Emoji).</summary>
     public Guid? IllustrationId { get; set; }
+
+    /// <summary>ORDERED sequence of illustration prompts for a card whose
+    /// Text walks through multiple distinct steps (e.g. a math derivation:
+    /// isolate the term, take the root, substitute i) — one prompt per
+    /// step, each depicting ONLY that step's state, like sequential
+    /// blackboard panels (2026-08-15, "step-by-step worked examples"
+    /// feature). Null/empty for ordinary single-scene cards, which keep
+    /// using <see cref="IllustrationPrompt"/> instead. When present, this
+    /// list is authoritative and IllustrationPrompt is ignored.</summary>
+    public List<string>? IllustrationPrompts { get; set; }
+
+    /// <summary>Set by StructuredLearningPedagogyService — one Guid per
+    /// entry in <see cref="IllustrationPrompts"/>, same order. Null when
+    /// IllustrationPrompts wasn't used (single-image card).</summary>
+    public List<Guid>? IllustrationIds { get; set; }
+}
+
+/// <summary>Agent-facing shape of a business-rule statement — deliberately
+/// omits StatementId/SectionId (real Guid PKs the model cannot produce;
+/// including them in the structured-output schema caused JSON deserialization
+/// failures like "could not be converted to System.Guid" whenever the model
+/// emitted a non-Guid placeholder). The caller maps this to a real
+/// <see cref="StructuredLearningStatement"/> with server-generated Guids.</summary>
+public sealed class StructuredLearningStatementDto
+{
+    public string StatementType { get; set; } = string.Empty;
+
+    public string Statement { get; set; } = string.Empty;
+
+    public string? SourceText { get; set; }
+
+    public string? ConditionEntity { get; set; }
+
+    public string? ConditionAttribute { get; set; }
+
+    public string? ConditionOperator { get; set; }
+
+    public string? ConditionValue { get; set; }
+
+    public string? ConditionUnit { get; set; }
+
+    public string? ActorEntity { get; set; }
+
+    public string? ActorType { get; set; }
+
+    public string? Action { get; set; }
+
+    public string? TargetEntity { get; set; }
+
+    public string? Modality { get; set; }
+
+    public List<string> PossibleOutcomes { get; set; } = [];
 }
 
 public sealed class StructuredLearningSectionDesignResponse
@@ -95,9 +150,36 @@ public sealed class StructuredLearningSectionDesignResponse
     /// ontology generation. These are stored on the section row and kept light-weight
     /// until a later, explicit ontology stage decides how to lift them into entities
     /// and relationships.</summary>
-    public List<StructuredLearningStatement> Statements { get; set; } = [];
+    public List<StructuredLearningStatementDto> Statements { get; set; } = [];
 
     public List<StructuredLearningSectionStepDto> Steps { get; set; } = [];
+}
+
+public sealed class StructuredLearningPedagogyKnowledgeFactDto
+{
+  public Guid KnowledgeFactId { get; set; }
+  public string Statement { get; set; } = string.Empty;
+  public string FactType { get; set; } = string.Empty;
+  public string Importance { get; set; } = string.Empty;
+  public string DerivationType { get; set; } = string.Empty;
+  public string EpistemicStatus { get; set; } = string.Empty;
+  public double Confidence { get; set; }
+  public List<StructuredLearningPedagogyGraphPathStepDto> GraphPath { get; set; } = [];
+}
+
+public sealed class StructuredLearningPedagogyGraphPathStepDto
+{
+  public Guid ConnectionId { get; set; }
+  public int StepOrder { get; set; }
+  public Guid SourceEntityId { get; set; }
+  public string SourceEntityName { get; set; } = string.Empty;
+  public string RelationshipCategory { get; set; } = string.Empty;
+  public string RelationshipLabel { get; set; } = string.Empty;
+  public Guid TargetEntityId { get; set; }
+  public string TargetEntityName { get; set; } = string.Empty;
+  public string? Evidence { get; set; }
+  public string EpistemicStatus { get; set; } = string.Empty;
+  public double? Confidence { get; set; }
 }
 
 /// <summary>
@@ -149,6 +231,79 @@ public sealed class StructuredLearningSectionDesignerAgent
         `Modality`, and `PossibleOutcomes` when relevant. Keep the list
         short and evidence-based; do not invent rules beyond the section.
 
+        ILLUSTRATION LEGIBILITY (applies to every IllustrationPrompt you write
+        — Hypothesis, Teaching, and every DeepDive card): if the scene you
+        describe naturally includes a diagram, chart, sign, label, or any
+        other short piece of in-image text, explicitly instruct the image
+        generator to render it LARGE, BOLD, and high-contrast, sized so a
+        student can read it clearly on a small screen — e.g. "with large,
+        bold, clearly legible labels". Prefer a few bigger, simpler visual
+        elements over many small/cluttered details. This is only about
+        HOW any such text/labels are rendered — never invent new text/labels
+        that add information beyond what this section's own text supports.
+
+        PHYSICAL/GESTURAL/HANDS-ON DEMONSTRATION CONTENT — this rule is
+        DOMAIN-GENERAL, not just for sign language: it applies to ANY course,
+        in ANY field, whose content teaches a specific physical technique
+        that a learner's body needs to reproduce. Examples across very
+        different domains: sign language / hand signs; dance or
+        choreography steps; sports or exercise form; mime or theater
+        blocking; a physical therapy/rehab movement; a caregiver's technique
+        for safely assisting, positioning, transferring, or guiding a person
+        with a disability (e.g. how to support someone standing up, how to
+        guide someone with low vision, how to position a wheelchair for a
+        transfer); how to correctly use an assistive/adaptive device or
+        mobility aid (a cane, walker, hearing aid, communication board,
+        orthotic, feeding assistance tool); a first-aid/safety maneuver; a
+        manual trade technique (how to hold a tool, a welding stance, a
+        knife grip); or any other skill where the real content is "the body
+        does THIS, in THIS exact way" rather than an abstract idea. This
+        OVERRIDES the "one combined blackboard/board scene" default used
+        elsewhere in this prompt for multi-item content. A blackboard/poster
+        is right for abstract lists (rules, clauses, math steps) but WRONG
+        here — a real instructor of a physical technique demonstrates it
+        with their own body/hands (and, when relevant, together with
+        another person, an assistive device, or a mobility aid), one
+        movement at a time, not by writing it on a board. Getting this right
+        matters most exactly where the stakes are highest — courses that
+        train people to safely and correctly assist or teach someone with a
+        disability, where a vague or generic image can leave the learner not
+        actually knowing how to perform the technique safely. So:
+        - Treat EACH distinct gesture/move/pose/technique/maneuver the
+          section teaches as its own separate sub-topic — never merge two or
+          more of them into a single illustration or a single DeepDive card,
+          even if the section presents them together in a short list.
+        - Every IllustrationPrompt for this kind of content must depict ONE
+          person (plus a second person or the specific device/aid, when the
+          technique inherently involves one) performing exactly ONE named
+          technique, described concretely and precisely enough to actually
+          reproduce it: starting body/hand position (and position of the
+          other person/device, if any), the exact motion or hold, and where
+          it ends — e.g. for a hand sign: "a person's hand starting flat
+          near the forehead, palm facing out, then moving outward and
+          slightly down, like a friendly salute wave"; for a caregiving
+          technique: "a caregiver standing at the person's side, one arm
+          under their arm and one hand supporting their back, guiding them
+          forward at walking pace, both making eye contact" — never a vague
+          restatement like "a person waving" or "someone being helped".
+          Include the facial expression too when the section says the face
+          matters (e.g. sign language often pairs a sign with a specific
+          expression; a caregiving scene may need a calm, reassuring
+          expression if the section emphasizes that).
+        - Show the demonstration clearly and unambiguously — plain/neutral
+          background, the hands/body/device clearly in frame and not
+          obscured, as if it were a single clear photo/video frame from a
+          real lesson, not a stylized icon or diagram.
+        - This means a section teaching N distinct gestures/techniques needs N
+          separate DeepDive cards (one per technique), each with its own
+          Title (the technique's name), its own Text explaining exactly how
+          to do it (grounded in the section's own words), and its own single
+          IllustrationPrompt for that one technique — up to the maximum card
+          count you were told; if the section teaches more distinct
+          techniques than the maximum allows, prioritize covering as many
+          DISTINCT ones as possible before giving a second card to any
+          single technique.
+
         OPTIONAL "ADDITIONAL ILLUSTRATION GUIDANCE" (only present sometimes):
         if the prompt includes a block with this exact heading, it means a
         professor has supplied a real reference image (e.g. an organization's
@@ -187,7 +342,7 @@ public sealed class StructuredLearningSectionDesignerAgent
         3. DeepDive   — ONLY if instructed this section includes it
         4. Recall     — ONLY if instructed this section includes it
         5. Production — ONLY if instructed this section includes it
-        6. Assessment
+        6. Assessment — ONLY if instructed this section includes it
 
         Produce EXACTLY the steps you are told to include, in this exact order,
         never more, never fewer.
@@ -292,30 +447,94 @@ public sealed class StructuredLearningSectionDesignerAgent
           explanation of the scene must describe it as an ordinary part of
           the environment, never calling attention to it as a branding
           element.
+        - MULTI-ITEM/MULTI-STEP CONTENT (any content that lists or walks
+          through several distinct items in sequence — a math derivation, a
+          multi-step procedure, a list of legal/contract clauses, a set of
+          rules or regulations, stages of a process, etc. — this is NOT
+          limited to math): IllustrationPrompt must depict ONE single scene
+          of a complete, filled-in professor's blackboard/whiteboard (or
+          equivalent — a checklist board, a numbered poster, a diagram with
+          labeled sections, whichever fits the subject) showing EVERY
+          item/step/clause your Content walks through, written out
+          top-to-bottom or left-to-right in order, exactly like a real
+          class board by the time the professor finishes explaining it —
+          never just the first item with the rest left blank. Explicitly
+          list every one of those items in the prompt itself (in the same
+          order Content teaches them) so the image generator knows all of
+          them, not only the first one.
+        - EXCEPTION — PHYSICAL/GESTURAL/HANDS-ON MULTI-ITEM CONTENT (sign
+          language signs, dance/exercise moves, caregiving techniques,
+          assistive-device usage, or any other section teaching several
+          distinct body/hand actions — see the PHYSICAL/GESTURAL rule
+          above): the "combined blackboard" pattern above does NOT apply.
+          Teaching only ever gets ONE illustration slot, and a single image
+          cannot clearly show multiple distinct body motions at once (unlike
+          a written list, which a board CAN show). So for this content type:
+          IllustrationPrompt must depict ONE person clearly demonstrating
+          ONLY the FIRST gesture/technique your Content introduces (same
+          precise-motion description rules as the PHYSICAL/GESTURAL rule
+          above) — never attempt to cram multiple gestures into one image,
+          and never describe a poster/board/list of signs. In your Content,
+          never tell the student "look at the board/image to see each
+          sign/step" or imply the single image demonstrates all of them —
+          instead, explicitly tell the student that each individual
+          sign/technique is demonstrated one at a time in the cards that
+          follow (the DeepDive step), and use the Teaching illustration only
+          as a first preview of what a demonstration looks like.
+
 
         ============================================================
         STEP 3 — DEEPDIVE (only if instructed)
-        Up to the maximum number of cards you are told. Never pad with
-        filler cards restating the same point — the number of cards should
-        reflect how much genuinely distinct material this section actually
-        contains. Each card needs:
+        Produce AT LEAST ONE card — never zero — up to the maximum number of
+        cards you are told. Never pad with filler cards restating the same
+        point: if the section only contains one genuinely distinct sub-topic,
+        write exactly ONE thorough card for it (do not withhold the card just
+        because there is only one topic). Only use more than one card when
+        the section's own text actually contains that many distinct
+        sub-topics. Each card needs:
         - Title: the section's own sub-topic/wording, never an invented
           thematic label.
         - Text: a REAL, detailed explanation of that sub-topic, SPOKEN
           directly by you as the professor (same voice/rules as the
           Teaching step above — never a meta-referential summary like "this
-          card covers..." or "the section explains..."). Go deeper/more
-          concretely into this one sub-topic than Teaching did, using only
-          facts this section's own text actually states — never a thin
-          one-liner.
+          card covers...", "the section explains...", or "aquí nos
+          detenemos en..."/"here we stop to look at..." — teach the
+          sub-topic itself, don't narrate that you're about to teach it).
+          Go deeper/more concretely into this one sub-topic than Teaching
+          did, using only facts this section's own text actually states —
+          never a thin one-liner.
         - Emoji: optional, only as a lightweight fallback for when no real
           illustration is generated for this card — never a substitute for
-          IllustrationPrompt below.
-        - IllustrationPrompt: REQUIRED for every card, a real illustration
-          will be generated from it. Describe a concrete scene/object/
-          diagram that is actually depicted or clearly implied by this
-          card's own Text — never an invented scene, and never text/
-          letters/numbers/words rendered inside the image itself.
+          IllustrationPrompt/IllustrationPrompts below.
+        - IllustrationPrompts vs IllustrationPrompt — pick ONE:
+          * If this card's Text walks through a MULTI-STEP/MULTI-ITEM
+            PROCESS (this is NOT limited to math — a math derivation, a
+            multi-step procedure, a sequence of legal/contract clauses, a
+            list of rules or regulations, stages of a process, e.g. "isolate
+            x^2", "take the square root of both sides", "substitute the
+            square root of -1 with i", OR "clause 1: notice period", "clause
+            2: termination conditions", "clause 3: penalties"), you MUST
+            use IllustrationPrompts: an ORDERED list of 2-4 prompts, one per
+            distinct step/item, like a professor's blackboard (or checklist/
+            poster/diagram, whichever fits the subject) shown one panel at
+            a time. Each prompt must depict ONLY that one step/item's state
+            (the expression/clause/diagram as it exists at that exact
+            point), never the final result shown early or items merged
+            together. Keep the visual style/layout consistent across all
+            panels in the list (same board/diagram look) so they read as
+            one connected sequence. Leave IllustrationPrompt empty when
+            using this list.
+          * Otherwise (a single concrete scene/object/diagram, no multi-
+            step/multi-item process), write ONE IllustrationPrompt as
+            before and leave IllustrationPrompts empty.
+          Every prompt (whether in IllustrationPrompt or IllustrationPrompts)
+          must describe a concrete scene/object/diagram that is actually
+          depicted or clearly implied by this card's own Text — never an
+          invented scene, and never text/letters/numbers/words rendered
+          inside the image itself (math notation and any other short label
+          must be drawn as visual shapes/positions, not as rendered
+          characters, unless the ILLUSTRATION LEGIBILITY guidance above
+          explicitly calls for legible in-image text/labels).
 
         ============================================================
         STEP 4 — RECALL (only if instructed)
@@ -335,7 +554,7 @@ public sealed class StructuredLearningSectionDesignerAgent
         this section actually covers.
 
         ============================================================
-        STEP 6 — ASSESSMENT
+        STEP 6 — ASSESSMENT (only if instructed)
         Same as Recall above — NO generated content from you. Leave Content
         empty; the real assessment questions are generated live, one at a
         time, by a separate real-time agent (2026-08-10). Only include this
@@ -400,8 +619,10 @@ public sealed class StructuredLearningSectionDesignerAgent
         int? maxDeepDiveCards,
         bool includeRecallStep,
         bool includeProductionStep,
+        bool includeAssessmentStep = true,
         CancellationToken cancellationToken = default,
-        string? illustrationGuidance = null)
+        string? illustrationGuidance = null,
+        IReadOnlyList<StructuredLearningPedagogyKnowledgeFactDto>? knowledgeFacts = null)
     {
         if (_agent is null)
         {
@@ -414,7 +635,7 @@ public sealed class StructuredLearningSectionDesignerAgent
         if (includeDeepDiveStep) includedSteps.Add("DeepDive");
         if (includeRecallStep) includedSteps.Add("Recall");
         if (includeProductionStep) includedSteps.Add("Production");
-        includedSteps.Add("Assessment");
+        if (includeAssessmentStep) includedSteps.Add("Assessment");
 
         var prompt = $"""
             ContractVersion: {SourceFaithfulContractVersion}
@@ -435,6 +656,17 @@ public sealed class StructuredLearningSectionDesignerAgent
             {illustrationGuidance}
             """)}
 
+            KNOWLEDGE FACTS (validated and persisted for this Engram; coverage guidance only):
+            The original SECTION TEXT remains the primary source for narrative, context,
+            explanations, examples, tone, sequence, and depth. Use Core facts as required
+            coverage for Learn and Supporting facts as useful examples or context. Do not
+            copy fact statements mechanically or generate pedagogy only from facts. Use the
+            ordered Graph Paths to understand relationships and deepen important connections
+            in DeepDive cards. Do not expose IDs, JSON, database fields, or graph metadata to
+            the learner, and do not invent facts or relationships. Keep the existing output
+            format and behavior of Hypothesis, Recall, Production, and Assessment.
+            {SerializeKnowledgeFacts(knowledgeFacts)}
+
             SECTION TEXT (the ONLY source material for this section — use nothing else):
             ---
             {sectionText}
@@ -454,5 +686,25 @@ public sealed class StructuredLearningSectionDesignerAgent
         };
 
         return new DesignResult { Response = response.Result, TokenUsage = tokenUsage };
+    }
+
+    private static string SerializeKnowledgeFacts(IReadOnlyList<StructuredLearningPedagogyKnowledgeFactDto>? knowledgeFacts)
+    {
+        if (knowledgeFacts is null || knowledgeFacts.Count == 0)
+        {
+            return "No persisted Knowledge Facts were supplied; do not continue without them.";
+        }
+
+        var lines = new List<string>();
+        foreach (var fact in knowledgeFacts)
+        {
+            lines.Add($"- [{fact.Importance}] {fact.Statement} (FactType: {fact.FactType}, Derivation: {fact.DerivationType}, EpistemicStatus: {fact.EpistemicStatus}, Confidence: {fact.Confidence:0.##})");
+            foreach (var step in fact.GraphPath.OrderBy(step => step.StepOrder))
+            {
+                lines.Add($"  Path {step.StepOrder}: {step.SourceEntityName} -[{step.RelationshipCategory}/{step.RelationshipLabel}]-> {step.TargetEntityName}; Evidence: {step.Evidence ?? string.Empty}");
+            }
+        }
+
+        return string.Join('\n', lines);
     }
 }

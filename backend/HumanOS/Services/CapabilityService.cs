@@ -47,10 +47,21 @@ public sealed class CapabilityService
                 .ThenInclude(g => g!.Edges)
             .Where(c => c.IsActive && c.LearningMode != Models.Capabilities.CourseLearningMode.GraphMemoryParadox);
 
-        // Temporary debugging override: keep all active capabilities visible in
-        // the student catalog so we can inspect the full set of courses and
-        // isolate visibility issues without hiding owner-scoped rows.
-        // Re-enable the ownership filter once the catalog analysis is complete.
+        // The student catalog should show only public/official content plus the
+        // current caller's own personal courses and any tenant-scoped employer
+        // courses. This preserves the 2026-08-05 ownership model while keeping
+        // the public catalog from exposing every active course to every visitor.
+        if (callerPersonId is null && callerTenantId is null)
+        {
+            query = query.Where(c => c.OwnerPersonId == null && c.OwnerTenantId == null);
+        }
+        else
+        {
+            query = query.Where(c =>
+                (c.OwnerPersonId == null && c.OwnerTenantId == null) ||
+                c.OwnerPersonId == callerPersonId ||
+                (c.OwnerTenantId != null && c.OwnerTenantId == callerTenantId));
+        }
 
         if (!string.IsNullOrWhiteSpace(domainCode))
         {

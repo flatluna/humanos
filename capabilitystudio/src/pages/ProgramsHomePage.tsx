@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, GraduationCap, Trash2, CheckCheck } from 'lucide-react';
+import { Search, GraduationCap, Trash2, CheckCheck, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { deleteProgram, getPrograms, type BackendProgram } from '../lib/api/programsApi';
 import ProgramCard from '../components/ProgramCard';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -100,7 +101,7 @@ export default function ProgramsHomePage() {
             {t('programsHome.subtitle')}
           </p>
 
-          <div className="mx-auto mt-8 max-w-xl">
+          <div className="mx-auto mt-8 flex max-w-xl flex-col gap-3 sm:flex-row">
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-500" />
               <input
@@ -111,6 +112,13 @@ export default function ProgramsHomePage() {
                 className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 pl-11 pr-4 text-sm text-white placeholder:text-slate-500 backdrop-blur-xl focus:border-brand-400/50 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
               />
             </div>
+            <Link
+              to="/programs/new"
+              className="inline-flex flex-none items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-400"
+            >
+              <Plus className="h-4 w-4" />
+              {t('programsHome.createProgram')}
+            </Link>
           </div>
         </div>
       </section>
@@ -164,8 +172,18 @@ export default function ProgramsHomePage() {
         )}
 
         {!loading && !error && filtered.length === 0 && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center text-slate-400">
-            {t('programsHome.noResults')}
+          <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-12 text-center text-slate-400">
+            <GraduationCap className="mx-auto h-10 w-10 text-brand-400" />
+            <p className="mt-4">{programs.length === 0 ? t('programsHome.noPrograms') : t('programsHome.noResults')}</p>
+            {programs.length === 0 && (
+              <Link
+                to="/programs/new"
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-400"
+              >
+                <Plus className="h-4 w-4" />
+                {t('programsHome.createProgram')}
+              </Link>
+            )}
           </div>
         )}
 

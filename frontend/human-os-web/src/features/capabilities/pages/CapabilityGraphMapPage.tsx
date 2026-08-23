@@ -189,7 +189,6 @@ export default function CapabilityGraphMapPage() {
       .then((data) => {
         if (!cancelled) {
           setGraph(data);
-          setGraphBlueprintOnly(false);
         }
       })
       .catch(() => {

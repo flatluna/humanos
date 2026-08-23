@@ -313,13 +313,55 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentSection> StructuredLearningDocumentSections =>
         Set<Models.Capabilities.Studio.StructuredLearningDocumentSection>();
 
-    /// <summary>Schema-only for now — populated by a future, separate
-    /// LLM-based ontology-extraction step (not Step 1).</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningKnowledgeFact> StructuredLearningKnowledgeFacts =>
+        Set<Models.Capabilities.Studio.StructuredLearningKnowledgeFact>();
+
+    public DbSet<Models.Capabilities.Studio.StructuredLearningKnowledgeFactGraphPathStep> StructuredLearningKnowledgeFactGraphPathSteps =>
+        Set<Models.Capabilities.Studio.StructuredLearningKnowledgeFactGraphPathStep>();
+
+    /// <summary>Explicit "Inscribirme" record for a Structured Learning
+    /// document — see <see cref="Models.Capabilities.Studio.StructuredLearningDocumentEnrollment"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentEnrollment> StructuredLearningDocumentEnrollments =>
+        Set<Models.Capabilities.Studio.StructuredLearningDocumentEnrollment>();
+
+    /// <summary>Knowledge Graph (2026-08-14) — tenant-wide canonical
+    /// entity catalog, populated by
+    /// <see cref="HumanOS.Services.StructuredLearningEntityExtractionService"/>
+    /// right after Step 2 (extraction).</summary>
     public DbSet<Models.Capabilities.Studio.StructuredLearningEntity> StructuredLearningEntities =>
         Set<Models.Capabilities.Studio.StructuredLearningEntity>();
 
+    /// <summary>Knowledge Graph (2026-08-14) — many-to-many entity-to-
+    /// engram links with preserved source evidence, see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningEntitySection"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningEntitySection> StructuredLearningEntitySections =>
+        Set<Models.Capabilities.Studio.StructuredLearningEntitySection>();
+
     public DbSet<Models.Capabilities.Studio.StructuredLearningConnection> StructuredLearningConnections =>
         Set<Models.Capabilities.Studio.StructuredLearningConnection>();
+
+    /// <summary>Knowledge Graph \u2014 Master de Clases de Entidad (2026-08-14,
+    /// Fase 1), scoped by (TenantId, SubjectId) domain. See
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningEntityClass"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningEntityClass> StructuredLearningEntityClasses =>
+        Set<Models.Capabilities.Studio.StructuredLearningEntityClass>();
+
+    /// <summary>Knowledge Graph — Master de Clases de Arista (2026-08-15,
+    /// Fase 3), scoped by (TenantId, SubjectId) domain. See
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningRelationshipClass"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningRelationshipClass> StructuredLearningRelationshipClasses =>
+        Set<Models.Capabilities.Studio.StructuredLearningRelationshipClass>();
+
+    /// <summary>Knowledge Graph — Catálogo de Tipos/Temas (2026-08-16),
+    /// scoped by (TenantId, SubjectId) domain. See
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningTopic"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningTopic> StructuredLearningTopics =>
+        Set<Models.Capabilities.Studio.StructuredLearningTopic>();
+
+    /// <summary>Per-step token usage + elapsed time (2026-08-14) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningGenerationUsage"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningGenerationUsage> StructuredLearningGenerationUsages =>
+        Set<Models.Capabilities.Studio.StructuredLearningGenerationUsage>();
 
     /// <summary>Step 3 output — see <see cref="Models.Capabilities.Studio.StructuredLearningSectionStep"/>.</summary>
     public DbSet<Models.Capabilities.Studio.StructuredLearningSectionStep> StructuredLearningSectionSteps =>
@@ -329,6 +371,11 @@ public sealed class HumanOsDbContext : DbContext
     /// <see cref="Models.Capabilities.Studio.StructuredLearningIllustration"/>.</summary>
     public DbSet<Models.Capabilities.Studio.StructuredLearningIllustration> StructuredLearningIllustrations =>
         Set<Models.Capabilities.Studio.StructuredLearningIllustration>();
+
+    /// <summary>Cost ledger for Google Veo video generation — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningVideoGenerationLog"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningVideoGenerationLog> StructuredLearningVideoGenerationLogs =>
+        Set<Models.Capabilities.Studio.StructuredLearningVideoGenerationLog>();
 
     /// <summary>Real-time Assessment (2026-08-10) — see
     /// <see cref="Models.Capabilities.Studio.StructuredLearningAssessmentRound"/>.</summary>
@@ -342,6 +389,16 @@ public sealed class HumanOsDbContext : DbContext
     /// <see cref="Models.Capabilities.Studio.StructuredLearningRecallAttempt"/>.</summary>
     public DbSet<Models.Capabilities.Studio.StructuredLearningRecallAttempt> StructuredLearningRecallAttempts =>
         Set<Models.Capabilities.Studio.StructuredLearningRecallAttempt>();
+
+    /// <summary>Per-student Recall/Deep Dive runtime state (2026-08-13) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningPersonSectionState"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningPersonSectionState> StructuredLearningPersonSectionStates =>
+        Set<Models.Capabilities.Studio.StructuredLearningPersonSectionState>();
+
+    /// <summary>Per-student Hypothesis pre-check answers (2026-08-13) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningHypothesisResponse"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningHypothesisResponse> StructuredLearningHypothesisResponses =>
+        Set<Models.Capabilities.Studio.StructuredLearningHypothesisResponse>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

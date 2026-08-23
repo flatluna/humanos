@@ -67,10 +67,14 @@ public sealed class StructuredLearningRecallEngine
     /// Grades the answer to the question asked last turn (if any) and
     /// generates the next one. Pass <paramref name="studentResponse"/> as
     /// null/empty ONLY on the very first call for a section (nothing to
-    /// grade yet, just fetches Q1) — required otherwise.
+    /// grade yet, just fetches Q1) — required otherwise. <paramref
+    /// name="personId"/> is null only for capabilitystudio's author/
+    /// reviewer preview (shared Step-level state); the real student
+    /// runtime always passes it so each student's live question/attempts
+    /// stay separate.
     /// </summary>
     public async Task<RecallTurnResult> SubmitAttemptAsync(
-        HumanOsDbContext dbContext, Guid sectionId, string? studentResponse, CancellationToken cancellationToken = default)
+        HumanOsDbContext dbContext, Guid sectionId, string? studentResponse, Guid? personId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -78,15 +82,17 @@ public sealed class StructuredLearningRecallEngine
             .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId && s.StepType == StructuredLearningStepType.Recall, cancellationToken)
             ?? throw new InvalidOperationException($"Section {sectionId} has no Recall step.");
 
+        var personState = personId.HasValue ? await GetOrCreatePersonStateAsync(dbContext, personId.Value, sectionId, cancellationToken) : null;
+
         var context = await LoadSectionContextAsync(dbContext, sectionId, cancellationToken);
         var itemsRequired = await ResolveItemsRequiredAsync(dbContext, sectionId, cancellationToken);
 
         var priorAttempts = await dbContext.StructuredLearningRecallAttempts
-            .Where(a => a.StructuredLearningDocumentSectionId == sectionId)
+            .Where(a => a.StructuredLearningDocumentSectionId == sectionId && a.PersonId == personId)
             .OrderBy(a => a.CreatedDate)
             .ToListAsync(cancellationToken);
 
-        var effectiveQuestion = step.CurrentRecallPrompt;
+        var effectiveQuestion = personState is not null ? personState.CurrentRecallPrompt : step.CurrentRecallPrompt;
 
         if (string.IsNullOrWhiteSpace(effectiveQuestion))
         {
@@ -94,7 +100,8 @@ public sealed class StructuredLearningRecallEngine
             var bootstrapPrompt = BuildTurnPrompt(context, alreadyAsked: [], currentQuestion: null, studentResponse: null);
             var bootstrapResponse = await _agent.RunTurnAsync(bootstrapPrompt, cancellationToken);
 
-            step.CurrentRecallPrompt = bootstrapResponse.Message;
+            if (personState is not null) personState.CurrentRecallPrompt = bootstrapResponse.Message;
+            else step.CurrentRecallPrompt = bootstrapResponse.Message;
             await dbContext.SaveChangesAsync(cancellationToken);
 
             return new RecallTurnResult
@@ -126,6 +133,7 @@ public sealed class StructuredLearningRecallEngine
         dbContext.StructuredLearningRecallAttempts.Add(new StructuredLearningRecallAttempt
         {
             StructuredLearningDocumentSectionId = sectionId,
+            PersonId = personId,
             TutorPromptShown = effectiveQuestion,
             StudentResponse = studentResponse,
             RecallScore = score
@@ -134,7 +142,8 @@ public sealed class StructuredLearningRecallEngine
         var priorScores = priorAttempts.Select(a => a.RecallScore).ToList();
         var verdict = RecallLoopGate.Evaluate(priorScores, score, itemsRequired);
 
-        step.CurrentRecallPrompt = turn.Message;
+        if (personState is not null) personState.CurrentRecallPrompt = turn.Message;
+        else step.CurrentRecallPrompt = turn.Message;
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -162,7 +171,7 @@ public sealed class StructuredLearningRecallEngine
     /// 400. Bootstraps (asks Q1) only if truly never started; otherwise
     /// just reports the CURRENT question + progress with no new grading.
     /// </summary>
-    public async Task<RecallTurnResult> GetCurrentStateAsync(HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken = default)
+    public async Task<RecallTurnResult> GetCurrentStateAsync(HumanOsDbContext dbContext, Guid sectionId, Guid? personId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -170,22 +179,27 @@ public sealed class StructuredLearningRecallEngine
             .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId && s.StepType == StructuredLearningStepType.Recall, cancellationToken)
             ?? throw new InvalidOperationException($"Section {sectionId} has no Recall step.");
 
+        var personState = personId.HasValue ? await GetOrCreatePersonStateAsync(dbContext, personId.Value, sectionId, cancellationToken) : null;
+
         var itemsRequired = await ResolveItemsRequiredAsync(dbContext, sectionId, cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(step.CurrentRecallPrompt))
+        var effectiveQuestion = personState is not null ? personState.CurrentRecallPrompt : step.CurrentRecallPrompt;
+
+        if (string.IsNullOrWhiteSpace(effectiveQuestion))
         {
             var context = await LoadSectionContextAsync(dbContext, sectionId, cancellationToken);
             var bootstrapPrompt = BuildTurnPrompt(context, alreadyAsked: [], currentQuestion: null, studentResponse: null);
             var bootstrapResponse = await _agent.RunTurnAsync(bootstrapPrompt, cancellationToken);
 
-            step.CurrentRecallPrompt = bootstrapResponse.Message;
+            if (personState is not null) personState.CurrentRecallPrompt = bootstrapResponse.Message;
+            else step.CurrentRecallPrompt = bootstrapResponse.Message;
             await dbContext.SaveChangesAsync(cancellationToken);
 
             return new RecallTurnResult { Started = true, NextQuestion = bootstrapResponse.Message, ItemsRequired = itemsRequired };
         }
 
         var priorAttempts = await dbContext.StructuredLearningRecallAttempts
-            .Where(a => a.StructuredLearningDocumentSectionId == sectionId)
+            .Where(a => a.StructuredLearningDocumentSectionId == sectionId && a.PersonId == personId)
             .OrderBy(a => a.CreatedDate)
             .Select(a => a.RecallScore)
             .ToListAsync(cancellationToken);
@@ -204,12 +218,28 @@ public sealed class StructuredLearningRecallEngine
 
         return new RecallTurnResult
         {
-            NextQuestion = step.CurrentRecallPrompt,
+            NextQuestion = personState is not null ? personState.CurrentRecallPrompt ?? string.Empty : step.CurrentRecallPrompt ?? string.Empty,
             AttemptsUsedForItem = attemptsUsedForItem,
             ItemsMastered = itemsMastered,
             ItemsRequired = itemsRequired,
             Complete = itemsMastered >= itemsRequired
         };
+    }
+
+    private static async Task<Models.Capabilities.Studio.StructuredLearningPersonSectionState> GetOrCreatePersonStateAsync(
+        HumanOsDbContext dbContext, Guid personId, Guid sectionId, CancellationToken cancellationToken)
+    {
+        var existing = await dbContext.StructuredLearningPersonSectionStates
+            .FirstOrDefaultAsync(x => x.PersonId == personId && x.StructuredLearningDocumentSectionId == sectionId, cancellationToken);
+        if (existing is not null) return existing;
+
+        var created = new Models.Capabilities.Studio.StructuredLearningPersonSectionState
+        {
+            PersonId = personId,
+            StructuredLearningDocumentSectionId = sectionId
+        };
+        dbContext.StructuredLearningPersonSectionStates.Add(created);
+        return created;
     }
 
     private static async Task<int> ResolveItemsRequiredAsync(HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken)

@@ -1,4 +1,4 @@
-import { BookOpen, Sparkles, Utensils, Landmark, ScrollText, Beaker, Cpu, Languages, HeartPulse, Briefcase, Palette, Compass, Hammer, PawPrint, Map, Users, Layers } from 'lucide-react';
+import { BookOpen, Sparkles, Utensils, Landmark, ScrollText, Beaker, Cpu, Languages, HeartPulse, Briefcase, Palette, Compass, Hammer, PawPrint, Map, Users, Layers, Scale } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 /** Maps a Subject code to an icon + accent gradient for the catalog UI.
@@ -20,6 +20,7 @@ const SUBJECT_ICONS: Record<string, LucideIcon> = {
   animales: PawPrint,
   geografia: Map,
   'recursos-humanos': Users,
+  leyes: Scale,
 };
 
 export function getSubjectIcon(code: string | null | undefined): LucideIcon {
@@ -43,6 +44,7 @@ const SUBJECT_GRADIENTS: Record<string, string> = {
   animales: 'from-lime-500 to-green-500',
   geografia: 'from-blue-500 to-cyan-500',
   'recursos-humanos': 'from-purple-500 to-indigo-500',
+  leyes: 'from-slate-600 to-zinc-600',
 };
 
 export function getSubjectGradient(code: string | null | undefined): string {

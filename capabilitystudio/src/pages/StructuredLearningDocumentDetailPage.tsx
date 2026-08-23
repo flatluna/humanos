@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   addStructuredLearningDocumentToProgram,
   deleteStructuredLearningDocument,
   getProgramsForStructuredLearningDocument,
   getStructuredLearningDocument,
   removeStructuredLearningDocumentFromProgram,
+  updateStructuredLearningVisibility,
   type StructuredLearningDocumentDetail,
   type StructuredLearningDocumentProgramMembership,
 } from '../lib/api/structuredLearningApi';
 import { getPrograms, type BackendProgram } from '../lib/api/programsApi';
+import { apiImageUrl } from '../lib/api/httpClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DeleteCapabilityModal from '../components/DeleteCapabilityModal';
 
 export default function StructuredLearningDocumentDetailPage() {
+  const { t } = useTranslation();
   const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
   const [document, setDocument] = useState<StructuredLearningDocumentDetail | null>(null);
@@ -27,6 +31,9 @@ export default function StructuredLearningDocumentDetailPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [visibility, setVisibility] = useState({ isGlobal: false, isPublished: false });
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!documentId) {
@@ -47,6 +54,7 @@ export default function StructuredLearningDocumentDetailPage() {
       .then(([detail, currentMemberships, allPrograms]) => {
         if (cancelled) return;
         setDocument(detail);
+        setVisibility({ isGlobal: detail.IsGlobal, isPublished: detail.IsPublished });
         setMemberships(currentMemberships);
         setPrograms(allPrograms);
       })
@@ -61,6 +69,21 @@ export default function StructuredLearningDocumentDetailPage() {
       cancelled = true;
     };
   }, [documentId]);
+
+  async function handleSaveVisibility() {
+    if (!documentId || visibilityBusy) return;
+    setVisibilityBusy(true);
+    setVisibilityMessage(null);
+    try {
+      const saved = await updateStructuredLearningVisibility(documentId, visibility);
+      setVisibility({ isGlobal: saved.IsGlobal, isPublished: saved.IsPublished });
+      setVisibilityMessage(t('structuredLearningVisibility.saved'));
+    } catch {
+      setVisibilityMessage(t('structuredLearningVisibility.error'));
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }
 
   async function handleAddToProgram() {
     if (!documentId || !selectedProgramId || linkBusy) return;
@@ -129,6 +152,13 @@ export default function StructuredLearningDocumentDetailPage() {
   return (
     <div>
       <div className="relative h-56 w-full overflow-hidden bg-gradient-to-br from-teal-500/30 to-emerald-500/20">
+        {document.CoverIllustrationId && (
+          <img
+            src={apiImageUrl(`/illustrations/structured-learning/${document.CoverIllustrationId}/image`)}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover opacity-70"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-6 pb-6">
           <Link to="/" className="mb-3 inline-flex items-center gap-1.5 text-sm text-[#fff]/80 hover:text-[#fff]">
@@ -171,6 +201,50 @@ export default function StructuredLearningDocumentDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" /> Keep browsing catalog
           </Link>
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+          <h3 className="text-lg font-semibold text-white">{t('structuredLearningVisibility.title')}</h3>
+          <p className="mt-1 text-sm text-slate-400">{t('structuredLearningVisibility.description')}</p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <input
+                type="checkbox"
+                checked={visibility.isGlobal}
+                onChange={(event) => setVisibility((current) => ({ ...current, isGlobal: event.target.checked }))}
+                className="mt-1 h-4 w-4 accent-cyan-400"
+              />
+              <span>
+                <span className="block font-medium text-white">{t('structuredLearningVisibility.global')}</span>
+                <span className="mt-1 block text-sm text-slate-400">{t('structuredLearningVisibility.globalHint')}</span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <input
+                type="checkbox"
+                checked={visibility.isPublished}
+                onChange={(event) => setVisibility((current) => ({ ...current, isPublished: event.target.checked }))}
+                className="mt-1 h-4 w-4 accent-emerald-400"
+              />
+              <span>
+                <span className="block font-medium text-white">{t('structuredLearningVisibility.published')}</span>
+                <span className="mt-1 block text-sm text-slate-400">{t('structuredLearningVisibility.publishedHint')}</span>
+              </span>
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSaveVisibility}
+              disabled={visibilityBusy}
+              className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {visibilityBusy ? t('structuredLearningVisibility.saving') : t('structuredLearningVisibility.save')}
+            </button>
+            {visibilityMessage && <span className="text-sm text-slate-300">{visibilityMessage}</span>}
+          </div>
         </div>
 
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
@@ -231,11 +305,21 @@ export default function StructuredLearningDocumentDetailPage() {
           {linkError && <p className="mt-3 text-sm text-red-300">{linkError}</p>}
         </div>
 
-        <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div
+          className={
+            document.ExecutiveSummary
+              ? 'mt-10 rounded-2xl border border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-white/[0.02] to-accent-500/10 p-6'
+              : 'mt-10 rounded-2xl border border-white/10 bg-white/[0.02] p-6'
+          }
+        >
           <h2 className="text-lg font-semibold text-white">Document summary</h2>
-          <p className="mt-3 text-slate-300">
-            This document contains {document.Sections.length} section{document.Sections.length === 1 ? '' : 's'} ready to be reviewed and studied in order.
-          </p>
+          {document.ExecutiveSummary ? (
+            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-300">{document.ExecutiveSummary}</p>
+          ) : (
+            <p className="mt-3 text-slate-300">
+              This document contains {document.Sections.length} section{document.Sections.length === 1 ? '' : 's'} ready to be reviewed and studied in order.
+            </p>
+          )}
           {document.PedagogicalAudience && (
             <p className="mt-2 text-sm text-slate-400">Audience: {document.PedagogicalAudience}</p>
           )}

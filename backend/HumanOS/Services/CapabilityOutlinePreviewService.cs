@@ -1,4 +1,6 @@
 using HumanOS.Agents.Studio;
+using HumanOS.Services.DocumentClassification;
+using SharpToken;
 
 namespace HumanOS.Services;
 
@@ -19,6 +21,32 @@ public sealed class CapabilityOutlineNodeDto
     /// meant to be shown in the UI.
     /// </summary>
     public string StartMarker { get; set; } = string.Empty;
+
+    /// <summary>Size estimate (2026-08-17, cost/scope preview) — the
+    /// verbatim character count of THIS node's own slice of the source
+    /// text, from its StartMarker up to the next node/chapter's start (or
+    /// document end for the last one). Computed once by
+    /// CapabilityOutlinePreviewService right before returning — 0 if the
+    /// marker couldn't be re-located (should not normally happen).</summary>
+    public int TotalCharacters { get; set; }
+
+    /// <summary>Real token count (SharpToken, cl100k_base) for the same
+    /// slice as <see cref="TotalCharacters"/> — the actual input-token cost
+    /// this engram will contribute to Step 3 generation, so the designer
+    /// can gauge total cost/scope BEFORE approving (Paso 5), not only
+    /// after Step 2 extraction already ran.</summary>
+    public int TotalTokens { get; set; }
+
+    /// <summary>True when this node's own text slice is too small to be
+    /// real developed content (2026-08-17) — e.g. a bare outline/index
+    /// entry like "Week 1: Alphabet Review, Letter Names, Letter Sounds"
+    /// with no actual explanatory prose. The Step 3 Designer Agent is
+    /// strictly source-faithful (never invents), so a node this sparse
+    /// would otherwise produce weak/empty Hypothesis/Learn/Recall content
+    /// — the wizard offers AI content expansion for nodes flagged here
+    /// (see SectionContentExpansionAgent) instead of running the normal
+    /// pipeline on an almost-empty source.</summary>
+    public bool HasSparseContent { get; set; }
 }
 
 /// <summary>One proposed CHAPTER (becomes a graph "level") in a
@@ -32,6 +60,12 @@ public sealed class CapabilityOutlineChapterDto
     public string StartMarker { get; set; } = string.Empty;
 
     public List<CapabilityOutlineNodeDto> Nodes { get; set; } = [];
+
+    /// <summary>Sum of every node's <see cref="CapabilityOutlineNodeDto.TotalCharacters"/> under this chapter.</summary>
+    public int TotalCharacters { get; set; }
+
+    /// <summary>Sum of every node's <see cref="CapabilityOutlineNodeDto.TotalTokens"/> under this chapter.</summary>
+    public int TotalTokens { get; set; }
 }
 
 /// <summary>How the outline in a <see cref="CapabilityOutlinePreviewResult"/>
@@ -82,6 +116,24 @@ public sealed class CapabilityOutlinePreviewResult
     /// <summary>Set only when <see cref="Source"/> is None — a
     /// human-readable explanation of why no structure could be found.</summary>
     public string? RejectionReason { get; set; }
+
+    /// <summary>Document Type Detection Engine (2026-08-17) — the engine's
+    /// recommendation for this document's structural type, computed
+    /// whenever the caller doesn't already pass an explicit DocumentType
+    /// override to PreviewAsync/PreviewFromIdeaAsync. Advisory only —
+    /// the wizard shows this and lets the designer accept/override it
+    /// before re-requesting the preview with their chosen type.</summary>
+    public string? DetectedDocumentType { get; set; }
+
+    public double? DetectedDocumentTypeConfidence { get; set; }
+
+    /// <summary>Document-wide sum of every chapter's <see cref="CapabilityOutlineChapterDto.TotalCharacters"/> —
+    /// lets the wizard show "~N characters / ~M tokens total" before the
+    /// designer approves and pays for real generation.</summary>
+    public int TotalCharacters { get; set; }
+
+    /// <summary>Document-wide sum of every chapter's <see cref="CapabilityOutlineChapterDto.TotalTokens"/>.</summary>
+    public int TotalTokens { get; set; }
 }
 
 /// <summary>
@@ -100,11 +152,145 @@ public static class CapabilityOutlinePreviewService
     /// than falling through to Tier 2 (AI inference from scratch).</summary>
     private const int MinChaptersForDetected = 2;
 
+    /// <summary>Below this token count, a node's own text slice is treated
+    /// as a bare outline/index entry rather than real developed content
+    /// (2026-08-17) — see CapabilityOutlineNodeDto.HasSparseContent's own
+    /// doc comment. Chosen low enough that a genuinely short-but-real
+    /// paragraph (e.g. a one-sentence definition) isn't flagged, but a
+    /// bullet list of topic names with no prose is.</summary>
+    private const int SparseContentTokenThreshold = 40;
+
+    private static readonly GptEncoding TokenEncoding = GptEncoding.GetEncoding("cl100k_base");
+
+    /// <summary>Size estimate pass (2026-08-17, cost/scope preview) — for
+    /// EVERY node across every chapter (regardless of which detection tier
+    /// produced them), re-locates its StartMarker in documentText (same
+    /// ordinal-search contract DocumentChapterSplitter uses for an
+    /// approved outline) and slices from there up to the NEXT node/chapter
+    /// boundary (or document end for the very last one), then stamps
+    /// TotalCharacters/TotalTokens on the node, its owning chapter (summed),
+    /// and returns the document-wide totals. A node whose marker can't be
+    /// re-located (should not normally happen) is simply left at 0/0.</summary>
+    private static (int TotalCharacters, int TotalTokens) AnnotateSizes(string documentText, List<CapabilityOutlineChapterDto> chapters)
+    {
+        // Flatten every node (with a back-reference to its chapter) in
+        // document order, alongside each chapter's own boundary — a
+        // chapter's "size" is everything from its own start up to the
+        // first of its nodes (usually ~0, since chapters/nodes normally
+        // start at nearly the same offset), so only NODE spans matter for
+        // the size math; chapter totals are just the sum of their nodes.
+        var flattened = new List<(CapabilityOutlineNodeDto Node, int Offset)>();
+        var searchFrom = 0;
+        foreach (var chapter in chapters)
+        {
+            foreach (var node in chapter.Nodes)
+            {
+                if (string.IsNullOrEmpty(node.StartMarker))
+                {
+                    continue;
+                }
+
+                var offset = documentText.IndexOf(node.StartMarker, searchFrom, StringComparison.Ordinal);
+                if (offset < 0)
+                {
+                    offset = documentText.IndexOf(node.StartMarker, StringComparison.Ordinal);
+                }
+                if (offset < 0)
+                {
+                    continue;
+                }
+
+                flattened.Add((node, offset));
+                searchFrom = offset + 1;
+            }
+        }
+
+        flattened.Sort((a, b) => a.Offset.CompareTo(b.Offset));
+
+        for (var i = 0; i < flattened.Count; i++)
+        {
+            var (node, offset) = flattened[i];
+            var end = i + 1 < flattened.Count ? flattened[i + 1].Offset : documentText.Length;
+            var length = Math.Max(0, end - offset);
+            var slice = documentText.Substring(offset, length);
+            node.TotalCharacters = slice.Length;
+            node.TotalTokens = TokenEncoding.Encode(slice).Count;
+            node.HasSparseContent = node.TotalTokens < SparseContentTokenThreshold;
+        }
+
+        var documentCharacters = 0;
+        var documentTokens = 0;
+        foreach (var chapter in chapters)
+        {
+            chapter.TotalCharacters = chapter.Nodes.Sum(n => n.TotalCharacters);
+            chapter.TotalTokens = chapter.Nodes.Sum(n => n.TotalTokens);
+            documentCharacters += chapter.TotalCharacters;
+            documentTokens += chapter.TotalTokens;
+        }
+
+        return (documentCharacters, documentTokens);
+    }
+
+    /// <summary>Stateless/pure classifiers — safe as a static, shared
+    /// instance (2026-08-17, Paso 3a/3b). Used to stamp DetectedDocumentType/
+    /// Confidence on every preview result for the wizard to show, and (via
+    /// DocumentTypeOutlineParser) to pick a type-aware splitting strategy
+    /// when the caller passes an explicit/confirmed DocumentType.</summary>
+    private static readonly DocumentClassificationEngine ClassificationEngine = new(
+    [
+        new HumanOS.Services.DocumentClassification.Classifiers.ContractClassifier(),
+        new HumanOS.Services.DocumentClassification.Classifiers.LawClassifier(),
+        new HumanOS.Services.DocumentClassification.Classifiers.PolicyClassifier(),
+        new HumanOS.Services.DocumentClassification.Classifiers.ProcedureClassifier(),
+        new HumanOS.Services.DocumentClassification.Classifiers.AcademicWithIndexClassifier(),
+        new HumanOS.Services.DocumentClassification.Classifiers.AcademicNarrativeClassifier(),
+        new HumanOS.Services.DocumentClassification.Classifiers.ResearchPaperClassifier()
+    ]);
+
     public static async Task<CapabilityOutlinePreviewResult> PreviewAsync(
         string documentText,
         TocExtractionAgent tocExtraction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DocumentType? documentType = null)
     {
+        // Document Type Detection (2026-08-17, Paso 3a/3b) — if the caller
+        // already knows/confirmed a type, use it as-is (never re-classify
+        // and silently override the designer's own choice); otherwise
+        // classify now so the wizard can show a recommendation on this
+        // same preview call, at no extra round trip.
+        var classification = documentType is null ? ClassificationEngine.Classify(documentText) : null;
+        var effectiveType = documentType ?? classification!.PrimaryType;
+
+        // ---- Tier 0.5: DocumentType-aware marker detection (no LLM) ----
+        // Only Law/Contract/Procedure/ResearchPaper have a reliable enough
+        // marker to trust here — see DocumentTypeOutlineParser's own doc
+        // comment for why Policy/AcademicWithIndex/AcademicNarrative/Unknown
+        // fall through to the existing tiers unchanged.
+        var typeOutline = DocumentTypeOutlineParser.Parse(documentText, effectiveType);
+        if (typeOutline.IsConfident)
+        {
+            var typeChapters = typeOutline.Chapters.ConvertAll(chapter => new CapabilityOutlineChapterDto
+            {
+                Title = chapter.Title,
+                StartMarker = MarkerAt(documentText, chapter.StartOffset),
+                Nodes = chapter.Nodes.ConvertAll(node => new CapabilityOutlineNodeDto
+                {
+                    Title = node.Title,
+                    StartMarker = MarkerAt(documentText, node.StartOffset)
+                })
+            });
+            var sizes = AnnotateSizes(documentText, typeChapters);
+            return new CapabilityOutlinePreviewResult
+            {
+                Source = CapabilityOutlineSource.Detected,
+                Chapters = typeChapters,
+                DetectedDocumentType = effectiveType.ToString(),
+                DetectedDocumentTypeConfidence = classification?.Confidence,
+                TotalCharacters = sizes.TotalCharacters,
+                TotalTokens = sizes.TotalTokens
+            };
+        }
+
         // ---- Tier 0: deterministic regex-based detection (no LLM) ----
         var tier0 = SyllabusOutlineParser.Parse(documentText);
         if (tier0.IsConfidentStructure)
@@ -121,8 +307,17 @@ public static class CapabilityOutlinePreviewService
                     })
                     : [new CapabilityOutlineNodeDto { Title = BuildModuleTitle(module), StartMarker = MarkerAt(documentText, module.StartOffset) }]
             });
+            var tier0Sizes = AnnotateSizes(documentText, chapters);
 
-            return new CapabilityOutlinePreviewResult { Source = CapabilityOutlineSource.Detected, Chapters = chapters };
+            return new CapabilityOutlinePreviewResult
+            {
+                Source = CapabilityOutlineSource.Detected,
+                Chapters = chapters,
+                DetectedDocumentType = effectiveType.ToString(),
+                DetectedDocumentTypeConfidence = classification?.Confidence,
+                TotalCharacters = tier0Sizes.TotalCharacters,
+                TotalTokens = tier0Sizes.TotalTokens
+            };
         }
 
         if (!tocExtraction.IsConfigured)
@@ -130,7 +325,9 @@ public static class CapabilityOutlinePreviewService
             return new CapabilityOutlinePreviewResult
             {
                 Source = CapabilityOutlineSource.None,
-                RejectionReason = tier0.RejectionReason ?? "El documento no presenta una estructura de capítulos detectable."
+                RejectionReason = tier0.RejectionReason ?? "El documento no presenta una estructura de capítulos detectable.",
+                DetectedDocumentType = effectiveType.ToString(),
+                DetectedDocumentTypeConfidence = classification?.Confidence
             };
         }
 
@@ -153,7 +350,16 @@ public static class CapabilityOutlinePreviewService
             var grouped = GroupTier1Chapters(locatedChapters);
             if (grouped.Count > 0)
             {
-                return new CapabilityOutlinePreviewResult { Source = CapabilityOutlineSource.Detected, Chapters = grouped };
+                var tier1Sizes = AnnotateSizes(documentText, grouped);
+                return new CapabilityOutlinePreviewResult
+                {
+                    Source = CapabilityOutlineSource.Detected,
+                    Chapters = grouped,
+                    DetectedDocumentType = effectiveType.ToString(),
+                    DetectedDocumentTypeConfidence = classification?.Confidence,
+                    TotalCharacters = tier1Sizes.TotalCharacters,
+                    TotalTokens = tier1Sizes.TotalTokens
+                };
             }
         }
 
@@ -173,14 +379,25 @@ public static class CapabilityOutlinePreviewService
 
             if (chapters.Count > 0)
             {
-                return new CapabilityOutlinePreviewResult { Source = CapabilityOutlineSource.InferredByAI, Chapters = chapters };
+                var tier2Sizes = AnnotateSizes(documentText, chapters);
+                return new CapabilityOutlinePreviewResult
+                {
+                    Source = CapabilityOutlineSource.InferredByAI,
+                    Chapters = chapters,
+                    DetectedDocumentType = effectiveType.ToString(),
+                    DetectedDocumentTypeConfidence = classification?.Confidence,
+                    TotalCharacters = tier2Sizes.TotalCharacters,
+                    TotalTokens = tier2Sizes.TotalTokens
+                };
             }
         }
 
         return new CapabilityOutlinePreviewResult
         {
             Source = CapabilityOutlineSource.None,
-            RejectionReason = tier0.RejectionReason ?? "No se pudo detectar ni inferir una estructura de capítulos para este documento."
+            RejectionReason = tier0.RejectionReason ?? "No se pudo detectar ni inferir una estructura de capítulos para este documento.",
+            DetectedDocumentType = effectiveType.ToString(),
+            DetectedDocumentTypeConfidence = classification?.Confidence
         };
     }
 
@@ -205,7 +422,8 @@ public static class CapabilityOutlinePreviewService
         bool strictSyllabusMode,
         IdeaToDocumentAgent ideaToDocument,
         TocExtractionAgent tocExtraction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DocumentType? documentType = null)
     {
         if (!ideaToDocument.IsConfigured)
         {
@@ -218,7 +436,7 @@ public static class CapabilityOutlinePreviewService
 
         var expansion = await ideaToDocument.ExpandAsync(capabilityName, description, languageCode, strictSyllabusMode, cancellationToken);
 
-        var result = await PreviewAsync(expansion.DocumentText, tocExtraction, cancellationToken);
+        var result = await PreviewAsync(expansion.DocumentText, tocExtraction, cancellationToken, documentType);
         result.ExpandedDocumentText = expansion.DocumentText;
         return result;
     }

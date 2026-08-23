@@ -75,9 +75,12 @@ public sealed class SubmitStructuredLearningRecallAttemptFunction
                 request, HttpStatusCode.BadRequest, "InvalidJson", "The request body contains invalid JSON.", cancellationToken);
         }
 
+        var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        Guid? personId = Guid.TryParse(query["personId"], out var parsedPersonId) ? parsedPersonId : null;
+
         try
         {
-            var result = await _engine.SubmitAttemptAsync(_dbContext, sectionId, body?.StudentResponse, cancellationToken);
+            var result = await _engine.SubmitAttemptAsync(_dbContext, sectionId, body?.StudentResponse, personId, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(request, new SubmitStructuredLearningRecallAttemptResponse
             {
                 Started = result.Started,

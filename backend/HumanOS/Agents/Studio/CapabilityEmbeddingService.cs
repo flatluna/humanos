@@ -12,7 +12,7 @@ namespace HumanOS.Agents.Studio;
 /// via the same flat 'AzureOpenAIEndpoint'/'AzureOpenAIApiKey' settings as
 /// the other Studio agents, plus 'AzureOpenAIEmbeddingDeploymentName'.
 /// </summary>
-public sealed class CapabilityEmbeddingService
+public class CapabilityEmbeddingService
 {
     private readonly EmbeddingClient? _client;
 
@@ -35,9 +35,9 @@ public sealed class CapabilityEmbeddingService
         _client = client.GetEmbeddingClient(deploymentName);
     }
 
-    public bool IsConfigured => _client is not null;
+    public virtual bool IsConfigured => _client is not null;
 
-    public async Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
+    public virtual async Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
     {
         if (_client is null)
         {

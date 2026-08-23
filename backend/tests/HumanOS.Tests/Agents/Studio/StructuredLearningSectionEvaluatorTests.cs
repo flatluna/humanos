@@ -99,6 +99,60 @@ public class StructuredLearningSectionEvaluatorTests
         result.Failures.Should().Contain(f => f.Contains("Teaching") && f.Contains("empty"));
     }
 
+    // ==================== Atomicity checks (2026-08-17, Paso 4) ====================
+
+    [Fact]
+    public void CheckCapabilityAtomicity_SingleIdea_Passes()
+    {
+        var result = StructuredLearningSectionEvaluator.CheckCapabilityAtomicity(
+            "The volunteer can encourage a participant to stay engaged during a group activity.");
+
+        result.Passed.Should().BeTrue();
+        result.Reason.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("The volunteer can encourage participants y además gestionar conflictos entre ellos.")]
+    [InlineData("The volunteer can support participants así como coordinar con otros voluntarios.")]
+    [InlineData("The employee can file the report as well as approve budget requests independently.")]
+    public void CheckCapabilityAtomicity_CompoundScopeConnector_Fails(string capability)
+    {
+        var result = StructuredLearningSectionEvaluator.CheckCapabilityAtomicity(capability);
+
+        result.Passed.Should().BeFalse();
+        result.Reason.Should().Contain("compound-scope connector");
+    }
+
+    [Fact]
+    public void CheckCapabilityAtomicity_SemicolonJoinedClauses_Fails()
+    {
+        var result = StructuredLearningSectionEvaluator.CheckCapabilityAtomicity(
+            "The volunteer can greet new participants; the volunteer can also close out the activity log.");
+
+        result.Passed.Should().BeFalse();
+        result.Reason.Should().Contain("semicolon-joined");
+    }
+
+    [Fact]
+    public void CheckCapabilityAtomicity_ExcessiveLength_Fails()
+    {
+        var longCapability = "The volunteer can " + string.Concat(Enumerable.Repeat("support participants during activities and manage supplies ", 5));
+
+        var result = StructuredLearningSectionEvaluator.CheckCapabilityAtomicity(longCapability);
+
+        result.Passed.Should().BeFalse();
+        result.Reason.Should().Contain("characters");
+    }
+
+    [Fact]
+    public void CheckCapabilityAtomicity_EmptyStatement_Fails()
+    {
+        var result = StructuredLearningSectionEvaluator.CheckCapabilityAtomicity("   ");
+
+        result.Passed.Should().BeFalse();
+        result.Reason.Should().Contain("empty");
+    }
+
     // ==================== Content-quality checks (real Eval framework) ====================
 
     [Fact]

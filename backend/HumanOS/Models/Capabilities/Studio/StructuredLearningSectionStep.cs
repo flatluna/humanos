@@ -83,6 +83,17 @@ public sealed class StructuredLearningSectionStep
 
     public DateTime? HumanApprovedAtUtc { get; set; }
 
+    /// <summary>Only meaningful for StepType=Teaching (2026-08-22) — an
+    /// author-defined presentation order combining this step's narration
+    /// text (auto-split into paragraphs from <see cref="Content"/>) and its
+    /// generated videos into one sequence, as JSON:
+    /// <c>[{"Type":"Text","ParagraphIndex":0},{"Type":"Video","IllustrationId":"..."},...]</c>.
+    /// Null means "no custom order yet" — the student-facing view falls
+    /// back to the old all-at-once layout (full text + all videos shown
+    /// together). When set, the Production/student view renders this as a
+    /// step-by-step wizard (one item at a time, Next/Previous) instead.</summary>
+    public string? TimelineJson { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public StructuredLearningDocumentSection Section { get; set; } = null!;

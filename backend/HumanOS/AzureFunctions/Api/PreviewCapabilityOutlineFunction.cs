@@ -81,6 +81,15 @@ public sealed class PreviewCapabilityOutlineFunction
         /// it mirrors an explicit numbered outline already present in the
         /// idea description, same as the real run would.</summary>
         public bool StrictSyllabusMode { get; set; }
+
+        /// <summary>Optional (2026-08-17, Paso 3a/3b) — one of
+        /// HumanOS.Services.DocumentClassification.DocumentType's names
+        /// (e.g. "Law"/"Procedure"). When provided (the designer already
+        /// confirmed a type in the wizard), skips re-classification and
+        /// uses THIS type to pick the chapter/node splitting strategy.
+        /// Omit/null to let the engine classify the document itself and
+        /// return its recommendation in the response.</summary>
+        public string? DocumentType { get; set; }
     }
 
     [Function("PreviewCapabilityOutline")]
@@ -117,6 +126,19 @@ public sealed class PreviewCapabilityOutlineFunction
                 cancellationToken);
         }
 
+        HumanOS.Services.DocumentClassification.DocumentType? documentType = null;
+        if (!string.IsNullOrWhiteSpace(body!.DocumentType))
+        {
+            if (!Enum.TryParse<HumanOS.Services.DocumentClassification.DocumentType>(body.DocumentType, out var parsedType))
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "InvalidDocumentType",
+                    "documentType must be one of: " + string.Join(", ", Enum.GetNames<HumanOS.Services.DocumentClassification.DocumentType>()),
+                    cancellationToken);
+            }
+            documentType = parsedType;
+        }
+
         // "Texto/idea" entry point (2026-08-07): expand the idea into a
         // real document FIRST, then run detection against that document —
         // never against the raw idea sentence. See
@@ -132,7 +154,8 @@ public sealed class PreviewCapabilityOutlineFunction
                 body.StrictSyllabusMode,
                 _ideaToDocument,
                 _tocExtraction,
-                cancellationToken);
+                cancellationToken,
+                documentType);
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, ideaResult, cancellationToken: cancellationToken);
         }
@@ -169,7 +192,7 @@ public sealed class PreviewCapabilityOutlineFunction
                 request, HttpStatusCode.BadRequest, "EmptyDocument", "No extractable text was found.", cancellationToken);
         }
 
-        var result = await CapabilityOutlinePreviewService.PreviewAsync(documentText, _tocExtraction, cancellationToken);
+        var result = await CapabilityOutlinePreviewService.PreviewAsync(documentText, _tocExtraction, cancellationToken, documentType);
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);
     }

@@ -36,6 +36,8 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
 
         public int? RecallItemsRequired { get; set; }
 
+        public bool IncludeAssessmentStep { get; set; } = true;
+
         public StructuredLearningAssessmentQuestionType AssessmentQuestionType { get; set; } = StructuredLearningAssessmentQuestionType.MultipleChoice;
 
         public int? AssessmentQuestionsPerRound { get; set; }
@@ -89,6 +91,7 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
         document.IncludeProductionStep = body.IncludeProductionStep;
         document.IncludeRecallStep = body.IncludeRecallStep;
         document.RecallItemsRequired = body.RecallItemsRequired;
+        document.IncludeAssessmentStep = body.IncludeAssessmentStep;
         document.AssessmentQuestionType = body.AssessmentQuestionType;
         document.AssessmentQuestionsPerRound = body.AssessmentQuestionsPerRound;
 

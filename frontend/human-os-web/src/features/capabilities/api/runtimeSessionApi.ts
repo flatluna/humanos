@@ -197,6 +197,7 @@ export function requestVoiceTutorSession(
   target:
     | { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
     | { capabilityGraphNodeId: string; stepType: ExperienceStepType; exampleCardIndex?: number; isReviewOnly?: boolean }
+    | { structuredLearningSectionStepId: string; exampleCardIndex?: number; isReviewOnly?: boolean; isQaMode?: boolean }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>(
     '/instructor-runtime/tutor/voice-session',
@@ -205,6 +206,13 @@ export function requestVoiceTutorSession(
           LearningSessionStepId: target.learningSessionStepId,
           CurrentPromptText: target.promptText,
           ExampleCardIndex: target.exampleCardIndex,
+        }
+      : 'structuredLearningSectionStepId' in target
+      ? {
+          StructuredLearningSectionStepId: target.structuredLearningSectionStepId,
+          ExampleCardIndex: target.exampleCardIndex,
+          IsReviewOnly: target.isReviewOnly,
+          IsQaMode: target.isQaMode,
         }
       : {
           CapabilityGraphNodeId: target.capabilityGraphNodeId,

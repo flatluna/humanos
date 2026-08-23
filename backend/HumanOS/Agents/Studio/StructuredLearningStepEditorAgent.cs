@@ -12,17 +12,23 @@ public sealed class EditStructuredLearningStepResponse
     /// <summary>The step's new Content (plain text, same format as
     /// StructuredLearningSectionDesignerAgent's own output — no HTML tags).</summary>
     public string UpdatedContent { get; set; } = string.Empty;
+
+    /// <summary>Set ONLY when the step's illustration should be
+    /// regenerated (see the 3-case rule in Instructions below) — a fresh,
+    /// concrete scene description for the image generator. Null/empty
+    /// means: leave the step's existing illustration untouched.</summary>
+    public string? IllustrationPrompt { get; set; }
 }
 
 /// <summary>
 /// StructuredLearningStepEditorAgent (2026-08-10) — Structured Learning's
 /// own "Edit mode" review tool, mirrors <see cref="BlueprintStepEditorAgent"/>
 /// (Graph's equivalent) exactly in spirit: lets a reviewer tweak ONE
-/// already-generated step's Content via a free-text instruction before
-/// publishing. Deliberately simpler than Graph's version — no illustration
-/// regeneration (DiagramPrompt/MathDiagram) yet, plain text output (not
-/// HTML, matching this pipeline's own Content format), only ever called for
-/// Hypothesis/Teaching/Production (DeepDive is edited card-by-card via
+/// already-generated step's Content — and, when warranted, its illustration
+/// (2026-08-21 — see the 3-case rule below) — via a free-text instruction
+/// before publishing. Plain text output (not HTML, matching this
+/// pipeline's own Content format). Only ever called for Hypothesis/
+/// Teaching/Production (DeepDive is edited card-by-card via
 /// <see cref="StructuredLearningExampleCardEditorAgent"/> instead; Recall/
 /// Assessment have no static Content to edit — their questions are
 /// generated live during practice).
@@ -60,6 +66,33 @@ public sealed class StructuredLearningStepEditorAgent
           different language — never switch the document's content
           language just because the instruction itself was typed in
           another language.
+
+        ILLUSTRATION REGENERATION — leave IllustrationPrompt null/empty by
+        default (the step's existing illustration is untouched unless you
+        set this). Only set it in ANY of these three cases:
+          1. EXPLICIT REQUEST — the reviewer's instruction is clearly about
+             the image itself (e.g. "change the image", "show 4 people each
+             doing this sign", "add an illustration", "illustrate this").
+          2. CONTRADICTION — your updated Content now describes a
+             different concrete scene than before, so the OLD illustration
+             would visually contradict the new text.
+          3. AUTOMATIC/PROACTIVE — the instruction says nothing about images,
+             but the updated Content describes a genuinely concrete,
+             visualizable scenario that clearly deserves an illustration.
+        When you do set IllustrationPrompt, describe ONE concrete scene
+        grounded in the updated Content — for physical/gestural content
+        (sign language, hand signs, dance/exercise moves, caregiving
+        techniques, assistive-device usage, etc.) describe a real person's
+        body/hands performing the exact motion(s) precisely (starting
+        position, the motion itself, ending position), same as a
+        photo/video demonstration frame — never a vague restatement, never a
+        blackboard/poster of multiple items merged together, and never
+        invent a detail the Content doesn't support. If the reviewer's
+        instruction asks for MULTIPLE people/panels (e.g. "4 people each
+        doing a different sign"), describe that exact composition explicitly
+        (one clearly separated person per gesture, each labeled by position
+        so the image generator can tell them apart) — otherwise, a single
+        clear demonstration is enough.
         """;
 
     private readonly AIAgent? _agent;

@@ -20,6 +20,7 @@ export interface EnrolledCapability {
   description?: string | null;
   subjectCode?: string | null;
   subjectName?: string | null;
+  hasCoverImage?: boolean;
   enrolledDate: string;
   status: EnrolledCapabilityStatus;
   totalNodes: number;

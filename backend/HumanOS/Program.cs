@@ -70,6 +70,7 @@ var host = new HostBuilder()
     })
     .ConfigureServices(services =>
     {
+        services.AddHttpClient();
         services.AddOptions<EntraInvitationOptions>()
             .BindConfiguration(EntraInvitationOptions.SectionName);
 
@@ -124,6 +125,7 @@ var host = new HostBuilder()
         services.AddScoped<PersonProfileService>();
         services.AddScoped<GrowthPlanService>();
         services.AddScoped<CapabilityEnrollmentService>();
+        services.AddScoped<StructuredLearningDocumentEnrollmentService>();
         services.AddScoped<HumanProfileService>();
         services.AddScoped<HumanStateService>();
         services.AddScoped<LanguageService>();
@@ -145,6 +147,7 @@ var host = new HostBuilder()
         services.AddScoped<ProgramService>();
         services.AddScoped<ProgramEnrollmentService>();
         services.AddScoped<CapabilityCostService>();
+        services.AddScoped<StructuredLearningCostService>();
         services.AddScoped<HumanOS.Storage.ProgramLogoStorageService>();
         services.AddScoped<HumanOS.Storage.PersonProfilePhotoStorageService>();
         services.AddScoped<GoalService>();
@@ -204,6 +207,8 @@ var host = new HostBuilder()
         // depends on them directly.
         services.AddSingleton<CuradorAgent>();
         services.AddSingleton<TocExtractionAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.OutlineTitleRefinementAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.SectionContentExpansionAgent>();
         services.AddSingleton<ArquitectoAgent>();
         services.AddSingleton<GraphArchitectAgent>();
         // Studio "professor" tool (2026-07-24): designs ONE new node to be
@@ -294,11 +299,76 @@ var host = new HostBuilder()
         services.AddSingleton<StructuredLearningExtractionService>();
         services.AddSingleton<StructuredLearningExtractionOrchestrator>();
 
+        // Knowledge Graph (2026-08-14) — entity extraction + entity-to-
+        // engram linking, chained automatically at the end of Step 2 (see
+        // StructuredLearningExtractionService.GenerateKnowledgeGraphAsync).
+        // Singleton (uses IDbContextFactory internally, same as every other
+        // Structured Learning service above).
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningEntityExtractionAgent>();
+        services.AddSingleton<StructuredLearningGenerationUsageService>();
+        services.AddSingleton<StructuredLearningEntityExtractionService>();
+        services.AddSingleton<StructuredLearningKnowledgeRetrievalService>();
+
+        // AI Agents chat window (2026-08-18) — /ai-agents/:subject/:topic
+        // free-form Q&A tutor grounded in the Knowledge Graph retrieval
+        // package above. Singleton, same rationale as every other Studio
+        // agent (no per-request state).
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningTutorAgent>();
+        services.AddSingleton<StructuredLearningChatService>();
+
+        // Master de Clases de Entidad (2026-08-14, Fase 1) — plain catalog
+        // CRUD only, not yet wired into extraction (see the service's own
+        // doc comment for the staged rollout plan).
+        services.AddSingleton<StructuredLearningEntityClassService>();
+        services.AddSingleton<StructuredLearningTopicService>();
+
+        // Master de Clases de Arista (2026-08-15, Fase 3) — same pattern
+        // as above, for reusable relationship labels/categories.
+        services.AddSingleton<StructuredLearningRelationshipClassService>();
+
+        // Document Type Detection Engine (2026-08-17, Paso 1) — deterministic,
+        // no LLM/embeddings; runs BEFORE chapter/engram extraction to decide
+        // which extraction strategy a document should use downstream. Each
+        // IDocumentClassifier is stateless/pure, registered individually so
+        // DocumentClassificationEngine (which takes IEnumerable<IDocumentClassifier>)
+        // resolves every one of them automatically.
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.ContractClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.LawClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.PolicyClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.ProcedureClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.AcademicWithIndexClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.AcademicNarrativeClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.IDocumentClassifier,
+            HumanOS.Services.DocumentClassification.Classifiers.ResearchPaperClassifier>();
+        services.AddSingleton<HumanOS.Services.DocumentClassification.DocumentClassificationEngine>();
+
+        // Knowledge Graph edges (2026-08-14) — relationship extraction
+        // between entities already linked to the same section; must be
+        // registered after StructuredLearningEntityExtractionService above
+        // since it depends on that step having already run for a section.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningConnectionExtractionAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningKnowledgeFactGenerationAgent>();
+        services.AddSingleton<StructuredLearningConnectionExtractionService>();
+        services.AddSingleton<StructuredLearningKnowledgeFactGenerationService>();
+
         // Step 3 (2026-08-10) — designs the 6-step pedagogical sequence for
         // ONE section at a time, grounded ONLY in that section's own text.
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningSectionDesignerAgent>();
         services.AddSingleton<StructuredLearningPedagogyService>();
         services.AddSingleton<StructuredLearningPedagogyOrchestrator>();
+
+        // Google Veo video generation for physical/gestural Learn content
+        // (2026-08-21) — mirrors GraphIllustrationImageService's Singleton
+        // rationale (stateless, only needs config + a shared HttpClient).
+        services.AddSingleton<GoogleVeoVideoService>();
+        services.AddSingleton<GoogleOmniFlashVideoService>();
+        services.AddSingleton<StructuredLearningVideoOrchestrator>();
 
         // Real-time Recall/Assessment (2026-08-10) — replaces the earlier
         // design where the section designer above baked a FIXED list of
@@ -314,6 +384,12 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningRecallAgent>();
         services.AddScoped<StructuredLearningAssessmentEngine>();
         services.AddScoped<StructuredLearningRecallEngine>();
+
+        // Hypothesis pre-check answer persistence (2026-08-13) — fixes a
+        // real gap: these answers were only ever kept in the browser's
+        // localStorage, never reaching the backend. Fully deterministic
+        // (no LLM), scoped (takes a DbContext per call).
+        services.AddScoped<StructuredLearningHypothesisService>();
 
         // Real-time Deep Dive (2026-08-10) — same rationale as Recall/
         // Assessment above, ported from Graph's TutorService.SubmitDeepDiveAttemptAsync

@@ -6,6 +6,9 @@ namespace HumanOS.Models.Capabilities.Studio;
 /// only DeepDive example cards).</summary>
 public enum StructuredLearningIllustrationPurpose
 {
+    /// <summary>Document-level cover image.</summary>
+    Cover = 3,
+
     /// <summary>One DeepDive example card's illustration.</summary>
     DeepDiveCard = 0,
 

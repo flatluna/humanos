@@ -165,7 +165,8 @@ public sealed class GraphIllustrationImageService
     public async Task<GeneratedIllustration> GenerateAsync(
         string prompt,
         byte[]? logoImageBytes = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        GeneratedImageQuality? quality = null)
     {
         if (_client is null)
         {
@@ -197,7 +198,7 @@ public sealed class GraphIllustrationImageService
         var options = new ImageGenerationOptions
         {
             Size = GeneratedImageSize.W1024xH1024,
-            Quality = GeneratedImageQuality.LowQuality,
+            Quality = quality ?? GeneratedImageQuality.LowQuality,
         };
 #pragma warning restore OPENAI001
 
@@ -230,7 +231,8 @@ public sealed class GraphIllustrationImageService
     public async Task<GeneratedIllustration> GenerateFromReferenceAsync(
         string prompt,
         byte[] referenceImageBytes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        GeneratedImageQuality? quality = null)
     {
         if (_client is null)
         {
@@ -246,7 +248,7 @@ public sealed class GraphIllustrationImageService
             throw new ArgumentException("referenceImageBytes is required", nameof(referenceImageBytes));
 
 #pragma warning disable OPENAI001 // GeneratedImageQuality.LowQuality is an experimental SDK member (2.9.1) — explicitly opted into for cost control.
-        return await EditWithReferenceAsync(prompt, referenceImageBytes, "reference.png", UserReferenceInstruction, cancellationToken);
+        return await EditWithReferenceAsync(prompt, referenceImageBytes, "reference.png", UserReferenceInstruction, cancellationToken, quality);
 #pragma warning restore OPENAI001
     }
 
@@ -256,12 +258,13 @@ public sealed class GraphIllustrationImageService
         byte[] referenceImageBytes,
         string referenceFileName,
         string instructionSuffix,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        GeneratedImageQuality? quality = null)
     {
         var editOptions = new ImageEditOptions
         {
             Size = GeneratedImageSize.W1024xH1024,
-            Quality = GeneratedImageQuality.LowQuality,
+            Quality = quality ?? GeneratedImageQuality.LowQuality,
         };
 
         using var referenceStream = new MemoryStream(referenceImageBytes);

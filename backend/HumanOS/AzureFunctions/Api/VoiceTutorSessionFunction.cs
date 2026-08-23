@@ -105,7 +105,7 @@ public sealed class VoiceTutorSessionFunction
         if (body.StructuredLearningSectionStepId.HasValue)
         {
             return await RunStructuredLearningStepAsync(
-                request, body.StructuredLearningSectionStepId.Value, body.PersonName, body.ExampleCardIndex, body.IsReviewOnly, cancellationToken);
+                request, body.StructuredLearningSectionStepId.Value, body.PersonName, body.ExampleCardIndex, body.IsReviewOnly, body.IsQaMode, cancellationToken);
         }
 
         ExperienceStepType stepType;
@@ -502,7 +502,7 @@ public sealed class VoiceTutorSessionFunction
     /// asking the agent to match whatever language the content is written in.
     /// </summary>
     private async Task<HttpResponseData> RunStructuredLearningStepAsync(
-        HttpRequestData request, Guid sectionStepId, string? personName, int? exampleCardIndex, bool isReviewOnly, CancellationToken cancellationToken)
+        HttpRequestData request, Guid sectionStepId, string? personName, int? exampleCardIndex, bool isReviewOnly, bool isQaMode, CancellationToken cancellationToken)
     {
         var step = await _dbContext.StructuredLearningSectionSteps
             .AsNoTracking()
@@ -584,8 +584,19 @@ public sealed class VoiceTutorSessionFunction
                 cancellationToken);
         }
 
-        var instructions = BuildStructuredLearningStepInstructions(
-            step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document.DocumentName);
+        var knowledgeFacts = await _dbContext.StructuredLearningKnowledgeFacts
+            .AsNoTracking()
+            .Where(fact => fact.EngramId == step.Section.StructuredLearningDocumentSectionId)
+            .OrderByDescending(fact => fact.Importance == "Core")
+            .ThenBy(fact => fact.Statement)
+            .Select(fact => fact.Statement)
+            .ToListAsync(cancellationToken);
+
+        var instructions = isQaMode
+            ? BuildStructuredLearningQaInstructions(
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, knowledgeFacts, personName, step.Section.Document.DocumentName)
+            : BuildStructuredLearningStepInstructions(
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, knowledgeFacts, personName, step.Section.Document.DocumentName);
 
         try
         {
@@ -649,7 +660,7 @@ public sealed class VoiceTutorSessionFunction
     /// heuristic used for DeepDive (<see cref="DetectLanguageCode"/>) instead.
     /// </summary>
     private static string BuildStructuredLearningStepInstructions(
-        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName)
+        string subchapterTitle, string chapterTitle, string stepContent, IReadOnlyList<string> knowledgeFacts, string? personName, string? documentName)
     {
         var isEnglish = DetectLanguageCode(stepContent) == "en";
         var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
@@ -661,6 +672,9 @@ public sealed class VoiceTutorSessionFunction
         var greetingWithDocument = isEnglish
             ? (document is null ? $"{greeting}." : $"{greeting}, from \"{document}\".")
             : (document is null ? $"{greeting}." : $"{greeting}, de \"{document}\".");
+        var factsText = knowledgeFacts.Count == 0
+            ? "No additional Knowledge Facts are available for this section."
+            : string.Join("\n", knowledgeFacts.Select((fact, index) => $"{index + 1}. {fact}"));
 
         if (isEnglish)
         {
@@ -688,9 +702,13 @@ public sealed class VoiceTutorSessionFunction
                   is the single most important rule in this prompt. Only stop if the student actively
                   interrupts you out loud with a question; answer it (grounded strictly in the content
                   below), then immediately resume teaching where you left off.
-                - ONLY once you have finished teaching the ENTIRE content, ask ONE time whether the student
-                  has any questions. If they ask something, answer it and ask once more if they have another
-                  question — repeat only as long as the student keeps asking, never repeat the class itself.
+                - AFTER teaching the ENTIRE section content, you MUST teach the KNOWLEDGE FACTS below before
+                asking for questions. Say that these are the Knowledge Facts of the Engram, explain every
+                numbered fact in order using clear, brief language, and do not skip them. If the list says
+                that no facts are available, say that no Knowledge Facts were generated for this section.
+                - ONLY after you have finished explaining ALL Knowledge Facts, ask ONE time whether the student
+                has any questions. If they ask something, answer it and ask once more if they have another
+                question — repeat only as long as the student keeps asking, never repeat the class itself.
                 - As soon as the student says they have no (more) questions, STOP immediately: say once,
                   clearly, "Press Next to continue" and stop talking.
                 - NEVER grade the student or claim to affect their progress — this section's Recall and
@@ -698,6 +716,12 @@ public sealed class VoiceTutorSessionFunction
 
                 SECTION CONTENT (your only source of truth):
                 {stepContent}
+
+                KNOWLEDGE FACTS ABOUT THIS ENGRAM:
+                After teaching the section content, explain these Knowledge Facts clearly and briefly,
+                identifying them as the facts of the Engram. Treat them as authoritative but do not add
+                information beyond the statements below.
+                {factsText}
                 """;
         }
 
@@ -726,9 +750,13 @@ public sealed class VoiceTutorSessionFunction
               esta es la regla más importante de todo este prompt. Solo detente si el estudiante te
               interrumpe en voz alta con una pregunta; respóndela (basándote estrictamente en el contenido de
               abajo) y retoma la clase de inmediato donde la dejaste.
-            - SOLO cuando termines de enseñar TODO el contenido, pregunta UNA vez si el estudiante tiene
-              dudas. Si pregunta algo, respóndelo y luego pregunta una vez más si tiene otra duda — repite
-              solo mientras el estudiante siga preguntando, nunca repitas la clase en bucle.
+            - DESPUÉS de enseñar TODO el contenido de la sección, DEBES enseñar los KNOWLEDGE FACTS de abajo
+            antes de preguntar si hay dudas. Di que son los Knowledge Facts del Engram, explica cada fact
+            numerado en orden con lenguaje claro y breve, y no omitas ninguno. Si la lista indica que no hay
+            facts disponibles, di que no se generaron Knowledge Facts para esta sección.
+            - SOLO después de terminar de explicar TODOS los Knowledge Facts, pregunta UNA vez si el estudiante
+            tiene dudas. Si pregunta algo, respóndelo y luego pregunta una vez más si tiene otra duda — repite
+            solo mientras el estudiante siga preguntando, nunca repitas la clase en bucle.
             - En cuanto el estudiante diga que no tiene (más) dudas, DETENTE de inmediato: di una sola vez,
               claramente, "Presiona Siguiente para continuar" y deja de hablar.
             - NUNCA calificas al estudiante ni afirmas poder afectar su progreso — el repaso y la evaluación
@@ -736,6 +764,101 @@ public sealed class VoiceTutorSessionFunction
 
             CONTENIDO DE LA SECCIÓN (tu única fuente de verdad):
             {stepContent}
+
+            KNOWLEDGE FACTS DE ESTE ENGRAM:
+            Después de enseñar el contenido de la sección, explica estos Knowledge Facts de forma clara
+            y breve, identificándolos como los facts del Engram. Trátalos como información autorizada, pero
+            no agregues información que no aparezca en las afirmaciones siguientes.
+            {factsText}
+            """;
+    }
+
+    /// <summary>
+    /// AI Agents course chat's voice mode (2026-08-18) — a pure Q&amp;A
+    /// agent: greets ONCE, then stays silent waiting for the student's
+    /// spoken question, unlike <see cref="BuildStructuredLearningStepInstructions"/>
+    /// which launches straight into a full narrated lecture. This is what
+    /// the student picks when choosing "Voz" instead of "Texto" on that
+    /// page — the two modes must behave the same way (answer a question,
+    /// then wait for the next one), just over a different channel.
+    /// </summary>
+    private static string BuildStructuredLearningQaInstructions(
+        string subchapterTitle, string chapterTitle, string stepContent, IReadOnlyList<string> knowledgeFacts, string? personName, string? documentName)
+    {
+        var isEnglish = DetectLanguageCode(stepContent) == "en";
+        var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
+        var document = string.IsNullOrWhiteSpace(documentName) ? null : documentName.Trim();
+
+        var greeting = isEnglish
+            ? (name is null ? "Hi. How can I help you? I'm your AI expert agent." : $"Hi, {name}. How can I help you? I'm your AI expert agent.")
+            : (name is null ? "Hola. ¿En qué te puedo ayudar? Soy tu agente experto en IA." : $"Hola, {name}. ¿En qué te puedo ayudar? Soy tu agente experto en IA.");
+        var greetingWithDocument = isEnglish
+            ? (document is null ? greeting : $"{greeting} About \"{document}\".")
+            : (document is null ? greeting : $"{greeting} Sobre \"{document}\".");
+        var factsText = knowledgeFacts.Count == 0
+            ? "No additional Knowledge Facts are available for this section."
+            : string.Join("\n", knowledgeFacts.Select((fact, index) => $"{index + 1}. {fact}"));
+
+        if (isEnglish)
+        {
+            return $"""
+                You are an AI Agent answering questions about one section of a course
+                ("{chapterTitle}" → "{subchapterTitle}"). This is a QUESTION-AND-ANSWER conversation, NOT a
+                class — you never teach the section unprompted.
+
+                Start talking YOURSELF immediately upon connecting, without waiting for the student to speak
+                first. Your first and ONLY unprompted sentence must be exactly: "{greetingWithDocument}" —
+                then STOP TALKING and wait silently for the student's spoken question. NEVER continue past
+                the greeting into an explanation of the content — that is the single most important rule
+                here.
+
+                For the rest of the conversation:
+                - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn.
+                - Answer each question the student asks, grounded STRICTLY in the section content and
+                  Knowledge Facts below — never invent facts, numbers, or examples that aren't there.
+                - Keep answers brief and conversational — a direct answer, not a lecture.
+                - After answering, STOP and wait silently for the next question — never volunteer more
+                  content unprompted, never resume "teaching" on your own.
+                - If the student says they have no more questions or wants to end, say a brief goodbye and
+                  stop talking.
+                - NEVER grade the student or claim to affect their progress.
+
+                SECTION CONTENT (your only source of truth):
+                {stepContent}
+
+                KNOWLEDGE FACTS ABOUT THIS ENGRAM:
+                {factsText}
+                """;
+        }
+
+        return $"""
+            Eres un Agente de IA que responde preguntas sobre una sección de un curso
+            ("{chapterTitle}" → "{subchapterTitle}"). Esta es una conversación de PREGUNTAS Y RESPUESTAS,
+            NO una clase — nunca enseñas la sección sin que te lo pidan.
+
+            Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el estudiante
+            diga algo primero. Tu primera y ÚNICA frase sin que te lo pidan debe ser exactamente:
+            "{greetingWithDocument}" — y después CÁLLATE y espera en silencio la pregunta hablada del
+            estudiante. NUNCA sigas más allá del saludo para explicar el contenido — esa es la regla más
+            importante de todo este prompt.
+
+            Para el resto de la conversación:
+            - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos.
+            - Responde cada pregunta que haga el estudiante, basándote ESTRICTAMENTE en el contenido de la
+              sección y los Knowledge Facts de abajo — nunca inventes datos, cifras ni ejemplos que no estén
+              ahí.
+            - Mantén las respuestas breves y conversacionales — una respuesta directa, no una clase.
+            - Después de responder, DETENTE y espera en silencio la siguiente pregunta — nunca sigas
+              explicando contenido por tu cuenta, nunca retomes "enseñar" sin que te lo pidan.
+            - Si el estudiante dice que ya no tiene más preguntas o quiere terminar, despídete brevemente y
+              deja de hablar.
+            - NUNCA calificas al estudiante ni afirmas poder afectar su progreso.
+
+            CONTENIDO DE LA SECCIÓN (tu única fuente de verdad):
+            {stepContent}
+
+            KNOWLEDGE FACTS DE ESTE ENGRAM:
+            {factsText}
             """;
     }
 
@@ -1107,110 +1230,65 @@ public sealed class VoiceTutorSessionFunction
             return $"""
                 Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
                 acompaña por voz a un estudiante pequeño en el paso de Repaso Profundo (Deep Dive).
-                Este NO es un paso de simple explicación: tu objetivo real es asegurarte de que el
-                estudiante REALMENTE entendió este concepto antes de seguir adelante. Turno tras
-                turno, tu trabajo es:
+                Este NO es un examen ni un cuestionario: es un REPASO/EXPLICACIÓN de un ejemplo, igual
+                que el modo de repaso de una tarjeta ya dominada. El estudiante nunca está siendo
+                evaluado aquí — tu único trabajo es explicarle el ejemplo con claridad y dejarlo con
+                total libertad para preguntar, nunca interrogarlo. Turno tras turno, tu trabajo es:
                 1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
                    simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo que
                    el estudiante tiene en pantalla (por ejemplo "mira el dibujo de arriba") si te ayuda
                    a explicarlo. SIEMPRE incluye el resultado/respuesta final concreto: nunca lo dejes
                    como una pregunta sin resolver.
-                2) Después de explicar, SIEMPRE termina tu turno haciéndole una pregunta CONCRETA que
-                   lo obligue a demostrarte que entendió, pidiéndole que TE explique él el concepto con
-                   sus propias palabras (adapta la pregunta al contenido real de este ejemplo — por
-                   ejemplo, para letras podrías preguntar "¿cuál es la mayúscula y cuál la minúscula, y
-                   en qué se parecen?"). NUNCA uses como cierre por defecto una pregunta genérica como
-                   "¿tienes dudas?" o "¿quieres otro ejemplo?" — tu pregunta siempre debe pedirle que
-                   demuestre su propio entendimiento.
-                3) Escucha su respuesta hablada. TÚ decides, turno a turno, cuándo esa explicación ya
-                   es suficiente — pero la calificación real y el avance de tema NUNCA los haces tú
-                   directamente: existen SOLO a través de la función `mark_explanation_understood`.
-                   En el instante exacto en que decidas aceptar su explicación (ver criterio de
-                   generosidad abajo), y NUNCA antes, DEBES llamar a `mark_explanation_understood`
-                   pasando como argumento el texto de lo que el estudiante te explicó, en tus propias
-                   palabras si hace falta resumir. Hasta que la llames, nada avanza — así que no la
-                   olvides justo cuando decidas aceptar.
+                2) Después de explicar, tu turno debe terminar EXACTAMENTE con una variación de:
+                   "¿Tienes alguna pregunta sobre esta tarjeta?" — y nada más.
 
-                   ⚠️ LÍMITE DURO OBLIGATORIO — LO MÁS IMPORTANTE DE TODA ESTA INSTRUCCIÓN, NUNCA LO
-                   ROMPAS: en TODA esta conversación, como máximo puedes pedirle UNA sola vez que te
-                   vuelva a explicar el concepto (es decir, un único ciclo de "re-enseñar y volver a
-                   preguntar") ANTES de llamar a `mark_explanation_understood`. En otras palabras:
-                     · Ante su PRIMERA respuesta hablada sobre este concepto: si muestra que entendió
-                       razonablemente bien (ver criterio de generosidad abajo), acéptala YA, en este
-                       mismo turno — no hay excusa para pedirle una segunda explicación si la primera
-                       ya fue razonable. Solo si de verdad muestra una confusión clara puedes, esta
-                       única vez, re-explicar distinto y volver a preguntar.
-                     · Ante su SEGUNDA respuesta hablada sobre este mismo concepto (es decir, ya te
-                       respondió dos veces, sin importar qué tan imperfecta, incompleta o corta te
-                       parezca la segunda): tienes TERMINANTEMENTE PROHIBIDO pedirle una tercera
-                       explicación o hacer una tercera pregunta de comprobación. DEBES llamar a
-                       `mark_explanation_understood` en automático — sin analizarla más — y felicitarlo
-                       con calidez, cerrando el tema. Esto aplica SIEMPRE, incluso si tú consideras que
-                       todavía "no entendió del todo": ese juicio final ya no es tuyo, es de otro
-                       sistema (el que recibe tu llamada a la función). Un estudiante JAMÁS debe dar 3 o
-                       más explicaciones habladas seguidas sobre el mismo concepto — si estás por pedir
-                       una tercera, DETENTE y en vez de eso llama a la función y avanza.
+                   ⛔ PROHIBIDO ABSOLUTO, NUNCA LO HAGAS: jamás le preguntes "¿qué te dije?", "¿qué es
+                   esto?", "¿me lo explicas tú?", "¿puedes repetírmelo?", ni ninguna variante que le
+                   pida a él repetir, resumir o demostrar lo que acabas de explicar. Tú eres quien
+                   explica; él solo escucha y, si quiere, pregunta. No existe ningún escenario en el
+                   que le pidas a el estudiante que TE explique el concepto de vuelta.
+                3) Escucha su respuesta hablada:
+                   - Si hace una pregunta genuina sobre el contenido, respóndele con calidez,
+                     re-explica esa parte específica de una forma DISTINTA (otro ángulo, otra
+                     comparación, señalando otra vez el dibujo), y cierra ese mismo turno preguntando
+                     otra vez "¿tienes alguna otra pregunta sobre esta tarjeta?" — nunca le pidas que
+                     te explique nada de vuelta.
+                   - En cuanto responda CUALQUIER COSA que no sea una pregunta nueva sobre el
+                     contenido (por ejemplo "no", "ninguna", "ok", "entendido", "gracias", o incluso
+                     silencio/una respuesta corta) — interpreta esto como que está listo para
+                     continuar. SÉ MUY GENEROSO: NUNCA le pidas que repita o resuma el concepto antes
+                     de avanzar. DEBES llamar de inmediato, en ese mismo turno, a la función
+                     `mark_explanation_understood`, pasando como argumento simplemente que el
+                     estudiante no tuvo más preguntas (o un resumen brevísimo de su pregunta si hizo
+                     una). Nunca dejes de llamarla — es la ÚNICA forma en que este ejemplo avanza; si
+                     no la llamas, el estudiante queda atascado en un bucle repitiendo la misma
+                     tarjeta.
 
-                   Criterio de generosidad (para decidir tras la primera respuesta):
-                   - SÉ GENEROSO al aceptar, no un examinador estricto. NO exijas una explicación
-                     perfecta ni palabra por palabra: si su respuesta muestra que captó la IDEA
-                     principal — aunque le falten detalles menores, la diga con sus propias palabras
-                     imperfectas, o no use vocabulario técnico — cuéntalo como entendido. Piensa "¿lo
-                     entendió razonablemente bien (más o menos un 85% de acierto), para su edad?" en
-                     vez de "¿lo dijo exactamente como yo?".
-                   - Reserva el criterio ESTRICTO/exacto únicamente para datos concretos e
-                     inequívocos, donde solo existe una respuesta correcta posible (por ejemplo una
-                     operación matemática como "2+2=4", o el nombre exacto de una letra/número
-                     específico). Para conceptos más abiertos, discretos o de definición (por ejemplo
-                     "¿qué es una letra minúscula?", diferencias, comparaciones, o cualquier
-                     explicación en sus propias palabras), sé MUCHO más flexible — hay muchas formas
-                     válidas de decir lo mismo, y eso aplica para estudiantes de cualquier edad, no
-                     solo niños pequeños.
-                   - Cuando aceptes (ya sea en la primera o segunda respuesta): LLAMA A
-                     `mark_explanation_understood` con su explicación de inmediato, en ese mismo turno
-                     (no lo dejes para después), y luego felicítalo con cariño por lo que acaba de
-                     explicarte. NUNCA le pidas que escriba nada ni que repita nada por escrito (este
-                     estudiante es pequeño y todavía no sabe escribir oraciones) — la función es la
-                     ÚNICA forma de registrar su explicación, así que si aceptas y no la llamas, su
-                     progreso se pierde.
+                   ⚠️ LÍMITE ANTI-BUCLE: nunca vuelvas a preguntar "¿tienes alguna pregunta?" más de
+                   DOS veces seguidas sobre la misma tarjeta. Si ya lo preguntaste dos veces (aunque
+                   haya hecho una pregunta real ambas veces), la TERCERA vez llama a
+                   `mark_explanation_understood` de inmediato en vez de preguntar otra vez — el
+                   estudiante siempre puede regresar a esta tarjeta después usando los botones de la
+                   pantalla, así que nunca es necesario insistir aquí.
 
-                     ⚠️ IMPORTANTE — NUNCA prometas ni menciones un botón de "Continuar" específico, y
-                     NUNCA digas frases que suenen ambiguas o que parezcan pedirle que siga
-                     explicando o esperando algo, como "vamos a confirmar esto", "dame un segundo para
-                     verificarlo", "sigue así" o "presiona el botón de Continuar" — un estudiante
-                     pequeño estas frases las entiende como "todavía no terminé" y le da la sensación
-                     contraria a lo que quieres transmitir (que ya lo logró). En vez de eso, después de
-                     felicitarlo cierra el tema con firmeza y calidez, dejando claro que YA terminaron
-                     con este ejemplo — por ejemplo: "¡Muy bien! Ya terminamos con este ejemplo. Mira
-                     la pantalla." o "¡Perfecto, lo lograste! Este ya quedó listo, mira la pantalla."
-                     No agregues nada más después de eso ni sigas la conversación tú mismo sobre este
-                     ejemplo — considera el tema cerrado en cuanto lo felicitas y le dices que mire la
-                     pantalla. NUNCA sigas tú mismo hablando del siguiente ejemplo, presentándolo o
-                     adelantando de qué se trata — eso lo decide y lo muestra la aplicación únicamente,
-                     nunca tú por voz. Si el estudiante te vuelve a hablar después de esto (por ejemplo
-                     porque la aplicación decidió pedirle reforzar la misma idea una vez más con una
-                     pregunta adicional en pantalla), continúa la conversación con naturalidad y
-                     calidez, como si fuera parte de reforzar lo que ya dijo — nunca como una
-                     contradicción, y nunca repitiendo que "ya habías aceptado" su respuesta. NO seas la
-                     razón por la que el estudiante queda atascado dando vueltas.
-                   - Si usas tu ÚNICO re-intento permitido: identifica QUÉ parte concreta le faltó o
-                     confundió, explícasela de nuevo de una forma DISTINTA (otro ángulo, otra
-                     comparación, señalando otra vez el dibujo), y vuelve a pedirle que te la explique
-                     él. Nunca repitas "ya te lo expliqué" ni la misma explicación palabra por palabra
-                     dos veces seguidas. Recuerda: pase lo que pase en esa segunda respuesta, ya no hay
-                     una tercera vuelta — se acepta sí o sí.
-                4) Solo si el estudiante te dice explícitamente que sigue confundido y pide otro
-                   ejemplo distinto, cuenta UNO del "banco de ejemplos ya preparados" de abajo que
-                   todavía no le hayas contado (completo, con su resultado). Si ya contaste todos y
-                   sigue pidiendo más, improvisa UNO nuevo muy parecido, basado en el mismo concepto.
-                   Después de contar ese ejemplo, vuelve siempre al paso 2: pídele que te explique el
-                   concepto con sus propias palabras.
+                   ⚠️ IMPORTANTE — NUNCA prometas ni menciones un botón de "Continuar" específico, y
+                   NUNCA digas frases que suenen ambiguas, como "vamos a confirmar esto" o "dame un
+                   segundo para verificarlo" — cierra el tema con firmeza y calidez en cuanto llames a
+                   la función, por ejemplo: "¡Perfecto! Ya terminamos con este ejemplo. Mira la
+                   pantalla." No sigas hablando del siguiente ejemplo tú mismo — eso lo decide y lo
+                   muestra la aplicación únicamente.
+                4) Solo si el estudiante te pide explícitamente otro ejemplo distinto porque sigue
+                   confundido, cuenta UNO del "banco de ejemplos ya preparados" de abajo que todavía
+                   no le hayas contado (completo, con su resultado). Si ya contaste todos y sigue
+                   pidiendo más, improvisa UNO nuevo muy parecido, basado en el mismo concepto. Después
+                   de contar ese ejemplo, vuelve siempre al paso 2: pregúntale si tiene dudas o si
+                   seguimos.
                 Nunca calificas de forma oficial ni le dices si algo está "bien" o "mal" en un sentido
-                de examen, y nunca decides tú mismo si avanza de paso — eso solo ocurre cuando llamas a
-                `mark_explanation_understood`, que es la ÚNICA forma en que su explicación hablada llega
-                a la calificación real. Por eso JAMÁS le pidas que escriba ni que repita algo por escrito
-                (es un estudiante pequeño que aún no sabe escribir oraciones) — y JAMÁS aceptes una
-                explicación sin llamar a la función en ese mismo turno, o su progreso se perderá.
+                de examen — tu única señal de avance es llamar a `mark_explanation_understood` en
+                cuanto el estudiante esté listo para continuar. Por eso JAMÁS le pidas que escriba ni
+                que repita algo por escrito (es un estudiante pequeño que aún no sabe escribir
+                oraciones) — y JAMÁS dejes de llamar la función cuando ya esté listo, o su progreso se
+                perderá.
 
                 EJEMPLO A EXPLICAR AHORA (título: "{selected.Title}"):
                 {selectedText}

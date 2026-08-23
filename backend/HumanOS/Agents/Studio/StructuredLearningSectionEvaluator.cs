@@ -57,7 +57,8 @@ public static class StructuredLearningSectionEvaluator
         IReadOnlyList<(StructuredLearningStepType StepType, string Content)> generatedSteps,
         bool includeDeepDiveStep,
         bool includeRecallStep,
-        bool includeProductionStep)
+        bool includeProductionStep,
+        bool includeAssessmentStep = true)
     {
         var result = new StructuralCheckResult { Passed = true };
 
@@ -65,7 +66,7 @@ public static class StructuredLearningSectionEvaluator
         if (includeDeepDiveStep) expectedOrder.Add(StructuredLearningStepType.DeepDive);
         if (includeRecallStep) expectedOrder.Add(StructuredLearningStepType.Recall);
         if (includeProductionStep) expectedOrder.Add(StructuredLearningStepType.Production);
-        expectedOrder.Add(StructuredLearningStepType.Assessment);
+        if (includeAssessmentStep) expectedOrder.Add(StructuredLearningStepType.Assessment);
 
         var actualOrder = generatedSteps.Select(s => s.StepType).ToList();
         if (!actualOrder.SequenceEqual(expectedOrder))
@@ -80,8 +81,10 @@ public static class StructuredLearningSectionEvaluator
             // Recall/Assessment (2026-08-10) intentionally carry NO
             // design-time content — their real questions are generated
             // live, one at a time — so the "content must not be empty"
-            // check doesn't apply to them.
-            if (step.StepType is StructuredLearningStepType.Recall or StructuredLearningStepType.Assessment)
+            // check doesn't apply to them. DeepDive is checked separately
+            // by ValidateDeepDiveCards (needs the real ExampleCards list,
+            // not the flattened string built for this generic check).
+            if (step.StepType is StructuredLearningStepType.Recall or StructuredLearningStepType.Assessment or StructuredLearningStepType.DeepDive)
             {
                 continue;
             }
@@ -94,6 +97,120 @@ public static class StructuredLearningSectionEvaluator
         }
 
         return result;
+    }
+
+    /// <summary>Checks the DeepDive step's real ExampleCards list directly —
+    /// the generic ValidateStructure check above only sees a flattened
+    /// string built from these cards, which can't distinguish "zero cards"
+    /// from "cards with short text", giving a confusing failure message.
+    /// Requires at least one card whenever DeepDive is included, since the
+    /// designer prompt now explicitly forbids returning zero cards (a
+    /// section always has at least one sub-topic worth a card).</summary>
+    public static List<string> ValidateDeepDiveCards(bool includeDeepDiveStep, IReadOnlyList<(string Title, string Text)>? exampleCards)
+    {
+        if (!includeDeepDiveStep)
+        {
+            return [];
+        }
+
+        if (exampleCards is null || exampleCards.Count == 0)
+        {
+            return ["DeepDive step returned zero ExampleCards — at least one is required."];
+        }
+
+        var failures = new List<string>();
+        for (var i = 0; i < exampleCards.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(exampleCards[i].Text) || exampleCards[i].Text.Trim().Length < MinStepContentLength)
+            {
+                failures.Add($"DeepDive ExampleCard #{i + 1} ('{exampleCards[i].Title}') has empty or too-short Text.");
+            }
+        }
+
+        return failures;
+    }
+
+    /// <summary>Result of <see cref="CheckCapabilityAtomicity"/>.</summary>
+    public sealed class AtomicityCheckResult
+    {
+        public bool Passed { get; set; }
+
+        /// <summary>Human-readable reason when Passed is false — shown to
+        /// the designer/logged so the engram can be split further.</summary>
+        public string? Reason { get; set; }
+    }
+
+    /// <summary>Phrases that signal a Capability statement is bundling more
+    /// than one distinct teachable idea into one sentence, e.g. "El
+    /// voluntario puede acompañar a un participante Y ADEMÁS gestionar
+    /// conflictos" — two separate capabilities, should be two engrams.</summary>
+    private static readonly string[] CompoundScopeSignals =
+    [
+        "y además", "además de", "así como", "y también", "y asimismo",
+        "as well as", "in addition to", "and also", "along with",
+    ];
+
+    /// <summary>Above this length, a one-sentence Capability is almost
+    /// always bundling more than one idea rather than staying atomic —
+    /// matches the "one Capability = one engram" discipline from
+    /// StructuredLearningDocumentSection.Capability's own doc comment.</summary>
+    private const int MaxAtomicCapabilityLength = 220;
+
+    /// <summary>
+    /// Atomicity check (2026-08-17, Paso 4) — structural/deterministic,
+    /// no LLM: a section's engram is atomic enough to teach/learn in one
+    /// pass only if its one-sentence <c>Capability</c> statement names
+    /// exactly ONE teachable idea. Flags compound-scope connector phrases,
+    /// semicolon-joined independent clauses (two full statements crammed
+    /// into one Capability), and excessive length as signals the
+    /// underlying section should have been split into more than one
+    /// engram at chapter/engram-extraction time (see
+    /// StructuredLearningSectionEvaluator's own class doc comment; the
+    /// splitters in DocumentChapterSplitter/DocumentTypeOutlineParser are
+    /// what should have produced a finer-grained section in the first
+    /// place — this check exists to catch the cases they miss).
+    /// </summary>
+    public static AtomicityCheckResult CheckCapabilityAtomicity(string capabilityStatement)
+    {
+        if (string.IsNullOrWhiteSpace(capabilityStatement))
+        {
+            return new AtomicityCheckResult { Passed = false, Reason = "Capability statement is empty." };
+        }
+
+        var trimmed = capabilityStatement.Trim();
+        var lower = trimmed.ToLowerInvariant();
+
+        var matchedSignal = CompoundScopeSignals.FirstOrDefault(signal => lower.Contains(signal, StringComparison.Ordinal));
+        if (matchedSignal is not null)
+        {
+            return new AtomicityCheckResult
+            {
+                Passed = false,
+                Reason = $"Capability contains a compound-scope connector ('{matchedSignal}') — split into separate engrams, one per idea."
+            };
+        }
+
+        // A semicolon usually joins two independent clauses — each a
+        // separate, fully-formed capability statement on its own.
+        if (trimmed.Count(c => c == ';') >= 1)
+        {
+            return new AtomicityCheckResult
+            {
+                Passed = false,
+                Reason = "Capability contains a semicolon-joined independent clause — split into separate engrams, one per idea."
+            };
+        }
+
+        if (trimmed.Length > MaxAtomicCapabilityLength)
+        {
+            return new AtomicityCheckResult
+            {
+                Passed = false,
+                Reason = $"Capability statement is {trimmed.Length} characters (max {MaxAtomicCapabilityLength}) — likely bundles more than one teachable idea."
+            };
+        }
+
+        return new AtomicityCheckResult { Passed = true };
     }
 
     // ==================== 2. Content-quality checks (real Eval framework) ====================

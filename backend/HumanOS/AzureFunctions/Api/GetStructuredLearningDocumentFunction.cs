@@ -29,6 +29,8 @@ public sealed class StructuredLearningStepDetailDto
     public bool IsHumanApproved { get; set; }
 
     public DateTime? HumanApprovedAtUtc { get; set; }
+
+    public string? TimelineJson { get; set; }
 }
 
 public sealed class StructuredLearningSectionDetailDto
@@ -40,6 +42,11 @@ public sealed class StructuredLearningSectionDetailDto
     public string ChapterTitle { get; set; } = string.Empty;
 
     public string SubchapterTitle { get; set; } = string.Empty;
+
+    /// <summary>The section's actual extracted/generated source text — shown
+    /// read-only in the studio so a designer can verify sparse-content
+    /// expansion actually produced real content (2026-08-17).</summary>
+    public string Text { get; set; } = string.Empty;
 
     public int TotalCharacters { get; set; }
 
@@ -59,6 +66,11 @@ public sealed class StructuredLearningSectionDetailDto
 
     public string? PedagogyErrorMessage { get; set; }
 
+    /// <summary>Knowledge Graph (2026-08-15) — the entity name the model chose as this
+    /// section's conceptual hub/root, used by the frontend to render the tree from a
+    /// single logical root instead of guessing via degree count.</summary>
+    public string? KnowledgeGraphRootEntityName { get; set; }
+
     public List<StructuredLearningStepDetailDto> Steps { get; set; } = [];
 }
 
@@ -67,6 +79,18 @@ public sealed class StructuredLearningDocumentDetailResponse
     public Guid StructuredLearningDocumentId { get; set; }
 
     public string DocumentName { get; set; } = string.Empty;
+
+    public bool IsGlobal { get; set; }
+
+    public bool IsPublished { get; set; }
+
+    public Guid? SubjectId { get; set; }
+
+    public Guid? TopicId { get; set; }
+
+    public string? ExecutiveSummary { get; set; }
+
+    public Guid? CoverIllustrationId { get; set; }
 
     public string? PedagogicalAudience { get; set; }
 
@@ -88,9 +112,24 @@ public sealed class StructuredLearningDocumentDetailResponse
 
     public int? RecallItemsRequired { get; set; }
 
+    public bool IncludeAssessmentStep { get; set; }
+
     public string AssessmentQuestionType { get; set; } = string.Empty;
 
     public int? AssessmentQuestionsPerRound { get; set; }
+
+    /// <summary>Document Type Detection Engine (2026-08-17) — the engine's
+    /// recommendation, e.g. "Law"/"Procedure"/"Unknown".</summary>
+    public string? DetectedDocumentType { get; set; }
+
+    public double? DetectedDocumentTypeConfidence { get; set; }
+
+    /// <summary>The designer's final choice after reviewing the
+    /// recommendation — null until confirmed via
+    /// ConfirmStructuredLearningDocumentType.</summary>
+    public string? ConfirmedDocumentType { get; set; }
+
+    public bool DocumentTypeConfirmedByUser { get; set; }
 
     public List<StructuredLearningSectionDetailDto> Sections { get; set; } = [];
 }
@@ -125,10 +164,25 @@ public sealed class GetStructuredLearningDocumentFunction
                 request, HttpStatusCode.NotFound, "DocumentNotFound", $"No document found with id '{documentId}'.", cancellationToken);
         }
 
+        var firstSectionId = document.Sections.OrderBy(s => s.SortOrder).Select(s => s.StructuredLearningDocumentSectionId).FirstOrDefault();
+        var coverIllustrationId = firstSectionId == default
+            ? null
+            : await _dbContext.StructuredLearningIllustrations
+                .Where(i => i.StructuredLearningDocumentSectionId == firstSectionId)
+                .OrderBy(i => i.CreatedDate)
+                .Select(i => (Guid?)i.StructuredLearningIllustrationId)
+                .FirstOrDefaultAsync(cancellationToken);
+
         var response = new StructuredLearningDocumentDetailResponse
         {
             StructuredLearningDocumentId = document.StructuredLearningDocumentId,
             DocumentName = document.DocumentName,
+            IsGlobal = document.IsGlobal,
+            IsPublished = document.IsPublished,
+            SubjectId = document.SubjectId,
+            TopicId = document.TopicId,
+            ExecutiveSummary = document.ExecutiveSummary,
+            CoverIllustrationId = coverIllustrationId,
             PedagogicalAudience = document.PedagogicalAudience,
             PromptVersion = document.PromptVersion,
             ProcessVersion = document.ProcessVersion,
@@ -139,8 +193,13 @@ public sealed class GetStructuredLearningDocumentFunction
             IncludeProductionStep = document.IncludeProductionStep,
             IncludeRecallStep = document.IncludeRecallStep,
             RecallItemsRequired = document.RecallItemsRequired,
+            IncludeAssessmentStep = document.IncludeAssessmentStep,
             AssessmentQuestionType = document.AssessmentQuestionType.ToString(),
             AssessmentQuestionsPerRound = document.AssessmentQuestionsPerRound,
+            DetectedDocumentType = document.DetectedDocumentType,
+            DetectedDocumentTypeConfidence = document.DetectedDocumentTypeConfidence,
+            ConfirmedDocumentType = document.ConfirmedDocumentType,
+            DocumentTypeConfirmedByUser = document.DocumentTypeConfirmedByUser,
             Sections = document.Sections
                 .OrderBy(s => s.SortOrder)
                 .Select(s => new StructuredLearningSectionDetailDto
@@ -149,6 +208,7 @@ public sealed class GetStructuredLearningDocumentFunction
                     SortOrder = s.SortOrder,
                     ChapterTitle = s.ChapterTitle,
                     SubchapterTitle = s.SubchapterTitle,
+                    Text = s.Text,
                     TotalCharacters = s.TotalCharacters,
                     TotalTokens = s.TotalTokens,
                     PromptVersion = s.PromptVersion ?? string.Empty,
@@ -158,6 +218,7 @@ public sealed class GetStructuredLearningDocumentFunction
                     ConfigSnapshotJson = s.ConfigSnapshotJson,
                     PedagogyStatus = s.PedagogyStatus.ToString(),
                     PedagogyErrorMessage = s.PedagogyErrorMessage,
+                    KnowledgeGraphRootEntityName = s.KnowledgeGraphRootEntityName,
                     Steps = s.Steps
                         .OrderBy(st => st.SortOrder)
                         .Select(st => new StructuredLearningStepDetailDto
@@ -172,7 +233,8 @@ public sealed class GetStructuredLearningDocumentFunction
                             PromptHash = st.PromptHash,
                             ConfigSnapshotJson = st.ConfigSnapshotJson,
                             IsHumanApproved = st.IsHumanApproved,
-                            HumanApprovedAtUtc = st.HumanApprovedAtUtc
+                            HumanApprovedAtUtc = st.HumanApprovedAtUtc,
+                            TimelineJson = st.TimelineJson
                         })
                         .ToList()
                 })

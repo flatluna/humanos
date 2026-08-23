@@ -1,11 +1,15 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Layers, GitBranch, ImageOff, Baby, BookOpen } from 'lucide-react';
+import { Layers, GitBranch, ImageOff, Baby, BookOpen, Check } from 'lucide-react';
 import type { BackendCapability } from '../lib/api/capabilitiesApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 import { getSubjectGradient, getSubjectIcon } from '../lib/subjectVisuals';
 
-export default function CapabilityCard({ capability }: { capability: BackendCapability }) {
+export default function CapabilityCard({ capability, selected = false, onToggle }: {
+  capability: BackendCapability;
+  selected?: boolean;
+  onToggle?: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const SubjectIcon = getSubjectIcon(capability.SubjectCode);
   const gradient = getSubjectGradient(capability.SubjectCode);
@@ -18,8 +22,13 @@ export default function CapabilityCard({ capability }: { capability: BackendCapa
   return (
     <Link
       to={isTraditional ? `/capabilities/${capability.CapabilityId}/traditional-course` : `/capabilities/${capability.CapabilityId}`}
-      className="group relative flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] transition-all hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-brand-500/10"
+      className={`group relative flex flex-col overflow-hidden rounded-3xl border bg-white/[0.03] transition-all hover:-translate-y-1 hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-brand-500/10 ${selected ? 'border-red-400/70 ring-2 ring-red-400/30' : 'border-white/10 hover:border-white/20'}`}
     >
+      {onToggle && (
+        <button type="button" onClick={(event) => { event.preventDefault(); onToggle(); }} aria-label={selected ? `Deselect ${capability.Name}` : `Select ${capability.Name}`} className={`absolute left-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg border backdrop-blur-sm ${selected ? 'border-red-300 bg-red-500 text-white' : 'border-white/40 bg-black/40 text-transparent hover:text-white'}`}>
+          <Check className="h-4 w-4" />
+        </button>
+      )}
       <div className={`relative h-36 w-full overflow-hidden bg-gradient-to-br ${gradient}`}>
         {capability.HasCoverImage ? (
           <img

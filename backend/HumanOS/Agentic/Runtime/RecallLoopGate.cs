@@ -33,8 +33,12 @@ public static class RecallLoopGate
     /// Recall step advances to Production — this is the DEFAULT used when
     /// the owning Capability has no explicit override (see
     /// <see cref="HumanOS.Models.Capabilities.Capability.RecallItemsRequired"/>,
-    /// 2026-08-04).</summary>
-    public const int DefaultItemsRequiredToAdvance = 3;
+    /// 2026-08-04). Lowered from 3 to 2 (2026-08-14, explicit user
+    /// feedback: 3 items x up to 5 attempts each felt like too long/
+    /// frustrating a gauntlet for a single section) — still enough
+    /// distinct retrieval attempts for genuine testing-effect benefit
+    /// without dragging the step out.</summary>
+    public const int DefaultItemsRequiredToAdvance = 2;
 
     /// <summary>Hard bounds enforced on any per-Capability override of
     /// <see cref="DefaultItemsRequiredToAdvance"/>.</summary>

@@ -47,5 +47,14 @@ public sealed class StructuredLearningIllustration
 
     public int Height { get; set; }
 
+    /// <summary>"Image" (default) or "Video" (2026-08-21 — Google Veo
+    /// video generation for physical/gestural Learn content). Video rows
+    /// reuse StoragePath (points to an .mp4 blob instead of .png) and
+    /// ImageModel (holds the Veo model name, e.g.
+    /// "veo-3.1-fast-generate-preview") — no separate video-only columns,
+    /// to avoid a wider migration for what is otherwise the exact same
+    /// "one generated media file for one section" shape.</summary>
+    public string MediaType { get; set; } = "Image";
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 }

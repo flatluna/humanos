@@ -52,9 +52,12 @@ public sealed class GetStructuredLearningRecallStateFunction
                 "StructuredLearningRecallAgent is not configured (missing Azure OpenAI settings).", cancellationToken);
         }
 
+        var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        Guid? personId = Guid.TryParse(query["personId"], out var parsedPersonId) ? parsedPersonId : null;
+
         try
         {
-            var result = await _engine.GetCurrentStateAsync(_dbContext, sectionId, cancellationToken);
+            var result = await _engine.GetCurrentStateAsync(_dbContext, sectionId, personId, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(request, new GetStructuredLearningRecallStateResponse
             {
                 Started = result.Started,

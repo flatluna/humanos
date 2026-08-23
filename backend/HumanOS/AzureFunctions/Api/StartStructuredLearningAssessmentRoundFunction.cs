@@ -21,6 +21,7 @@ public sealed class StructuredLearningAssessmentRoundStateDto
     public string Status { get; set; } = string.Empty;
     public int? FinalScore { get; set; }
     public int TotalQuestions { get; set; }
+    public DateTime? CompletedDate { get; set; }
     public StructuredLearningAssessmentQuestionDto? CurrentQuestion { get; set; }
 }
 
@@ -33,6 +34,7 @@ internal static class StructuredLearningAssessmentApiMappers
         Status = state.Status.ToString(),
         FinalScore = state.FinalScore,
         TotalQuestions = state.TotalQuestions,
+        CompletedDate = state.CompletedDate,
         CurrentQuestion = state.CurrentQuestion is null ? null : new StructuredLearningAssessmentQuestionDto
         {
             StructuredLearningAssessmentQuestionAttemptId = state.CurrentQuestion.StructuredLearningAssessmentQuestionAttemptId,
@@ -71,9 +73,12 @@ public sealed class StartStructuredLearningAssessmentRoundFunction
                 "StructuredLearningAssessmentAgent is not configured (missing Azure OpenAI settings).", cancellationToken);
         }
 
+        var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        Guid? personId = Guid.TryParse(query["personId"], out var parsedPersonId) ? parsedPersonId : null;
+
         try
         {
-            var round = await _engine.StartRoundAsync(_dbContext, sectionId, cancellationToken);
+            var round = await _engine.StartRoundAsync(_dbContext, sectionId, personId, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(
                 request, StructuredLearningAssessmentApiMappers.ToDto(round), cancellationToken: cancellationToken);
         }

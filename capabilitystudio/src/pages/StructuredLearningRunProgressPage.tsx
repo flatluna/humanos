@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
+  ArrowLeft,
   Layers,
   FileText,
   Hash,
@@ -15,18 +16,19 @@ import {
   AlertTriangle,
   PlayCircle,
   UploadCloud,
+  BookOpen,
+  X,
 } from 'lucide-react';
 import {
   getStructuredLearningExtractionStatus,
-  updateStructuredLearningPedagogyConfig,
   startStructuredLearningPedagogy,
   getStructuredLearningPedagogyStatus,
   getStructuredLearningDocument,
   type StructuredLearningExtractionRunStatus,
   type StructuredLearningPedagogyRunStatus,
   type StructuredLearningDocumentDetail,
-  type StructuredLearningAssessmentQuestionType,
 } from '../lib/api/structuredLearningApi';
+import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { apiImageUrl } from '../lib/api/httpClient';
 import { readFileAsBase64 } from '../lib/api/pdfPipelineApi';
 
@@ -111,6 +113,9 @@ export default function StructuredLearningRunProgressPage() {
 
       {!error && stage === 'Completed' && status?.Result && (
         <div className="animate-fade-in w-full space-y-8 text-left">
+          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-200">
+            <ArrowLeft className="h-4 w-4" /> {t('structuredLearningRunProgress.backToHome')}
+          </Link>
           <div className="text-center">
             <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-400" />
             <h2 className="mt-4 text-2xl font-bold text-white">{t('structuredLearningRunProgress.done', { name: status.Result.DocumentName })}</h2>
@@ -122,6 +127,8 @@ export default function StructuredLearningRunProgressPage() {
             <ResultStat icon={FileText} label={t('structuredLearningRunProgress.characters')} value={status.Result.TotalCharacters} />
             <ResultStat icon={Hash} label={t('structuredLearningRunProgress.tokens')} value={status.Result.TotalTokens} />
           </div>
+
+          <KnowledgeGraphSection documentId={status.Result.StructuredLearningDocumentId} />
 
           <PedagogySection documentId={status.Result.StructuredLearningDocumentId} />
         </div>
@@ -173,20 +180,62 @@ function VersionSummaryCard({ document }: { document: StructuredLearningDocument
   );
 }
 
+/** Opens a modal with the document-wide executive summary (DocumentContextAgent) — the
+ * final workflow step's read-only view of the whole-lesson orientation text. */
+function ExecutiveSummaryButton({ documentName, summary }: { documentName: string; summary: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.02]"
+      >
+        <BookOpen className="h-4 w-4" />
+        Executive summary
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-slate-950 to-accent-500/10 p-6 shadow-2xl shadow-black/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">{documentName}</h2>
+              <button
+                onClick={() => setOpen(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-slate-300">{summary}</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Step 3: configure pedagogical settings, start generation, poll it, then
  * show a simple viewer of what got generated per section. */
+
 function PedagogySection({ documentId }: { documentId: string }) {
   const { t } = useTranslation();
 
-  const [pedagogicalAudience, setPedagogicalAudience] = useState<'Standard' | 'YoungLearner'>('Standard');
+  // Domain/subject, career-skill and pedagogical config (audience, Deep
+  // Dive, Recall, Production, assessment type/count) are all collected
+  // up front in Step 1 (NewStructuredLearningPage.tsx) and already saved
+  // on the document — no longer re-asked here (2026-08-14). Only the
+  // generation language and the optional illustration reference image
+  // are unique to this step.
   const [pedagogyLanguageCode, setPedagogyLanguageCode] = useState<'es' | 'en'>('es');
-  const [includeDeepDive, setIncludeDeepDive] = useState(true);
-  const [maxDeepDiveCards, setMaxDeepDiveCards] = useState(3);
-  const [includeRecall, setIncludeRecall] = useState(true);
-  const [recallItemsRequired, setRecallItemsRequired] = useState(3);
-  const [includeProduction, setIncludeProduction] = useState(true);
-  const [assessmentQuestionType, setAssessmentQuestionType] = useState<StructuredLearningAssessmentQuestionType>('MultipleChoice');
-  const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState(2);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [referenceImageUsageInstruction, setReferenceImageUsageInstruction] = useState('');
@@ -242,16 +291,6 @@ function PedagogySection({ documentId }: { documentId: string }) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await updateStructuredLearningPedagogyConfig(documentId, {
-        pedagogicalAudience: pedagogicalAudience === 'Standard' ? null : pedagogicalAudience,
-        maxDeepDiveCardsPerNode: includeDeepDive ? maxDeepDiveCards : null,
-        includeProductionStep: includeProduction,
-        includeRecallStep: includeRecall,
-        recallItemsRequired: includeRecall ? recallItemsRequired : null,
-        assessmentQuestionType,
-        assessmentQuestionsPerRound,
-      });
-
       const uploadedImageBase64 = referenceImageFile ? await readFileAsBase64(referenceImageFile) : null;
       const run = await startStructuredLearningPedagogy(
         documentId,
@@ -331,53 +370,6 @@ function PedagogySection({ documentId }: { documentId: string }) {
           </div>
         </ConfigField>
 
-        <ConfigField label={t('structuredLearningRunProgress.pedagogyAudienceLabel')}>
-          <div className="grid grid-cols-2 gap-2">
-            {(['Standard', 'YoungLearner'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setPedagogicalAudience(option)}
-                className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                  pedagogicalAudience === option
-                    ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                    : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                }`}
-              >
-                {option === 'Standard' ? t('structuredLearningRunProgress.audienceStandard') : t('structuredLearningRunProgress.audienceYoungLearner')}
-              </button>
-            ))}
-          </div>
-        </ConfigField>
-
-        <ToggleWithCount
-          label={t('structuredLearningRunProgress.pedagogyDeepDiveLabel')}
-          checked={includeDeepDive}
-          onCheckedChange={setIncludeDeepDive}
-          count={maxDeepDiveCards}
-          onCountChange={setMaxDeepDiveCards}
-          countLabel={t('structuredLearningRunProgress.pedagogyDeepDiveCountLabel')}
-        />
-
-        <ToggleWithCount
-          label={t('structuredLearningRunProgress.pedagogyRecallLabel')}
-          checked={includeRecall}
-          onCheckedChange={setIncludeRecall}
-          count={recallItemsRequired}
-          onCountChange={setRecallItemsRequired}
-          countLabel={t('structuredLearningRunProgress.pedagogyRecallCountLabel')}
-        />
-
-        <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-          <input
-            type="checkbox"
-            checked={includeProduction}
-            onChange={(e) => setIncludeProduction(e.target.checked)}
-            className="h-4 w-4 rounded border-white/20 bg-white/5 text-brand-500 focus:ring-brand-500"
-          />
-          <span className="text-sm text-white">{t('structuredLearningRunProgress.pedagogyProductionLabel')}</span>
-        </label>
-
         <ConfigField label="Reference image for lesson illustrations">
           <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
             {referenceImagePreviewUrl ? (
@@ -431,38 +423,6 @@ function PedagogySection({ documentId }: { documentId: string }) {
               </div>
             )}
           </div>
-        </ConfigField>
-
-        <ConfigField label={t('structuredLearningRunProgress.pedagogyAssessmentTypeLabel')}>
-          <div className="grid grid-cols-2 gap-2">
-            {(['MultipleChoice', 'OpenEnded'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setAssessmentQuestionType(option)}
-                className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                  assessmentQuestionType === option
-                    ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                    : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                }`}
-              >
-                {option === 'MultipleChoice'
-                  ? t('structuredLearningRunProgress.assessmentMultipleChoice')
-                  : t('structuredLearningRunProgress.assessmentOpenEnded')}
-              </button>
-            ))}
-          </div>
-        </ConfigField>
-
-        <ConfigField label={t('structuredLearningRunProgress.pedagogyAssessmentCountLabel')}>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={assessmentQuestionsPerRound}
-            onChange={(e) => setAssessmentQuestionsPerRound(Number.parseInt(e.target.value, 10) || 2)}
-            className="input"
-          />
         </ConfigField>
 
         {submitError && (
@@ -527,6 +487,10 @@ function PedagogySection({ documentId }: { documentId: string }) {
         <PlayCircle className="h-4 w-4" />
         {t('structuredLearningRunProgress.pedagogyViewCourseButton')}
       </Link>
+
+      {documentDetail?.ExecutiveSummary && (
+        <ExecutiveSummaryButton documentName={documentDetail.DocumentName} summary={documentDetail.ExecutiveSummary} />
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <ResultStat icon={CheckCircle2} label={t('structuredLearningRunProgress.pedagogySectionsCompleted')} value={pedagogyStatus.Result?.SectionsCompleted ?? 0} />
@@ -810,49 +774,6 @@ function ConfigField({ label, children }: { label: string; children: React.React
     <div>
       <label className="mb-1.5 block text-sm font-medium text-slate-300">{label}</label>
       {children}
-    </div>
-  );
-}
-
-function ToggleWithCount({
-  label,
-  checked,
-  onCheckedChange,
-  count,
-  onCountChange,
-  countLabel,
-}: {
-  label: string;
-  checked: boolean;
-  onCheckedChange: (value: boolean) => void;
-  count: number;
-  onCountChange: (value: number) => void;
-  countLabel: string;
-}) {
-  return (
-    <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-      <label className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onCheckedChange(e.target.checked)}
-          className="h-4 w-4 rounded border-white/20 bg-white/5 text-brand-500 focus:ring-brand-500"
-        />
-        <span className="text-sm text-white">{label}</span>
-      </label>
-      {checked && (
-        <div className="pl-7">
-          <label className="mb-1 block text-xs text-slate-400">{countLabel}</label>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={count}
-            onChange={(e) => onCountChange(Number.parseInt(e.target.value, 10) || 1)}
-            className="input w-24"
-          />
-        </div>
-      )}
     </div>
   );
 }

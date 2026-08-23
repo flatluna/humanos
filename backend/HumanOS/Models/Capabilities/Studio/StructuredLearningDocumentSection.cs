@@ -69,6 +69,13 @@ public sealed class StructuredLearningDocumentSection
 
     public DateTime CreatedDate { get; set; }
 
+    /// <summary>Knowledge Graph (2026-08-15) — the entity name (from this
+    /// section's own extracted entities) the model chose as the conceptual
+    /// hub/root of its relationship graph — used to render the tree
+    /// starting from a single logical root instead of guessing via degree
+    /// count. Null if the model found no clear hub for this section.</summary>
+    public string? KnowledgeGraphRootEntityName { get; set; }
+
     /// <summary>Business-rule style statements inferred from this section before
     /// ontology generation. Stored as JSON in the same row to keep the schema
     /// backward-compatible while preserving a lightweight, section-scoped rule list.</summary>

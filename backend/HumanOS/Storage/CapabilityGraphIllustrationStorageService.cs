@@ -74,6 +74,70 @@ public sealed class CapabilityGraphIllustrationStorageService
         return blobPath;
     }
 
+    /// <summary>Same as <see cref="UploadIllustrationAsync"/> but for a
+    /// generated video file (2026-08-21 — Google Veo) — same container/path
+    /// shape, just an ".mp4" extension and "video-" prefix instead of
+    /// "image-" so both media types can coexist side by side for one
+    /// section without colliding. Path is keyed by the video's OWN Guid
+    /// (2026-08-22 fix — was a COUNT-based sequential index, which raced:
+    /// two videos generated close together both computed the same count
+    /// before either row was saved, producing the SAME blob path and
+    /// silently overwriting one video's bytes with the other's).</summary>
+    public async Task<string> UploadVideoAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        Guid videoId,
+        Stream videoContent,
+        string contentType = "video/mp4",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/video-{videoId:D}.mp4";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            videoContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>Overwrites an EXISTING video blob at a known StoragePath in
+    /// place (2026-08-22) — used for in-place edits like trimming, where
+    /// the illustration row/id/path must stay the same, only the bytes
+    /// change.</summary>
+    public async Task OverwriteVideoAsync(string storagePath, Stream videoContent, CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        var blobClient = containerClient.GetBlobClient(storagePath);
+
+        await blobClient.UploadAsync(
+            videoContent,
+            new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "video/mp4" } },
+            cancellationToken);
+    }
+
     /// <summary>
     /// Uploads a single course-level cover image representing the WHOLE
     /// capability (distinct from per-node illustrations) and returns its
@@ -129,6 +193,50 @@ public sealed class CapabilityGraphIllustrationStorageService
 
         var response = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
         return response.Value.Content;
+    }
+
+    /// <summary>Same blob as <see cref="DownloadIllustrationAsync"/> but
+    /// buffered into memory with its exact byte length known upfront
+    /// (2026-08-22) — needed by callers that must set a real Content-Length/
+    /// Accept-Ranges response instead of chunked transfer, which browsers
+    /// require to reliably locate a trailing 'moov' atom in an .mp4 whose
+    /// metadata wasn't written "faststart" (the video plays but its audio
+    /// track silently fails to be recognized otherwise).</summary>
+    public async Task<BinaryData> DownloadIllustrationBytesAsync(
+        string storagePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        var blobClient = containerClient.GetBlobClient(storagePath);
+
+        var response = await blobClient.DownloadContentAsync(cancellationToken: cancellationToken);
+        return response.Value.Content;
+    }
+
+
+    /// <summary>Deletes one illustration/video blob (2026-08-21, used for
+    /// Veo video deletion) — a no-op (not an error) if the blob is already
+    /// gone, same "best-effort cleanup" convention as the rest of this
+    /// class's callers.</summary>
+    public async Task DeleteIllustrationAsync(string storagePath, CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        var blobClient = containerClient.GetBlobClient(storagePath);
+        await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
     }
 
     /// <summary>

@@ -23,11 +23,11 @@ public sealed class StructuredLearningDocumentDeletionService
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var document = await dbContext.StructuredLearningDocuments
-            .Include(d => d.Sections)
-            .FirstOrDefaultAsync(d => d.StructuredLearningDocumentId == documentId, cancellationToken);
+        var exists = await dbContext.StructuredLearningDocuments
+            .AsNoTracking()
+            .AnyAsync(d => d.StructuredLearningDocumentId == documentId, cancellationToken);
 
-        if (document is null)
+        if (!exists)
         {
             return false;
         }
@@ -37,78 +37,21 @@ public sealed class StructuredLearningDocumentDeletionService
         await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-            var sectionIds = document.Sections
-                .Select(s => s.StructuredLearningDocumentSectionId)
-                .ToList();
-
-            if (sectionIds.Count > 0)
-            {
-                var stepRows = await dbContext.StructuredLearningSectionSteps
-                    .Where(s => sectionIds.Contains(s.StructuredLearningDocumentSectionId))
-                    .ToListAsync(cancellationToken);
-
-                if (stepRows.Count > 0)
-                {
-                    dbContext.StructuredLearningSectionSteps.RemoveRange(stepRows);
-                }
-
-                var assessmentRoundIds = await dbContext.StructuredLearningAssessmentRounds
-                    .Where(r => sectionIds.Contains(r.StructuredLearningDocumentSectionId))
-                    .Select(r => r.StructuredLearningAssessmentRoundId)
-                    .ToListAsync(cancellationToken);
-
-                if (assessmentRoundIds.Count > 0)
-                {
-                    var questionAttempts = await dbContext.StructuredLearningAssessmentQuestionAttempts
-                        .Where(q => assessmentRoundIds.Contains(q.StructuredLearningAssessmentRoundId))
-                        .ToListAsync(cancellationToken);
-
-                    if (questionAttempts.Count > 0)
-                    {
-                        dbContext.StructuredLearningAssessmentQuestionAttempts.RemoveRange(questionAttempts);
-                    }
-
-                    var rounds = await dbContext.StructuredLearningAssessmentRounds
-                        .Where(r => assessmentRoundIds.Contains(r.StructuredLearningAssessmentRoundId))
-                        .ToListAsync(cancellationToken);
-
-                    if (rounds.Count > 0)
-                    {
-                        dbContext.StructuredLearningAssessmentRounds.RemoveRange(rounds);
-                    }
-                }
-
-                var recallAttempts = await dbContext.StructuredLearningRecallAttempts
-                    .Where(r => sectionIds.Contains(r.StructuredLearningDocumentSectionId))
-                    .ToListAsync(cancellationToken);
-
-                if (recallAttempts.Count > 0)
-                {
-                    dbContext.StructuredLearningRecallAttempts.RemoveRange(recallAttempts);
-                }
-
-                var illustrations = await dbContext.StructuredLearningIllustrations
-                    .Where(i => sectionIds.Contains(i.StructuredLearningDocumentSectionId))
-                    .ToListAsync(cancellationToken);
-
-                if (illustrations.Count > 0)
-                {
-                    dbContext.StructuredLearningIllustrations.RemoveRange(illustrations);
-                }
-
-                var sections = await dbContext.StructuredLearningDocumentSections
-                    .Where(s => s.StructuredLearningDocumentId == documentId)
-                    .ToListAsync(cancellationToken);
-
-                if (sections.Count > 0)
-                {
-                    dbContext.StructuredLearningDocumentSections.RemoveRange(sections);
-                }
-            }
-
-            dbContext.StructuredLearningDocuments.Remove(document);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningIllustration WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningEntitySection WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.KnowledgeFactGraphPathSteps WHERE KnowledgeFactId IN (SELECT KnowledgeFactId FROM dbo.KnowledgeFacts WHERE EngramId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId}))", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningConnection WHERE SourceSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId}) OR SourceEntityId IN (SELECT StructuredLearningEntityId FROM dbo.StructuredLearningEntity WHERE StructuredLearningDocumentId = {documentId}) OR TargetEntityId IN (SELECT StructuredLearningEntityId FROM dbo.StructuredLearningEntity WHERE StructuredLearningDocumentId = {documentId}) OR StructuredLearningDocumentId = {documentId}", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningAssessmentQuestionAttempt WHERE StructuredLearningAssessmentRoundId IN (SELECT StructuredLearningAssessmentRoundId FROM dbo.StructuredLearningAssessmentRound WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId}))", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningAssessmentRound WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningRecallAttempt WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningPersonSectionState WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningHypothesisResponse WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningSectionStep WHERE StructuredLearningDocumentSectionId IN (SELECT StructuredLearningDocumentSectionId FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId})", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningGenerationUsage WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocumentEnrollment WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocumentProgramMembership WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocument WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         });
 
