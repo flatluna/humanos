@@ -1550,6 +1550,150 @@ namespace HumanOS.Migrations
                         });
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.FilmProduction", b =>
+                {
+                    b.Property<Guid>("FilmProductionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<int>("BreakdownCachedInputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BreakdownInputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BreakdownModelName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("BreakdownOutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FinalFilmStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("FilmProductionId")
+                        .HasName("PK_FilmProduction");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_FilmProduction_TenantId");
+
+                    b.ToTable("FilmProduction", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.FilmScene", b =>
+                {
+                    b.Property<Guid>("FilmSceneId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<int>("AnchorImageMode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AnchorImageStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("CameraMovements")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Characters")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ContentCachedInputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ContentInputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentModelName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("ContentOutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CustomImagePrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DialogueText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FilmProductionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FinalImageStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("FinalVideoStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("GeneratedPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SuggestedSceneName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("VideoErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VideoModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("VideoStatus")
+                        .HasColumnType("int");
+
+                    b.HasKey("FilmSceneId")
+                        .HasName("PK_FilmScene");
+
+                    b.HasIndex("FilmProductionId", "SortOrder")
+                        .HasDatabaseName("IX_FilmScene_FilmProductionId_SortOrder");
+
+                    b.ToTable("FilmScene", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.StructuredLearningAssessmentQuestionAttempt", b =>
                 {
                     b.Property<Guid>("StructuredLearningAssessmentQuestionAttemptId")
@@ -1853,6 +1997,11 @@ namespace HumanOS.Migrations
 
                     b.Property<Guid>("SessionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("ShowKnowledgeGraphToLearners")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<Guid?>("SubjectId")
                         .HasColumnType("uniqueidentifier");

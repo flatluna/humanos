@@ -25,6 +25,7 @@ import AiAgentsPage from './pages/AiAgentsPage';
 import AiAgentsDomainPage from './pages/AiAgentsDomainPage';
 import AiAgentsTopicPage from './pages/AiAgentsTopicPage';
 import AiAgentsChatPage from './pages/AiAgentsChatPage';
+import FilmProductionsPage from './pages/FilmProductionsPage';
 
 export default function App() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/programs/new" element={<NewProgramPage />} />
           <Route path="/programs/:programId" element={<ProgramDetailPage />} />
           <Route path="/costs" element={<CostDashboardPage />} />
+          <Route path="/film-productions" element={<FilmProductionsPage />} />
         </Route>
       </Route>
     </Routes>

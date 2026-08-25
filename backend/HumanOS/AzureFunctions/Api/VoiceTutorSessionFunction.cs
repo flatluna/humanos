@@ -584,19 +584,16 @@ public sealed class VoiceTutorSessionFunction
                 cancellationToken);
         }
 
-        var knowledgeFacts = await _dbContext.StructuredLearningKnowledgeFacts
-            .AsNoTracking()
-            .Where(fact => fact.EngramId == step.Section.StructuredLearningDocumentSectionId)
-            .OrderByDescending(fact => fact.Importance == "Core")
-            .ThenBy(fact => fact.Statement)
-            .Select(fact => fact.Statement)
-            .ToListAsync(cancellationToken);
-
+        // Knowledge Facts are shown to the student directly in the Knowledge
+        // Graph/Facts panel (see KnowledgeGraphSection.tsx) — they are a
+        // student-facing reference only and must never be fed into the
+        // voice Agent's own context/instructions (2026-08-24 explicit
+        // request), so they are deliberately NOT queried/passed here.
         var instructions = isQaMode
             ? BuildStructuredLearningQaInstructions(
-                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, knowledgeFacts, personName, step.Section.Document.DocumentName)
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document.DocumentName)
             : BuildStructuredLearningStepInstructions(
-                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, knowledgeFacts, personName, step.Section.Document.DocumentName);
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document.DocumentName);
 
         try
         {
@@ -660,7 +657,7 @@ public sealed class VoiceTutorSessionFunction
     /// heuristic used for DeepDive (<see cref="DetectLanguageCode"/>) instead.
     /// </summary>
     private static string BuildStructuredLearningStepInstructions(
-        string subchapterTitle, string chapterTitle, string stepContent, IReadOnlyList<string> knowledgeFacts, string? personName, string? documentName)
+        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName)
     {
         var isEnglish = DetectLanguageCode(stepContent) == "en";
         var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
@@ -672,9 +669,6 @@ public sealed class VoiceTutorSessionFunction
         var greetingWithDocument = isEnglish
             ? (document is null ? $"{greeting}." : $"{greeting}, from \"{document}\".")
             : (document is null ? $"{greeting}." : $"{greeting}, de \"{document}\".");
-        var factsText = knowledgeFacts.Count == 0
-            ? "No additional Knowledge Facts are available for this section."
-            : string.Join("\n", knowledgeFacts.Select((fact, index) => $"{index + 1}. {fact}"));
 
         if (isEnglish)
         {
@@ -702,11 +696,7 @@ public sealed class VoiceTutorSessionFunction
                   is the single most important rule in this prompt. Only stop if the student actively
                   interrupts you out loud with a question; answer it (grounded strictly in the content
                   below), then immediately resume teaching where you left off.
-                - AFTER teaching the ENTIRE section content, you MUST teach the KNOWLEDGE FACTS below before
-                asking for questions. Say that these are the Knowledge Facts of the Engram, explain every
-                numbered fact in order using clear, brief language, and do not skip them. If the list says
-                that no facts are available, say that no Knowledge Facts were generated for this section.
-                - ONLY after you have finished explaining ALL Knowledge Facts, ask ONE time whether the student
+                - ONCE you have finished teaching the ENTIRE section content, ask ONE time whether the student
                 has any questions. If they ask something, answer it and ask once more if they have another
                 question — repeat only as long as the student keeps asking, never repeat the class itself.
                 - As soon as the student says they have no (more) questions, STOP immediately: say once,
@@ -716,12 +706,6 @@ public sealed class VoiceTutorSessionFunction
 
                 SECTION CONTENT (your only source of truth):
                 {stepContent}
-
-                KNOWLEDGE FACTS ABOUT THIS ENGRAM:
-                After teaching the section content, explain these Knowledge Facts clearly and briefly,
-                identifying them as the facts of the Engram. Treat them as authoritative but do not add
-                information beyond the statements below.
-                {factsText}
                 """;
         }
 
@@ -750,11 +734,7 @@ public sealed class VoiceTutorSessionFunction
               esta es la regla más importante de todo este prompt. Solo detente si el estudiante te
               interrumpe en voz alta con una pregunta; respóndela (basándote estrictamente en el contenido de
               abajo) y retoma la clase de inmediato donde la dejaste.
-            - DESPUÉS de enseñar TODO el contenido de la sección, DEBES enseñar los KNOWLEDGE FACTS de abajo
-            antes de preguntar si hay dudas. Di que son los Knowledge Facts del Engram, explica cada fact
-            numerado en orden con lenguaje claro y breve, y no omitas ninguno. Si la lista indica que no hay
-            facts disponibles, di que no se generaron Knowledge Facts para esta sección.
-            - SOLO después de terminar de explicar TODOS los Knowledge Facts, pregunta UNA vez si el estudiante
+            - EN CUANTO termines de enseñar TODO el contenido de la sección, pregunta UNA vez si el estudiante
             tiene dudas. Si pregunta algo, respóndelo y luego pregunta una vez más si tiene otra duda — repite
             solo mientras el estudiante siga preguntando, nunca repitas la clase en bucle.
             - En cuanto el estudiante diga que no tiene (más) dudas, DETENTE de inmediato: di una sola vez,
@@ -764,12 +744,6 @@ public sealed class VoiceTutorSessionFunction
 
             CONTENIDO DE LA SECCIÓN (tu única fuente de verdad):
             {stepContent}
-
-            KNOWLEDGE FACTS DE ESTE ENGRAM:
-            Después de enseñar el contenido de la sección, explica estos Knowledge Facts de forma clara
-            y breve, identificándolos como los facts del Engram. Trátalos como información autorizada, pero
-            no agregues información que no aparezca en las afirmaciones siguientes.
-            {factsText}
             """;
     }
 
@@ -783,7 +757,7 @@ public sealed class VoiceTutorSessionFunction
     /// then wait for the next one), just over a different channel.
     /// </summary>
     private static string BuildStructuredLearningQaInstructions(
-        string subchapterTitle, string chapterTitle, string stepContent, IReadOnlyList<string> knowledgeFacts, string? personName, string? documentName)
+        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName)
     {
         var isEnglish = DetectLanguageCode(stepContent) == "en";
         var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
@@ -795,9 +769,6 @@ public sealed class VoiceTutorSessionFunction
         var greetingWithDocument = isEnglish
             ? (document is null ? greeting : $"{greeting} About \"{document}\".")
             : (document is null ? greeting : $"{greeting} Sobre \"{document}\".");
-        var factsText = knowledgeFacts.Count == 0
-            ? "No additional Knowledge Facts are available for this section."
-            : string.Join("\n", knowledgeFacts.Select((fact, index) => $"{index + 1}. {fact}"));
 
         if (isEnglish)
         {
@@ -814,8 +785,8 @@ public sealed class VoiceTutorSessionFunction
 
                 For the rest of the conversation:
                 - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn.
-                - Answer each question the student asks, grounded STRICTLY in the section content and
-                  Knowledge Facts below — never invent facts, numbers, or examples that aren't there.
+                - Answer each question the student asks, grounded STRICTLY in the section content below —
+                  never invent facts, numbers, or examples that aren't there.
                 - Keep answers brief and conversational — a direct answer, not a lecture.
                 - After answering, STOP and wait silently for the next question — never volunteer more
                   content unprompted, never resume "teaching" on your own.
@@ -825,9 +796,6 @@ public sealed class VoiceTutorSessionFunction
 
                 SECTION CONTENT (your only source of truth):
                 {stepContent}
-
-                KNOWLEDGE FACTS ABOUT THIS ENGRAM:
-                {factsText}
                 """;
         }
 
@@ -845,8 +813,7 @@ public sealed class VoiceTutorSessionFunction
             Para el resto de la conversación:
             - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos.
             - Responde cada pregunta que haga el estudiante, basándote ESTRICTAMENTE en el contenido de la
-              sección y los Knowledge Facts de abajo — nunca inventes datos, cifras ni ejemplos que no estén
-              ahí.
+              sección de abajo — nunca inventes datos, cifras ni ejemplos que no estén ahí.
             - Mantén las respuestas breves y conversacionales — una respuesta directa, no una clase.
             - Después de responder, DETENTE y espera en silencio la siguiente pregunta — nunca sigas
               explicando contenido por tu cuenta, nunca retomes "enseñar" sin que te lo pidan.
@@ -856,9 +823,6 @@ public sealed class VoiceTutorSessionFunction
 
             CONTENIDO DE LA SECCIÓN (tu única fuente de verdad):
             {stepContent}
-
-            KNOWLEDGE FACTS DE ESTE ENGRAM:
-            {factsText}
             """;
     }
 

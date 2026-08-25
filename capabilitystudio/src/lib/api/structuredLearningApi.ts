@@ -48,6 +48,7 @@ export interface StartStructuredLearningExtractionRequest {
   pedagogicalAudience?: string | null;
   maxDeepDiveCardsPerNode?: number | null;
   includeProductionStep?: boolean;
+  includeHypothesisStep?: boolean;
   includeRecallStep?: boolean;
   recallItemsRequired?: number | null;
   includeAssessmentStep?: boolean;
@@ -540,6 +541,7 @@ export interface StructuredLearningDocumentDetail {
   IncludeAssessmentStep: boolean;
   AssessmentQuestionType: StructuredLearningAssessmentQuestionType;
   AssessmentQuestionsPerRound: number | null;
+  ShowKnowledgeGraphToLearners: boolean;
   Sections: StructuredLearningSectionDetail[];
 }
 
@@ -549,8 +551,8 @@ export function getStructuredLearningDocument(documentId: string): Promise<Struc
 
 export function updateStructuredLearningVisibility(
   documentId: string,
-  visibility: { isGlobal: boolean; isPublished: boolean },
-): Promise<{ StructuredLearningDocumentId: string; IsGlobal: boolean; IsPublished: boolean }> {
+  visibility: { isGlobal: boolean; isPublished: boolean; showKnowledgeGraphToLearners: boolean },
+): Promise<{ StructuredLearningDocumentId: string; IsGlobal: boolean; IsPublished: boolean; ShowKnowledgeGraphToLearners: boolean }> {
   return apiPatch(`/studio/structured-learning/${documentId}/visibility`, visibility);
 }
 

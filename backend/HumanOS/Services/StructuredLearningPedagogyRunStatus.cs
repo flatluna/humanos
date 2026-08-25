@@ -56,7 +56,7 @@ public sealed class StructuredLearningPedagogyRunStatus
     {
         RunId = runId,
         Stage = StructuredLearningPedagogyStage.Completed,
-        CurrentStepDescription = "Completado",
+        CurrentStepDescription = "Completed",
         TotalSections = result.SectionsCompleted + result.SectionsFailed,
         CompletedSections = result.SectionsCompleted,
         Result = result

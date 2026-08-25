@@ -20,6 +20,7 @@ public sealed class UpdateStructuredLearningVisibilityFunction
     {
         public bool IsGlobal { get; set; }
         public bool IsPublished { get; set; }
+        public bool? ShowKnowledgeGraphToLearners { get; set; }
     }
 
     [Function("UpdateStructuredLearningVisibility")]
@@ -52,6 +53,10 @@ public sealed class UpdateStructuredLearningVisibilityFunction
 
         document.IsGlobal = body.IsGlobal;
         document.IsPublished = body.IsPublished;
+        if (body.ShowKnowledgeGraphToLearners.HasValue)
+        {
+            document.ShowKnowledgeGraphToLearners = body.ShowKnowledgeGraphToLearners.Value;
+        }
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return await FunctionResponseFactory.SuccessResponseAsync(
@@ -60,7 +65,8 @@ public sealed class UpdateStructuredLearningVisibilityFunction
             {
                 document.StructuredLearningDocumentId,
                 document.IsGlobal,
-                document.IsPublished
+                document.IsPublished,
+                document.ShowKnowledgeGraphToLearners
             },
             cancellationToken: cancellationToken);
     }

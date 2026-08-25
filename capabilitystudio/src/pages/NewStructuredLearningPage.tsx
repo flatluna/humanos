@@ -6,8 +6,12 @@ import {
   ArrowRight,
   FileText,
   Globe,
+  GraduationCap,
+  Layers,
   MessageSquareText,
+  Network,
   RefreshCw,
+  SlidersHorizontal,
   Wand2,
   ListTree,
   Sparkles,
@@ -35,7 +39,6 @@ import StepIndicator from '../components/StepIndicator';
 import TypeOptionCard from '../components/TypeOptionCard';
 import FileDropzone from '../components/FileDropzone';
 import SearchableCombobox from '../components/SearchableCombobox';
-import { getSubjectIcon } from '../lib/subjectVisuals';
 import { useAuth } from '../auth/AuthContext';
 
 const STEPS_KEY = 'newStructuredLearning.steps';
@@ -103,6 +106,7 @@ export default function NewStructuredLearningPage() {
   const [pedagogicalAudience, setPedagogicalAudience] = useState<'Standard' | 'YoungLearner'>('Standard');
   const [maxDeepDiveCardsPerNode, setMaxDeepDiveCardsPerNode] = useState<number>(3);
   const [includeProductionStep, setIncludeProductionStep] = useState(true);
+  const [includeHypothesisStep, setIncludeHypothesisStep] = useState(true);
   const [includeRecallStep, setIncludeRecallStep] = useState(true);
   const [recallItemsRequired, setRecallItemsRequired] = useState('');
   const [includeAssessmentStep, setIncludeAssessmentStep] = useState(true);
@@ -239,8 +243,9 @@ export default function NewStructuredLearningPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const canAdvanceFromStep1 = documentName.trim().length > 0 && !!subjectId && !!topicId;
-  const canAdvanceFromStep3 = sourceType === 'pdf' ? !!file : ideaText.trim().length > 0;
+  const canAdvanceFromStep1 = documentName.trim().length > 0;
+  const canAdvanceFromStep2 = !!subjectId && !!topicId;
+  const canAdvanceFromStep8 = sourceType === 'pdf' ? !!file : ideaText.trim().length > 0;
 
   /** Runs the cheap detection-only outline preview — same generic
    * endpoint the Graph/Traditional wizards use. Passes documentType when
@@ -298,7 +303,7 @@ export default function NewStructuredLearningPage() {
   }
 
   async function goToDesignStep() {
-    setStep(5);
+    setStep(6);
     if (outline === null && outlineSource === null && !outlineLoading) {
       await loadOutlinePreview();
     }
@@ -396,6 +401,7 @@ export default function NewStructuredLearningPage() {
         pedagogicalAudience,
         maxDeepDiveCardsPerNode: Math.max(1, Math.min(10, maxDeepDiveCardsPerNode)),
         includeProductionStep,
+        includeHypothesisStep,
         includeRecallStep,
         recallItemsRequired: recallItemsRequired.trim() === '' ? null : Number.parseInt(recallItemsRequired, 10),
         includeAssessmentStep,
@@ -441,6 +447,9 @@ export default function NewStructuredLearningPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
+      <h1 className="mb-8 whitespace-nowrap bg-gradient-to-r from-emerald-300 via-sky-400 to-violet-400 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl">
+        {t('newStructuredLearning.studioBuilderTitle')}
+      </h1>
       <div className="mb-10">
         <StepIndicator steps={steps} currentStep={step} />
       </div>
@@ -489,28 +498,28 @@ export default function NewStructuredLearningPage() {
             </div>
           </Field>
 
+          <div className="border-t border-white/10 pt-6">
+            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step2Title')}</h3>
+            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step2Subtitle')}</p>
+          </div>
+
           <Field label={t('newCapability.domainLabel')} required>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {subjects.map((subject) => {
-                const Icon = getSubjectIcon(subject.Code);
-                const active = subjectId === subject.SubjectId;
-                return (
-                  <button
-                    key={subject.SubjectId}
-                    type="button"
-                    onClick={() => setSubjectId(active ? '' : subject.SubjectId)}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
-                      active
-                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{subject.Name}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <SearchableCombobox
+              value={subjects.find((subject) => subject.SubjectId === subjectId)?.Name ?? ''}
+              onChange={(value) => {
+                if (!value) {
+                  setSubjectId('');
+                  setTopicId('');
+                }
+              }}
+              onSelect={(option) => {
+                if (option.id !== subjectId) setTopicId('');
+                setSubjectId(option.id);
+              }}
+              options={subjects.map((subject) => ({ id: subject.SubjectId, label: subject.Name }))}
+              placeholder={t('newStructuredLearning.domainPlaceholder')}
+              emptyOptionsText={t('newStructuredLearning.domainNoOptions')}
+            />
           </Field>
 
           {subjectId && (
@@ -530,6 +539,17 @@ export default function NewStructuredLearningPage() {
                 emptyOptionsText={t('newStructuredLearning.domainTypeNoOptions')}
               />
             </Field>
+          )}
+
+          <div className="border-t border-white/10 pt-6">
+            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step3Title')}</h3>
+            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step3Subtitle')}</p>
+          </div>
+
+          {!isCompanyAccount && (
+            <p className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-slate-400">
+              {t('newStructuredLearning.step3PersonalAccountHint')}
+            </p>
           )}
 
           {isCompanyAccount && (
@@ -644,6 +664,17 @@ export default function NewStructuredLearningPage() {
             </>
           )}
 
+          <WizardNav onNext={() => setStep(2)} nextDisabled={!canAdvanceFromStep1 || !canAdvanceFromStep2} />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="animate-fade-in space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step4Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step4Subtitle')}</p>
+          </div>
+
           <Field label={t('newCapability.pedagogicalAudienceLabel')} hint={t('newCapability.pedagogicalAudienceHint')}>
             <div className="grid grid-cols-2 gap-2">
               {(
@@ -700,6 +731,11 @@ export default function NewStructuredLearningPage() {
             </label>
           </Field>
 
+          <div className="border-t border-white/10 pt-6">
+            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step5Title')}</h3>
+            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step5Subtitle')}</p>
+          </div>
+
           <div className="space-y-4 rounded-xl border-2 border-brand-400/50 bg-brand-500/[0.07] p-4 shadow-[0_0_0_1px_rgba(99,102,241,0.15)]">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 shrink-0 text-brand-300" />
@@ -708,6 +744,18 @@ export default function NewStructuredLearningPage() {
               </p>
             </div>
             <p className="text-xs text-slate-400">{t('newStructuredLearning.accessibilityStepsHint')}</p>
+
+            <Field label={t('newStructuredLearning.includeHypothesisStepLabel')} hint={t('newStructuredLearning.includeHypothesisStepHint')}>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={includeHypothesisStep}
+                  onChange={(e) => setIncludeHypothesisStep(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
+                />
+                {t('newStructuredLearning.includeHypothesisStepToggle')}
+              </label>
+            </Field>
 
             <Field label={t('newStructuredLearning.includeRecallStepLabel')}>
               <label className="flex items-center gap-2 text-sm text-slate-300">
@@ -792,6 +840,11 @@ export default function NewStructuredLearningPage() {
             />
           </Field>
 
+          <div className="border-t border-white/10 pt-6">
+            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step6Title')}</h3>
+            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step6Subtitle')}</p>
+          </div>
+
           <Field label={t('newStructuredLearning.knowledgeGraphEntitiesLabel')} hint={t('newStructuredLearning.knowledgeGraphEntitiesHint')}>
             <label className="flex items-center gap-2 text-sm text-slate-300">
               <input
@@ -817,15 +870,15 @@ export default function NewStructuredLearningPage() {
             </label>
           </Field>
 
-          <WizardNav onNext={() => setStep(2)} nextDisabled={!canAdvanceFromStep1} />
+          <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} />
         </div>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step2Title')}</h2>
-            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step2Subtitle')}</p>
+            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step7Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step7Subtitle')}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -845,18 +898,18 @@ export default function NewStructuredLearningPage() {
             />
           </div>
 
-          <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} />
+          <WizardNav onBack={() => setStep(2)} onNext={() => setStep(4)} />
         </div>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step3Title')}</h2>
+            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step8Title')}</h2>
             <p className="mt-1 text-slate-400">
               {sourceType === 'pdf'
-                ? t('newStructuredLearning.step3SubtitlePdf')
-                : t('newStructuredLearning.step3SubtitleText')}
+                ? t('newStructuredLearning.step8SubtitlePdf')
+                : t('newStructuredLearning.step8SubtitleText')}
             </p>
           </div>
 
@@ -874,15 +927,15 @@ export default function NewStructuredLearningPage() {
             </Field>
           )}
 
-          <WizardNav onBack={() => setStep(2)} onNext={() => setStep(4)} nextDisabled={!canAdvanceFromStep3} />
+          <WizardNav onBack={() => setStep(3)} onNext={() => setStep(5)} nextDisabled={!canAdvanceFromStep8} />
         </div>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step4Title')}</h2>
-            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step4Subtitle')}</p>
+            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step9Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step9Subtitle')}</p>
           </div>
 
           <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -897,15 +950,15 @@ export default function NewStructuredLearningPage() {
             />
           </div>
 
-          <WizardNav onBack={() => setStep(3)} onNext={goToDesignStep} />
+          <WizardNav onBack={() => setStep(4)} onNext={goToDesignStep} />
         </div>
       )}
 
-      {step === 5 && (
+      {step === 6 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step5Title')}</h2>
-            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step5Subtitle')}</p>
+            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step10Title')}</h2>
+            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step10Subtitle')}</p>
           </div>
 
           {outlineLoading && (
@@ -1111,7 +1164,7 @@ export default function NewStructuredLearningPage() {
           )}
 
           <WizardNav
-            onBack={() => setStep(4)}
+            onBack={() => setStep(5)}
             onNext={handleSubmit}
             nextDisabled={outlineLoading || !outline || outline.length === 0 || submitting}
             nextLabel={submitting ? t('newStructuredLearning.starting') : t('newStructuredLearning.extractSections')}

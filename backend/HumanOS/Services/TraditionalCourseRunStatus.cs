@@ -44,7 +44,7 @@ public sealed class TraditionalCourseRunStatus
     {
         RunId = runId,
         Stage = TraditionalCourseStage.Completed,
-        CurrentStepDescription = "Completado",
+        CurrentStepDescription = "Completed",
         Result = result
     };
 }

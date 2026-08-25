@@ -51,7 +51,7 @@ public sealed class PdfCapabilityGraphRunStatus
     {
         RunId = runId,
         Stage = PdfCapabilityGraphStage.Completed,
-        CurrentStepDescription = "Completado",
+        CurrentStepDescription = "Completed",
         Result = result
     };
 }

@@ -382,6 +382,20 @@ var host = new HostBuilder()
         // TutorService above).
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningAssessmentAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningRecallAgent>();
+
+        // Film Productions wizard (2026-08-24) — reuses GraphIllustrationImageService
+        // and CapabilityGraphIllustrationStorageService (already registered above).
+        services.AddSingleton<HumanOS.Agents.Studio.FilmSceneContentAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.FilmScriptBreakdownAgent>();
+        // Scoped (not Singleton like other orchestrators): depends on the
+        // Scoped CapabilityGraphIllustrationStorageService, and this host
+        // has DI scope validation enabled, unlike whatever allowed
+        // StructuredLearningVideoOrchestrator's same Singleton->Scoped
+        // dependency to slip through.
+        services.AddScoped<HumanOS.Services.FilmProductionOrchestrator>();
+        // Fase 2 (2026-08-24) — per-scene review/edit video generation via
+        // Gemini Omni Flash image-to-video. Same Scoped rationale as above.
+        services.AddScoped<HumanOS.Services.FilmProductionVideoOrchestrator>();
         services.AddScoped<StructuredLearningAssessmentEngine>();
         services.AddScoped<StructuredLearningRecallEngine>();
 

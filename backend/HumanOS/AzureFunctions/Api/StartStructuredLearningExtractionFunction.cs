@@ -87,6 +87,8 @@ public sealed class StartStructuredLearningExtractionFunction
 
         public bool? IncludeRecallStep { get; set; }
 
+        public bool? IncludeHypothesisStep { get; set; }
+
         public int? RecallItemsRequired { get; set; }
 
         public bool? IncludeAssessmentStep { get; set; }
@@ -173,6 +175,7 @@ public sealed class StartStructuredLearningExtractionFunction
             MaxDeepDiveCardsPerNode = body.MaxDeepDiveCardsPerNode,
             IncludeProductionStep = body.IncludeProductionStep,
             IncludeRecallStep = body.IncludeRecallStep,
+            IncludeHypothesisStep = body.IncludeHypothesisStep,
             RecallItemsRequired = body.RecallItemsRequired,
             IncludeAssessmentStep = body.IncludeAssessmentStep,
             AssessmentQuestionType = body.AssessmentQuestionType,

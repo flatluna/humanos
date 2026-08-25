@@ -53,7 +53,6 @@ import {
   type StructuredLearningSectionVideo,
   type StructuredLearningVideoRunStatus,
 } from '../lib/api/structuredLearningApi';
-import { getStructuredLearningKnowledgeFacts, type StructuredLearningKnowledgeFact } from '../lib/api/structuredLearningApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
@@ -320,7 +319,11 @@ export default function StructuredLearningSectionPage() {
   const previousSection = currentIndex > 0 ? sections[currentIndex - 1] : null;
   const nextSection = currentIndex >= 0 && currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null;
 
-  const steps = currentSection?.Steps ?? [];
+  // The Production ("Apply it") step is temporarily disabled (2026-08-23,
+  // explicit user request) — rather than showing it in the step network
+  // just to display a "coming soon" placeholder, exclude it entirely from
+  // navigation so students never see or click through a dead step.
+  const steps = (currentSection?.Steps ?? []).filter((s) => s.StepType !== 'Production');
   const currentStep = steps[stepIndex] ?? null;
   const isFirstStep = stepIndex === 0;
   const isLastStep = stepIndex === steps.length - 1;
@@ -402,7 +405,7 @@ export default function StructuredLearningSectionPage() {
             onClick={() => { setKnowledgeGraphInitialView('graph'); setShowKnowledgeGraph(true); }}
             className="mt-4 inline-flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20"
           >
-            <Network className="h-4 w-4" /> Ver Knowledge Graph
+            <Network className="h-4 w-4" /> {t('structuredLearningCourse.viewKnowledgeGraph')}
           </button>
         )}
         {documentId && sectionId && (
@@ -411,7 +414,7 @@ export default function StructuredLearningSectionPage() {
             onClick={() => { setKnowledgeGraphInitialView('facts'); setShowKnowledgeGraph(true); }}
             className="ml-2 mt-4 inline-flex items-center gap-2 rounded-xl border border-brand-400/30 bg-brand-500/10 px-3 py-2 text-xs font-semibold text-brand-200 transition hover:border-brand-300/60 hover:bg-brand-500/20"
           >
-            Ver Knowledge Facts
+            {t('structuredLearningCourse.viewKnowledgeFacts')}
           </button>
         )}
         <div className="mt-4 flex justify-center">
@@ -570,29 +573,18 @@ function StepContent({
   onStepUpdated: (updated: StructuredLearningStepDetail) => void;
 }) {
   const { t } = useTranslation();
-  const [knowledgeFacts, setKnowledgeFacts] = useState<StructuredLearningKnowledgeFact[]>([]);
-  const [knowledgeFactsLoading, setKnowledgeFactsLoading] = useState(false);
   // Which kind of item the Learn wizard is currently showing (2026-08-22) —
-  // while it's on a Video, the tutor orb/static illustration/Knowledge Facts
-  // are hidden so only the video is on screen (mirrors the outer stepper's
-  // own "one thing at a time" rule).
+  // while it's on a Video, the tutor orb/static illustration are hidden so
+  // only the video is on screen (mirrors the outer stepper's own "one thing
+  // at a time" rule).
   const [teachingWizardItemType, setTeachingWizardItemType] = useState<'Text' | 'Video'>('Text');
+  // Bumped whenever a video is added/deleted/merged (VideoGenerationBox) so
+  // TeachingTimelineEditor's own independent video list re-fetches instead
+  // of going stale until a full page reload.
+  const [videoRefreshKey, setVideoRefreshKey] = useState(0);
   const meta = STEP_META[step.StepType] ?? { labelKey: step.StepType, Icon: BookOpenText };
   const isEditing = mode === 'edit';
   const isEditableStepType = step.StepType === 'Hypothesis' || step.StepType === 'Teaching' || step.StepType === 'Production';
-
-  useEffect(() => {
-    if (step.StepType !== 'Teaching') {
-      setKnowledgeFacts([]);
-      return;
-    }
-
-    setKnowledgeFactsLoading(true);
-    getStructuredLearningKnowledgeFacts(sectionId)
-      .then((response) => setKnowledgeFacts(response.KnowledgeFacts ?? []))
-      .catch(() => setKnowledgeFacts([]))
-      .finally(() => setKnowledgeFactsLoading(false));
-  }, [sectionId, step.StepType]);
 
   const teachingShowsVideo = step.StepType === 'Teaching' && !isEditing && teachingWizardItemType === 'Video';
 
@@ -622,16 +614,12 @@ function StepContent({
             step.StepType !== 'Hypothesis' && !(step.StepType === 'Production' && !isEditing) && step.Content && <RichStepContent content={step.Content} />
           )}
 
-          {step.StepType === 'Teaching' && !isEditing && !teachingShowsVideo && (
-            <KnowledgeFactsBlock facts={knowledgeFacts} loading={knowledgeFactsLoading} />
-          )}
-
           {isEditing && isEditableStepType && (
             <>
               <StepEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
               <ManualEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
-              {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} />}
-              {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} />}
+              {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} onVideosChanged={() => setVideoRefreshKey((k) => k + 1)} />}
+              {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} refreshKey={videoRefreshKey} />}
             </>
           )}
 
@@ -660,24 +648,6 @@ function StepContent({
         </div>
       </div>
     </div>
-  );
-}
-
-function KnowledgeFactsBlock({ facts, loading }: { facts: StructuredLearningKnowledgeFact[]; loading: boolean }) {
-  if (loading) {
-    return <p className="mt-8 text-sm text-slate-500">Cargando Knowledge Facts...</p>;
-  }
-
-  if (facts.length === 0) return null;
-
-  return (
-    <section className="mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.05] p-5" aria-labelledby="knowledge-facts-title">
-      <h3 id="knowledge-facts-title" className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-300">Knowledge Facts</h3>
-      <p className="mt-2 text-sm leading-6 text-emerald-100/80">Facts clave de este Engram</p>
-      <ul className="mt-4 space-y-3 text-[15px] leading-7 text-slate-200">
-        {facts.map((fact) => <li key={fact.KnowledgeFactId} className="border-l-2 border-emerald-400/40 pl-3">{fact.Statement}</li>)}
-      </ul>
-    </section>
   );
 }
 
@@ -1101,10 +1071,12 @@ function TeachingTimelineEditor({
   sectionId,
   step,
   onUpdated,
+  refreshKey,
 }: {
   sectionId: string;
   step: StructuredLearningStepDetail;
   onUpdated: (updated: StructuredLearningStepDetail) => void;
+  refreshKey: number;
 }) {
   const { t } = useTranslation();
   const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
@@ -1116,12 +1088,13 @@ function TeachingTimelineEditor({
 
   useEffect(() => {
     let cancelled = false;
+    setLoadingVideos(true);
     listStructuredLearningSectionVideos(sectionId)
       .then((list) => { if (!cancelled) setVideos(list); })
       .catch(() => { if (!cancelled) setVideos([]); })
       .finally(() => { if (!cancelled) setLoadingVideos(false); });
     return () => { cancelled = true; };
-  }, [sectionId]);
+  }, [sectionId, refreshKey]);
 
   useEffect(() => {
     if (loadingVideos) return;
@@ -1326,34 +1299,41 @@ function TeachingTimelineWizard({
       </div>
 
       {current.Type === 'Video' ? (
-        <video
-          src={apiImageUrl(`/illustrations/structured-learning/${current.IllustrationId}/image`)}
-          controls
-          className="w-full rounded-xl bg-black"
-        />
+        <div className="space-y-2">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-brand-300">
+            <Video className="h-4 w-4" /> {t('structuredLearningCourse.videoStartPrompt')}
+          </p>
+          <video
+            src={apiImageUrl(`/illustrations/structured-learning/${current.IllustrationId}/image`)}
+            controls
+            className="w-full rounded-xl bg-black"
+          />
+        </div>
       ) : (
         <RichStepContent content={step.Content} />
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          disabled={isFirst}
-          onClick={() => setIndex((i) => Math.max(0, i - 1))}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> {t('structuredLearningCourse.wizardPrevious')}
-        </button>
-        <span className="text-[11px] text-slate-500">{index + 1} / {items.length}</span>
-        <button
-          type="button"
-          disabled={isLast}
-          onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          {t('structuredLearningCourse.wizardNext')} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-        </button>
-      </div>
+      {items.length > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            disabled={isFirst}
+            onClick={() => setIndex((i) => Math.max(0, i - 1))}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> {t('structuredLearningCourse.wizardPrevious')}
+          </button>
+          <span className="text-[11px] text-slate-500">{index + 1} / {items.length}</span>
+          <button
+            type="button"
+            disabled={isLast}
+            onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            {t('structuredLearningCourse.wizardNext')} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1366,9 +1346,11 @@ function TeachingTimelineWizard({
 function VideoGenerationBox({
   sectionId,
   step,
+  onVideosChanged,
 }: {
   sectionId: string;
   step: StructuredLearningStepDetail;
+  onVideosChanged: () => void;
 }) {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState('');
@@ -1404,6 +1386,7 @@ function VideoGenerationBox({
         setRunStatus(updated);
         if (updated.Stage === 'Completed') {
           listStructuredLearningSectionVideos(sectionId).then(setVideos).catch(() => {});
+          onVideosChanged();
         }
       } catch (err) {
         setRunStatus({ ...runStatus, Stage: 'Failed', ErrorMessage: err instanceof Error ? err.message : String(err) });
@@ -1448,6 +1431,7 @@ function VideoGenerationBox({
     try {
       await deleteStructuredLearningVideo(illustrationId);
       setVideos((prev) => prev.filter((v) => v.IllustrationId !== illustrationId));
+      onVideosChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1481,6 +1465,7 @@ function VideoGenerationBox({
       setMergeMode(false);
       const updated = await listStructuredLearningSectionVideos(sectionId);
       setVideos(updated);
+      onVideosChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1531,8 +1516,11 @@ function VideoGenerationBox({
 
       {!loadingVideos && videos.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
-          {videos.map((video) => (
+          {videos.map((video, videoIndex) => (
             <div key={video.IllustrationId} className="relative">
+              <span className="absolute left-1.5 top-1.5 z-10 rounded-full border border-white/20 bg-slate-900/90 px-2 py-0.5 text-[10px] font-bold text-violet-200 shadow">
+                {t('structuredLearningCourse.timelineVideoItemLabel', { number: videoIndex + 1 })}
+              </span>
               <video
                 src={apiImageUrl(`/illustrations/structured-learning/${video.IllustrationId}/image?v=${trimVersions[video.IllustrationId] ?? 0}`)}
                 controls={!mergeMode}
@@ -1634,6 +1622,11 @@ function VideoGenerationBox({
               {t('structuredLearningCourse.videoMergeButton')}
             </button>
           </div>
+          {merging && (
+            <p className="flex items-center gap-1.5 text-xs text-violet-300">
+              <Loader2 className="h-3 w-3 animate-spin" /> {t('structuredLearningCourse.videoMerging')}
+            </p>
+          )}
           {error && <p className="text-xs text-red-300">{error}</p>}
         </div>
       )}
@@ -2066,6 +2059,7 @@ function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
 }
 
 function ZoomableIllustration({ illustrationId, alt, className }: { illustrationId: string; alt: string; className: string }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -2080,15 +2074,15 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
   const src = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="group relative block w-full cursor-zoom-in" aria-label="Ampliar ilustración">
+      <button type="button" onClick={() => setOpen(true)} className="group relative block w-full cursor-zoom-in" aria-label={t('structuredLearningCourse.enlargeIllustration')}>
         <img src={src} alt={alt} className={className} />
-        <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">Ampliar</span>
+        <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">{t('structuredLearningCourse.enlargeIllustrationTooltip')}</span>
       </button>
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Ilustración ampliada" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={t('structuredLearningCourse.enlargedIllustration')} onClick={() => setOpen(false)}>
           <div className="relative flex max-h-[95vh] max-w-[95vw] items-center justify-center" onClick={(event) => event.stopPropagation()}>
             <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
-            <button type="button" onClick={() => setOpen(false)} className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800" aria-label="Cerrar ilustración">
+            <button type="button" onClick={() => setOpen(false)} className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800" aria-label={t('structuredLearningCourse.closeIllustration')}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -2130,12 +2124,12 @@ function DeepDiveQuiz({
     cards = [];
   }
 
-  // Free card-to-card navigation in Review & acceptance/Edit (2026-08-23,
-  // explicit user request): the real-mode "explain what you just learned"
-  // grading gate (below) only applies to `real` — reviewers/authors get every
-  // card marked reviewable immediately (see the effect below), no submission
-  // required, same as clicking an already-mastered card in real mode.
-  const freeNavigation = mode !== 'real';
+  // Free card-to-card navigation, no forced Q&A gate (2026-08-23, explicit
+  // user request: don't make the student answer a question to advance —
+  // let them read/hear the card's explanation and move to the next one
+  // freely). Previously this only applied to Review & acceptance/Edit and
+  // forced a grading loop in `real` mode; now every mode behaves the same.
+  const freeNavigation = true;
 
   const startedRef = useRef(false);
   const completedRef = useRef(false);
@@ -2158,9 +2152,10 @@ function DeepDiveQuiz({
 
   useEffect(() => {
     if (freeNavigation) {
-      // No grading/progress to fetch in Review & acceptance/Edit — the
-      // outer step is already ungated for these modes (see canAdvancePastCurrentStep).
-      markCompleteOnce();
+      // Unlike Review & acceptance/Edit (already ungated regardless), here
+      // the student must page through to the LAST card before the outer
+      // step unlocks — see the "Finish" button below, which is the only
+      // thing that calls markCompleteOnce() in this branch.
       return;
     }
     if (startedRef.current) return;
@@ -2279,14 +2274,23 @@ function DeepDiveQuiz({
             >
               {t('structuredLearningCourse.wizardPrevious')}
             </button>
-            <button
-              type="button"
-              disabled={cardIndex === cards.length - 1}
-              onClick={() => setCardIndex((i) => Math.min(cards.length - 1, i + 1))}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              {t('structuredLearningCourse.wizardNext')}
-            </button>
+            {cardIndex < cards.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => setCardIndex((i) => Math.min(cards.length - 1, i + 1))}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06]"
+              >
+                {t('structuredLearningCourse.wizardNext')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => markCompleteOnce()}
+                className="rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                {t('structuredLearningCourse.deepDiveContinue')}
+              </button>
+            )}
           </div>
         )}
       </div>

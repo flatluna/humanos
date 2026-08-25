@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { saveLaunchSession } from '../auth/launchSession';
 
@@ -18,6 +19,7 @@ const DEFAULT_EXCHANGE_URL = 'http://localhost:7072/api/studio-launch/exchange';
  *  docs/STUDIO_LAUNCH_INTEGRATION.md — and optionally passing its own
  *  `exchangeUrl` query param if it isn't the NGO backend. */
 export default function LaunchPage() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export default function LaunchPage() {
     const exchangeUrl = searchParams.get('exchangeUrl') ?? DEFAULT_EXCHANGE_URL;
 
     if (!code) {
-      setError('Falta el código de acceso. Abre Studio desde el botón "Studio" de tu aplicación.');
+      setError(t('launchPage.missingCode'));
       return;
     }
 
@@ -44,19 +46,19 @@ export default function LaunchPage() {
         });
 
         if (!response.ok) {
-          setError('El enlace de acceso es inválido o expiró. Vuelve a hacer clic en "Studio" desde tu aplicación.');
+          setError(t('launchPage.invalidOrExpired'));
           return;
         }
 
         const data = (await response.json()) as ExchangeResponse;
         const session = saveLaunchSession(data.token);
         if (!session) {
-          setError('El token de acceso recibido no es válido. Inténtalo de nuevo desde tu aplicación.');
+          setError(t('launchPage.invalidToken'));
           return;
         }
         navigate('/', { replace: true });
       } catch {
-        setError('No se pudo validar el acceso. Verifica tu conexión e inténtalo de nuevo desde tu aplicación.');
+        setError(t('launchPage.validationFailed'));
       }
     })();
   }, [navigate, searchParams]);
@@ -69,7 +71,7 @@ export default function LaunchPage() {
       ) : (
         <>
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-brand-400" />
-          <p className="text-sm text-slate-400">Validando acceso…</p>
+          <p className="text-sm text-slate-400">{t('launchPage.validating')}</p>
         </>
       )}
     </div>

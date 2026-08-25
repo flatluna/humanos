@@ -89,6 +89,16 @@ public sealed class StructuredLearningDocument
     /// (<see cref="HumanOS.Services.StructuredLearningConnectionExtractionService"/>).</summary>
     public bool IncludeKnowledgeGraphConnections { get; set; } = true;
 
+    /// <summary>Whether the "Knowledge Graph"/"Knowledge Facts" viewer is
+    /// exposed to STUDENTS while taking the course (2026-08-23) — separate
+    /// from <see cref="IncludeKnowledgeGraphEntities"/>/
+    /// <see cref="IncludeKnowledgeGraphConnections"/>, which only control
+    /// whether the graph is generated at all for authoring purposes. An
+    /// instructor may still want the graph generated (for their own review)
+    /// without showing it to learners during real-mode training. Defaults
+    /// true so existing behavior (always shown) is unchanged.</summary>
+    public bool ShowKnowledgeGraphToLearners { get; set; } = true;
+
     // ---- Step 3 pedagogical configuration (2026-08-10) — controls HOW the
     // future "Diseñador de Sección" agent writes each section's steps.
     // Same field names as Capability's equivalent settings where a direct

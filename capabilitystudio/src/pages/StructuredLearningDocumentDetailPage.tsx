@@ -31,7 +31,7 @@ export default function StructuredLearningDocumentDetailPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [visibility, setVisibility] = useState({ isGlobal: false, isPublished: false });
+  const [visibility, setVisibility] = useState({ isGlobal: false, isPublished: false, showKnowledgeGraphToLearners: true });
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
 
@@ -54,7 +54,7 @@ export default function StructuredLearningDocumentDetailPage() {
       .then(([detail, currentMemberships, allPrograms]) => {
         if (cancelled) return;
         setDocument(detail);
-        setVisibility({ isGlobal: detail.IsGlobal, isPublished: detail.IsPublished });
+        setVisibility({ isGlobal: detail.IsGlobal, isPublished: detail.IsPublished, showKnowledgeGraphToLearners: detail.ShowKnowledgeGraphToLearners });
         setMemberships(currentMemberships);
         setPrograms(allPrograms);
       })
@@ -76,7 +76,7 @@ export default function StructuredLearningDocumentDetailPage() {
     setVisibilityMessage(null);
     try {
       const saved = await updateStructuredLearningVisibility(documentId, visibility);
-      setVisibility({ isGlobal: saved.IsGlobal, isPublished: saved.IsPublished });
+      setVisibility({ isGlobal: saved.IsGlobal, isPublished: saved.IsPublished, showKnowledgeGraphToLearners: saved.ShowKnowledgeGraphToLearners });
       setVisibilityMessage(t('structuredLearningVisibility.saved'));
     } catch {
       setVisibilityMessage(t('structuredLearningVisibility.error'));
@@ -230,6 +230,18 @@ export default function StructuredLearningDocumentDetailPage() {
               <span>
                 <span className="block font-medium text-white">{t('structuredLearningVisibility.published')}</span>
                 <span className="mt-1 block text-sm text-slate-400">{t('structuredLearningVisibility.publishedHint')}</span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <input
+                type="checkbox"
+                checked={visibility.showKnowledgeGraphToLearners}
+                onChange={(event) => setVisibility((current) => ({ ...current, showKnowledgeGraphToLearners: event.target.checked }))}
+                className="mt-1 h-4 w-4 accent-violet-400"
+              />
+              <span>
+                <span className="block font-medium text-white">{t('structuredLearningVisibility.showKnowledgeGraph')}</span>
+                <span className="mt-1 block text-sm text-slate-400">{t('structuredLearningVisibility.showKnowledgeGraphHint')}</span>
               </span>
             </label>
           </div>

@@ -102,7 +102,7 @@ public sealed class TraditionalCoursePipelineOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(TraditionalCourseRunStatus.Running(runId, "Iniciando"));
+        session.UpdateStatus(TraditionalCourseRunStatus.Running(runId, "Starting"));
 
         session.BackgroundTask = Task.Run(async () =>
         {
@@ -175,7 +175,7 @@ public sealed class TraditionalCoursePipelineOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(TraditionalCourseRunStatus.Running(runId, "Iniciando"));
+        session.UpdateStatus(TraditionalCourseRunStatus.Running(runId, "Starting"));
 
         session.BackgroundTask = Task.Run(async () =>
         {

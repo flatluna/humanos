@@ -45,8 +45,11 @@ public sealed class GetStructuredLearningDocumentsFunction
         HttpRequestData request,
         CancellationToken cancellationToken)
     {
+        var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        var tenantId = Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null;
         var documents = await _dbContext.StructuredLearningDocuments
             .AsNoTracking()
+            .Where(d => !tenantId.HasValue || d.TenantId == tenantId.Value)
             .Select(d => new StructuredLearningDocumentSummaryDto
             {
                 StructuredLearningDocumentId = d.StructuredLearningDocumentId,

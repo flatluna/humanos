@@ -172,7 +172,7 @@ public sealed class StructuredLearningPedagogyService
         var activeTitles = new List<string>();
         var progressLock = new object();
 
-        reportProgress($"Generando pedagogía para {totalSections} secciones pendientes", 0, totalSections, []);
+        reportProgress($"Generating pedagogy for {totalSections} pending sections", 0, totalSections, []);
 
         if (totalSections == 0)
         {
@@ -207,7 +207,7 @@ public sealed class StructuredLearningPedagogyService
                     totalInputTokens += inputTokens;
                     totalOutputTokens += outputTokens;
                     reportProgress(
-                        $"{(succeeded ? "Completada" : "Falló")}: {section.SubchapterTitle}",
+                        $"{(succeeded ? "Completed" : "Failed")}: {section.SubchapterTitle}",
                         completedCount + failedCount, totalSections, [.. activeTitles]);
                 }
             }
@@ -248,6 +248,7 @@ public sealed class StructuredLearningPedagogyService
                 cancellationToken);
 
         var includeDeepDiveStep = document.MaxDeepDiveCardsPerNode is > 0;
+        var includeHypothesisStep = ReadIncludeHypothesisStep(document.ConfigSnapshotJson);
 
         var sectionOverride = illustrationOverride?.SectionId == section.StructuredLearningDocumentSectionId ? illustrationOverride : null;
         var illustrationGuidance = sectionOverride?.Mode == "AiGeneratedFromUpload" ? sectionOverride.ReferenceImageUsageInstruction : null;
@@ -256,24 +257,30 @@ public sealed class StructuredLearningPedagogyService
         {
             var knowledgeFacts = await LoadKnowledgeFactsAsync(dbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
 
-            // Knowledge Facts are only REQUIRED when the designer actually
-            // opted into the Knowledge Graph for this document (2026-08-21
-            // fix) — when IncludeKnowledgeGraphEntities is false, the
-            // designer explicitly chose to skip that step, so a section
-            // legitimately having zero facts is expected, not an error;
-            // pedagogy must still proceed (grounded in the section's own
-            // Text alone, exactly like before Knowledge Facts existed).
+            // Knowledge Facts are only ever a QUALITY ENHANCEMENT, never a
+            // hard requirement — a designer can legitimately combine any
+            // mix of options (Hypothesis on/off, Knowledge Graph on/off,
+            // Recall/Production/Assessment on/off), and pedagogy must
+            // still complete for every combination instead of hard-failing
+            // a whole section just because one optional piece didn't come
+            // through. When IncludeKnowledgeGraphEntities is false, a
+            // section legitimately having zero facts is expected. When it's
+            // true but facts still can't be produced (e.g. auto-recovery
+            // below fails, or the section has too little content to derive
+            // Core facts from), we now log a warning and fall back to
+            // grounding pedagogy in the section's own Text alone — exactly
+            // like before Knowledge Facts existed — rather than blocking
+            // the designer's whole course (2026-08-23 fix; previously this
+            // threw "No persisted Knowledge Facts..." and marked the
+            // section Failed, even though Hypothesis-only, Recall-only, or
+            // any other combination has nothing to do with Knowledge Facts).
             if (document.IncludeKnowledgeGraphEntities)
             {
                 // Auto-recovery: the designer very often clicks "Generate
                 // Pedagogy" before ever running Knowledge Facts for a
-                // section — rather than hard-failing with "No persisted
-                // Knowledge Facts...", try generating them once here first,
-                // so pedagogy just works as long as the section's own
-                // Knowledge Graph (entities/connections) already exists. If
-                // the section genuinely has no entities/connections to
-                // derive facts from, this legitimately still returns zero
-                // facts and we fail below exactly as before.
+                // section — try generating them once here first, so
+                // pedagogy just works as long as the section's own
+                // Knowledge Graph (entities/connections) already exists.
                 if (knowledgeFacts.Count == 0 && _knowledgeFactGeneration.IsConfigured)
                 {
                     try
@@ -283,20 +290,20 @@ public sealed class StructuredLearningPedagogyService
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        // Best-effort — falls through to the existing failure path below.
+                        Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: Knowledge Facts auto-recovery failed, falling back to Text-only grounding: {ex.Message}");
                     }
                 }
 
                 var coreFactCount = knowledgeFacts.Count(fact => string.Equals(fact.Importance, "Core", StringComparison.OrdinalIgnoreCase));
                 if (knowledgeFacts.Count == 0 || coreFactCount == 0 || knowledgeFacts.Any(fact => fact.KnowledgeFactId == Guid.Empty || fact.GraphPath.Count == 0))
                 {
-                    var error = knowledgeFacts.Count == 0
-                        ? "No persisted Knowledge Facts are available for this Engram."
+                    var reason = knowledgeFacts.Count == 0
+                        ? "no persisted Knowledge Facts are available"
                         : coreFactCount == 0
-                            ? "No persisted Core Knowledge Fact is available for this Engram."
-                            : "A persisted Knowledge Fact has no resolvable Graph Path.";
-                    await MarkFailedAsync(dbContext, section.StructuredLearningDocumentSectionId, error, cancellationToken);
-                    return (false, 0, 0);
+                            ? "no persisted Core Knowledge Fact is available"
+                            : "a persisted Knowledge Fact has no resolvable Graph Path";
+                    Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: {reason} for this Engram; continuing with Text-only grounding instead of failing the section.");
+                    knowledgeFacts = [];
                 }
             }
 
@@ -325,13 +332,14 @@ public sealed class StructuredLearningPedagogyService
                         document.PedagogicalAudience,
                         includeDeepDiveStep,
                         document.MaxDeepDiveCardsPerNode,
+                        includeHypothesisStep,
                         document.IncludeRecallStep,
                         document.IncludeProductionStep,
                         document.IncludeAssessmentStep,
                         cancellationToken,
                         illustrationGuidance,
                         knowledgeFacts);
-                    return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, section.Text, attemptDesign.Response.Capability));
+                    return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, includeHypothesisStep, section.Text, attemptDesign.Response.Capability));
                 }
                 catch (JsonException ex)
                 {
@@ -417,6 +425,7 @@ public sealed class StructuredLearningPedagogyService
                 processVersion,
                 promptVersion,
                 includeDeepDiveStep,
+                includeHypothesisStep,
                 maxDeepDiveCards = document.MaxDeepDiveCardsPerNode,
                 includeRecallStep = document.IncludeRecallStep,
                 includeProductionStep = document.IncludeProductionStep,
@@ -495,6 +504,22 @@ public sealed class StructuredLearningPedagogyService
         {
             await MarkFailedAsync(dbContext, section.StructuredLearningDocumentSectionId, ex.Message, cancellationToken);
             return (false, 0, 0);
+        }
+    }
+
+    private static bool ReadIncludeHypothesisStep(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson)) return true;
+
+        try
+        {
+            using var json = JsonDocument.Parse(configSnapshotJson);
+            return !json.RootElement.TryGetProperty("IncludeHypothesisStep", out var value)
+                || value.ValueKind != JsonValueKind.False;
+        }
+        catch (JsonException)
+        {
+            return true;
         }
     }
 
@@ -785,6 +810,7 @@ public sealed class StructuredLearningPedagogyService
         List<StructuredLearningSectionStepDto> steps,
         StructuredLearningDocument document,
         bool includeDeepDiveStep,
+        bool includeHypothesisStep,
         string sectionSourceText,
         string capabilityStatement)
     {
@@ -795,7 +821,8 @@ public sealed class StructuredLearningPedagogyService
             includeDeepDiveStep,
             document.IncludeRecallStep,
             document.IncludeProductionStep,
-            document.IncludeAssessmentStep);
+            document.IncludeAssessmentStep,
+            includeHypothesisStep);
         if (!structural.Passed)
         {
             failures.AddRange(structural.Failures);

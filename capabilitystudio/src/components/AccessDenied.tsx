@@ -1,4 +1,5 @@
 import { ShieldAlert } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 
 /** Shown when a real Human OS account exists but isn't allowed to author
@@ -8,21 +9,22 @@ import { useAuth } from '../auth/AuthContext';
  *  when Studio was opened directly instead of via a parent app's launch
  *  link — Studio no longer supports standalone MSAL login. */
 export function AccessDenied({ reason }: { reason: 'role' | 'no-account' | 'no-launch' }) {
+  const { t } = useTranslation();
   const { logout, signedInEmail } = useAuth();
 
   const title =
     reason === 'role'
-      ? 'No tienes acceso a Capability Studio'
+      ? t('accessDenied.titleRole')
       : reason === 'no-account'
-        ? 'Aún no tienes una cuenta de Human OS'
-        : 'Abre Studio desde tu aplicación';
+        ? t('accessDenied.titleNoAccount')
+        : t('accessDenied.titleNoLaunch');
 
   const message =
     reason === 'role'
-      ? 'Capability Studio es solo para cuentas individuales o para Administradores de RRHH (HRAdmin) de una empresa. Si eres empleado de una organización, pide a tu HRAdmin que cree el curso.'
+      ? t('accessDenied.messageRole')
       : reason === 'no-account'
-        ? 'Crea tu cuenta primero en la app principal de Human OS (localhost:5178) y vuelve a intentarlo.'
-        : 'Capability Studio ya no se puede abrir directamente. Vuelve a tu aplicación e ingresa haciendo clic en el botón "Studio".';
+        ? t('accessDenied.messageNoAccount')
+        : t('accessDenied.messageNoLaunch');
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 px-4 text-center">
@@ -33,7 +35,7 @@ export function AccessDenied({ reason }: { reason: 'role' | 'no-account' | 'no-l
       <p className="max-w-md text-sm text-slate-400">{message}</p>
       {signedInEmail && (
         <p className="text-xs text-slate-500">
-          Conectado como <span className="font-medium text-slate-300">{signedInEmail}</span>
+          {t('accessDenied.signedInAs')} <span className="font-medium text-slate-300">{signedInEmail}</span>
         </p>
       )}
       {reason !== 'no-launch' && (
@@ -42,7 +44,7 @@ export function AccessDenied({ reason }: { reason: 'role' | 'no-account' | 'no-l
           onClick={() => void logout()}
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-gradient-to-r from-brand-500 to-accent-500 px-6 py-2.5 text-sm font-medium text-white shadow-md transition hover:brightness-110"
         >
-          Cerrar sesión
+          {t('accessDenied.logout')}
         </button>
       )}
     </div>

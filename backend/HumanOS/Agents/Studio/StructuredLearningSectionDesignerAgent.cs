@@ -617,6 +617,7 @@ public sealed class StructuredLearningSectionDesignerAgent
         string? pedagogicalAudience,
         bool includeDeepDiveStep,
         int? maxDeepDiveCards,
+        bool includeHypothesisStep,
         bool includeRecallStep,
         bool includeProductionStep,
         bool includeAssessmentStep = true,
@@ -631,7 +632,9 @@ public sealed class StructuredLearningSectionDesignerAgent
                 "'AzureOpenAIDeploymentName' application settings.");
         }
 
-        var includedSteps = new List<string> { "Hypothesis", "Teaching" };
+        var includedSteps = new List<string>();
+        if (includeHypothesisStep) includedSteps.Add("Hypothesis");
+        includedSteps.Add("Teaching");
         if (includeDeepDiveStep) includedSteps.Add("DeepDive");
         if (includeRecallStep) includedSteps.Add("Recall");
         if (includeProductionStep) includedSteps.Add("Production");

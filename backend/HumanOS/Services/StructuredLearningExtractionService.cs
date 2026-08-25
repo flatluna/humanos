@@ -73,6 +73,8 @@ public sealed class StructuredLearningCreationOptions
 
     public bool? IncludeRecallStep { get; set; }
 
+    public bool? IncludeHypothesisStep { get; set; }
+
     public int? RecallItemsRequired { get; set; }
 
     public bool? IncludeAssessmentStep { get; set; }
@@ -235,7 +237,7 @@ public sealed class StructuredLearningExtractionService
         CancellationToken cancellationToken,
         StructuredLearningCreationOptions? creationOptions = null)
     {
-        reportProgress("Extrayendo texto del documento");
+        reportProgress("Extracting document text");
 
         var maxImagesToDescribe = _configuration.GetValue<int?>("MaxCapabilityPdfImagesToDescribe") ?? DefaultMaxImagesToDescribe;
         var maxImagesPerPage = _configuration.GetValue<int?>("MaxCapabilityPdfImagesPerPage") ?? DefaultMaxImagesPerPage;
@@ -396,7 +398,11 @@ public sealed class StructuredLearningExtractionService
             IncludeKnowledgeGraphEntities = creationOptions?.IncludeKnowledgeGraphEntities ?? true,
             IncludeKnowledgeGraphConnections = creationOptions?.IncludeKnowledgeGraphConnections ?? true
         };
-        document.ConfigSnapshotJson = JsonSerializer.Serialize(new { LanguageCode = creationOptions?.LanguageCode });
+        document.ConfigSnapshotJson = JsonSerializer.Serialize(new
+        {
+            LanguageCode = creationOptions?.LanguageCode,
+            IncludeHypothesisStep = creationOptions?.IncludeHypothesisStep ?? true
+        });
         dbContext.StructuredLearningDocuments.Add(document);
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -409,7 +415,7 @@ public sealed class StructuredLearningExtractionService
             cancellationToken.ThrowIfCancellationRequested();
 
             var item = sectionItems[i];
-            reportProgress($"Extrayendo sección {i + 1}/{sectionItems.Count}: {item.ChapterTitle}");
+            reportProgress($"Extracting section {i + 1}/{sectionItems.Count}: {item.ChapterTitle}");
 
             // Opt-in content expansion (2026-08-17) — this section was
             // flagged sparse (bare outline entry) at preview time; if the
@@ -492,7 +498,7 @@ public sealed class StructuredLearningExtractionService
                 // real content to derive facts from) must never discard
                 // all of that already-completed, already-paid-for work by
                 // failing the whole Step 2 run.
-                reportProgress($"Knowledge Graph/Facts incompleto para este documento; el resto de la extracción se conserva ({ex.Message})");
+                reportProgress($"Knowledge Graph/Facts incomplete for this document; the rest of the extraction is kept ({ex.Message})");
             }
         }
 
@@ -572,7 +578,7 @@ public sealed class StructuredLearningExtractionService
                 // inner exception for details.") — surface InnerException too
                 // so a real cause (e.g. a unique-index race) is actually visible.
                 var detail = ex.InnerException?.Message ?? ex.Message;
-                reportProgress($"Extracción de entidades omitida para una sección; continuando ({detail})");
+                reportProgress($"Entity extraction skipped for a section; continuing ({detail})");
             }
         });
 
@@ -602,7 +608,7 @@ public sealed class StructuredLearningExtractionService
             {
                 connectionPassSucceeded = false;
                 Console.WriteLine($"[KG-DEBUG] connection extraction FAILED for section {sectionId}: {ex}"); // TEMP DEBUG (2026-08-15)
-                reportProgress($"Extracción de relaciones omitida para una sección; continuando ({ex.Message})");
+                reportProgress($"Relationship extraction skipped for a section; continuing ({ex.Message})");
             }
         });
 
@@ -615,14 +621,14 @@ public sealed class StructuredLearningExtractionService
         var factFailures = new System.Collections.Concurrent.ConcurrentBag<string>();
         await Parallel.ForEachAsync(sectionIds, parallelOptions, async (sectionId, ct) =>
         {
-            reportProgress($"Generando Knowledge Facts {Interlocked.Increment(ref factsCompleted)}/{sectionIds.Count}");
+            reportProgress($"Generating Knowledge Facts {Interlocked.Increment(ref factsCompleted)}/{sectionIds.Count}");
             var factResult = await QuotaRetryPolicy.ExecuteAsync(
                 () => _knowledgeFactGeneration.GenerateValidateAndPersistAsync(sectionId, ct),
                 classify: ClassifyRateLimitException,
                 ct);
             if (!factResult.PersistenceSucceeded)
             {
-                reportProgress($"Knowledge Facts omitidos para una sección ({string.Join("; ", factResult.Errors)})");
+                reportProgress($"Knowledge Facts skipped for a section ({string.Join("; ", factResult.Errors)})");
                 factFailures.Add($"Engram '{sectionId}': {string.Join("; ", factResult.Errors)}");
             }
         });
@@ -630,7 +636,7 @@ public sealed class StructuredLearningExtractionService
         if (!factFailures.IsEmpty)
         {
             throw new InvalidOperationException(
-                $"La generación/persistencia de Knowledge Facts falló para {factFailures.Count} Engram(s): {string.Join(" | ", factFailures)}");
+                $"Knowledge Facts generation/persistence failed for {factFailures.Count} Engram(s): {string.Join(" | ", factFailures)}");
         }
     }
 
@@ -675,7 +681,7 @@ public sealed class StructuredLearningExtractionService
         {
             try
             {
-                reportProgress("Generando resumen ejecutivo");
+                reportProgress("Generating executive summary");
                 var context = await _documentContext.ExtractAsync(
                     document.DocumentName,
                     new CuratedCorpus
@@ -690,7 +696,7 @@ public sealed class StructuredLearningExtractionService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                reportProgress("Resumen ejecutivo omitido; continuando con la creación");
+                reportProgress("Executive summary skipped; continuing with creation");
             }
         }
 
@@ -699,7 +705,7 @@ public sealed class StructuredLearningExtractionService
 
         try
         {
-            reportProgress("Generando imagen de portada");
+            reportProgress("Generating cover image");
             var prompt = $"Create a clean, educational course cover image for a learning path titled '{document.DocumentName}'. " +
                 "Visually represent the subject matter from this source summary, with no readable text, no logos, and a professional classroom style. " +
                 document.ExecutiveSummary;
@@ -723,7 +729,7 @@ public sealed class StructuredLearningExtractionService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            reportProgress("Imagen de portada omitida; continuando con la creación");
+            reportProgress("Cover image skipped; continuing with creation");
         }
     }
 
@@ -741,7 +747,7 @@ public sealed class StructuredLearningExtractionService
     {
         try
         {
-            reportProgress($"Generando contenido con IA para: {item.ChapterTitle}");
+            reportProgress($"Generating content with AI for: {item.ChapterTitle}");
 
             string? groundingFindings = null;
             if (creationOptions.UseWebGroundingForExpansion && _webGrounding.IsConfigured)

@@ -232,9 +232,11 @@ function PedagogySection({ documentId }: { documentId: string }) {
   // Domain/subject, career-skill and pedagogical config (audience, Deep
   // Dive, Recall, Production, assessment type/count) are all collected
   // up front in Step 1 (NewStructuredLearningPage.tsx) and already saved
-  // on the document — no longer re-asked here (2026-08-14). Only the
-  // generation language and the optional illustration reference image
-  // are unique to this step.
+  // on the document — no longer re-asked here (2026-08-14). The content
+  // language was ALSO already picked in Step 1 and is persisted on the
+  // document's own ConfigSnapshotJson (set at extraction time) — read it
+  // back here instead of re-asking (2026-08-23 fix); only the optional
+  // illustration reference image is unique to this step.
   const [pedagogyLanguageCode, setPedagogyLanguageCode] = useState<'es' | 'en'>('es');
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
@@ -248,6 +250,27 @@ function PedagogySection({ documentId }: { documentId: string }) {
   const [pedagogyStatus, setPedagogyStatus] = useState<StructuredLearningPedagogyRunStatus | null>(null);
   const [documentDetail, setDocumentDetail] = useState<StructuredLearningDocumentDetail | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    let cancelled = false;
+    getStructuredLearningDocument(documentId)
+      .then((detail) => {
+        if (cancelled) return;
+        try {
+          const snapshot = detail.ConfigSnapshotJson ? JSON.parse(detail.ConfigSnapshotJson) : null;
+          const savedLanguage = snapshot?.LanguageCode ?? snapshot?.languageCode;
+          if (savedLanguage === 'es' || savedLanguage === 'en') {
+            setPedagogyLanguageCode(savedLanguage);
+          }
+        } catch {
+          // Keep the default if the snapshot can't be parsed.
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
 
   useEffect(() => {
     if (!pedagogyRunId) return;
@@ -352,21 +375,8 @@ function PedagogySection({ documentId }: { documentId: string }) {
         <h3 className="text-lg font-semibold text-white">{t('structuredLearningRunProgress.pedagogyConfigTitle')}</h3>
 
         <ConfigField label={t('structuredLearningRunProgress.pedagogyLanguageLabel')}>
-          <div className="grid grid-cols-2 gap-2">
-            {(['es', 'en'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setPedagogyLanguageCode(option)}
-                className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                  pedagogyLanguageCode === option
-                    ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                    : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                }`}
-              >
-                {option === 'es' ? t('common.languageSpanish') : t('common.languageEnglish')}
-              </button>
-            ))}
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-300">
+            {pedagogyLanguageCode === 'es' ? t('common.languageSpanish') : t('common.languageEnglish')}
           </div>
         </ConfigField>
 

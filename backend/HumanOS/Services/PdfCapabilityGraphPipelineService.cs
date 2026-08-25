@@ -303,7 +303,7 @@ public sealed class PdfCapabilityGraphPipelineService
         string? consentAcceptedByName = null)
     {
         // ==================== 1. EXTRACT TEXT + IMAGES, PER PAGE ====================
-        reportProgress("Extrayendo texto del PDF");
+        reportProgress("Extracting PDF text");
 
         // Real AI vision description (via PdfImageDescriptionAgent) of
         // every embedded image above a minimum size — NOT just OCR/text
@@ -448,7 +448,7 @@ public sealed class PdfCapabilityGraphPipelineService
             // and detected chapters/nodes against — see this parameter's
             // doc comment above for why re-expanding would break
             // approvedOutline's StartMarker lookups.
-            reportProgress("Usando el material ya generado en la vista previa del índice");
+            reportProgress("Using material already generated in the index preview");
             documentText = preExpandedDocumentText;
             seedTokenUsage = [];
         }
@@ -563,7 +563,7 @@ public sealed class PdfCapabilityGraphPipelineService
         }
 
         // ==================== 2. DETECT CHAPTERS (best-effort) ====================
-        reportProgress("Detectando capítulos/índice");
+        reportProgress("Detecting chapters/index");
 
         // "Libre" mode size cap (2026-08-03 design decision): only applies
         // when the caller did NOT opt into "Estructurado" (strictSyllabusMode
@@ -702,7 +702,7 @@ public sealed class PdfCapabilityGraphPipelineService
 
             var chapterBatch = new List<RawMaterialItem> { chapterMaterials[i] };
 
-            reportProgress($"Curando capítulo {chapterNumber} de {chapterMaterials.Count}");
+            reportProgress($"Curating chapter {chapterNumber} of {chapterMaterials.Count}");
             var curationResult = await _curador.CurateAsync(chapterBatch, cancellationToken);
             tokenUsage.Add(WithModuleId(curationResult.TokenUsage, $"Cap.{chapterNumber} {chapterLabel}"));
 
@@ -740,7 +740,7 @@ public sealed class PdfCapabilityGraphPipelineService
         };
 
         // ==================== 5. DESIGN THE GRAPH ====================
-        reportProgress("Diseñando el grafo de aprendizaje");
+        reportProgress("Designing the learning graph");
 
         // Extra grounding context (2026-07-23) when this Capability is
         // being created straight into an existing Program's sequence: the
@@ -799,7 +799,7 @@ public sealed class PdfCapabilityGraphPipelineService
             // (and therefore cannot cross-cite) any other chapter's
             // content while authoring this one. See
             // /memories/repo/humanos-graph-architect-cross-chapter-bug.md.
-            reportProgress("Diseñando el grafo de aprendizaje (por capítulo)");
+            reportProgress("Designing the learning graph (by chapter)");
             var perChapterNodes = new List<GraphNodeDto>();
             string? graphName = null;
             string? graphDescription = null;
@@ -876,7 +876,7 @@ public sealed class PdfCapabilityGraphPipelineService
         string? keyEntitiesJson = null;
         if (_documentContext.IsConfigured)
         {
-            reportProgress("Extrayendo resumen ejecutivo y entidades clave");
+            reportProgress("Extracting executive summary and key entities");
             try
             {
                 var documentContextResult = await _documentContext.ExtractAsync(capabilityName, mergedCorpus, languageCode, cancellationToken);
@@ -989,7 +989,7 @@ public sealed class PdfCapabilityGraphPipelineService
         // is a MathDiagram (deterministic path never needs _imageService).
         if ((_imageService.IsConfigured || _mathDiagramRenderService.IsConfigured) && _illustrationStorage.IsConfigured)
         {
-            reportProgress("Generando ilustraciones");
+            reportProgress("Generating illustrations");
 
             foreach (var node in graph.Nodes)
             {
@@ -1061,7 +1061,7 @@ public sealed class PdfCapabilityGraphPipelineService
         string? coverImageStoragePath = null;
         if (_imageService.IsConfigured && _illustrationStorage.IsConfigured)
         {
-            reportProgress("Generando imagen de portada del curso");
+            reportProgress("Generating course cover image");
             try
             {
                 var coverPrompt =
@@ -1463,7 +1463,7 @@ public sealed class PdfCapabilityGraphPipelineService
             var needsCurrentInfo = nodesNeedingCurrentInfo.Contains(node.CapabilityGraphNodeId);
             if (effectiveEnableWebEnrichment && _webGrounding.IsConfigured && needsCurrentInfo)
             {
-                reportProgress($"Buscando información actualizada (Bing) para: {node.Name}");
+                reportProgress($"Searching for current information (Bing) for: {node.Name}");
                 try
                 {
                     var webResult = await _webGrounding.SearchAsync(node.Name, capabilityName, cancellationToken);
@@ -1494,7 +1494,7 @@ public sealed class PdfCapabilityGraphPipelineService
                     "y, si corresponde, indica que ciertos detalles podrían requerir verificación adicional.]";
             }
 
-            reportProgress($"Diseñando experiencia de aprendizaje: {node.Name}");
+            reportProgress($"Designing learning experience: {node.Name}");
             var (blueprintPersisted, exampleIllustrationsForNode) = await TryDesignPersistValidateBlueprintAsync(
                 node, webFindings, languageCode, pedagogicalAudience, includeExamplesStep, maxDeepDiveCardsPerNode, includeProductionStep, tenantId, capabilityId, result.TokenUsage, cancellationToken, brandLogoBytes);
             result.BlueprintPersisted = blueprintPersisted;

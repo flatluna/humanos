@@ -142,7 +142,7 @@ public sealed class PdfCapabilityGraphOrchestrator
         // background task below runs concurrently and may not have had a
         // chance to update LatestStatus yet by the time this method
         // returns.
-        session.UpdateStatus(PdfCapabilityGraphRunStatus.Running(runId, "Iniciando"));
+        session.UpdateStatus(PdfCapabilityGraphRunStatus.Running(runId, "Starting"));
 
         session.BackgroundTask = Task.Run(async () =>
         {
@@ -258,7 +258,7 @@ public sealed class PdfCapabilityGraphOrchestrator
         var session = new RunSession();
         _runs[runId] = session;
 
-        session.UpdateStatus(PdfCapabilityGraphRunStatus.Running(runId, "Iniciando"));
+        session.UpdateStatus(PdfCapabilityGraphRunStatus.Running(runId, "Starting"));
 
         session.BackgroundTask = Task.Run(async () =>
         {

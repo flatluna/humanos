@@ -400,6 +400,14 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<Models.Capabilities.Studio.StructuredLearningHypothesisResponse> StructuredLearningHypothesisResponses =>
         Set<Models.Capabilities.Studio.StructuredLearningHypothesisResponse>();
 
+    /// <summary>"Film Productions" wizard (2026-08-24) — see
+    /// <see cref="Models.Capabilities.Studio.FilmProduction"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.FilmProduction> FilmProductions =>
+        Set<Models.Capabilities.Studio.FilmProduction>();
+
+    public DbSet<Models.Capabilities.Studio.FilmScene> FilmScenes =>
+        Set<Models.Capabilities.Studio.FilmScene>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

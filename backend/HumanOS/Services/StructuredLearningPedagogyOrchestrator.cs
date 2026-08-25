@@ -69,7 +69,7 @@ public sealed class StructuredLearningPedagogyOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, "Iniciando", null, null, null));
+        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, "Starting", null, null, null));
 
         session.BackgroundTask = Task.Run(async () =>
         {

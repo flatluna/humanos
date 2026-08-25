@@ -51,7 +51,7 @@ public sealed class StructuredLearningExtractionRunStatus
     {
         RunId = runId,
         Stage = StructuredLearningExtractionStage.Completed,
-        CurrentStepDescription = "Completado",
+        CurrentStepDescription = "Completed",
         TotalSections = result.SectionCount,
         CompletedSections = result.SectionCount,
         Result = result

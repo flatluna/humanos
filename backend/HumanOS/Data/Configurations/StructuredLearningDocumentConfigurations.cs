@@ -88,6 +88,10 @@ public sealed class StructuredLearningDocumentConfiguration
             .HasDefaultValue(true)
             .IsRequired();
 
+        builder.Property(x => x.ShowKnowledgeGraphToLearners)
+            .HasDefaultValue(true)
+            .IsRequired();
+
         builder.Property(x => x.AssessmentQuestionType)
             .HasConversion<string>()
             .HasMaxLength(20)

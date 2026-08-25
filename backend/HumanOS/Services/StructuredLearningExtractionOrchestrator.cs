@@ -70,7 +70,7 @@ public sealed class StructuredLearningExtractionOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, "Iniciando"));
+        session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, "Starting"));
 
         session.BackgroundTask = Task.Run(async () =>
         {
@@ -117,7 +117,7 @@ public sealed class StructuredLearningExtractionOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, "Iniciando"));
+        session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, "Starting"));
 
         session.BackgroundTask = Task.Run(async () =>
         {

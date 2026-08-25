@@ -58,11 +58,14 @@ public static class StructuredLearningSectionEvaluator
         bool includeDeepDiveStep,
         bool includeRecallStep,
         bool includeProductionStep,
-        bool includeAssessmentStep = true)
+        bool includeAssessmentStep = true,
+        bool includeHypothesisStep = true)
     {
         var result = new StructuralCheckResult { Passed = true };
 
-        var expectedOrder = new List<StructuredLearningStepType> { StructuredLearningStepType.Hypothesis, StructuredLearningStepType.Teaching };
+        var expectedOrder = new List<StructuredLearningStepType>();
+        if (includeHypothesisStep) expectedOrder.Add(StructuredLearningStepType.Hypothesis);
+        expectedOrder.Add(StructuredLearningStepType.Teaching);
         if (includeDeepDiveStep) expectedOrder.Add(StructuredLearningStepType.DeepDive);
         if (includeRecallStep) expectedOrder.Add(StructuredLearningStepType.Recall);
         if (includeProductionStep) expectedOrder.Add(StructuredLearningStepType.Production);

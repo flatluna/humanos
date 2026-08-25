@@ -131,6 +131,8 @@ public sealed class StructuredLearningDocumentDetailResponse
 
     public bool DocumentTypeConfirmedByUser { get; set; }
 
+    public bool ShowKnowledgeGraphToLearners { get; set; }
+
     public List<StructuredLearningSectionDetailDto> Sections { get; set; } = [];
 }
 
@@ -200,6 +202,7 @@ public sealed class GetStructuredLearningDocumentFunction
             DetectedDocumentTypeConfidence = document.DetectedDocumentTypeConfidence,
             ConfirmedDocumentType = document.ConfirmedDocumentType,
             DocumentTypeConfirmedByUser = document.DocumentTypeConfirmedByUser,
+            ShowKnowledgeGraphToLearners = document.ShowKnowledgeGraphToLearners,
             Sections = document.Sections
                 .OrderBy(s => s.SortOrder)
                 .Select(s => new StructuredLearningSectionDetailDto

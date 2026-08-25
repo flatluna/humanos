@@ -31,7 +31,16 @@ namespace HumanOS.Services;
 /// </summary>
 public sealed class StructuredLearningAssessmentEngine
 {
-    private const int DefaultQuestionsPerRound = 2;
+    /// <summary>A round is ONE question, answered correctly on the first
+    /// try or retried (fresh rewording) up to this many attempts — NOT N
+    /// distinct questions averaged together. Passing requires a single
+    /// correct answer; exhausting all attempts without a correct answer
+    /// fails the round and recommends reviewing the lesson (2026-08-23,
+    /// replaces the old "average of 2 questions, silently auto-restart on
+    /// fail" design which confusingly showed "try again" even when the
+    /// student answered correctly, and hid the fact a new round had
+    /// already started server-side).</summary>
+    private const int DefaultQuestionsPerRound = 3;
     private const int MinQuestionsPerRound = 1;
     private const int MaxQuestionsPerRound = 10;
     private const int PassThreshold = 80;
@@ -274,17 +283,25 @@ public sealed class StructuredLearningAssessmentEngine
             Grade = new AnswerGrade { Correctness = correctness, Score = score, Feedback = feedback }
         };
 
-        var allAnsweredSoFar = round.Questions
-            .Where(q => q.StudentAnswer is not null)
-            .OrderBy(q => q.QuestionIndex)
-            .ToList();
+        // Correct on this attempt (any attempt, not just the first) — pass immediately.
+        if (correctness == StructuredLearningAssessmentAnswerCorrectness.Correct)
+        {
+            round.Status = StructuredLearningAssessmentRoundStatus.Passed;
+            round.FinalScore = score;
+            round.CompletedDate = now;
 
+            result.RoundComplete = true;
+            result.Passed = true;
+            result.FinalScore = score;
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return result;
+        }
+
+        // Incorrect, but attempts remain — re-ask (fresh wording) the same question slot.
         if (question.QuestionIndex < context.QuestionsPerRound)
         {
-            var errorsSoFar = allAnsweredSoFar
-                .Where(q => !string.IsNullOrWhiteSpace(q.ObservedError))
-                .Select(q => q.ObservedError!)
-                .ToList();
+            var errorsSoFar = string.IsNullOrWhiteSpace(observedError) ? [] : new List<string> { observedError };
             var alreadyAsked = round.Questions.OrderBy(q => q.QuestionIndex).Select(q => q.QuestionText).ToList();
 
             var nextQuestion = await GenerateQuestionAsync(context, question.QuestionIndex + 1, alreadyAsked, errorsSoFar, cancellationToken);
@@ -298,48 +315,16 @@ public sealed class StructuredLearningAssessmentEngine
             return result;
         }
 
-        // This was the last question — close out the round.
-        var allScores = allAnsweredSoFar.Select(q => q.ScoreContribution!.Value).ToList();
-        var finalScore = (int)Math.Round(allScores.Average());
-        var passed = finalScore >= PassThreshold;
-
-        round.Status = passed ? StructuredLearningAssessmentRoundStatus.Passed : StructuredLearningAssessmentRoundStatus.Failed;
-        round.FinalScore = finalScore;
+        // All attempts exhausted, still incorrect — fail the round and recommend reviewing the lesson.
+        // No auto-started new round: the student must explicitly choose to try again
+        // (StartRoundAsync), so the UI can show a clear, honest "you did not pass, review the lesson" state.
+        round.Status = StructuredLearningAssessmentRoundStatus.Failed;
+        round.FinalScore = score;
         round.CompletedDate = now;
 
         result.RoundComplete = true;
-        result.Passed = passed;
-        result.FinalScore = finalScore;
-
-        if (passed)
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return result;
-        }
-
-        // Failed — auto-start a brand-new round immediately, same call.
-        var newRoundNumber = round.RoundNumber + 1;
-        var newRound = new StructuredLearningAssessmentRound
-        {
-            StructuredLearningDocumentSectionId = round.StructuredLearningDocumentSectionId,
-            PersonId = round.PersonId,
-            RoundNumber = newRoundNumber,
-            Status = StructuredLearningAssessmentRoundStatus.InProgress
-        };
-        dbContext.StructuredLearningAssessmentRounds.Add(newRound);
-
-        var failedRoundErrors = allAnsweredSoFar
-            .Where(q => !string.IsNullOrWhiteSpace(q.ObservedError))
-            .Select(q => q.ObservedError!)
-            .ToList();
-
-        var firstQuestionOfNewRound = await GenerateQuestionAsync(context, questionIndex: 1, alreadyAsked: [], errorsObservedSoFar: failedRoundErrors, cancellationToken);
-        var newQuestionRow = BuildQuestionRow(newRound.StructuredLearningAssessmentRoundId, 1, firstQuestionOfNewRound);
-        dbContext.StructuredLearningAssessmentQuestionAttempts.Add(newQuestionRow);
-
-        result.NewRoundNumber = newRoundNumber;
-        result.NewStructuredLearningAssessmentRoundId = newRound.StructuredLearningAssessmentRoundId;
-        result.NextQuestion = ToQuestionInfo(newQuestionRow);
+        result.Passed = false;
+        result.FinalScore = score;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return result;
@@ -470,8 +455,12 @@ public sealed class StructuredLearningAssessmentEngine
         var teachingStep = section.Steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching);
         var document = section.Document;
 
+        // Author's AssessmentQuestionsPerRound predates the attempts-based redesign above
+        // (it meant "N distinct questions averaged together") — never let it shrink the
+        // guaranteed 3 attempts per question below the product minimum.
         var questionsPerRound = Math.Clamp(
-            document.AssessmentQuestionsPerRound ?? DefaultQuestionsPerRound, MinQuestionsPerRound, MaxQuestionsPerRound);
+            Math.Max(DefaultQuestionsPerRound, document.AssessmentQuestionsPerRound ?? DefaultQuestionsPerRound),
+            MinQuestionsPerRound, MaxQuestionsPerRound);
 
         return new SectionContext
         {
