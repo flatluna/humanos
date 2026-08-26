@@ -7,12 +7,17 @@ import {
   deleteStructuredLearningDocument,
   getProgramsForStructuredLearningDocument,
   getStructuredLearningDocument,
+  updateStructuredLearningClassification,
   removeStructuredLearningDocumentFromProgram,
   updateStructuredLearningVisibility,
   type StructuredLearningDocumentDetail,
   type StructuredLearningDocumentProgramMembership,
 } from '../lib/api/structuredLearningApi';
 import { getPrograms, type BackendProgram } from '../lib/api/programsApi';
+import { getSubjects, type Subject } from '../lib/api/subjectsApi';
+import { getStructuredLearningTopics, type StructuredLearningTopic } from '../lib/api/structuredLearningTopicsApi';
+import { DEFAULT_STUDIO_TENANT_ID } from '../lib/api/pdfPipelineApi';
+import { useAuth } from '../auth/AuthContext';
 import { apiImageUrl } from '../lib/api/httpClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DeleteCapabilityModal from '../components/DeleteCapabilityModal';
@@ -20,10 +25,14 @@ import DeleteCapabilityModal from '../components/DeleteCapabilityModal';
 export default function StructuredLearningDocumentDetailPage() {
   const { t } = useTranslation();
   const { documentId } = useParams<{ documentId: string }>();
+  const { user } = useAuth();
+  const effectiveTenantId = user?.tenantId ?? DEFAULT_STUDIO_TENANT_ID;
   const navigate = useNavigate();
   const [document, setDocument] = useState<StructuredLearningDocumentDetail | null>(null);
   const [programs, setPrograms] = useState<BackendProgram[]>([]);
   const [memberships, setMemberships] = useState<StructuredLearningDocumentProgramMembership[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [topics, setTopics] = useState<StructuredLearningTopic[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +43,9 @@ export default function StructuredLearningDocumentDetailPage() {
   const [visibility, setVisibility] = useState({ isGlobal: false, isPublished: false, showKnowledgeGraphToLearners: true });
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState('');
+  const [classificationBusy, setClassificationBusy] = useState(false);
+  const [classificationMessage, setClassificationMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!documentId) {
@@ -50,13 +62,19 @@ export default function StructuredLearningDocumentDetailPage() {
       getStructuredLearningDocument(documentId),
       getProgramsForStructuredLearningDocument(documentId),
       getPrograms(),
+      getSubjects(),
     ])
-      .then(([detail, currentMemberships, allPrograms]) => {
+      .then(([detail, currentMemberships, allPrograms, allSubjects]) => {
         if (cancelled) return;
         setDocument(detail);
         setVisibility({ isGlobal: detail.IsGlobal, isPublished: detail.IsPublished, showKnowledgeGraphToLearners: detail.ShowKnowledgeGraphToLearners });
         setMemberships(currentMemberships);
         setPrograms(allPrograms);
+        setSubjects(allSubjects);
+        setSelectedTopicId(detail.TopicId ?? '');
+        if (detail.SubjectId) {
+          getStructuredLearningTopics(effectiveTenantId, detail.SubjectId).then(setTopics).catch(() => setTopics([]));
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load this document.');
@@ -82,6 +100,21 @@ export default function StructuredLearningDocumentDetailPage() {
       setVisibilityMessage(t('structuredLearningVisibility.error'));
     } finally {
       setVisibilityBusy(false);
+    }
+  }
+
+  async function handleSaveClassification() {
+    if (!documentId || classificationBusy) return;
+    setClassificationBusy(true);
+    setClassificationMessage(null);
+    try {
+      const saved = await updateStructuredLearningClassification(documentId, selectedTopicId || null);
+      setDocument((current) => current ? { ...current, TopicId: saved.TopicId } : current);
+      setClassificationMessage('Tipo de dominio actualizado.');
+    } catch (err) {
+      setClassificationMessage(err instanceof Error ? `No se pudo actualizar el tipo de dominio: ${err.message}` : 'No se pudo actualizar el tipo de dominio.');
+    } finally {
+      setClassificationBusy(false);
     }
   }
 
@@ -148,6 +181,8 @@ export default function StructuredLearningDocumentDetailPage() {
   }
 
   const createdDate = new Date().toLocaleDateString();
+  const subjectName = subjects.find((subject) => subject.SubjectId === document.SubjectId)?.Name ?? 'No asignado';
+  const topicName = topics.find((topic) => topic.StructuredLearningTopicId === document.TopicId)?.Name ?? 'No asignado';
 
   return (
     <div>
@@ -173,9 +208,38 @@ export default function StructuredLearningDocumentDetailPage() {
 
       <div className="mx-auto max-w-7xl px-6 py-10">
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <InfoCard icon={BookOpen} label="Dominio" value={subjectName} />
+          <InfoCard icon={Layers} label="Tipo de dominio" value={topicName} />
           <InfoCard icon={Layers} label="Sections" value={document.Sections.length} />
           <InfoCard icon={BookOpen} label="Mode" value="Structured learning" />
           <InfoCard icon={Calendar} label="Created" value={createdDate} />
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+          <h3 className="text-lg font-semibold text-white">Clasificación del curso</h3>
+          <p className="mt-1 text-sm text-slate-400">Cambia el tipo del dominio temático al que pertenece este curso.</p>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="min-w-64 flex-1 text-sm text-slate-300">
+              Tipo de dominio
+              <select
+                value={selectedTopicId}
+                onChange={(event) => setSelectedTopicId(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+              >
+                <option value="">No asignado</option>
+                {topics.map((topic) => <option key={topic.StructuredLearningTopicId} value={topic.StructuredLearningTopicId}>{topic.Name}</option>)}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={handleSaveClassification}
+              disabled={classificationBusy}
+              className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {classificationBusy ? 'Actualizando...' : 'Actualizar'}
+            </button>
+          </div>
+          {classificationMessage && <p className="mt-3 text-sm text-slate-300">{classificationMessage}</p>}
         </div>
 
         <div className="mt-8 flex flex-wrap gap-3">

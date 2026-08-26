@@ -47,6 +47,9 @@ import {
   cutStructuredLearningVideoSegments,
   undoStructuredLearningVideoEdit,
   setStructuredLearningStepTimeline,
+  generateStructuredLearningVideoPrompt,
+  generateStructuredLearningVideoStartImage,
+  getStructuredLearningVideoLastFrame,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
@@ -1369,6 +1372,118 @@ function VideoGenerationBox({
   const [trimVersions, setTrimVersions] = useState<Record<string, number>>({});
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
+  // === Video prompt wizard (2026-08-26 rebuild) ===
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardTab, setWizardTab] = useState(0);
+  const [wizardObjective, setWizardObjective] = useState('');
+  const [wizardVideoDescription, setWizardVideoDescription] = useState('');
+  const [wizardEnvironment, setWizardEnvironment] = useState('');
+  const [wizardImageDescription, setWizardImageDescription] = useState('');
+  const [wizardImageMode, setWizardImageMode] = useState<'upload' | 'ai' | 'none'>('none');
+  const [wizardImage, setWizardImage] = useState<{ base64: string; contentType: string; previewUrl: string } | null>(null);
+  const [wizardGeneratingImage, setWizardGeneratingImage] = useState(false);
+  const [wizardGeneratingPrompts, setWizardGeneratingPrompts] = useState(false);
+  const [wizardPrompts, setWizardPrompts] = useState<string[]>([]);
+  const [wizardActiveClip, setWizardActiveClip] = useState(0);
+  const [wizardError, setWizardError] = useState<string | null>(null);
+  const [wizardChainImage, setWizardChainImage] = useState<{ base64: string; contentType: string } | null>(null);
+  const [wizardGeneratingClip, setWizardGeneratingClip] = useState<number | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  async function handleWizardImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1] ?? '';
+      setWizardImage({ base64, contentType: file.type || 'image/png', previewUrl: dataUrl });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleWizardGenerateImage() {
+    if (!wizardImageDescription.trim()) return;
+    setWizardGeneratingImage(true);
+    setWizardError(null);
+    try {
+      const result = await generateStructuredLearningVideoStartImage(wizardImageDescription.trim(), wizardImage?.base64);
+      setWizardImage({
+        base64: result.ImageBase64,
+        contentType: result.ContentType,
+        previewUrl: `data:${result.ContentType};base64,${result.ImageBase64}`,
+      });
+    } catch (err) {
+      setWizardError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWizardGeneratingImage(false);
+    }
+  }
+
+  async function handleWizardGeneratePrompts() {
+    if (!wizardObjective.trim() || !wizardVideoDescription.trim() || !wizardEnvironment.trim()) return;
+    setWizardGeneratingPrompts(true);
+    setWizardError(null);
+    try {
+      const result = await generateStructuredLearningVideoPrompt(
+        wizardObjective.trim(),
+        wizardVideoDescription.trim(),
+        wizardEnvironment.trim(),
+        wizardImageDescription.trim() || 'No specific starting image provided.'
+      );
+      setWizardPrompts(result.RecommendedPrompts);
+      setWizardActiveClip(0);
+      setWizardChainImage(wizardImage ? { base64: wizardImage.base64, contentType: wizardImage.contentType } : null);
+    } catch (err) {
+      setWizardError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWizardGeneratingPrompts(false);
+    }
+  }
+
+  function updateWizardPrompt(index: number, value: string) {
+    setWizardPrompts((prev) => prev.map((p, i) => (i === index ? value : p)));
+  }
+
+  async function handleWizardCreateClip(index: number) {
+    const clipPrompt = wizardPrompts[index];
+    if (!clipPrompt?.trim()) return;
+    setWizardGeneratingClip(index);
+    setWizardError(null);
+    try {
+      const status = await startStructuredLearningVideo(
+        sectionId, clipPrompt.trim(), step.StepType, videoModel,
+        wizardChainImage?.base64, wizardChainImage?.contentType
+      );
+      // Poll until done so we can fetch the last frame for the next clip.
+      let current = status;
+      while (current.Stage === 'Running') {
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        current = await getStructuredLearningVideoStatus(current.RunId);
+      }
+      if (current.Stage === 'Failed') {
+        throw new Error(current.ErrorMessage ?? 'Video generation failed.');
+      }
+      const updated = await listStructuredLearningSectionVideos(sectionId);
+      setVideos(updated);
+      onVideosChanged();
+      if (current.IllustrationId) {
+        try {
+          const lastFrame = await getStructuredLearningVideoLastFrame(current.IllustrationId);
+          setWizardChainImage({ base64: lastFrame.Base64, contentType: lastFrame.ContentType });
+        } catch {
+          // continuity is best-effort — the next clip can still be generated without it
+        }
+      }
+      setWizardActiveClip(index + 1);
+    } catch (err) {
+      setWizardError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWizardGeneratingClip(null);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     listStructuredLearningSectionVideos(sectionId)
@@ -1631,6 +1746,157 @@ function VideoGenerationBox({
         </div>
       )}
 
+      {!maxReached && !mergeMode && (
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => setWizardOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-400/40 bg-violet-500/10 px-2.5 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {wizardOpen ? 'Hide wizard' : 'Use video wizard (objective, environment, image)'}
+          </button>
+        </div>
+      )}
+
+      {wizardOpen && !maxReached && !mergeMode && (
+        <div className="mb-3 space-y-3 rounded-lg border border-violet-400/30 bg-violet-500/[0.04] p-3">
+          <div className="flex gap-1 border-b border-white/10 pb-2">
+            {['0. Objective', '1. Instructions', '2. Environment', '3. Starting image'].map((label, idx) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setWizardTab(idx)}
+                className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${
+                  wizardTab === idx ? 'bg-violet-500/20 text-violet-100' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {wizardTab === 0 && (
+            <textarea
+              value={wizardObjective}
+              onChange={(e) => setWizardObjective(e.target.value)}
+              rows={2}
+              placeholder="What should students learn? E.g.: Teach how to sign HELLO in sign language."
+              className="input w-full"
+            />
+          )}
+          {wizardTab === 1 && (
+            <textarea
+              value={wizardVideoDescription}
+              onChange={(e) => setWizardVideoDescription(e.target.value)}
+              rows={3}
+              placeholder="Describe step by step what the teacher should say/do in the video."
+              className="input w-full"
+            />
+          )}
+          {wizardTab === 2 && (
+            <textarea
+              value={wizardEnvironment}
+              onChange={(e) => setWizardEnvironment(e.target.value)}
+              rows={3}
+              placeholder="Describe the environment/setting (classroom, lighting, colors, people present, etc.)."
+              className="input w-full"
+            />
+          )}
+          {wizardTab === 3 && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {(['upload', 'ai', 'none'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setWizardImageMode(mode)}
+                    className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] ${
+                      wizardImageMode === mode ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 text-slate-400 hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    {mode === 'upload' ? 'Upload image' : mode === 'ai' ? 'Generate with AI' : 'No image'}
+                  </button>
+                ))}
+              </div>
+              {wizardImageMode === 'upload' && (
+                <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10">
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleWizardImageUpload} />
+                  Upload image
+                </label>
+              )}
+              {wizardImageMode === 'ai' && (
+                <div className="space-y-1.5">
+                  <textarea
+                    value={wizardImageDescription}
+                    onChange={(e) => setWizardImageDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Describe the starting image you want to generate."
+                    className="input w-full"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleWizardGenerateImage}
+                    disabled={wizardGeneratingImage || !wizardImageDescription.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {wizardGeneratingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    Generate image
+                  </button>
+                </div>
+              )}
+              {wizardImage && (
+                <img
+                  src={wizardImage.previewUrl}
+                  alt="Starting image"
+                  onClick={() => setLightboxSrc(wizardImage.previewUrl)}
+                  className="h-24 w-24 cursor-zoom-in rounded-lg object-cover hover:ring-2 hover:ring-violet-400"
+                />
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 border-t border-white/10 pt-2">
+            <button
+              type="button"
+              onClick={handleWizardGeneratePrompts}
+              disabled={wizardGeneratingPrompts || !wizardObjective.trim() || !wizardVideoDescription.trim() || !wizardEnvironment.trim()}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {wizardGeneratingPrompts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+              Generate prompt sequence
+            </button>
+          </div>
+
+          {wizardError && <p className="text-xs text-red-300">{wizardError}</p>}
+
+          {wizardPrompts.length > 0 && (
+            <div className="space-y-2 border-t border-white/10 pt-2">
+              {wizardPrompts.map((clipPrompt, idx) => (
+                <div key={idx} className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                  <p className="mb-1 text-[11px] font-semibold text-violet-200">Video {idx + 1} of {wizardPrompts.length}</p>
+                  <textarea
+                    value={clipPrompt}
+                    onChange={(e) => updateWizardPrompt(idx, e.target.value)}
+                    rows={4}
+                    className="input w-full font-mono text-[11px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleWizardCreateClip(idx)}
+                    disabled={wizardGeneratingClip !== null || (idx > 0 && wizardActiveClip < idx)}
+                    className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {wizardGeneratingClip === idx ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                    Create video
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {maxReached ? (
         <p className="text-xs text-slate-500">{t('structuredLearningCourse.videoMaxReached')}</p>
       ) : (
@@ -1668,7 +1934,12 @@ function VideoGenerationBox({
           <div className="mt-2 flex items-center gap-2">
             {referenceImage ? (
               <div className="relative">
-                <img src={referenceImage.previewUrl} alt="Imagen de referencia" className="h-12 w-12 rounded-lg object-cover" />
+                <img
+                  src={referenceImage.previewUrl}
+                  alt="Imagen de referencia"
+                  onClick={() => setLightboxSrc(referenceImage.previewUrl)}
+                  className="h-12 w-12 cursor-zoom-in rounded-lg object-cover hover:ring-2 hover:ring-violet-400"
+                />
                 <button
                   type="button"
                   onClick={() => setReferenceImage(null)}
@@ -1708,6 +1979,23 @@ function VideoGenerationBox({
             {t('structuredLearningCourse.videoGenerateButton')}
           </button>
         </>
+      )}
+
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img src={lightboxSrc} alt="Enlarged preview" className="max-h-full max-w-full rounded-lg object-contain" />
+          <button
+            type="button"
+            onClick={() => setLightboxSrc(null)}
+            className="absolute right-4 top-4 rounded-full border border-white/20 bg-slate-900 p-1.5 text-white hover:bg-red-600"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       )}
     </div>
   );

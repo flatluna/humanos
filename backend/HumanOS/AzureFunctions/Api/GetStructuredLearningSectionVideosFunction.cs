@@ -11,6 +11,10 @@ public sealed class StructuredLearningSectionVideoDto
     public Guid IllustrationId { get; set; }
     public string Purpose { get; set; } = string.Empty;
     public DateTime CreatedDate { get; set; }
+    /// <summary>The final prompt actually sent to Veo/Omni for this clip
+    /// (2026-08-25) — lets a reviewer validate what each clip in a
+    /// multi-clip sequence actually asked for.</summary>
+    public string Prompt { get; set; } = string.Empty;
 }
 
 /// <summary>Lists every Google Veo video already generated for one
@@ -42,7 +46,8 @@ public sealed class GetStructuredLearningSectionVideosFunction
             {
                 IllustrationId = i.StructuredLearningIllustrationId,
                 Purpose = i.Purpose.ToString(),
-                CreatedDate = i.CreatedDate
+                CreatedDate = i.CreatedDate,
+                Prompt = i.Prompt
             })
             .ToListAsync(cancellationToken);
 

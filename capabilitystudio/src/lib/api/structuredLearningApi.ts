@@ -407,6 +407,40 @@ export function getStructuredLearningVideoStatus(runId: string): Promise<Structu
   return apiGet<StructuredLearningVideoRunStatus>(`/studio/structured-learning/video/${runId}/status`);
 }
 
+/** Video wizard tab 0-2 → plans the ordered Veo prompt(s) for the section's
+ * clip sequence (2026-08-25/2026-08-26 rebuild). Does not generate a video. */
+export function generateStructuredLearningVideoPrompt(
+  objective: string,
+  videoDescription: string,
+  environment: string,
+  imageDescription: string
+): Promise<{ RecommendedPrompts: string[] }> {
+  return apiPost<{ RecommendedPrompts: string[] }>('/studio/structured-learning/video-prompt/generate', {
+    objective,
+    videoDescription,
+    environment,
+    imageDescription,
+  });
+}
+
+/** Video wizard tab 3 "Generar con IA" — cheap ephemeral starting-image
+ * candidate, optionally guided by an uploaded reference image. */
+export function generateStructuredLearningVideoStartImage(
+  prompt: string,
+  referenceImageBase64?: string | null
+): Promise<{ ImageBase64: string; ContentType: string }> {
+  return apiPost<{ ImageBase64: string; ContentType: string }>('/studio/structured-learning/video-prompt/generate-start-image', {
+    prompt,
+    referenceImageBase64: referenceImageBase64 ?? null,
+  });
+}
+
+/** Last frame of an already-generated clip (JPEG base64) — used to carry
+ * visual continuity into the next clip's starting image automatically. */
+export function getStructuredLearningVideoLastFrame(illustrationId: string): Promise<{ Base64: string; ContentType: string }> {
+  return apiGet<{ Base64: string; ContentType: string }>(`/studio/structured-learning/videos/${illustrationId}/last-frame`);
+}
+
 export function deleteStructuredLearningVideo(illustrationId: string): Promise<{ deleted: boolean }> {
   return apiDelete<{ deleted: boolean }>(`/studio/structured-learning/videos/${illustrationId}`);
 }
@@ -558,6 +592,13 @@ export function updateStructuredLearningVisibility(
 
 export function deleteStructuredLearningDocument(documentId: string): Promise<void> {
   return apiDelete(`/studio/structured-learning/${documentId}`);
+}
+
+export function updateStructuredLearningClassification(
+  documentId: string,
+  topicId: string | null,
+): Promise<{ StructuredLearningDocumentId: string; TopicId: string | null }> {
+  return apiPatch(`/studio/structured-learning/${documentId}/classification`, { topicId });
 }
 
 /** Lightweight read-only listing (2026-08-10) — lets the catalog page show

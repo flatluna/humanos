@@ -86,6 +86,8 @@ public sealed class StructuredLearningDocumentDetailResponse
 
     public Guid? SubjectId { get; set; }
 
+    public Guid? CapabilityDomainId { get; set; }
+
     public Guid? TopicId { get; set; }
 
     public string? ExecutiveSummary { get; set; }
@@ -182,6 +184,7 @@ public sealed class GetStructuredLearningDocumentFunction
             IsGlobal = document.IsGlobal,
             IsPublished = document.IsPublished,
             SubjectId = document.SubjectId,
+            CapabilityDomainId = document.CapabilityDomainId,
             TopicId = document.TopicId,
             ExecutiveSummary = document.ExecutiveSummary,
             CoverIllustrationId = coverIllustrationId,

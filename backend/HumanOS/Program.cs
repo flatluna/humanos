@@ -409,6 +409,7 @@ var host = new HostBuilder()
         // Assessment above, ported from Graph's TutorService.SubmitDeepDiveAttemptAsync
         // + DeepDiveLoopGate (reused as-is).
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningDeepDiveAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningVideoPromptAgent>();
         services.AddScoped<StructuredLearningDeepDiveEngine>();
 
         // "Edit mode" review tools (2026-08-10) — mirrors Graph's

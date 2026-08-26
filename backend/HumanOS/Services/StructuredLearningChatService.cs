@@ -80,8 +80,13 @@ public sealed class StructuredLearningChatService
         if (tenantId == Guid.Empty && documentId is Guid scopedDocumentId)
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            // IsGlobal is NOT required here (2026-08-25 fix) — this
+            // fallback also serves Studio's own authoring/testing chat
+            // (no logged-in tenant), which must be able to test ANY
+            // published course's agent, not only ones in the public
+            // student catalog. IsPublished alone still blocks drafts.
             tenantId = await context.StructuredLearningDocuments
-                .Where(d => d.StructuredLearningDocumentId == scopedDocumentId && d.IsGlobal && d.IsPublished)
+                .Where(d => d.StructuredLearningDocumentId == scopedDocumentId && d.IsPublished)
                 .Select(d => d.TenantId)
                 .FirstOrDefaultAsync(cancellationToken);
             if (tenantId == Guid.Empty)

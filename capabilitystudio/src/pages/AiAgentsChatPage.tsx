@@ -4,7 +4,8 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getStructuredLearningTopics, type StructuredLearningTopic } from '../lib/api/structuredLearningTopicsApi';
-import { getStructuredLearningDocument } from '../lib/api/structuredLearningApi';
+import { getStructuredLearningDocument, listStructuredLearningSectionVideos, type StructuredLearningSectionVideo } from '../lib/api/structuredLearningApi';
+import { apiImageUrl } from '../lib/api/httpClient';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import {
   postStructuredLearningChat,
@@ -211,6 +212,8 @@ function EngramModal({
   onClose: () => void;
 }) {
   const [teachingStepId, setTeachingStepId] = useState<string | null>(null);
+  const [illustrationId, setIllustrationId] = useState<string | null>(null);
+  const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,9 +221,19 @@ function EngramModal({
       .then((doc) => {
         if (cancelled) return;
         const section = doc.Sections.find((s) => s.StructuredLearningDocumentSectionId === engram.EngramId);
-        setTeachingStepId(section?.Steps.find((s) => s.StepType === 'Teaching')?.StructuredLearningSectionStepId ?? null);
+        const teachingStep = section?.Steps.find((s) => s.StepType === 'Teaching') ?? null;
+        setTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
+        try {
+          const parsed = teachingStep?.StepDataJson ? (JSON.parse(teachingStep.StepDataJson) as { IllustrationId?: string | null }) : null;
+          setIllustrationId(parsed?.IllustrationId ?? null);
+        } catch {
+          setIllustrationId(null);
+        }
       })
       .catch(() => !cancelled && setTeachingStepId(null));
+    listStructuredLearningSectionVideos(engram.EngramId)
+      .then((list) => !cancelled && setVideos(list))
+      .catch(() => !cancelled && setVideos([]));
     return () => {
       cancelled = true;
     };
@@ -240,7 +253,20 @@ function EngramModal({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <h2 className="mt-2 text-lg font-semibold text-white">{engram.Title}</h2>
+
+        {videos.length > 0 ? (
+          <div className="mt-3 space-y-3">
+            {videos.map((video) => (
+              <ZoomableEngramMedia key={video.IllustrationId} illustrationId={video.IllustrationId} alt={engram.Title} kind="video" />
+            ))}
+          </div>
+        ) : illustrationId ? (
+          <div className="mt-3">
+            <ZoomableEngramMedia illustrationId={illustrationId} alt={engram.Title} kind="image" />
+          </div>
+        ) : null}
+
+        <h2 className="mt-3 text-lg font-semibold text-white">{engram.Title}</h2>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
           <span>Engram ID: <span className="font-mono text-slate-400">{engram.EngramId}</span></span>
@@ -263,5 +289,68 @@ function EngramModal({
         )}
       </div>
     </div>
+  );
+}
+
+/** Engram citation media (2026-08-25) — the Teaching illustration or any
+ * generated video, shown at the top of the modal and enlargeable in a
+ * fullscreen lightbox on click, same pattern as StructuredLearningSectionPage's
+ * ZoomableIllustration. */
+function ZoomableEngramMedia({ illustrationId, alt, kind }: { illustrationId: string; alt: string; kind: 'image' | 'video' }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  const src = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="group relative block w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] cursor-zoom-in"
+        aria-label="Ampliar"
+      >
+        {kind === 'video' ? (
+          <video src={src} className="h-56 w-full bg-black object-contain" muted />
+        ) : (
+          <img src={src} alt={alt} className="h-56 w-full object-contain object-center" />
+        )}
+        <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
+          Ampliar
+        </span>
+      </button>
+      {open && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOpen(false)}
+        >
+          <div className="relative flex max-h-[95vh] max-w-[95vw] items-center justify-center" onClick={(event) => event.stopPropagation()}>
+            {kind === 'video' ? (
+              <video src={src} controls autoPlay className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
+            ) : (
+              <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800"
+              aria-label="Cerrar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

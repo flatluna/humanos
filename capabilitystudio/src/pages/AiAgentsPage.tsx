@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { ArrowRight, Bot, Layers3, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Bot, Layers3, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getStructuredLearningTopics, type StructuredLearningTopic } from '../lib/api/structuredLearningTopicsApi';
-import { getSubjectGradient, getSubjectIcon } from '../lib/subjectVisuals';
+import { getSubjectIcon } from '../lib/subjectVisuals';
 
 const DEFAULT_STUDIO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -15,6 +15,13 @@ export default function AiAgentsPage() {
   const [topicsBySubject, setTopicsBySubject] = useState<Record<string, StructuredLearningTopic[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+
+  const filteredSubjects = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const filtered = needle ? subjects.filter((subject) => subject.Name.toLowerCase().includes(needle)) : subjects;
+    return [...filtered].sort((a, b) => a.Name.localeCompare(b.Name));
+  }, [subjects, query]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,69 +51,91 @@ export default function AiAgentsPage() {
   }, [tenantId]);
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-10">
-      <div className="relative overflow-hidden rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-500/[0.14] via-white/[0.04] to-blue-500/[0.08] p-8 shadow-2xl shadow-black/20 sm:p-10">
-        <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="relative flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-300 ring-1 ring-cyan-400/25">
-            <Bot className="h-7 w-7" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-              <Sparkles className="h-3.5 w-3.5" /> Agent network
-            </div>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">AI Agents</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-              Start by organizing the agent network around your knowledge domains and their ontological types.
-            </p>
-          </div>
+    <div className="mx-auto max-w-6xl px-6 py-12">
+      <div className="border-b border-white/10 pb-8">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-brand-300">
+          <Bot className="h-3.5 w-3.5" /> Agent network
         </div>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">AI Agents</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+          A catalog of specialized tutoring agents, organized by knowledge domain. Select a domain to browse
+          its subjects and start a session.
+        </p>
       </div>
 
-      <div className="mt-10 flex items-end justify-between gap-4">
+      <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Knowledge domains</p>
-          <h2 className="mt-2 text-2xl font-bold text-white">Choose a domain</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Knowledge domains</p>
+          <h2 className="mt-1.5 text-xl font-semibold text-white">Choose a domain</h2>
         </div>
-        {!loading && <span className="text-sm text-slate-500">{subjects.length} domains</span>}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter domains…"
+              className="w-56 rounded-lg border border-white/10 bg-white/[0.02] py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-brand-400/50 focus:outline-none"
+            />
+          </div>
+          {!loading && <span className="whitespace-nowrap text-sm text-slate-500">{filteredSubjects.length} of {subjects.length}</span>}
+        </div>
       </div>
 
-      {loading && <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-slate-400">Loading domains...</div>}
-      {error && <div className="mt-6 rounded-2xl border border-red-400/20 bg-red-500/[0.08] p-5 text-sm text-red-200">{error}</div>}
+      {loading && (
+        <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-slate-400">
+          Loading domains…
+        </div>
+      )}
+      {error && <div className="mt-6 rounded-xl border border-red-400/20 bg-red-500/[0.06] p-5 text-sm text-red-200">{error}</div>}
 
       {!loading && !error && subjects.length === 0 && (
-        <div className="mt-6 rounded-2xl border border-dashed border-white/15 p-10 text-center text-sm text-slate-400">No knowledge domains available yet.</div>
+        <div className="mt-6 rounded-xl border border-dashed border-white/15 p-10 text-center text-sm text-slate-400">
+          No knowledge domains available yet.
+        </div>
       )}
 
-      {!loading && !error && subjects.length > 0 && (
-        <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {subjects.map((subject) => {
+      {!loading && !error && subjects.length > 0 && filteredSubjects.length === 0 && (
+        <div className="mt-6 rounded-xl border border-dashed border-white/15 p-10 text-center text-sm text-slate-400">
+          No domains match "{query}".
+        </div>
+      )}
+
+      {!loading && !error && filteredSubjects.length > 0 && (
+        <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredSubjects.map((subject, index) => {
             const Icon = getSubjectIcon(subject.Code);
             const topics = topicsBySubject[subject.SubjectId] ?? [];
             return (
               <Link
                 key={subject.SubjectId}
                 to={`/ai-agents/${encodeURIComponent(subject.Name)}`}
-                className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:-translate-y-1 hover:border-white/25 hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-cyan-500/10"
+                className="group relative flex flex-col bg-slate-950 p-6 transition hover:bg-white/[0.03]"
               >
-                <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${getSubjectGradient(subject.Code)}`} />
                 <div className="flex items-start justify-between gap-4">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${getSubjectGradient(subject.Code)} text-white shadow-lg`}>
-                    <Icon className="h-6 w-6" />
+                  <span className="font-mono text-xs text-slate-600">{String(index + 1).padStart(2, '0')}</span>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-brand-300">
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <ArrowRight className="h-5 w-5 text-slate-600 transition group-hover:translate-x-1 group-hover:text-white" />
                 </div>
-                <h3 className="mt-5 text-xl font-semibold text-white">{subject.Name}</h3>
-                <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
-                  <Layers3 className="h-4 w-4 text-cyan-300" />
-                  <span><strong className="text-slate-200">{topics.length}</strong> ontological type{topics.length === 1 ? '' : 's'}</span>
+                <h3 className="mt-5 text-lg font-semibold text-white">{subject.Name}</h3>
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                  <Layers3 className="h-3.5 w-3.5" />
+                  <span><strong className="font-semibold text-slate-300">{topics.length}</strong> ontological type{topics.length === 1 ? '' : 's'}</span>
                 </div>
                 {topics.length > 0 && (
                   <div className="mt-4 flex flex-wrap gap-1.5">
-                    {topics.slice(0, 3).map((topic) => <span key={topic.StructuredLearningTopicId} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-400">{topic.Name}</span>)}
-                    {topics.length > 3 && <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-slate-500">+{topics.length - 3}</span>}
+                    {topics.slice(0, 3).map((topic) => (
+                      <span key={topic.StructuredLearningTopicId} className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] text-slate-400">
+                        {topic.Name}
+                      </span>
+                    ))}
+                    {topics.length > 3 && <span className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-slate-500">+{topics.length - 3}</span>}
                   </div>
                 )}
+                <div className="mt-5 flex items-center gap-1.5 text-xs font-medium text-slate-500 transition group-hover:text-brand-300">
+                  Explore domain <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                </div>
               </Link>
             );
           })}
@@ -115,3 +144,4 @@ export default function AiAgentsPage() {
     </div>
   );
 }
+
