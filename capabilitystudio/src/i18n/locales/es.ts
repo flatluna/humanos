@@ -917,7 +917,7 @@ const es = {
     videoMergeCancel: 'Cancelar',
     videoMergeInstructions: 'Toca los videos en el orden en que quieres unirlos ({{count}} seleccionados).',
     videoMergeButton: 'Unir en un video',
-    videoMaxReached: 'Ya se alcanzó el máximo de 4 videos para esta sección.',
+    videoMaxReached: 'Ya se alcanzó el máximo de 10 videos para esta sección.',
     videoStartPrompt: '¡Cuando estés listo, dale play para comenzar el video! 🎬',
     videoPromptPlaceholder: 'Describe la escena/gesto exacto para el video (8s)...',
     videoUploadImage: 'Subir imagen (animar como primer frame)',

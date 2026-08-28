@@ -31,6 +31,8 @@ public sealed class StructuredLearningStepDetailDto
     public DateTime? HumanApprovedAtUtc { get; set; }
 
     public string? TimelineJson { get; set; }
+
+    public string? VideoWizardStateJson { get; set; }
 }
 
 public sealed class StructuredLearningSectionDetailDto
@@ -240,7 +242,8 @@ public sealed class GetStructuredLearningDocumentFunction
                             ConfigSnapshotJson = st.ConfigSnapshotJson,
                             IsHumanApproved = st.IsHumanApproved,
                             HumanApprovedAtUtc = st.HumanApprovedAtUtc,
-                            TimelineJson = st.TimelineJson
+                            TimelineJson = st.TimelineJson,
+                            VideoWizardStateJson = st.VideoWizardStateJson
                         })
                         .ToList()
                 })

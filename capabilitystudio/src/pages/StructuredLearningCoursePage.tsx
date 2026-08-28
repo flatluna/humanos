@@ -15,6 +15,7 @@ import AddStructuredLearningSectionModal from '../components/AddStructuredLearni
 import DeleteStructuredLearningSectionModal from '../components/DeleteStructuredLearningSectionModal';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import StructuredLearningCostSection from '../components/StructuredLearningCostSection';
+import { getStructuredLearningCostDetail, type StructuredLearningCostDetail } from '../lib/api/costsApi';
 import { usePreviewMode, withPreviewMode } from '../lib/previewMode';
 
 type SectionState = 'Locked' | 'Available' | 'Mastered';
@@ -86,6 +87,13 @@ export default function StructuredLearningCoursePage() {
   // "Edit mode" delete-section feature (2026-08-11) — the section pending
   // type-to-confirm deletion (null when the modal is closed).
   const [deletingSection, setDeletingSection] = useState<StructuredLearningSectionDetail | null>(null);
+  // Knowledge Graph panel visibility (2026-08-26) — previously always shown
+  // with no way to close it, permanently taking up space on this page.
+  const [showKnowledgeGraphPanel, setShowKnowledgeGraphPanel] = useState(false);
+  // Total Engrams (sections) + token usage summary shown at the top of the
+  // page (2026-08-26 request) — token totals only fetched/shown in edit
+  // mode, same data StructuredLearningCostSection already reads.
+  const [costSummary, setCostSummary] = useState<StructuredLearningCostDetail | null>(null);
 
   const loadDocument = useCallback(() => {
     if (!documentId) return;
@@ -106,6 +114,18 @@ export default function StructuredLearningCoursePage() {
   useEffect(() => {
     loadDocument();
   }, [loadDocument]);
+
+  useEffect(() => {
+    if (!documentId || mode !== 'edit') {
+      setCostSummary(null);
+      return;
+    }
+    let cancelled = false;
+    getStructuredLearningCostDetail(documentId)
+      .then((result) => { if (!cancelled) setCostSummary(result); })
+      .catch(() => { if (!cancelled) setCostSummary(null); });
+    return () => { cancelled = true; };
+  }, [documentId, mode]);
 
   const sections = document?.Sections ?? [];
 
@@ -210,6 +230,14 @@ export default function StructuredLearningCoursePage() {
         <p className="text-xs font-medium uppercase tracking-wide text-brand-400">{t('structuredLearningMap.studentPreviewLabel')}</p>
         <h1 className="mt-1 text-2xl font-bold text-white">{document.DocumentName}</h1>
         <p className="mt-1 text-xs text-slate-500">{t('structuredLearningMap.climbHint')}</p>
+        <p className="mt-2 text-xs font-medium text-slate-400">
+          {sections.length} Engram{sections.length === 1 ? '' : 's'}
+          {mode === 'edit' && costSummary && (
+            <span className="ml-2 text-amber-300">
+              · {costSummary.InputTokens.toLocaleString()} Tokens in · {costSummary.OutputTokens.toLocaleString()} Tokens out
+            </span>
+          )}
+        </p>
         <div className="mt-4 flex justify-center">
           <PreviewModeSwitcher mode={mode} onChange={setMode} />
         </div>
@@ -218,7 +246,27 @@ export default function StructuredLearningCoursePage() {
 
       {documentId && (
         <div className="mt-8 space-y-3">
-          <KnowledgeGraphSection documentId={documentId} />
+          {showKnowledgeGraphPanel ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowKnowledgeGraphPanel(false)}
+                className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                aria-label="Cerrar Knowledge Graph"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <KnowledgeGraphSection documentId={documentId} />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowKnowledgeGraphPanel(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-brand-400/40 bg-brand-500/10 px-4 py-2.5 text-sm font-semibold text-brand-200 hover:bg-brand-500/20"
+            >
+              Mostrar Knowledge Graph
+            </button>
+          )}
           {mode === 'edit' && <StructuredLearningCostSection documentId={documentId} />}
         </div>
       )}

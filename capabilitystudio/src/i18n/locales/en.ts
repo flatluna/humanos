@@ -922,7 +922,7 @@ const en: StudioTranslations = {
     videoMergeInstructions: 'Tap the videos in the order you want them merged ({{count}} selected).',
     videoMergeButton: 'Merge into one video',
     videoMerging: 'Merging videos… this can take a moment, please wait.',
-    videoMaxReached: 'This section already has the maximum of 4 videos.',
+    videoMaxReached: 'This section already has the maximum of 10 videos.',
     videoPromptPlaceholder: 'Describe the exact scene/gesture for the video (8s)...',
     videoUploadImage: 'Upload image (animate as first frame)',
     videoGenerating: 'Generating video (this can take a few minutes)...',

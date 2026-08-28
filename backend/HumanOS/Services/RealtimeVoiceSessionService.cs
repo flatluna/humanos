@@ -163,9 +163,16 @@ public sealed class RealtimeVoiceSessionService
                     ["turn_detection"] = new System.Text.Json.Nodes.JsonObject
                     {
                         ["type"] = "server_vad",
-                        ["threshold"] = 0.85,
+                        // Tuned 2026-08-27: 0.85 never detected interruptions;
+                        // 0.5 was too sensitive (agent stopped waiting for the
+                        // student to actually finish a thought before
+                        // responding/self-interrupting). 0.65 + a longer
+                        // silence_duration_ms is the middle ground — still
+                        // interruptible, but requires an actual sustained
+                        // pause before treating speech as "done".
+                        ["threshold"] = 0.65,
                         ["prefix_padding_ms"] = 300,
-                        ["silence_duration_ms"] = 700,
+                        ["silence_duration_ms"] = 650,
                         ["create_response"] = true,
                         ["interrupt_response"] = true
                     },

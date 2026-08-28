@@ -313,6 +313,8 @@ export interface StructuredLearningStepDetail {
    * `{Type:'Text',ParagraphIndex}` / `{Type:'Video',IllustrationId}` items.
    * Null means no custom order yet. */
   TimelineJson?: string | null;
+
+  VideoWizardStateJson?: string | null;
 }
 
 // ==================== "Edit mode" review tools (2026-08-10) ====================
@@ -374,16 +376,36 @@ export interface StructuredLearningSectionVideo {
   IllustrationId: string;
   Purpose: string;
   CreatedDate: string;
+  Prompt: string;
+  ImageModel: string;
+  IsPublished: boolean;
 }
 
 export function listStructuredLearningSectionVideos(sectionId: string): Promise<StructuredLearningSectionVideo[]> {
   return apiGet<StructuredLearningSectionVideo[]>(`/studio/structured-learning/sections/${sectionId}/videos`);
 }
 
+/** Toggles whether a video is visible to students in real-mode (2026-08-26) —
+ * edit mode still always shows every video regardless of this flag. */
+export function setStructuredLearningVideoPublished(illustrationId: string, isPublished: boolean): Promise<{ StructuredLearningIllustrationId: string; IsPublished: boolean }> {
+  return apiPut(`/studio/structured-learning/videos/${illustrationId}/published`, { isPublished });
+}
+
 /** Saves/clears a Teaching step's author-defined narration/video wizard
  * order (2026-08-22) — pass null to revert to the old all-at-once view. */
 export function setStructuredLearningStepTimeline(stepId: string, timelineJson: string | null): Promise<{ StructuredLearningSectionStepId: string; TimelineJson: string | null }> {
   return apiPut(`/studio/structured-learning/steps/${stepId}/timeline`, { timelineJson });
+}
+
+/** Saves a Teaching step's video wizard inputs (Objective/Instructions/
+ * Environment/Starting image description) and generated prompt sequence
+ * (2026-08-26) so the wizard can be reopened later with everything still
+ * editable instead of starting blank every time. */
+export function setStructuredLearningVideoWizardState(
+  stepId: string,
+  videoWizardStateJson: string | null
+): Promise<{ StructuredLearningSectionStepId: string; VideoWizardStateJson: string | null }> {
+  return apiPut(`/studio/structured-learning/steps/${stepId}/video-wizard-state`, { videoWizardStateJson });
 }
 
 export function startStructuredLearningVideo(
@@ -443,6 +465,18 @@ export function getStructuredLearningVideoLastFrame(illustrationId: string): Pro
 
 export function deleteStructuredLearningVideo(illustrationId: string): Promise<{ deleted: boolean }> {
   return apiDelete<{ deleted: boolean }>(`/studio/structured-learning/videos/${illustrationId}`);
+}
+
+/** Re-runs generation for one existing video using its OWN stored prompt
+ * and its OWN first frame as the starting image (2026-08-26) — the old
+ * video is left in place until the caller deletes it. */
+export function regenerateStructuredLearningVideo(
+  illustrationId: string,
+  videoModel: 'veo' | 'omni' = 'veo'
+): Promise<StructuredLearningVideoRunStatus> {
+  return apiPost<StructuredLearningVideoRunStatus>(`/studio/structured-learning/videos/${illustrationId}/regenerate`, {
+    videoModel,
+  });
 }
 
 /** Merges 2+ already-generated videos, in the given order, into one new
@@ -599,6 +633,13 @@ export function updateStructuredLearningClassification(
   topicId: string | null,
 ): Promise<{ StructuredLearningDocumentId: string; TopicId: string | null }> {
   return apiPatch(`/studio/structured-learning/${documentId}/classification`, { topicId });
+}
+
+export function updateStructuredLearningDocumentName(
+  documentId: string,
+  documentName: string,
+): Promise<{ StructuredLearningDocumentId: string; DocumentName: string }> {
+  return apiPatch(`/studio/structured-learning/${documentId}/name`, { documentName });
 }
 
 /** Lightweight read-only listing (2026-08-10) — lets the catalog page show

@@ -94,6 +94,15 @@ public sealed class StructuredLearningSectionStep
     /// step-by-step wizard (one item at a time, Next/Previous) instead.</summary>
     public string? TimelineJson { get; set; }
 
+    /// <summary>Only meaningful for StepType=Teaching (2026-08-26) — the
+    /// reviewer's saved video wizard inputs and generated prompt sequence,
+    /// as JSON: <c>{"Objective":"...","VideoDescription":"...",
+    /// "Environment":"...","ImageDescription":"...","Prompts":["...","..."]}</c>.
+    /// Lets the wizard be reopened later with everything still editable
+    /// instead of starting from a blank form every time. Null means the
+    /// wizard has never been saved for this step.</summary>
+    public string? VideoWizardStateJson { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public StructuredLearningDocumentSection Section { get; set; } = null!;

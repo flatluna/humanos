@@ -40,6 +40,7 @@ import {
   editStructuredLearningDeepDiveCard,
   deleteStructuredLearningDeepDiveCard,
   listStructuredLearningSectionVideos,
+  setStructuredLearningVideoPublished,
   startStructuredLearningVideo,
   getStructuredLearningVideoStatus,
   deleteStructuredLearningVideo,
@@ -47,9 +48,11 @@ import {
   cutStructuredLearningVideoSegments,
   undoStructuredLearningVideoEdit,
   setStructuredLearningStepTimeline,
+  setStructuredLearningVideoWizardState,
   generateStructuredLearningVideoPrompt,
   generateStructuredLearningVideoStartImage,
   getStructuredLearningVideoLastFrame,
+  regenerateStructuredLearningVideo,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
@@ -1249,7 +1252,14 @@ function TeachingTimelineWizard({
   useEffect(() => {
     let cancelled = false;
     listStructuredLearningSectionVideos(sectionId)
-      .then((list) => { if (!cancelled) setVideos(list); })
+      .then((list) => {
+        if (cancelled) return;
+        // Demo/Real preview shows what a student would see (2026-08-26) —
+        // Studio's own internal call never sends personId (that signal only
+        // applies to the external runtime proxy), so unpublished videos must
+        // be filtered out here explicitly instead.
+        setVideos(list.filter((v) => v.IsPublished));
+      })
       .catch(() => { if (!cancelled) setVideos([]); })
       .finally(() => { if (!cancelled) setLoadingVideos(false); });
     return () => { cancelled = true; };
@@ -1363,14 +1373,17 @@ function VideoGenerationBox({
   const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
   const [loadingVideos, setLoadingVideos] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingPublishedId, setTogglingPublishedId] = useState<string | null>(null);
   const [referenceImage, setReferenceImage] = useState<{ base64: string; contentType: string; previewUrl: string } | null>(null);
-  const [videoModel, setVideoModel] = useState<'veo' | 'omni'>('veo');
+  const [videoModel, setVideoModel] = useState<'veo' | 'omni'>('omni');
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeSelection, setMergeSelection] = useState<string[]>([]);
   const [merging, setMerging] = useState(false);
   const [trimmingId, setTrimmingId] = useState<string | null>(null);
   const [trimVersions, setTrimVersions] = useState<Record<string, number>>({});
   const [undoingId, setUndoingId] = useState<string | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regenerateMenuId, setRegenerateMenuId] = useState<string | null>(null);
 
   // === Video prompt wizard (2026-08-26 rebuild) ===
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -1379,7 +1392,7 @@ function VideoGenerationBox({
   const [wizardVideoDescription, setWizardVideoDescription] = useState('');
   const [wizardEnvironment, setWizardEnvironment] = useState('');
   const [wizardImageDescription, setWizardImageDescription] = useState('');
-  const [wizardImageMode, setWizardImageMode] = useState<'upload' | 'ai' | 'none'>('none');
+  const [wizardImageMode, setWizardImageMode] = useState<'upload' | 'ai' | 'edit' | 'none'>('none');
   const [wizardImage, setWizardImage] = useState<{ base64: string; contentType: string; previewUrl: string } | null>(null);
   const [wizardGeneratingImage, setWizardGeneratingImage] = useState(false);
   const [wizardGeneratingPrompts, setWizardGeneratingPrompts] = useState(false);
@@ -1389,6 +1402,52 @@ function VideoGenerationBox({
   const [wizardChainImage, setWizardChainImage] = useState<{ base64: string; contentType: string } | null>(null);
   const [wizardGeneratingClip, setWizardGeneratingClip] = useState<number | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [promptModalVideo, setPromptModalVideo] = useState<StructuredLearningSectionVideo | null>(null);
+  const wizardLoadedRef = useRef(false);
+
+  // Restore any previously saved wizard inputs/prompts for this step
+  // (2026-08-26) — runs once, before the save-effect below can fire.
+  useEffect(() => {
+    if (!step.VideoWizardStateJson) {
+      wizardLoadedRef.current = true;
+      return;
+    }
+    try {
+      const saved = JSON.parse(step.VideoWizardStateJson) as {
+        Objective?: string; VideoDescription?: string; Environment?: string; ImageDescription?: string; Prompts?: string[];
+      };
+      setWizardObjective(saved.Objective ?? '');
+      setWizardVideoDescription(saved.VideoDescription ?? '');
+      setWizardEnvironment(saved.Environment ?? '');
+      setWizardImageDescription(saved.ImageDescription ?? '');
+      setWizardPrompts(saved.Prompts ?? []);
+    } catch {
+      // ignore malformed saved state
+    } finally {
+      wizardLoadedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save wizard inputs/prompts (debounced) so reopening the wizard
+  // later restores everything instead of starting blank (2026-08-26).
+  useEffect(() => {
+    if (!wizardLoadedRef.current) return;
+    const timeout = setTimeout(() => {
+      const hasContent = wizardObjective.trim() || wizardVideoDescription.trim() || wizardEnvironment.trim() || wizardPrompts.length > 0;
+      const json = hasContent
+        ? JSON.stringify({
+            Objective: wizardObjective,
+            VideoDescription: wizardVideoDescription,
+            Environment: wizardEnvironment,
+            ImageDescription: wizardImageDescription,
+            Prompts: wizardPrompts,
+          })
+        : null;
+      setStructuredLearningVideoWizardState(step.StructuredLearningSectionStepId, json).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(timeout);
+  }, [wizardObjective, wizardVideoDescription, wizardEnvironment, wizardImageDescription, wizardPrompts, step.StructuredLearningSectionStepId]);
 
   async function handleWizardImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -1451,10 +1510,16 @@ function VideoGenerationBox({
     if (!clipPrompt?.trim()) return;
     setWizardGeneratingClip(index);
     setWizardError(null);
+    // Prefer the previous clip's last frame (continuity between clips);
+    // otherwise strictly respect tab 3's explicit choice — "No image" means
+    // no anchor at all (Veo invents the scene from the text prompt), even
+    // if an image was uploaded/generated earlier and then the mode was
+    // switched away from it.
+    const anchorImage = wizardChainImage ?? (wizardImageMode === 'none' ? null : wizardImage);
     try {
       const status = await startStructuredLearningVideo(
         sectionId, clipPrompt.trim(), step.StepType, videoModel,
-        wizardChainImage?.base64, wizardChainImage?.contentType
+        anchorImage?.base64, anchorImage?.contentType
       );
       // Poll until done so we can fetch the last frame for the next clip.
       let current = status;
@@ -1502,6 +1567,23 @@ function VideoGenerationBox({
         if (updated.Stage === 'Completed') {
           listStructuredLearningSectionVideos(sectionId).then(setVideos).catch(() => {});
           onVideosChanged();
+          // Continuity fix (2026-08-26): the plain manual "Create video" flow
+          // (as opposed to the wizard's per-clip sequence) never carried the
+          // just-finished clip's last frame forward — each new manual video
+          // silently reused whatever referenceImage was left (usually none),
+          // breaking visual continuity between manually-created clips.
+          if (updated.IllustrationId) {
+            try {
+              const lastFrame = await getStructuredLearningVideoLastFrame(updated.IllustrationId);
+              setReferenceImage({
+                base64: lastFrame.Base64,
+                contentType: lastFrame.ContentType,
+                previewUrl: `data:${lastFrame.ContentType};base64,${lastFrame.Base64}`,
+              });
+            } catch {
+              // continuity is best-effort — the next clip can still be generated without it
+            }
+          }
         }
       } catch (err) {
         setRunStatus({ ...runStatus, Stage: 'Failed', ErrorMessage: err instanceof Error ? err.message : String(err) });
@@ -1541,6 +1623,18 @@ function VideoGenerationBox({
     }
   }
 
+  async function handleTogglePublished(illustrationId: string, currentlyPublished: boolean) {
+    setTogglingPublishedId(illustrationId);
+    try {
+      await setStructuredLearningVideoPublished(illustrationId, !currentlyPublished);
+      setVideos((prev) => prev.map((v) => (v.IllustrationId === illustrationId ? { ...v, IsPublished: !currentlyPublished } : v)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTogglingPublishedId(null);
+    }
+  }
+
   async function handleDelete(illustrationId: string) {
     setDeletingId(illustrationId);
     try {
@@ -1551,6 +1645,33 @@ function VideoGenerationBox({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleRegenerate(illustrationId: string, model: 'veo' | 'omni') {
+    if (videos.length >= 10) {
+      setError('Cannot regenerate — this section is already at the max video limit. Delete the old one first.');
+      return;
+    }
+    setRegenerateMenuId(null);
+    setRegeneratingId(illustrationId);
+    setError(null);
+    try {
+      let status = await regenerateStructuredLearningVideo(illustrationId, model);
+      while (status.Stage === 'Running') {
+        await new Promise((resolve) => setTimeout(resolve, 8000));
+        status = await getStructuredLearningVideoStatus(status.RunId);
+      }
+      if (status.Stage === 'Failed') {
+        throw new Error(status.ErrorMessage ?? 'Regeneration failed.');
+      }
+      const updated = await listStructuredLearningSectionVideos(sectionId);
+      setVideos(updated);
+      onVideosChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegeneratingId(null);
     }
   }
 
@@ -1610,13 +1731,23 @@ function VideoGenerationBox({
     }
   }
 
-  const maxReached = videos.length >= 4;
+  const maxReached = videos.length >= 10;
+
+  function priceForModel(imageModel: string | null | undefined): number | null {
+    if (!imageModel) return null;
+    if (imageModel.startsWith('veo-')) return 0.30;
+    if (imageModel.startsWith('gemini-omni-flash')) return 0.55;
+    return null; // e.g. "merged" (local ffmpeg, unbilled) or unknown
+  }
+
+  const totalPrice = videos.reduce((sum, v) => sum + (priceForModel(v.ImageModel) ?? 0), 0);
 
   return (
     <div className="mt-4 rounded-xl border border-violet-400/20 bg-violet-500/[0.04] p-3">
       <div className="mb-1.5 flex items-center justify-between">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-300">
           <Video className="h-3.5 w-3.5" /> {t('structuredLearningCourse.videoCountLabel', { count: videos.length })}
+          {videos.length > 0 && <span className="text-slate-400">· Total: ${totalPrice.toFixed(2)}</span>}
         </p>
         {videos.length >= 2 && (
           <button
@@ -1629,6 +1760,8 @@ function VideoGenerationBox({
         )}
       </div>
 
+      {!mergeMode && error && <p className="mb-2 text-xs text-red-300">{error}</p>}
+
       {!loadingVideos && videos.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {videos.map((video, videoIndex) => (
@@ -1636,10 +1769,20 @@ function VideoGenerationBox({
               <span className="absolute left-1.5 top-1.5 z-10 rounded-full border border-white/20 bg-slate-900/90 px-2 py-0.5 text-[10px] font-bold text-violet-200 shadow">
                 {t('structuredLearningCourse.timelineVideoItemLabel', { number: videoIndex + 1 })}
               </span>
+              {priceForModel(video.ImageModel) !== null && (
+                <span className="absolute right-1.5 top-1.5 z-10 rounded-full border border-white/20 bg-slate-900/90 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 shadow">
+                  ${priceForModel(video.ImageModel)!.toFixed(2)}
+                </span>
+              )}
+              {!video.IsPublished && (
+                <span className="absolute right-1.5 top-7 z-10 rounded-full border border-amber-400/40 bg-slate-900/90 px-2 py-0.5 text-[10px] font-semibold text-amber-300 shadow">
+                  Hidden
+                </span>
+              )}
               <video
                 src={apiImageUrl(`/illustrations/structured-learning/${video.IllustrationId}/image?v=${trimVersions[video.IllustrationId] ?? 0}`)}
                 controls={!mergeMode}
-                className="h-40 rounded-lg bg-black"
+                className={`h-40 rounded-lg bg-black ${!video.IsPublished ? 'opacity-60 ring-2 ring-amber-400/40' : ''}`}
               />
               {mergeMode ? (
                 <button
@@ -1687,6 +1830,62 @@ function VideoGenerationBox({
                   >
                     {undoingId === video.IllustrationId ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : t('structuredLearningCourse.videoUndo')}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setPromptModalVideo(video)}
+                    className="rounded-full border border-white/20 bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-slate-800"
+                  >
+                    View prompt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePublished(video.IllustrationId, video.IsPublished)}
+                    disabled={togglingPublishedId === video.IllustrationId}
+                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-50 ${
+                      video.IsPublished
+                        ? 'border-white/20 bg-slate-900/80 text-slate-300 hover:bg-slate-800'
+                        : 'border-amber-400/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                    }`}
+                  >
+                    {togglingPublishedId === video.IllustrationId ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    ) : video.IsPublished ? (
+                      'Published'
+                    ) : (
+                      'Hidden — click to publish'
+                    )}
+                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setRegenerateMenuId((prev) => (prev === video.IllustrationId ? null : video.IllustrationId))}
+                      disabled={regeneratingId !== null}
+                      className="rounded-full border border-white/20 bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {regeneratingId === video.IllustrationId ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : 'Regenerate'}
+                    </button>
+                    {regenerateMenuId === video.IllustrationId && (
+                      <div
+                        className="absolute bottom-full left-0 z-20 mb-1 w-40 space-y-1 rounded-lg border border-white/10 bg-slate-900 p-1.5 shadow-xl"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerate(video.IllustrationId, 'veo')}
+                          className="block w-full rounded px-2 py-1 text-left text-[10px] text-slate-200 hover:bg-violet-500/20"
+                        >
+                          Veo 3.1 Fast · $0.30
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerate(video.IllustrationId, 'omni')}
+                          className="block w-full rounded px-2 py-1 text-left text-[10px] text-slate-200 hover:bg-violet-500/20"
+                        >
+                          Gemini Omni Flash · $0.55
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1746,7 +1945,32 @@ function VideoGenerationBox({
         </div>
       )}
 
-      {!maxReached && !mergeMode && (
+      {!mergeMode && (
+        <div className="mb-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setVideoModel('veo')}
+            disabled={submitting || runStatus?.Stage === 'Running'}
+            className={`flex-1 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
+              videoModel === 'veo' ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
+            }`}
+          >
+            <span className="font-semibold">Veo 3.1 Fast</span> · $0.30/video
+          </button>
+          <button
+            type="button"
+            onClick={() => setVideoModel('omni')}
+            disabled={submitting || runStatus?.Stage === 'Running'}
+            className={`flex-1 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
+              videoModel === 'omni' ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
+            }`}
+          >
+            <span className="font-semibold">Gemini Omni Flash (Preview)</span> · $0.55/video
+          </button>
+        </div>
+      )}
+
+      {!mergeMode && (
         <div className="mb-2">
           <button
             type="button"
@@ -1759,7 +1983,7 @@ function VideoGenerationBox({
         </div>
       )}
 
-      {wizardOpen && !maxReached && !mergeMode && (
+      {wizardOpen && !mergeMode && (
         <div className="mb-3 space-y-3 rounded-lg border border-violet-400/30 bg-violet-500/[0.04] p-3">
           <div className="flex gap-1 border-b border-white/10 pb-2">
             {['0. Objective', '1. Instructions', '2. Environment', '3. Starting image'].map((label, idx) => (
@@ -1806,7 +2030,7 @@ function VideoGenerationBox({
           {wizardTab === 3 && (
             <div className="space-y-2">
               <div className="flex gap-2">
-                {(['upload', 'ai', 'none'] as const).map((mode) => (
+                {(['upload', 'ai', 'edit', 'none'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
@@ -1815,7 +2039,7 @@ function VideoGenerationBox({
                       wizardImageMode === mode ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 text-slate-400 hover:bg-white/[0.05]'
                     }`}
                   >
-                    {mode === 'upload' ? 'Upload image' : mode === 'ai' ? 'Generate with AI' : 'No image'}
+                    {mode === 'upload' ? 'Upload image' : mode === 'ai' ? 'Generate with AI' : mode === 'edit' ? 'Upload + edit with AI' : 'No image'}
                   </button>
                 ))}
               </div>
@@ -1845,13 +2069,47 @@ function VideoGenerationBox({
                   </button>
                 </div>
               )}
+              {wizardImageMode === 'edit' && (
+                <div className="space-y-1.5">
+                  <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10">
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleWizardImageUpload} />
+                    Upload image to edit
+                  </label>
+                  <textarea
+                    value={wizardImageDescription}
+                    onChange={(e) => setWizardImageDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Describe how the uploaded image should be changed."
+                    className="input w-full"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleWizardGenerateImage}
+                    disabled={wizardGeneratingImage || !wizardImageDescription.trim() || !wizardImage}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {wizardGeneratingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    Edit image with AI
+                  </button>
+                  {!wizardImage && <p className="text-[11px] text-amber-400">Upload an image first.</p>}
+                </div>
+              )}
               {wizardImage && (
-                <img
-                  src={wizardImage.previewUrl}
-                  alt="Starting image"
-                  onClick={() => setLightboxSrc(wizardImage.previewUrl)}
-                  className="h-24 w-24 cursor-zoom-in rounded-lg object-cover hover:ring-2 hover:ring-violet-400"
-                />
+                <div className="flex items-center gap-2">
+                  <img
+                    src={wizardImage.previewUrl}
+                    alt="Starting image"
+                    onClick={() => setLightboxSrc(wizardImage.previewUrl)}
+                    className="h-24 w-24 cursor-zoom-in rounded-lg object-cover hover:ring-2 hover:ring-violet-400"
+                  />
+                  <a
+                    href={wizardImage.previewUrl}
+                    download={`starting-image.${wizardImage.contentType.split('/')[1] || 'png'}`}
+                    className="rounded-full border border-white/20 bg-slate-900/80 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-800"
+                  >
+                    Download
+                  </a>
+                </div>
               )}
             </div>
           )}
@@ -1870,9 +2128,18 @@ function VideoGenerationBox({
 
           {wizardError && <p className="text-xs text-red-300">{wizardError}</p>}
 
+          {maxReached && (
+            <p className="text-xs text-amber-400">
+              This section already has the max 10 videos — delete one below to free a slot before creating a new clip from these inputs.
+            </p>
+          )}
+
           {wizardPrompts.length > 0 && (
             <div className="space-y-2 border-t border-white/10 pt-2">
-              {wizardPrompts.map((clipPrompt, idx) => (
+              {wizardPrompts.map((clipPrompt, idx) => {
+                const anchor = wizardChainImage ?? (wizardImageMode === 'none' ? null : wizardImage);
+                const anchorPreviewUrl = anchor ? (wizardChainImage ? `data:${wizardChainImage.contentType};base64,${wizardChainImage.base64}` : wizardImage!.previewUrl) : null;
+                return (
                 <div key={idx} className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
                   <p className="mb-1 text-[11px] font-semibold text-violet-200">Video {idx + 1} of {wizardPrompts.length}</p>
                   <textarea
@@ -1884,14 +2151,31 @@ function VideoGenerationBox({
                   <button
                     type="button"
                     onClick={() => handleWizardCreateClip(idx)}
-                    disabled={wizardGeneratingClip !== null || (idx > 0 && wizardActiveClip < idx)}
+                    disabled={wizardGeneratingClip !== null || maxReached}
                     className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
                   >
                     {wizardGeneratingClip === idx ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
                     Create video
                   </button>
+                  <p className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400">
+                    Anchor image for this clip:{' '}
+                    {anchor ? (
+                      <>
+                        <img src={anchorPreviewUrl!} alt="Anchor" className="h-6 w-6 rounded object-cover" />
+                        {wizardChainImage ? 'previous clip\'s last frame' : 'your uploaded/generated starting image'}
+                      </>
+                    ) : (
+                      <span className="text-amber-400">none — Veo will invent its own scene from the text prompt alone</span>
+                    )}
+                  </p>
+                  {idx > 0 && wizardActiveClip < idx && (
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      Tip: for the best visual continuity, create clip {wizardActiveClip + 1} first — this one will otherwise start from the wizard's own starting image instead of the previous clip's last frame.
+                    </p>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1901,28 +2185,6 @@ function VideoGenerationBox({
         <p className="text-xs text-slate-500">{t('structuredLearningCourse.videoMaxReached')}</p>
       ) : (
         <>
-          <div className="mb-2 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setVideoModel('veo')}
-              disabled={submitting || runStatus?.Stage === 'Running'}
-              className={`flex-1 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
-                videoModel === 'veo' ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
-              }`}
-            >
-              <span className="font-semibold">Veo 3.1 Fast</span> · $0.30/video
-            </button>
-            <button
-              type="button"
-              onClick={() => setVideoModel('omni')}
-              disabled={submitting || runStatus?.Stage === 'Running'}
-              className={`flex-1 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
-                videoModel === 'omni' ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
-              }`}
-            >
-              <span className="font-semibold">Gemini Omni Flash (Preview)</span> · $0.55/video
-            </button>
-          </div>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -1987,6 +2249,14 @@ function VideoGenerationBox({
           onClick={() => setLightboxSrc(null)}
         >
           <img src={lightboxSrc} alt="Enlarged preview" className="max-h-full max-w-full rounded-lg object-contain" />
+          <a
+            href={lightboxSrc}
+            download="image.png"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute right-14 top-4 rounded-full border border-white/20 bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+          >
+            Download
+          </a>
           <button
             type="button"
             onClick={() => setLightboxSrc(null)}
@@ -1995,6 +2265,26 @@ function VideoGenerationBox({
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+      )}
+
+      {promptModalVideo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          onClick={() => setPromptModalVideo(null)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-xl overflow-auto rounded-lg border border-white/10 bg-slate-900 p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold text-violet-200">Prompt used for this video</p>
+              <button type="button" onClick={() => setPromptModalVideo(null)} className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <pre className="whitespace-pre-wrap font-mono text-xs text-slate-300">{promptModalVideo.Prompt || '(no prompt recorded for this video)'}</pre>
+          </div>
         </div>
       )}
     </div>

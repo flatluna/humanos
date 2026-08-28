@@ -87,6 +87,12 @@ public sealed class StructuredLearningKnowledgeRetrievalService
     /// into the whole catalog (see the "1 salto" retrieval design note).</summary>
     private const int MaxRelatedEntities = 5;
 
+    /// <summary>Hard cap on how many Engram sections one retrieval call
+    /// (retrieved OR related) can return — without this, a query matching a
+    /// broad/common entity (linked to many sections) flooded the chat agent
+    /// with far more citations than any answer needs.</summary>
+    private const int MaxEngramsPerRetrieval = 6;
+
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly CapabilityEmbeddingService _embeddingService;
 
@@ -139,6 +145,14 @@ public sealed class StructuredLearningKnowledgeRetrievalService
 
         var matched = new List<(StructuredLearningEntity Entity, string MatchType)>();
 
+        // Computed once and reused both for the Semantic entity-matching
+        // fallback below AND to rank retrieved/related Engrams by actual
+        // closeness to the question (instead of arbitrary link order) —
+        // see RetrieveEngramsAndSchemasAsync's queryEmbedding parameter.
+        float[]? queryEmbedding = _embeddingService.IsConfigured
+            ? await _embeddingService.GenerateEmbeddingAsync(userQuery, cancellationToken)
+            : null;
+
         // 1) Exact canonical match.
         matched.AddRange(allEntities
             .Where(e => e.NormalizedValue == normalizedQuery)
@@ -153,9 +167,8 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         }
 
         // 3) Semantic fallback — only when no exact/alias match exists.
-        if (matched.Count == 0 && _embeddingService.IsConfigured)
+        if (matched.Count == 0 && queryEmbedding is not null)
         {
-            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(userQuery, cancellationToken);
             matched.AddRange(allEntities
                 .Where(e => e.Embedding is not null)
                 .Select(e => (Entity: e, Similarity: CosineSimilarity(queryEmbedding, e.Embedding!.Value.Memory.ToArray())))
@@ -176,7 +189,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             })
             .ToList();
 
-        var (retrievedEngrams, retrievedSchemas) = await RetrieveEngramsAndSchemasAsync(dbContext, matchedEntityIds, cancellationToken, documentId: documentId);
+        var (retrievedEngrams, retrievedSchemas) = await RetrieveEngramsAndSchemasAsync(dbContext, matchedEntityIds, cancellationToken, queryEmbedding, documentId: documentId);
 
         // Hop 1: entities co-mentioned in the retrieved engrams' own
         // sections, excluding the ones already directly matched. Restricted
@@ -203,7 +216,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             .ToListAsync(cancellationToken);
 
         var (relatedEngrams, relatedSchemas) = await RetrieveEngramsAndSchemasAsync(
-            dbContext, relatedEntityLinks.ToHashSet(), cancellationToken, excludeSectionIds: retrievedSectionIds, documentId: documentId);
+            dbContext, relatedEntityLinks.ToHashSet(), cancellationToken, queryEmbedding, excludeSectionIds: retrievedSectionIds, documentId: documentId);
 
         var schemas = retrievedSchemas.Concat(relatedSchemas)
             .GroupBy(s => s.SchemaId)
@@ -225,6 +238,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         HumanOsDbContext dbContext,
         IReadOnlySet<Guid> entityIds,
         CancellationToken cancellationToken,
+        float[]? queryEmbedding,
         IReadOnlySet<Guid>? excludeSectionIds = null,
         Guid? documentId = null)
     {
@@ -238,31 +252,42 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             .Select(l => new { l.StructuredLearningDocumentSectionId, l.SourceText })
             .ToListAsync(cancellationToken);
 
-        var sectionIds = links.Select(l => l.StructuredLearningDocumentSectionId).Distinct()
+        var candidateSectionIds = links.Select(l => l.StructuredLearningDocumentSectionId).Distinct()
             .Where(id => excludeSectionIds is null || !excludeSectionIds.Contains(id))
             .ToList();
-        if (sectionIds.Count == 0)
+        if (candidateSectionIds.Count == 0)
         {
             return ([], []);
         }
 
-        var sectionsQuery = dbContext.StructuredLearningDocumentSections
-            .Where(s => sectionIds.Contains(s.StructuredLearningDocumentSectionId));
+        var candidateSectionsQuery = dbContext.StructuredLearningDocumentSections
+            .Where(s => candidateSectionIds.Contains(s.StructuredLearningDocumentSectionId));
         if (documentId.HasValue)
         {
-            sectionsQuery = sectionsQuery.Where(s => s.StructuredLearningDocumentId == documentId.Value);
+            candidateSectionsQuery = candidateSectionsQuery.Where(s => s.StructuredLearningDocumentId == documentId.Value);
         }
 
-        var sections = await sectionsQuery
+        var candidateSections = await candidateSectionsQuery
             .Select(s => new
             {
                 s.StructuredLearningDocumentSectionId,
                 s.SubchapterTitle,
                 s.Text,
                 s.StructuredLearningDocumentId,
-                DocumentName = s.Document.DocumentName
+                DocumentName = s.Document.DocumentName,
+                s.Embedding
             })
             .ToListAsync(cancellationToken);
+
+        // Rank by closeness to the actual question when a query embedding is
+        // available — without this, every section merely LINKED to a matched
+        // entity was returned in arbitrary order, flooding the agent with
+        // far more (and less relevant) citations than the question needed.
+        var sections = (queryEmbedding is not null
+                ? candidateSections.OrderByDescending(s => CosineSimilarity(queryEmbedding, s.Embedding.Memory.ToArray()))
+                : candidateSections.AsEnumerable())
+            .Take(MaxEngramsPerRetrieval)
+            .ToList();
 
         var engrams = sections.Select(s => new RetrievedEngramDto
         {

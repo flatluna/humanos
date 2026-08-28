@@ -56,5 +56,12 @@ public sealed class StructuredLearningIllustration
     /// "one generated media file for one section" shape.</summary>
     public string MediaType { get; set; } = "Image";
 
+    /// <summary>Whether students see this video in real-mode (2026-08-26) —
+    /// edit mode always shows every video regardless of this flag; only the
+    /// learner-facing runtime filters by it. Lets a reviewer keep an unused
+    /// clip around (not deleted) without exposing it to students. Only
+    /// meaningful for MediaType="Video"; images are unaffected.</summary>
+    public bool IsPublished { get; set; } = true;
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 }

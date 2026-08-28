@@ -2499,6 +2499,9 @@ namespace HumanOS.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("bit");
+
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2864,6 +2867,9 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("TimelineJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VideoWizardStateJson")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("StructuredLearningSectionStepId")

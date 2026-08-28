@@ -218,6 +218,14 @@ public sealed class StructuredLearningEntityExtractionService
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+        // Tracks entity ids already added to THIS batch (2026-08-26 fix) —
+        // the DB-only AnyAsync check below can't see rows added earlier in
+        // this same loop (not yet flushed), so two extracted mentions that
+        // both resolve to the same entity (e.g. two aliases of one already-
+        // known entity) would both pass it and hit the unique index
+        // (EntityId, SectionId) together at SaveChangesAsync.
+        var linkedEntityIdsInBatch = new HashSet<Guid>();
+
         var linksCreated = 0;
         foreach (var extracted in entities)
         {
@@ -229,6 +237,11 @@ public sealed class StructuredLearningEntityExtractionService
 
             var (entity, resolutionStatus, matchConfidence, matchReason) = await ResolveEntityAsync(
                 dbContext, tenantId, subjectId, topicId, extracted, masterIdMap, cancellationToken);
+
+            if (!linkedEntityIdsInBatch.Add(entity.StructuredLearningEntityId))
+            {
+                continue;
+            }
 
             var alreadyLinked = await dbContext.StructuredLearningEntitySections.AnyAsync(
                 l => l.StructuredLearningEntityId == entity.StructuredLearningEntityId &&

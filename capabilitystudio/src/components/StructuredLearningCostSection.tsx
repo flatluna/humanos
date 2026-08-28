@@ -36,8 +36,9 @@ export default function StructuredLearningCostSection({ documentId }: { document
         <h3 className="text-sm font-semibold text-white">{t('structuredLearningRunProgress.costTitle')}</h3>
         {detail && (
           <span className="ml-auto text-xs text-amber-300">
-            {formatMs(detail.TotalElapsedMilliseconds)} · {detail.TotalTokens.toLocaleString()} tok
-            {detail.ImagesGeneratedCount > 0 && ` · ${detail.ImagesGeneratedCount} img`} · ${detail.EstimatedCostUsd.toFixed(4)}
+            {formatMs(detail.TotalElapsedMilliseconds)} · {detail.TotalTokens.toLocaleString()} Tokens
+            {detail.ImagesGeneratedCount > 0 && ` · ${detail.ImagesGeneratedCount} images generated`}
+            {detail.VideosGeneratedCount > 0 && ` · ${detail.VideosGeneratedCount} videos generated`} · ${detail.EstimatedCostUsd.toFixed(4)}
           </span>
         )}
       </div>

@@ -22,6 +22,14 @@ public sealed class StructuredLearningCostSummaryResponse
 
     public decimal ImageCostUsd { get; set; }
 
+    /// <summary>Videos generated for this document (2026-08-26) — priced
+    /// separately from ImagesGeneratedCount since each video's real cost
+    /// depends on which model made it (Veo $0.30 vs Gemini Omni Flash
+    /// $0.55), not the flat per-image placeholder rate.</summary>
+    public int VideosGeneratedCount { get; set; }
+
+    public decimal VideoCostUsd { get; set; }
+
     public decimal EstimatedCostUsd { get; set; }
 
     public bool IsEstimate { get; set; } = true;
@@ -58,6 +66,10 @@ public sealed class StructuredLearningCostStepResponse
 
     public decimal ImageCostUsd { get; set; }
 
+    public int VideosGeneratedCount { get; set; }
+
+    public decimal VideoCostUsd { get; set; }
+
     public decimal EstimatedCostUsd { get; set; }
 }
 
@@ -83,6 +95,10 @@ public sealed class StructuredLearningCostDetailResponse
     public int ImagesGeneratedCount { get; set; }
 
     public decimal ImageCostUsd { get; set; }
+
+    public int VideosGeneratedCount { get; set; }
+
+    public decimal VideoCostUsd { get; set; }
 
     public decimal EstimatedCostUsd { get; set; }
 

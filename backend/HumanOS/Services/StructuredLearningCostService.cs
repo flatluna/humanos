@@ -25,6 +25,19 @@ public sealed class StructuredLearningCostService
         _configuration = configuration;
     }
 
+    /// <summary>Real per-video cost by the model that generated it (2026-08-26) —
+    /// mirrors the frontend's priceForModel: videos are NOT priced at the
+    /// flat per-image placeholder rate, since Veo/Omni Flash calls cost far
+    /// more than a still image. Returns 0 for "merged" (local ffmpeg,
+    /// unbilled) or unrecognized model names.</summary>
+    private static decimal VideoCostForModel(string? imageModel)
+    {
+        if (string.IsNullOrEmpty(imageModel)) return 0m;
+        if (imageModel.StartsWith("veo-", StringComparison.Ordinal)) return 0.30m;
+        if (imageModel.StartsWith("gemini-omni-flash", StringComparison.Ordinal)) return 0.55m;
+        return 0m;
+    }
+
     public async Task<IReadOnlyList<StructuredLearningCostSummaryResponse>> GetSummariesAsync(CancellationToken cancellationToken = default)
     {
         var documents = await _dbContext.StructuredLearningDocuments
@@ -37,17 +50,32 @@ public sealed class StructuredLearningCostService
             .ToListAsync(cancellationToken);
 
         // Illustrations have no direct DocumentId FK — join through their
-        // section to attribute each generated image back to its document.
-        var imageCountsByDocument = await _dbContext.StructuredLearningIllustrations
+        // section to attribute each generated image/video back to its
+        // document. Split by MediaType (2026-08-26) since videos are priced
+        // per-model (Veo/Omni), not at the flat per-image placeholder rate.
+        var illustrationsByDocument = await _dbContext.StructuredLearningIllustrations
             .AsNoTracking()
             .Join(
                 _dbContext.StructuredLearningDocumentSections.AsNoTracking(),
                 illustration => illustration.StructuredLearningDocumentSectionId,
                 section => section.StructuredLearningDocumentSectionId,
-                (illustration, section) => section.StructuredLearningDocumentId)
-            .GroupBy(documentId => documentId)
-            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.DocumentId, g => g.Count, cancellationToken);
+                (illustration, section) => new { section.StructuredLearningDocumentId, illustration.MediaType, illustration.ImageModel })
+            .ToListAsync(cancellationToken);
+
+        var imageCountsByDocument = illustrationsByDocument
+            .Where(i => i.MediaType != "Video")
+            .GroupBy(i => i.StructuredLearningDocumentId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var videoCountsByDocument = illustrationsByDocument
+            .Where(i => i.MediaType == "Video")
+            .GroupBy(i => i.StructuredLearningDocumentId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var videoCostByDocument = illustrationsByDocument
+            .Where(i => i.MediaType == "Video")
+            .GroupBy(i => i.StructuredLearningDocumentId)
+            .ToDictionary(g => g.Key, g => g.Sum(i => VideoCostForModel(i.ImageModel)));
 
         var results = new List<StructuredLearningCostSummaryResponse>(documents.Count);
         foreach (var document in documents)
@@ -70,6 +98,8 @@ public sealed class StructuredLearningCostService
                 .ToList();
 
             var imagesGeneratedCount = imageCountsByDocument.GetValueOrDefault(document.StructuredLearningDocumentId);
+            var videosGeneratedCount = videoCountsByDocument.GetValueOrDefault(document.StructuredLearningDocumentId);
+            var videoCostUsd = videoCostByDocument.GetValueOrDefault(document.StructuredLearningDocumentId);
             var estimate = TokenCostEstimator.Estimate(tokenUsage, imagesGeneratedCount, _configuration);
 
             results.Add(new StructuredLearningCostSummaryResponse
@@ -82,10 +112,13 @@ public sealed class StructuredLearningCostService
                 TotalElapsedMilliseconds = rows.Sum(u => u.ElapsedMilliseconds),
                 ImagesGeneratedCount = imagesGeneratedCount,
                 ImageCostUsd = estimate.ImageCostUsd,
-                EstimatedCostUsd = estimate.TotalCostUsd,
+                VideosGeneratedCount = videosGeneratedCount,
+                VideoCostUsd = Math.Round(videoCostUsd, 4),
+                EstimatedCostUsd = Math.Round(estimate.TotalCostUsd + videoCostUsd, 4),
                 GeneratedDate = rows.Min(u => u.CreatedDate),
             });
         }
+
 
         return results.OrderByDescending(r => r.InputTokens + r.OutputTokens).ToList();
     }
@@ -107,15 +140,21 @@ public sealed class StructuredLearningCostService
 
         // Illustrations have no direct StepName of their own — every one
         // generated for this document belongs to the Pedagogy step (only
-        // step that ever calls the image service).
-        var imagesGeneratedCount = await _dbContext.StructuredLearningIllustrations
+        // step that ever calls the image service). Split by MediaType
+        // (2026-08-26) since videos are priced per-model, not at the flat
+        // per-image placeholder rate.
+        var illustrations = await _dbContext.StructuredLearningIllustrations
             .AsNoTracking()
             .Join(
                 _dbContext.StructuredLearningDocumentSections.AsNoTracking().Where(s => s.StructuredLearningDocumentId == documentId),
                 illustration => illustration.StructuredLearningDocumentSectionId,
                 section => section.StructuredLearningDocumentSectionId,
-                (illustration, section) => illustration.StructuredLearningIllustrationId)
-            .CountAsync(cancellationToken);
+                (illustration, section) => new { illustration.MediaType, illustration.ImageModel })
+            .ToListAsync(cancellationToken);
+
+        var imagesGeneratedCount = illustrations.Count(i => i.MediaType != "Video");
+        var videosGeneratedCount = illustrations.Count(i => i.MediaType == "Video");
+        var videoCostUsd = Math.Round(illustrations.Where(i => i.MediaType == "Video").Sum(i => VideoCostForModel(i.ImageModel)), 4);
 
         var steps = usageRows
             .GroupBy(u => u.StepName)
@@ -154,6 +193,19 @@ public sealed class StructuredLearningCostService
             .OrderByDescending(s => s.InputTokens + s.OutputTokens)
             .ToList();
 
+        if (videosGeneratedCount > 0)
+        {
+            steps.Add(new StructuredLearningCostStepResponse
+            {
+                StepName = "Video",
+                Agents = "GoogleVeoVideoService/GoogleOmniFlashVideoService",
+                Models = string.Join(", ", illustrations.Where(i => i.MediaType == "Video").Select(i => i.ImageModel).Where(m => !string.IsNullOrWhiteSpace(m)).Distinct()),
+                ImagesGeneratedCount = videosGeneratedCount,
+                ImageCostUsd = videoCostUsd,
+                EstimatedCostUsd = videoCostUsd,
+            });
+        }
+
         var tokenUsage = usageRows
             .Select(u => new AgentTokenUsage
             {
@@ -179,7 +231,9 @@ public sealed class StructuredLearningCostService
             TotalElapsedMilliseconds = usageRows.Sum(u => u.ElapsedMilliseconds),
             ImagesGeneratedCount = imagesGeneratedCount,
             ImageCostUsd = estimate.ImageCostUsd,
-            EstimatedCostUsd = estimate.TotalCostUsd,
+            VideosGeneratedCount = videosGeneratedCount,
+            VideoCostUsd = videoCostUsd,
+            EstimatedCostUsd = Math.Round(estimate.TotalCostUsd + videoCostUsd, 4),
         };
     }
 }

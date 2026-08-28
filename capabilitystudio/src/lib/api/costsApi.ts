@@ -94,6 +94,8 @@ export interface StructuredLearningCostDetail {
   TotalElapsedMilliseconds: number;
   ImagesGeneratedCount: number;
   ImageCostUsd: number;
+  VideosGeneratedCount: number;
+  VideoCostUsd: number;
   EstimatedCostUsd: number;
   IsEstimate: boolean;
 }

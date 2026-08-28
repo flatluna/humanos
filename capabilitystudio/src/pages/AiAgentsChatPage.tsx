@@ -319,9 +319,14 @@ function ZoomableEngramMedia({ illustrationId, alt, kind }: { illustrationId: st
         aria-label="Ampliar"
       >
         {kind === 'video' ? (
-          <video src={src} className="h-56 w-full bg-black object-contain" muted />
+          <video src={src} className="h-56 w-full bg-black object-contain" muted playsInline preload="metadata" />
         ) : (
           <img src={src} alt={alt} className="h-56 w-full object-contain object-center" />
+        )}
+        {kind === 'video' && (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white transition group-hover:bg-black/75">▶</span>
+          </span>
         )}
         <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
           Ampliar
@@ -336,7 +341,7 @@ function ZoomableEngramMedia({ illustrationId, alt, kind }: { illustrationId: st
         >
           <div className="relative flex max-h-[95vh] max-w-[95vw] items-center justify-center" onClick={(event) => event.stopPropagation()}>
             {kind === 'video' ? (
-              <video src={src} controls autoPlay className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
+              <video src={src} controls autoPlay muted playsInline className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
             ) : (
               <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
             )}

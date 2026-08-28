@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   addStructuredLearningDocumentToProgram,
@@ -8,6 +8,7 @@ import {
   getProgramsForStructuredLearningDocument,
   getStructuredLearningDocument,
   updateStructuredLearningClassification,
+  updateStructuredLearningDocumentName,
   removeStructuredLearningDocumentFromProgram,
   updateStructuredLearningVisibility,
   type StructuredLearningDocumentDetail,
@@ -46,6 +47,10 @@ export default function StructuredLearningDocumentDetailPage() {
   const [selectedTopicId, setSelectedTopicId] = useState('');
   const [classificationBusy, setClassificationBusy] = useState(false);
   const [classificationMessage, setClassificationMessage] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!documentId) {
@@ -115,6 +120,33 @@ export default function StructuredLearningDocumentDetailPage() {
       setClassificationMessage(err instanceof Error ? `No se pudo actualizar el tipo de dominio: ${err.message}` : 'No se pudo actualizar el tipo de dominio.');
     } finally {
       setClassificationBusy(false);
+    }
+  }
+
+  function startEditingTitle() {
+    if (!document) return;
+    setTitleDraft(document.DocumentName);
+    setTitleError(null);
+    setEditingTitle(true);
+  }
+
+  async function handleSaveTitle() {
+    if (!documentId || titleSaving) return;
+    const trimmed = titleDraft.trim();
+    if (!trimmed) {
+      setTitleError('El título no puede estar vacío.');
+      return;
+    }
+    setTitleSaving(true);
+    setTitleError(null);
+    try {
+      const saved = await updateStructuredLearningDocumentName(documentId, trimmed);
+      setDocument((current) => current ? { ...current, DocumentName: saved.DocumentName } : current);
+      setEditingTitle(false);
+    } catch (err) {
+      setTitleError(err instanceof Error ? err.message : 'No se pudo actualizar el título.');
+    } finally {
+      setTitleSaving(false);
     }
   }
 
@@ -199,7 +231,31 @@ export default function StructuredLearningDocumentDetailPage() {
           <Link to="/" className="mb-3 inline-flex items-center gap-1.5 text-sm text-[#fff]/80 hover:text-[#fff]">
             <ArrowLeft className="h-4 w-4" /> Back to catalog
           </Link>
-          <h1 className="text-3xl font-bold text-[#fff]">{document.DocumentName}</h1>
+          {editingTitle ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                autoFocus
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') void handleSaveTitle(); if (event.key === 'Escape') setEditingTitle(false); }}
+                className="rounded-lg border border-white/20 bg-black/40 px-3 py-1.5 text-2xl font-bold text-white outline-none focus:border-brand-400"
+              />
+              <button type="button" onClick={handleSaveTitle} disabled={titleSaving} title="Save" className="rounded-lg bg-brand-500 p-2 text-white hover:bg-brand-400 disabled:opacity-60">
+                <Check className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={() => setEditingTitle(false)} title="Cancel" className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <h1 className="group flex items-center gap-2 text-3xl font-bold text-[#fff]">
+              {document.DocumentName}
+              <button type="button" onClick={startEditingTitle} title="Edit title" className="rounded-lg p-1.5 text-white/60 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white">
+                <Pencil className="h-4 w-4" />
+              </button>
+            </h1>
+          )}
+          {titleError && <p className="mt-1 text-sm text-red-300">{titleError}</p>}
           <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1 text-xs font-medium text-[#fff] backdrop-blur-sm">
             <FileText className="h-3.5 w-3.5" /> Structured section document
           </span>

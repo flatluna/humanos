@@ -39,7 +39,7 @@ public sealed class StructuredLearningVideoRunStatus
 /// </summary>
 public sealed class StructuredLearningVideoOrchestrator
 {
-    public const int MaxVideosPerSection = 4;
+    public const int MaxVideosPerSection = 10;
 
     private readonly GoogleVeoVideoService _veoService;
     private readonly GoogleOmniFlashVideoService _omniService;
@@ -362,6 +362,42 @@ public sealed class StructuredLearningVideoOrchestrator
     {
         using var stream = new MemoryStream(currentBytes);
         await _illustrationStorage.OverwriteVideoAsync(storagePath + ".bak", stream, cancellationToken);
+    }
+
+    /// <summary>Last frame of an already-generated clip as JPEG bytes
+    /// (2026-08-25/26) — used both for multi-clip continuity (wizard) and
+    /// exposed via <see cref="GetStructuredLearningVideoLastFrameFunction"/>.</summary>
+    public async Task<byte[]> GetLastFrameAsync(Guid illustrationId, CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var illustration = await dbContext.StructuredLearningIllustrations
+            .FirstOrDefaultAsync(i => i.StructuredLearningIllustrationId == illustrationId && i.MediaType == "Video", cancellationToken)
+            ?? throw new InvalidOperationException($"Video illustration {illustrationId} not found.");
+
+        var videoBytes = (await _illustrationStorage.DownloadIllustrationBytesAsync(illustration.StoragePath, cancellationToken)).ToArray();
+        return await Mp4LastFrame.ExtractAsync(videoBytes, cancellationToken);
+    }
+
+    /// <summary>Starts a "Regenerate" job for one existing video (2026-08-26)
+    /// — reuses that video's OWN stored Prompt and its OWN first frame as
+    /// the starting reference image, so the reviewer can re-roll a clip
+    /// that came out wrong while keeping the same visual continuity/
+    /// subject it started from. Does not delete the old video — the
+    /// caller can delete it after confirming the new one looks better.</summary>
+    public async Task<StructuredLearningVideoRunStatus> RegenerateAsync(
+        Guid illustrationId, string videoModel = "veo", CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var illustration = await dbContext.StructuredLearningIllustrations
+            .FirstOrDefaultAsync(i => i.StructuredLearningIllustrationId == illustrationId && i.MediaType == "Video", cancellationToken)
+            ?? throw new InvalidOperationException($"Video illustration {illustrationId} not found.");
+
+        var videoBytes = (await _illustrationStorage.DownloadIllustrationBytesAsync(illustration.StoragePath, cancellationToken)).ToArray();
+        var firstFrame = await Mp4FirstFrame.ExtractAsync(videoBytes, cancellationToken);
+
+        return await StartAsync(
+            illustration.StructuredLearningDocumentSectionId, illustration.Prompt, illustration.Purpose, videoModel,
+            firstFrame, "image/jpeg", cancellationToken);
     }
 
     private sealed class RunSession
