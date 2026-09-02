@@ -27,7 +27,12 @@ export default function DeleteCapabilityModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isConfirmationValid = confirmationText.trim() === capabilityName.trim();
+  // Collapses repeated whitespace before comparing — some stored names have
+  // an accidental double space (e.g. from the original document title) that
+  // is visually indistinguishable from a single space, making an exact-string
+  // match impossible for the user to satisfy no matter how carefully they type.
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const isConfirmationValid = normalize(confirmationText) === normalize(capabilityName);
 
   const handleConfirm = async () => {
     if (!isConfirmationValid || isDeleting) return;

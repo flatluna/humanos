@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { MsalProvider } from '@azure/msal-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import '@/i18n';
 import { msalInstance } from '@/auth';
 import { AuthProvider } from '@/auth/AuthContext';
 import { queryClient } from '@/api';

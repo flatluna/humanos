@@ -1,3 +1,4 @@
+using HumanOS.Contracts.Gamification;
 using HumanOS.Services;
 
 namespace HumanOS.AzureFunctions.Api;
@@ -81,6 +82,9 @@ public sealed class SubmitAssessmentAnswerResponse
     /// <summary>Set only when a new round was auto-started (this round just closed as Failed).</summary>
     public int? NewRoundNumber { get; set; }
     public Guid? NewAssessmentRoundId { get; set; }
+
+    /// <summary>Gamification reward bundle returned on a Passed round (null on in-progress/failed rounds or if gamification failed).</summary>
+    public GamificationRewardBundle? Gamification { get; set; }
 }
 
 /// <summary>
@@ -123,6 +127,7 @@ internal static class AdaptiveAssessmentApiMappers
         FinalScore = result.FinalScore,
         NextQuestion = ToQuestionDto(result.NextQuestion),
         NewRoundNumber = result.NewRoundNumber,
-        NewAssessmentRoundId = result.NewAssessmentRoundId
+        NewAssessmentRoundId = result.NewAssessmentRoundId,
+        Gamification = result.Gamification
     };
 }

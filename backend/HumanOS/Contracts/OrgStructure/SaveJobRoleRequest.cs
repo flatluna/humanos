@@ -4,7 +4,7 @@ namespace HumanOS.Contracts.OrgStructure;
 /// PUT /job-roles/{jobRoleId}.</summary>
 public sealed class SaveJobRoleRequest
 {
-    public Guid DepartmentId { get; set; }
+    public Guid? DepartmentId { get; set; }
 
     public string Title { get; set; } = null!;
 

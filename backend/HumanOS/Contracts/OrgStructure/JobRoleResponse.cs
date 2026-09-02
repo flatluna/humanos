@@ -8,9 +8,9 @@ public sealed class JobRoleResponse
 
     public Guid TenantId { get; set; }
 
-    public Guid DepartmentId { get; set; }
+    public Guid? DepartmentId { get; set; }
 
-    public string DepartmentName { get; set; } = null!;
+    public string? DepartmentName { get; set; }
 
     public string Title { get; set; } = null!;
 

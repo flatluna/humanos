@@ -8,6 +8,10 @@ namespace HumanOS.AzureFunctions.Api;
 /// </summary>
 public sealed class VoiceTutorSessionRequest
 {
+    /// <summary>Optional. Authenticated or explicitly passed employee/person id
+    /// used to build personalized LEARNER CONTEXT for the Realtime voice tutor.</summary>
+    public Guid? PersonId { get; set; }
+
     /// <summary>Live-session path: an existing LearningSessionStep the
     /// student is actually on (or has already completed). Leave
     /// Guid.Empty when using the blueprint-only path below instead.</summary>

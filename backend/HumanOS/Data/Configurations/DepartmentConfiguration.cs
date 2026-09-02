@@ -23,7 +23,25 @@ public sealed class DepartmentConfiguration : IEntityTypeConfiguration<Departmen
             .HasMaxLength(200)
             .IsRequired();
 
+        builder.Property(x => x.Code)
+            .HasMaxLength(50);
+
         builder.Property(x => x.Description)
+            .HasMaxLength(2000);
+
+        builder.Property(x => x.Category)
+            .HasMaxLength(100);
+
+        builder.Property(x => x.ContactEmail)
+            .HasMaxLength(255);
+
+        builder.Property(x => x.Location)
+            .HasMaxLength(255);
+
+        builder.Property(x => x.CostCenter)
+            .HasMaxLength(100);
+
+        builder.Property(x => x.MissionStatement)
             .HasMaxLength(2000);
 
         builder.Property(x => x.IsActive)
@@ -54,6 +72,12 @@ public sealed class DepartmentConfiguration : IEntityTypeConfiguration<Departmen
             .HasForeignKey(x => x.ParentDepartmentId)
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("FK_Department_ParentDepartment");
+
+        builder.HasOne(x => x.LeaderPerson)
+            .WithMany()
+            .HasForeignKey(x => x.LeaderPersonId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName("FK_Department_LeaderPerson");
 
         builder.HasIndex(x => x.TenantId)
             .HasDatabaseName("IX_Department_TenantId");

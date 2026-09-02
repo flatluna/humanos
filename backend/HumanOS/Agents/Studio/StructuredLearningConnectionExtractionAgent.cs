@@ -139,14 +139,16 @@ public class StructuredLearningConnectionExtractionAgent
                "LocatedIn" (A is situated in B), or
               "RelatedTo" as the LAST RESORT when no more precise category is supported.
               Do not use domain-specific categories and never use "Generic".
-        4. RelationshipLabel is always required — a short label in the same language as the text
-           (e.g. "precede a", "requiere", "ayuda a"). Prefer a SPECIFIC, directed predicate over a
-           vague one — e.g. "regula", "impone obligación a", "otorga derecho a", "prohíbe",
-           "requiere", "es parte de", "ocurrió en", "causó", "precedió a", "usa fórmula", "aplica
-           tasa", "se calcula a partir de" — instead of a generic "relacionado con"/"related to"
-           whenever a more precise predicate is supported by the text. These are illustrative
-           examples across ANY domain (law, contract, math, history, general) — not a fixed enum,
-           pick or coin whatever specific predicate the text actually supports.
+        4. RelationshipLabel is always required — a short label written in the TARGET LANGUAGE given
+           in the prompt ("Target language: ...") — NEVER default to Spanish regardless of what
+           language the illustrative examples elsewhere in these instructions happen to use. Prefer
+           a SPECIFIC, directed predicate over a vague one — e.g. English "regulates", "imposes an
+           obligation on", "grants a right to", "prohibits", "requires", "is part of", "occurred
+           in", "caused", "preceded", "uses formula", "applies rate", "is calculated from" (or the
+           equivalent phrasing in the target language) — instead of a generic "related to" whenever
+           a more precise predicate is supported by the text. These are illustrative examples across
+           ANY domain (law, contract, math, history, general) — not a fixed enum, pick or coin
+           whatever specific predicate the text actually supports, always in the target language.
           5. Evidence is a contiguous verbatim snippet from the text supporting this edge — never
               invented or paraphrased. Include enough surrounding context to prove the predicate and
               its endpoints, normally up to ~35 words when needed. Do not use an isolated heading or
@@ -238,9 +240,9 @@ public class StructuredLearningConnectionExtractionAgent
             Persona física" AND "Contribuyente --IsRoleOf--> Persona moral" if both are candidates
             and the text supports either playing that role; equally "Mascota --IsRoleOf--> Animal"
             or "Arrendatario --IsRoleOf--> Persona física" in other domains).
-            RelationshipLabel for these should read like "es un rol que puede desempeñar" (or the
-            equivalent in the text's own language). Skip this only if no plausible underlying
-            class-of-being candidate exists in this section's candidate list.
+            RelationshipLabel for these should read like "is a role that can be played by" (or the
+            equivalent phrasing in the TARGET LANGUAGE given in the prompt). Skip this only if no
+            plausible underlying class-of-being candidate exists in this section's candidate list.
         """;
 
     private readonly AIAgent? _agent;
@@ -334,15 +336,20 @@ public class StructuredLearningConnectionExtractionAgent
 
     public virtual async Task<StructuredLearningConnectionExtractionResult> ExtractAsync(
         string sectionTitle, string sectionText, IReadOnlyList<(string Id, string Name)> candidateEntities, CancellationToken cancellationToken) =>
-        await ExtractAsync(sectionTitle, sectionText, candidateEntities, existingRelationshipLabels: [], cancellationToken);
+        await ExtractAsync(sectionTitle, sectionText, candidateEntities, existingRelationshipLabels: [], languageCode: "en", cancellationToken);
 
     /// <summary>Master de Clases de Arista (2026-08-15, Fase 3) overload —
     /// <paramref name="existingRelationshipLabels"/> are the relationship
     /// labels ALREADY catalogued for this document's domain, so the model
-    /// reuses them instead of inventing near-duplicate phrasings.</summary>
+    /// reuses them instead of inventing near-duplicate phrasings.
+    /// <paramref name="languageCode"/> (e.g. "en"/"es") is the document's own
+    /// configured LanguageCode — RelationshipLabel must be written in this
+    /// language regardless of the instructions' own illustrative examples
+    /// (2026-08-30 fix: labels were silently coming back in Spanish for
+    /// English documents because no language was ever passed in here).</summary>
     public virtual async Task<StructuredLearningConnectionExtractionResult> ExtractAsync(
         string sectionTitle, string sectionText, IReadOnlyList<(string Id, string Name)> candidateEntities,
-        IReadOnlyList<string> existingRelationshipLabels, CancellationToken cancellationToken)
+        IReadOnlyList<string> existingRelationshipLabels, string languageCode, CancellationToken cancellationToken)
     {
         if (_agent is null)
         {
@@ -354,6 +361,8 @@ public class StructuredLearningConnectionExtractionAgent
             : string.Empty;
 
         var prompt = $"""
+            Target language for RelationshipLabel: {languageCode}
+
             Section: {sectionTitle}
 
             Candidate entities (Id | Name — reference ONLY by Id):

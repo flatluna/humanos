@@ -9,7 +9,7 @@ public sealed class GenerateJobRoleDescriptionRequest
 {
     public Guid? JobRoleId { get; set; }
 
-    public Guid DepartmentId { get; set; }
+    public Guid? DepartmentId { get; set; }
 
     public string Title { get; set; } = null!;
 

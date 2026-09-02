@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Outlet } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { InteractionStatus } from '@azure/msal-browser';
 import { useMsal } from '@azure/msal-react';
 import { useAuth } from '@/auth/AuthContext';
@@ -16,6 +17,7 @@ const REDIRECT_GUARD_MAX_AGE_MS = 30_000;
  *  routed content + the agentic assistant panel. Deliberately separate
  *  from human-os-web's AuthenticatedAppLayout — own shell, own nav. */
 export function EnterpriseAppLayout() {
+  const { t } = useTranslation();
   const { isAuthenticated, isLoading, backendError, notEnterpriseAccount, user, login, refreshUser } = useAuth();
   const { inProgress } = useMsal();
   const redirectStarted = useRef(false);
@@ -59,16 +61,16 @@ export function EnterpriseAppLayout() {
   if (backendError) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 px-4 text-center dark:bg-[#05060a]">
-        <p className="text-lg font-semibold text-slate-900 dark:text-white">No pudimos conectar con el servidor</p>
+        <p className="text-lg font-semibold text-slate-900 dark:text-white">{t('common.connectionErrorTitle')}</p>
         <p className="max-w-md text-sm text-slate-500 dark:text-white/50">
-          Tu sesión es válida, pero el backend no respondió correctamente. Verifica tu conexión e inténtalo de nuevo.
+          {t('common.connectionErrorDescription')}
         </p>
         <button
           type="button"
           onClick={() => void refreshUser()}
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
         >
-          Reintentar
+          {t('common.retry')}
         </button>
       </div>
     );

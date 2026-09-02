@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Mic, Bot, Sparkles, X, Image as ImageIcon } from 'lucide-react';
 import { requestEngramReviewSession, requestGeneratedVisualAidImage, searchNodeKnowledge } from '../api/runtimeSessionApi';
 import { API_BASE_URL } from '../api/httpClient';
+import { useI18n } from '../i18n/useI18n';
 
 type VoiceState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error';
 
@@ -36,15 +37,6 @@ type EphemeralAid =
   | { kind: 'chart'; items: { label: string; value: number }[]; caption?: string }
   | { kind: 'text'; text: string; caption?: string }
   | { kind: 'generated_image'; loading: true };
-
-const STATE_LABELS: Record<VoiceState, string> = {
-  idle: 'Preparando el repaso…',
-  connecting: 'Conectando…',
-  connected: 'Conectado — puedes hablar',
-  listening: 'Escuchando…',
-  speaking: 'Hablando…',
-  error: 'No se pudo conectar',
-};
 
 /**
  * "Reactivar Engrama" — a full-screen Agent presence for reviewing an
@@ -88,6 +80,17 @@ export default function EngramReviewAgent({
   embedded?: boolean;
   onExit: () => void;
 }) {
+  const { t } = useI18n();
+
+  const stateLabels: Record<VoiceState, string> = {
+    idle: t.reviewIdle,
+    connecting: t.voiceConnecting,
+    connected: t.voiceConnected,
+    listening: t.voiceListening,
+    speaking: t.voiceSpeaking,
+    error: t.voiceError,
+  };
+
   const [state, setState] = useState<VoiceState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [nodeIllustrations, setNodeIllustrations] = useState<NodeIllustration[]>([]);
@@ -630,7 +633,7 @@ export default function EngramReviewAgent({
         </span>
       </button>
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">{STATE_LABELS[state]}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">{stateLabels[state]}</p>
       {errorMessage && <p className="text-xs text-red-400">{errorMessage}</p>}
 
       <button

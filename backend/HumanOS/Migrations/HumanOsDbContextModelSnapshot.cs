@@ -3280,6 +3280,217 @@ namespace HumanOS.Migrations
                         });
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Gamification.BadgeCatalog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("IconEmoji")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("RuleThreshold")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuleType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_BadgeCatalog");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BadgeCatalog_Code");
+
+                    b.ToTable("BadgeCatalog", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Gamification.PlayerBadge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("BadgeCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("EarnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PlayerBadge");
+
+                    b.HasIndex("PersonId")
+                        .HasDatabaseName("IX_PlayerBadge_PersonId");
+
+                    b.HasIndex("PersonId", "BadgeCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PlayerBadge_Person_BadgeCode");
+
+                    b.ToTable("PlayerBadge", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Gamification.PlayerProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<int>("CurrentLevel")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<string>("CurrentLevelName")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CurrentStreakDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("LastActivityDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("LongestStreakDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("StreakFreezesAvailable")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<int>("TotalEngramsMastered")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("TotalPoints")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PlayerProfile");
+
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PlayerProfile_PersonId");
+
+                    b.ToTable("PlayerProfile", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Gamification.RewardLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("CourseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("DifficultyMultiplier")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("EarnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EngramId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("ImpactScoreAtTime")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MemoryEffortMultiplier")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PointsAwarded")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PointsBase")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("SourceType")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal>("SurpriseMultiplier")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("SurpriseType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("WasSurprise")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id")
+                        .HasName("PK_RewardLedgerEntry");
+
+                    b.HasIndex("PersonId")
+                        .HasDatabaseName("IX_RewardLedgerEntry_PersonId");
+
+                    b.HasIndex("PersonId", "CourseId", "EngramId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RewardLedgerEntry_Person_Course_Engram");
+
+                    b.ToTable("RewardLedgerEntry", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Goals.Goal", b =>
                 {
                     b.Property<Guid>("GoalId")
@@ -3725,6 +3936,52 @@ namespace HumanOS.Migrations
                     b.ToTable("AssessmentRounds");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Learning.EngramImpactScore", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("CourseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EngramId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("GeneratedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PrimarySignal")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Tier")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_EngramImpactScore");
+
+                    b.HasIndex("EmployeeId", "CourseId", "EngramId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_EngramImpactScore_Employee_Course_Engram");
+
+                    b.ToTable("EngramImpactScore", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Learning.EngramReviewCompletion", b =>
                 {
                     b.Property<Guid>("EngramReviewCompletionId")
@@ -4071,12 +4328,112 @@ namespace HumanOS.Migrations
                     b.ToTable("PersonMotivation", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Activity", b =>
+                {
+                    b.Property<Guid>("ActivityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ActivityId")
+                        .HasName("PK_Activity");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("Activity", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Certification", b =>
+                {
+                    b.Property<Guid>("CertificationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Issuer")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CertificationId")
+                        .HasName("PK_Certification");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("Certification", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.OrgStructure.Department", b =>
                 {
                     b.Property<Guid>("DepartmentId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("CostCenter")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedDate")
                         .ValueGeneratedOnAdd()
@@ -4091,6 +4448,17 @@ namespace HumanOS.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
+
+                    b.Property<Guid?>("LeaderPersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("MissionStatement")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -4111,6 +4479,8 @@ namespace HumanOS.Migrations
                     b.HasKey("DepartmentId")
                         .HasName("PK_Department");
 
+                    b.HasIndex("LeaderPersonId");
+
                     b.HasIndex("ParentDepartmentId")
                         .HasDatabaseName("IX_Department_ParentDepartmentId");
 
@@ -4118,6 +4488,67 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("IX_Department_TenantId");
 
                     b.ToTable("Department", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.DepartmentJobRole", b =>
+                {
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AssignedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("DepartmentId", "JobRoleId")
+                        .HasName("PK_DepartmentJobRole");
+
+                    b.HasIndex("JobRoleId");
+
+                    b.ToTable("DepartmentJobRole", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.ExperienceRequirement", b =>
+                {
+                    b.Property<Guid>("ExperienceRequirementId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ExperienceRequirementId")
+                        .HasName("PK_ExperienceRequirement");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("ExperienceRequirement", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRole", b =>
@@ -4128,8 +4559,8 @@ namespace HumanOS.Migrations
                         .HasDefaultValueSql("NEWID()");
 
                     b.Property<string>("AvailabilityNotes")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("BenefitsJson")
                         .IsRequired()
@@ -4148,7 +4579,7 @@ namespace HumanOS.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]");
 
-                    b.Property<Guid>("DepartmentId")
+                    b.Property<Guid?>("DepartmentId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("DepartmentProcessesJson")
@@ -4158,8 +4589,8 @@ namespace HumanOS.Migrations
                         .HasDefaultValue("[]");
 
                     b.Property<string>("EmploymentType")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<string>("ExpectedOutcomesJson")
                         .IsRequired()
@@ -4179,8 +4610,8 @@ namespace HumanOS.Migrations
                         .HasDefaultValue(true);
 
                     b.Property<string>("LevelLabel")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<string>("PerformanceIndicatorsJson")
                         .IsRequired()
@@ -4202,12 +4633,12 @@ namespace HumanOS.Migrations
                         .HasDefaultValue("[]");
 
                     b.Property<string>("RequiredEducation")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("RequiredExperience")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("RequiredExperience")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("RequiredLanguagesJson")
                         .IsRequired()
@@ -4272,16 +4703,16 @@ namespace HumanOS.Migrations
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
                     b.Property<string>("WorkLocation")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("WorkModality")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("WorkSchedule")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.HasKey("JobRoleId")
                         .HasName("PK_JobRole");
@@ -4296,6 +4727,82 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("IX_JobRole_TenantId");
 
                     b.ToTable("JobRole", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleActivity", b =>
+                {
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActivityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("JobRoleId", "ActivityId")
+                        .HasName("PK_JobRoleActivity");
+
+                    b.HasIndex("ActivityId");
+
+                    b.ToTable("JobRoleActivity", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleCertification", b =>
+                {
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CertificationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("JobRoleId", "CertificationId")
+                        .HasName("PK_JobRoleCertification");
+
+                    b.HasIndex("CertificationId");
+
+                    b.ToTable("JobRoleCertification", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleExperienceRequirement", b =>
+                {
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ExperienceRequirementId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("JobRoleId", "ExperienceRequirementId")
+                        .HasName("PK_JobRoleExperienceRequirement");
+
+                    b.HasIndex("ExperienceRequirementId");
+
+                    b.ToTable("JobRoleExperienceRequirement", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleResponsibility", b =>
+                {
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ResponsibilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("JobRoleId", "ResponsibilityId")
+                        .HasName("PK_JobRoleResponsibility");
+
+                    b.HasIndex("ResponsibilityId");
+
+                    b.ToTable("JobRoleResponsibility", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleSkill", b =>
@@ -4317,17 +4824,31 @@ namespace HumanOS.Migrations
                     b.ToTable("JobRoleSkill", "dbo");
                 });
 
-            modelBuilder.Entity("HumanOS.Models.OrgStructure.Skill", b =>
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleTool", b =>
                 {
-                    b.Property<Guid>("SkillId")
+                    b.Property<Guid>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ToolId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("JobRoleId", "ToolId")
+                        .HasName("PK_JobRoleTool");
+
+                    b.HasIndex("ToolId");
+
+                    b.ToTable("JobRoleTool", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Responsibility", b =>
+                {
+                    b.Property<Guid>("ResponsibilityId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
 
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
@@ -4352,12 +4873,105 @@ namespace HumanOS.Migrations
                     b.Property<DateTime>("UpdatedDate")
                         .HasColumnType("datetime2");
 
+                    b.HasKey("ResponsibilityId")
+                        .HasName("PK_Responsibility");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("Responsibility", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Skill", b =>
+                {
+                    b.Property<Guid>("SkillId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("DocumentFileName")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("DocumentStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("SkillId")
                         .HasName("PK_Skill");
 
                     b.HasIndex("TenantId", "Category");
 
                     b.ToTable("Skill", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Tool", b =>
+                {
+                    b.Property<Guid>("ToolId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ToolId")
+                        .HasName("PK_Tool");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name");
+
+                    b.ToTable("Tool", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
@@ -6668,8 +7282,36 @@ namespace HumanOS.Migrations
                     b.Navigation("Person");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Activity", b =>
+                {
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Certification", b =>
+                {
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("HumanOS.Models.OrgStructure.Department", b =>
                 {
+                    b.HasOne("HumanOS.Models.People.Person", "LeaderPerson")
+                        .WithMany()
+                        .HasForeignKey("LeaderPersonId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Department_LeaderPerson");
+
                     b.HasOne("HumanOS.Models.OrgStructure.Department", "ParentDepartment")
                         .WithMany("ChildDepartments")
                         .HasForeignKey("ParentDepartmentId")
@@ -6683,7 +7325,41 @@ namespace HumanOS.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_Department_Tenant");
 
+                    b.Navigation("LeaderPerson");
+
                     b.Navigation("ParentDepartment");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.DepartmentJobRole", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Department", "Department")
+                        .WithMany("DepartmentJobRoles")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_DepartmentJobRole_Department");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany("DepartmentJobRoles")
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_DepartmentJobRole_JobRole");
+
+                    b.Navigation("Department");
+
+                    b.Navigation("JobRole");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.ExperienceRequirement", b =>
+                {
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Tenant");
                 });
@@ -6693,8 +7369,7 @@ namespace HumanOS.Migrations
                     b.HasOne("HumanOS.Models.OrgStructure.Department", "Department")
                         .WithMany("JobRoles")
                         .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
+                        .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("FK_JobRole_Department");
 
                     b.HasOne("HumanOS.Models.OrgStructure.JobRole", "ReportsToJobRole")
@@ -6717,6 +7392,90 @@ namespace HumanOS.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleActivity", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Activity", "Activity")
+                        .WithMany("JobRoleActivities")
+                        .HasForeignKey("ActivityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleActivity_Activity");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleActivity_JobRole");
+
+                    b.Navigation("Activity");
+
+                    b.Navigation("JobRole");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleCertification", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Certification", "Certification")
+                        .WithMany("JobRoleCertifications")
+                        .HasForeignKey("CertificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleCertification_Certification");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleCertification_JobRole");
+
+                    b.Navigation("Certification");
+
+                    b.Navigation("JobRole");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleExperienceRequirement", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.ExperienceRequirement", "ExperienceRequirement")
+                        .WithMany("JobRoleExperienceRequirements")
+                        .HasForeignKey("ExperienceRequirementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleExperienceRequirement_ExperienceRequirement");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleExperienceRequirement_JobRole");
+
+                    b.Navigation("ExperienceRequirement");
+
+                    b.Navigation("JobRole");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleResponsibility", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleResponsibility_JobRole");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.Responsibility", "Responsibility")
+                        .WithMany("JobRoleResponsibilities")
+                        .HasForeignKey("ResponsibilityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleResponsibility_Responsibility");
+
+                    b.Navigation("JobRole");
+
+                    b.Navigation("Responsibility");
+                });
+
             modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleSkill", b =>
                 {
                     b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
@@ -6736,6 +7495,49 @@ namespace HumanOS.Migrations
                     b.Navigation("JobRole");
 
                     b.Navigation("Skill");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRoleTool", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleTool_JobRole");
+
+                    b.HasOne("HumanOS.Models.OrgStructure.Tool", "Tool")
+                        .WithMany("JobRoleTools")
+                        .HasForeignKey("ToolId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_JobRoleTool_Tool");
+
+                    b.Navigation("JobRole");
+
+                    b.Navigation("Tool");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Responsibility", b =>
+                {
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Tool", b =>
+                {
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
@@ -7280,21 +8082,50 @@ namespace HumanOS.Migrations
                     b.Navigation("Translations");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Activity", b =>
+                {
+                    b.Navigation("JobRoleActivities");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Certification", b =>
+                {
+                    b.Navigation("JobRoleCertifications");
+                });
+
             modelBuilder.Entity("HumanOS.Models.OrgStructure.Department", b =>
                 {
                     b.Navigation("ChildDepartments");
 
+                    b.Navigation("DepartmentJobRoles");
+
                     b.Navigation("JobRoles");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.ExperienceRequirement", b =>
+                {
+                    b.Navigation("JobRoleExperienceRequirements");
                 });
 
             modelBuilder.Entity("HumanOS.Models.OrgStructure.JobRole", b =>
                 {
+                    b.Navigation("DepartmentJobRoles");
+
                     b.Navigation("DirectReportRoles");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Responsibility", b =>
+                {
+                    b.Navigation("JobRoleResponsibilities");
                 });
 
             modelBuilder.Entity("HumanOS.Models.OrgStructure.Skill", b =>
                 {
                     b.Navigation("JobRoleSkills");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.OrgStructure.Tool", b =>
+                {
+                    b.Navigation("JobRoleTools");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.Person", b =>

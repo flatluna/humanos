@@ -44,12 +44,6 @@ public sealed class CreateJobRoleFunction
                 request, HttpStatusCode.BadRequest, "TitleRequired", "The job role title is required.", cancellationToken);
         }
 
-        if (body.DepartmentId == Guid.Empty)
-        {
-            return await FunctionResponseFactory.ErrorResponseAsync(
-                request, HttpStatusCode.BadRequest, "DepartmentIdRequired", "A departmentId is required.", cancellationToken);
-        }
-
         try
         {
             var jobRole = await _jobRoleService.CreateAsync(tenantId, body, cancellationToken);
@@ -58,7 +52,12 @@ public sealed class CreateJobRoleFunction
         catch (InvalidOperationException ex)
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
-                request, HttpStatusCode.BadRequest, "InvalidDepartment", ex.Message, cancellationToken);
+                request, HttpStatusCode.BadRequest, "InvalidJobRole", ex.Message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.InternalServerError, "SaveFailed", ex.Message + (ex.InnerException != null ? " --> " + ex.InnerException.Message : string.Empty), cancellationToken);
         }
     }
 }

@@ -44,7 +44,10 @@ const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
 const ENGRAM_APP_URL = 'http://localhost:5178';
 const EMPLOYEE_PORTAL_URL = 'http://localhost:5180';
 
-function buildGenerateCourseUrl(course: Pick<CareerPlanRoadmapStepDto, 'title' | 'description' | 'skill'> & { track: Track }): string {
+function buildGenerateCourseUrl(
+  course: Pick<CareerPlanRoadmapStepDto, 'title' | 'description' | 'skill'> & { track: Track },
+  user: { oid: string; tid: string; email: string } | null,
+): string {
   const params = new URLSearchParams();
   if (course.title) params.set('name', course.title);
   if (course.description) params.set('description', course.description);
@@ -54,9 +57,13 @@ function buildGenerateCourseUrl(course: Pick<CareerPlanRoadmapStepDto, 'title' |
   // to this roadmap step. Must match capabilitystudio's CAREER_CATEGORIES
   // kebab-case ids (NewCapabilityPage.tsx).
   const careerCategory = TRACK_TO_CAREER_CATEGORY[course.track];
-  if (careerCategory) params.set('careerCategory', careerCategory);
+  if (careerCategory) params.set('category', careerCategory);
   if (course.skill) params.set('targetSkill', course.skill);
-  return `${CAPABILITY_STUDIO_URL}/new?${params.toString()}`;
+  const studioPath = `/new-structured-learning?${params.toString()}`;
+  if (user) {
+    return `http://localhost:7071/api/humanos/studio-launch?oid=${encodeURIComponent(user.oid)}&tid=${encodeURIComponent(user.tid)}&email=${encodeURIComponent(user.email)}&returnTo=${encodeURIComponent(studioPath)}`;
+  }
+  return `${CAPABILITY_STUDIO_URL}${studioPath}`;
 }
 
 function buildEngramProgramUrl(programId: string): string {
@@ -447,6 +454,7 @@ interface CourseSectionProps {
 }
 
 function CourseSection({ title, icon: Icon, accent, courses, emptyMessage }: CourseSectionProps) {
+  const { user } = useAuth();
   const styles = ACCENT_STYLES[accent];
 
   return (
@@ -526,7 +534,7 @@ function CourseSection({ title, icon: Icon, accent, courses, emptyMessage }: Cou
                 // title, the system picks it up automatically next time
                 // this plan is loaded — no manual linking needed.
                 <a
-                  href={buildGenerateCourseUrl(course)}
+                  href={buildGenerateCourseUrl(course, user)}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-500"

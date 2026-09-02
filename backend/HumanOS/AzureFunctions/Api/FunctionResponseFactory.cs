@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker.Http;
 
@@ -13,8 +14,12 @@ public static class FunctionResponseFactory
     /// response DTOs. Serializing explicitly with these options instead of
     /// relying on WriteAsJsonAsync's built-in serializer fixes this without
     /// depending on worker-SDK-version-specific `WorkerOptions.Serializer`
-    /// wiring.</summary>
-    private static readonly JsonSerializerOptions CamelCaseOptions = new(JsonSerializerDefaults.Web);
+    /// wiring. UnsafeRelaxedJsonEscaping preserves raw UTF-8 emojis and Spanish
+    /// characters without escaping them to \uXXXX sequences.</summary>
+    private static readonly JsonSerializerOptions CamelCaseOptions = new(JsonSerializerDefaults.Web)
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     public static async Task<HttpResponseData> ErrorResponseAsync(
         HttpRequestData request,

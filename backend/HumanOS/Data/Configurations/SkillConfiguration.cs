@@ -34,6 +34,12 @@ public sealed class SkillConfiguration : IEntityTypeConfiguration<Skill>
             .HasDefaultValue(true)
             .IsRequired();
 
+        builder.Property(x => x.DocumentStoragePath)
+            .HasMaxLength(1000);
+
+        builder.Property(x => x.DocumentFileName)
+            .HasMaxLength(300);
+
         builder.Property(x => x.CreatedDate)
             .IsRequired();
 

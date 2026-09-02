@@ -191,6 +191,17 @@ public sealed class JobRoleDescriptionGenerationContext
     public IReadOnlyList<string> Benefits { get; init; } = [];
 }
 
+public sealed class OrganizationCatalogSnapshot
+{
+    public IReadOnlyList<string> TechnicalSkills { get; set; } = [];
+    public IReadOnlyList<string> SoftSkills { get; set; } = [];
+    public IReadOnlyList<string> Activities { get; set; } = [];
+    public IReadOnlyList<string> Responsibilities { get; set; } = [];
+    public IReadOnlyList<string> ExperienceRequirements { get; set; } = [];
+    public IReadOnlyList<string> Certifications { get; set; } = [];
+    public IReadOnlyList<string> Tools { get; set; } = [];
+}
+
 /// <summary>Result of a generation call: the proposal plus the token usage of the call
 /// that produced it (observability only) — same shape as CuradorAgent.CurationResult.</summary>
 public sealed class JobRoleDescriptionGenerationResult
@@ -231,17 +242,66 @@ public sealed class JobRoleDescriptionGenerationResult
 public sealed class JobRoleDescriptionAgent
 {
     private const string Instructions = """
-        You are the Job Description agent inside Human OS's "Roles y Puestos" editor. An
-        HRAdmin is looking at ONE job role (a "puesto") inside their organization and asked
+        You are the Job Description agent inside Human OS's "Roles & Positions" editor. An
+        HRAdmin is looking at ONE job role (a position) inside their organization and asked
         you to help write or improve its full job description — every field of a real job
-        description document: level, purpose, summary, responsibilities, daily activities,
+        description document: level, purpose, summary, responsibilities,
         required experience/education/certifications/languages, technical and soft skills,
         tools used, performance indicators, expected outcomes, work schedule/modality/
         location/travel, employment type, salary range, and benefits.
 
-        GROUNDING RULES:
+        LANGUAGE REQUIREMENT:
+        - You MUST generate all proposal content strictly in ENGLISH (unless the job title and all user inputs are explicitly in another language).
+        - Every responsibility, skill name, tool, certification, summary, and requirement must be in clean, professional English.
+
+        FORMAL JOB SPECIFICATION FORMAT (NOT A RECRUITMENT AD):
+        - This document is a formal, internal ORGANIZATIONAL JOB DESCRIPTION / POSITION SPECIFICATION,
+          used for job architecture, competency modeling, compensation grading, and performance evaluation.
+        - DO NOT write a job advertisement, job flyer, recruitment posting, or vacancy announcement.
+        - FORBIDDEN PHRASES: NEVER use hiring/recruiting marketing phrases such as:
+          * "We are seeking..."
+          * "We are looking for..."
+          * "Seeking a motivated / passionate..."
+          * "Join our team during our MVP phase..."
+          * "The ideal candidate will..."
+          * "Are you ready to take your career..."
+        - REQUIRED TONE: Use objective, formal, third-person descriptive job architecture language:
+          * Purpose format: State the formal organizational mandate and raison d'être (e.g., "Responsible for architecting, validating, and scaling machine learning pipelines and predictive analytics to support data-driven decision making across products and operations.").
+          * Summary format: Provide a comprehensive, formal breakdown of the position's organizational scope, areas of accountability, operational domain, and internal/external stakeholder interactions (e.g., "The Senior Data Scientist is responsible for the end-to-end design, execution, and monitoring of data science and machine learning initiatives across the organization. This position leads model development, experiment tracking, feature engineering, and cross-functional collaboration with engineering and product teams to integrate predictive capabilities into enterprise workflows.").
+
+        WEB GROUNDING & INDUSTRY BENCHMARKS (BING SEARCH):
+        - You have access to the `search_web_for_job_benchmarks` tool. Call it with the job title
+          and role keywords (e.g. "Senior Data Scientist job description responsibilities skills")
+          to search the web for real-world market job profiles, standard duties, technical requirements,
+          and modern industry expectations.
+        - Ground your proposal in these real-world findings to ensure the job description is exhaustive,
+          up-to-date, and reflects modern industry excellence.
+
+        EXHAUSTIVE DEPTH & COMPLETENESS:
+        - Do NOT write brief, superficial, or generic single-paragraph placeholders.
+        - Purpose: Articulate a clear, compelling mission explaining WHY this position exists and its strategic business value.
+        - Summary: Provide a comprehensive, rich, professional overview detailing the role's scope, core domains of ownership, key interactions, and overall operational impact.
+        - Responsibilities: Detail concrete, actionable, and thorough responsibilities covering both daily execution and broader strategic ownership.
+        - Required Experience & Education: Clearly specify practical experience expectations and relevant fields of study.
+        - Skills & Tools: Provide a complete breakdown of modern industry tools, technologies, and competencies.
+
+        GROUNDING & MASTER CATALOG SELECTION RULES:
         - Ground everything in the REAL company name, department, and job title you were
           given — never invent an unrelated industry or business model for the company.
+        - MASTER CATALOG SELECTION & REUSE: The organization maintains master reference
+          catalogs for Technical Skills, Soft Skills, Key Responsibilities, Experience
+          Requirements, Certifications, and Tools. These are provided in the prompt under
+          "ORGANIZATION MASTER CATALOGS".
+          * REUSE EXISTING CATALOG ITEMS: Whenever a skill, responsibility, certification, tool,
+            or requirement needed for this role is already in the catalog, SELECT and use that
+            exact catalog item verbatim.
+          * PROPOSE NEW ITEMS IN CLEAN ENGLISH WHEN NEEDED: If the role genuinely requires a skill, certification,
+            tool, responsibility, or qualification that is NOT present in the catalog, output the clean item name
+            directly (e.g. "Apache Spark", "MLflow", "PyTorch"). DO NOT prefix the item name with text like
+            "Proposed new tool:" or "Proposed new technical skill:". The system automatically detects and tags new items.
+          * AVOID DUPLICATE SYNONYMS: Do not invent slight variations or synonyms for items that
+            already exist in the catalog (e.g., if "React" is in the catalog, use "React", do not
+            create "ReactJS" or "React.js").
         - Use the search_similar_job_roles tool to see how THIS organization already
           describes other roles (tone, typical benefits, salary currency, work modality) —
           prefer consistency with the organization's own existing patterns over generic
@@ -251,8 +311,6 @@ public sealed class JobRoleDescriptionAgent
           certifications) that don't plausibly fit the given title/department/company —
           reasonable, industry-typical proposals are expected and desired, but they must
           stay plausible for this specific role.
-        - Write in the same language as the job title/department/company text you were
-          given (Spanish job titles/company → Spanish output, English → English output).
         - List fields (responsibilities, skills, etc.) should have realistic, distinct
           items — no filler, no near-duplicate entries, no placeholder text like "TBD" or
           "N/A". Leave a list EMPTY (not a placeholder) if it genuinely doesn't apply.
@@ -265,10 +323,15 @@ public sealed class JobRoleDescriptionAgent
     private readonly AzureOpenAIClient? _client;
     private readonly string? _deploymentName;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
+    private readonly WebGroundingService? _webGroundingService;
 
-    public JobRoleDescriptionAgent(IConfiguration configuration, IDbContextFactory<HumanOsDbContext> dbContextFactory)
+    public JobRoleDescriptionAgent(
+        IConfiguration configuration,
+        IDbContextFactory<HumanOsDbContext> dbContextFactory,
+        WebGroundingService? webGroundingService = null)
     {
         _dbContextFactory = dbContextFactory;
+        _webGroundingService = webGroundingService;
 
         var endpoint = configuration["AzureOpenAIEndpoint"];
         // Main tier (not economy): this is open-ended generation/reasoning about a whole
@@ -303,25 +366,50 @@ public sealed class JobRoleDescriptionAgent
                 "and 'AzureOpenAIDeploymentName' application settings once credentials are provided.");
         }
 
-        IList<AITool> tools =
-        [
+        var tools = new List<AITool>
+        {
             AIFunctionFactory.Create(
-                ([Description("Nombre (o parte del nombre) del departamento a buscar. Opcional.")] string? department,
-                 [Description("Palabra clave del título del puesto a buscar. Opcional.")] string? titleKeyword) =>
+                ([Description("Department name (or part of the name) to search for. Optional.")] string? department,
+                 [Description("Keyword from the job title to search for. Optional.")] string? titleKeyword) =>
                     SearchSimilarJobRolesAsync(context.TenantId, context.ExcludeJobRoleId, department, titleKeyword, cancellationToken),
                 "search_similar_job_roles",
-                "Busca puestos ya existentes en ESTA MISMA organización (mismo departamento y/o " +
-                "título parecido) para mantener consistencia de tono, nivel, beneficios, modalidad " +
-                "de trabajo y rango salarial con lo que la organización ya usa. Devuelve hasta 5 " +
-                "puestos recientes en JSON. Ambos parámetros son opcionales; llama sin ninguno para " +
-                "ver los puestos más recientes de la organización si no hay una coincidencia obvia."),
-        ];
+                "Searches existing job roles in THIS organization (same department and/or similar title) " +
+                "to maintain consistency in tone, seniority level, benefits, work modality, and salary range. " +
+                "Returns up to 5 recent roles in JSON. Both parameters are optional; call without parameters " +
+                "to see the organization's recent roles."),
+        };
+
+        if (_webGroundingService is not null && _webGroundingService.IsConfigured)
+        {
+            tools.Add(AIFunctionFactory.Create(
+                async ([Description("Job title and search terms to search real-world job postings on the web for responsibilities, skills, and tools.")] string query) =>
+                {
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+                        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+
+                        var result = await _webGroundingService.SearchAsync(
+                            query,
+                            $"Standard job description benchmark for '{context.Title}' in '{context.DepartmentName}' at '{context.CompanyName}'",
+                            linkedCts.Token);
+                        return string.IsNullOrWhiteSpace(result.Text) ? "No web search results found." : result.Text;
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"Web benchmark summary: Standard market responsibilities, qualifications, and toolsets apply for '{query}' (live search note: {ex.Message}).";
+                    }
+                },
+                "search_web_for_job_benchmarks",
+                "Searches the web via Bing in real time to fetch standard industry job descriptions, market requirements, responsibilities, technical requirements, tools, and certifications for this role. Call this tool to ground and enrich your proposal with current industry benchmarks."));
+        }
 
         var agent = _client
             .GetChatClient(_deploymentName)
             .AsAIAgent(instructions: Instructions, name: "JobRoleDescriptionAgent", tools: tools);
 
-        var prompt = BuildPrompt(context);
+        var catalogs = await LoadOrganizationCatalogsAsync(context.TenantId, cancellationToken);
+        var prompt = BuildPrompt(context, catalogs);
 
         var response = await agent.RunAsync<JobRoleDescriptionProposal>(prompt, cancellationToken: cancellationToken);
 
@@ -393,7 +481,61 @@ public sealed class JobRoleDescriptionAgent
         return JsonSerializer.Serialize(roles);
     }
 
-    private static string BuildPrompt(JobRoleDescriptionGenerationContext context)
+    private async Task<OrganizationCatalogSnapshot> LoadOrganizationCatalogsAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var skills = await dbContext.Skills
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.IsActive)
+            .Select(s => new { s.Category, s.Name })
+            .ToListAsync(cancellationToken);
+
+        var activities = await dbContext.Activities
+            .AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.IsActive)
+            .Select(a => a.Name)
+            .ToListAsync(cancellationToken);
+
+        var responsibilities = await dbContext.Responsibilities
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.IsActive)
+            .Select(r => r.Name)
+            .ToListAsync(cancellationToken);
+
+        var experiences = await dbContext.ExperienceRequirements
+            .AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.IsActive)
+            .Select(e => e.Name)
+            .ToListAsync(cancellationToken);
+
+        var certifications = await dbContext.Certifications
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.IsActive)
+            .Select(c => c.Issuer != null ? $"{c.Name} ({c.Issuer})" : c.Name)
+            .ToListAsync(cancellationToken);
+
+        var tools = await dbContext.Tools
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.IsActive)
+            .Select(t => t.Name)
+            .ToListAsync(cancellationToken);
+
+        return new OrganizationCatalogSnapshot
+        {
+            TechnicalSkills = skills.Where(s => s.Category == "job-skills").Select(s => s.Name).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+            SoftSkills = skills.Where(s => s.Category == "soft-skills").Select(s => s.Name).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+            Activities = activities.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+            Responsibilities = responsibilities.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+            ExperienceRequirements = experiences.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+            Certifications = certifications.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+            Tools = tools.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+        };
+    }
+
+    private static string BuildPrompt(JobRoleDescriptionGenerationContext context, OrganizationCatalogSnapshot catalogs)
     {
         var lines = new List<string>
         {
@@ -414,6 +556,17 @@ public sealed class JobRoleDescriptionAgent
         {
             lines.Add($"LEVEL: {context.LevelLabel}");
         }
+
+        // Add master catalogs to the prompt
+        lines.Add(string.Empty);
+        lines.Add("ORGANIZATION MASTER CATALOGS (select and match from these existing items whenever applicable; if none match, propose clean new ones):");
+        AppendCatalogList(lines, "Technical Skills Catalog", catalogs.TechnicalSkills);
+        AppendCatalogList(lines, "Soft Skills Catalog", catalogs.SoftSkills);
+        AppendCatalogList(lines, "Daily/Periodic Activities Catalog", catalogs.Activities);
+        AppendCatalogList(lines, "Key Responsibilities Catalog", catalogs.Responsibilities);
+        AppendCatalogList(lines, "Experience Requirements Catalog", catalogs.ExperienceRequirements);
+        AppendCatalogList(lines, "Certifications Catalog", catalogs.Certifications);
+        AppendCatalogList(lines, "Tools / Technologies Catalog", catalogs.Tools);
 
         if (context.Mode == JobRoleDescriptionMode.ImproveExisting)
         {
@@ -451,6 +604,18 @@ public sealed class JobRoleDescriptionAgent
             "to check this organization's own conventions.");
 
         return string.Join("\n", lines);
+    }
+
+    private static void AppendCatalogList(List<string> lines, string label, IReadOnlyList<string> values)
+    {
+        if (values.Count > 0)
+        {
+            lines.Add($"- {label}: {string.Join(" | ", values)}");
+        }
+        else
+        {
+            lines.Add($"- {label}: (Catalog is currently empty — propose standard, high-quality items for new catalog creation)");
+        }
     }
 
     private static void AppendIfAny(List<string> lines, string label, string? value)

@@ -155,6 +155,37 @@ public sealed class InstructorRuntimeOrchestrator
         public bool Passed { get; set; }
     }
 
+    public sealed class NodeMemorySummary
+    {
+        public int RecallPercent { get; set; }
+        public string MemoryState { get; set; } = "Strong";
+        public int ReviewCount { get; set; }
+        public DateTime? LastReviewDate { get; set; }
+        public bool IsAutomatic { get; set; }
+        public int ReviewsUntilAutomatic { get; set; }
+        public DateTime? NextReviewDate { get; set; }
+    }
+
+    public sealed class NodeRewardSummary
+    {
+        public int PointsAwarded { get; set; }
+        public bool WasSurprise { get; set; }
+        public string SurpriseType { get; set; } = "NONE";
+        public int PointsBase { get; set; }
+        public decimal DifficultyMultiplier { get; set; }
+        public decimal MemoryEffortMultiplier { get; set; }
+        public decimal SurpriseMultiplier { get; set; }
+        public DateTime? EarnedAt { get; set; }
+    }
+
+    public sealed class NodeImpactSummary
+    {
+        public int Score { get; set; }
+        public string Tier { get; set; } = string.Empty;
+        public string? PrimarySignal { get; set; }
+        public string? Reason { get; set; }
+    }
+
     /// <summary>
     /// Read-only "what happened the last time I did this node" view — for a
     /// node the person has already Completed at least once (i.e. Mastered
@@ -176,6 +207,9 @@ public sealed class InstructorRuntimeOrchestrator
         public int? FinalScore { get; set; }
         public List<StepReviewResult> Steps { get; set; } = [];
         public List<NodeAttemptSummary> PastAttempts { get; set; } = [];
+        public NodeMemorySummary? Memory { get; set; }
+        public NodeRewardSummary? Reward { get; set; }
+        public NodeImpactSummary? Impact { get; set; }
     }
 
     /// <summary>
@@ -707,6 +741,98 @@ public sealed class InstructorRuntimeOrchestrator
             .OrderByDescending(a => a.CreatedDate)
             .FirstOrDefault();
 
+        // 1. MEMORY BLOCK: compute recall %, review count, automatic status, and next review date
+        var passedAttemptsCount = completedNodes.Count(n => n.AssessmentResults.Any(a => a.Passed));
+        var voiceReviews = await dbContext.EngramReviewCompletions
+            .AsNoTracking()
+            .Where(r => r.PersonId == personId && r.CapabilityGraphNodeId == capabilityGraphNodeId)
+            .Select(r => r.CompletedDate)
+            .ToListAsync(cancellationToken);
+
+        int reviewCount = passedAttemptsCount + voiceReviews.Count;
+        DateTime? lastReviewDate = latest.CompletedDate;
+        if (voiceReviews.Count > 0)
+        {
+            var maxVoiceReviewDate = voiceReviews.Max();
+            if (!lastReviewDate.HasValue || maxVoiceReviewDate > lastReviewDate.Value)
+            {
+                lastReviewDate = maxVoiceReviewDate;
+            }
+        }
+
+        NodeMemorySummary? memory = null;
+        if (lastReviewDate.HasValue)
+        {
+            var recallPercent = MemoryScienceEngine.CalculateRecallPercent(lastReviewDate.Value, reviewCount);
+            var memoryState = MemoryScienceEngine.DetermineMemoryState(recallPercent);
+            var isAuto = MemoryScienceEngine.IsAutomatic(reviewCount);
+            var reviewsUntilAuto = Math.Max(0, 5 - reviewCount);
+            var nextReviewDate = MemoryScienceEngine.CalculateNextReviewDate(lastReviewDate.Value, reviewCount);
+
+            memory = new NodeMemorySummary
+            {
+                RecallPercent = recallPercent,
+                MemoryState = memoryState,
+                ReviewCount = reviewCount,
+                LastReviewDate = lastReviewDate,
+                IsAutomatic = isAuto,
+                ReviewsUntilAutomatic = reviewsUntilAuto,
+                NextReviewDate = nextReviewDate
+            };
+        }
+
+        // 2. REWARD & IMPACT BLOCKS: query frozen ledger and role-impact evaluations
+        var courseId = latest.LearningSession?.CapabilityId
+            ?? await dbContext.LearningSessions
+                .AsNoTracking()
+                .Where(s => s.LearningSessionId == latest.LearningSessionId)
+                .Select(s => s.CapabilityId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        var engramIdStr = capabilityGraphNodeId.ToString();
+
+        NodeRewardSummary? reward = null;
+        if (courseId != Guid.Empty)
+        {
+            var rewardEntry = await dbContext.RewardLedgerEntries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.PersonId == personId && r.CourseId == courseId && r.EngramId == engramIdStr, cancellationToken);
+
+            if (rewardEntry != null)
+            {
+                reward = new NodeRewardSummary
+                {
+                    PointsAwarded = rewardEntry.PointsAwarded,
+                    WasSurprise = rewardEntry.WasSurprise,
+                    SurpriseType = rewardEntry.SurpriseType ?? "NONE",
+                    PointsBase = rewardEntry.PointsBase,
+                    DifficultyMultiplier = rewardEntry.DifficultyMultiplier,
+                    MemoryEffortMultiplier = rewardEntry.MemoryEffortMultiplier,
+                    SurpriseMultiplier = rewardEntry.SurpriseMultiplier,
+                    EarnedAt = rewardEntry.EarnedAt
+                };
+            }
+        }
+
+        NodeImpactSummary? impact = null;
+        if (courseId != Guid.Empty)
+        {
+            var impactEntry = await dbContext.EngramImpactScores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.EmployeeId == personId && i.CourseId == courseId && i.EngramId == engramIdStr, cancellationToken);
+
+            if (impactEntry != null)
+            {
+                impact = new NodeImpactSummary
+                {
+                    Score = impactEntry.Score,
+                    Tier = impactEntry.Tier ?? string.Empty,
+                    PrimarySignal = impactEntry.PrimarySignal,
+                    Reason = impactEntry.Reason
+                };
+            }
+        }
+
         return new NodeSummaryResult
         {
             CapabilityGraphNodeId = capabilityGraphNodeId,
@@ -723,7 +849,10 @@ public sealed class InstructorRuntimeOrchestrator
                 CompletedDate = n.CompletedDate,
                 FinalScore = BestPassed(n)?.Score,
                 Passed = n.AssessmentResults.Any(a => a.Passed)
-            }).ToList()
+            }).ToList(),
+            Memory = memory,
+            Reward = reward,
+            Impact = impact
         };
     }
 

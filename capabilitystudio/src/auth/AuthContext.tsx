@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { getLaunchSession, clearLaunchSession, type LaunchSession } from './launchSession';
+import { getLaunchSession, clearLaunchSession, STORAGE_CHANGE_EVENT, type LaunchSession } from './launchSession';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session ? toStudioUser(session) : null);
     }
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    // Same-tab launch (LaunchPage saves the session without a full reload)
+    // must also update the context so the header renders the user immediately.
+    window.addEventListener(STORAGE_CHANGE_EVENT, handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(STORAGE_CHANGE_EVENT, handleStorage);
+    };
   }, []);
 
   async function logout() {

@@ -59,7 +59,7 @@ public sealed class CapabilityService
         {
             query = query.Where(c =>
                 (c.OwnerPersonId == null && c.OwnerTenantId == null) ||
-                c.OwnerPersonId == callerPersonId ||
+                (callerPersonId != null && c.OwnerPersonId == callerPersonId) ||
                 (c.OwnerTenantId != null && c.OwnerTenantId == callerTenantId));
         }
 

@@ -9,6 +9,8 @@ import { API_BASE_URL } from '../api/httpClient';
 import { getCapabilityGraph } from '../api/capabilityGraphApi';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import EngramReviewAgent from '../components/EngramReviewAgent';
+import { RewardCelebration } from '@/features/gamification/components/RewardCelebration';
+import type { GamificationRewardBundleDto } from '@/features/gamification/types';
 import {
   getActiveSession,
   startSession,
@@ -192,6 +194,7 @@ export default function NodeWorkflowPage() {
   const [assessmentAnswerText, setAssessmentAnswerText] = useState('');
   const [assessmentSubmitting, setAssessmentSubmitting] = useState(false);
   const [assessmentLastResult, setAssessmentLastResult] = useState<SubmitAssessmentAnswerResponse | null>(null);
+  const [gamificationBundle, setGamificationBundle] = useState<GamificationRewardBundleDto | null>(null);
   const [completing, setCompleting] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<GraphNodeInfoDto[] | null>(null);
   // "Aprobar (demo HR)" (ported from human-os-employee) — HRAdmin-only,
@@ -613,6 +616,11 @@ export default function NodeWorkflowPage() {
       const result = await submitAssessmentAnswer(assessmentRound.CurrentQuestion.AssessmentQuestionId, assessmentAnswerText.trim());
       setAssessmentLastResult(result);
       setAssessmentAnswerText('');
+
+      const gami = result.Gamification ?? result.gamification;
+      if (result.Passed && gami && !(gami.alreadyEarned || gami.AlreadyEarned)) {
+        setGamificationBundle(gami);
+      }
     } catch {
       setErrorMessage(t.nodeError);
     } finally {
@@ -1275,6 +1283,13 @@ export default function NodeWorkflowPage() {
           />
         )}
       </div>
+
+      {gamificationBundle && (
+        <RewardCelebration
+          bundle={gamificationBundle}
+          onClose={() => setGamificationBundle(null)}
+        />
+      )}
     </div>
   );
 }

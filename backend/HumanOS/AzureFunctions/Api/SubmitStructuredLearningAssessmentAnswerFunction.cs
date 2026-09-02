@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using HumanOS.Contracts.Gamification;
 using HumanOS.Data;
 using HumanOS.Services;
 using Microsoft.Azure.Functions.Worker;
@@ -28,6 +29,7 @@ public sealed class SubmitStructuredLearningAssessmentAnswerResponse
     public StructuredLearningAssessmentQuestionDto? NextQuestion { get; set; }
     public int? NewRoundNumber { get; set; }
     public Guid? NewStructuredLearningAssessmentRoundId { get; set; }
+    public GamificationRewardBundle? Gamification { get; set; }
 }
 
 /// <summary>
@@ -106,7 +108,8 @@ public sealed class SubmitStructuredLearningAssessmentAnswerFunction
                     Options = result.NextQuestion.Options
                 },
                 NewRoundNumber = result.NewRoundNumber,
-                NewStructuredLearningAssessmentRoundId = result.NewStructuredLearningAssessmentRoundId
+                NewStructuredLearningAssessmentRoundId = result.NewStructuredLearningAssessmentRoundId,
+                Gamification = result.Gamification
             };
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, response, cancellationToken: cancellationToken);

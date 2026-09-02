@@ -156,8 +156,11 @@ public static class StructuredLearningSectionEvaluator
     /// <summary>Above this length, a one-sentence Capability is almost
     /// always bundling more than one idea rather than staying atomic —
     /// matches the "one Capability = one engram" discipline from
-    /// StructuredLearningDocumentSection.Capability's own doc comment.</summary>
-    private const int MaxAtomicCapabilityLength = 220;
+    /// StructuredLearningDocumentSection.Capability's own doc comment.
+    /// Raised from 220 to 280 (2026-08-29) — 220 was rejecting some
+    /// legitimately atomic statements written in a longer, natural voice,
+    /// causing avoidable Pedagogy generation failures.</summary>
+    private const int MaxAtomicCapabilityLength = 280;
 
     /// <summary>
     /// Atomicity check (2026-08-17, Paso 4) — structural/deterministic,

@@ -3,13 +3,40 @@ import { Link } from 'react-router';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
-import { Brain, Search, Sparkles, X, Bot, Layers, LayoutGrid, Share2, RotateCcw, AlertTriangle, Shuffle } from 'lucide-react';
+import {
+  Brain,
+  Search,
+  Sparkles,
+  X,
+  Bot,
+  Layers,
+  LayoutGrid,
+  Share2,
+  RotateCcw,
+  AlertTriangle,
+  Shuffle,
+  Video,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Target,
+  Trophy,
+  Calendar,
+} from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import { getNodeSummary, type NodeSummaryDto } from '@/features/capabilities/api/runtimeSessionApi';
+import {
+  getStructuredLearningDocument,
+  getStructuredLearningSectionSummary,
+  listStructuredLearningSectionVideos,
+  type StructuredLearningSectionSummaryDto,
+  type StructuredLearningSectionVideo,
+} from '@/features/capabilities/api/structuredLearningRuntimeApi';
 import { API_BASE_URL } from '@/features/capabilities/api/httpClient';
 import EngramReviewAgent from '@/features/capabilities/components/EngramReviewAgent';
+import VoiceTutorAgent from '@/features/capabilities/components/VoiceTutorAgent';
 import { BrainGraph } from './BrainGraph';
 import { BrainRecallGrid } from './BrainRecallGrid';
 import { MemoryScoreGauge } from './MemoryScoreGauge';
@@ -18,6 +45,7 @@ import { getSubjectColor } from './subjectColor';
 import { computeGlobalMemoryScore, getRetrievability, isAutomatic } from './memoryScience';
 import { useBrainGraph } from './useBrainGraph';
 import type { SelectedNeuron } from './types';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
 
 /** Below this retrievability, the panel nudges the employee that this memory
  * is fading and a full 5-step redo (not just a chat with the agent) will
@@ -28,11 +56,19 @@ const FADING_THRESHOLD = 0.5;
 /** Spanish labels for Capability.Category, matching the employee sidebar's
  * own 4 career-plan track labels (EmployeeSidebar.tsx's COURSE_CATEGORY_LINKS)
  * so "tipo de curso" reads the same everywhere in the app. */
-const CATEGORY_LABELS: Record<string, string> = {
-  'job-skills': 'Mi Puesto',
-  'soft-skills': 'Soft Skills',
-  'department-processes': 'Procesos de Depto.',
-  'hr-processes': 'Procesos de RRHH',
+const CATEGORY_LABELS: Record<'en' | 'es', Record<string, string>> = {
+  es: {
+    'job-skills': 'Mi Puesto',
+    'soft-skills': 'Soft Skills',
+    'department-processes': 'Procesos de Depto.',
+    'hr-processes': 'Procesos de RRHH',
+  },
+  en: {
+    'job-skills': 'My Role',
+    'soft-skills': 'Soft Skills',
+    'department-processes': 'Department Processes',
+    'hr-processes': 'HR Processes',
+  },
 };
 
 type StatusFilter = 'all' | 'mastered' | 'needs-review';
@@ -124,6 +160,8 @@ type DeepDiveCardView = {
   text: string;
   emoji?: string;
   illustrationId?: string | null;
+  illustrationIds?: string[] | null;
+  isStructuredLearning?: boolean;
 };
 
 /** Full detail of one Deep Dive card, launched from the "Tarjetas de
@@ -138,32 +176,41 @@ function DeepDiveCardModal({
   card,
   personId,
   capabilityGraphNodeId,
+  structuredLearningDeepDiveStepId,
   agentActive,
   onClose,
   onAskAgent,
 }: {
   card: DeepDiveCardView;
   personId: string;
-  capabilityGraphNodeId: string;
+  capabilityGraphNodeId?: string;
+  structuredLearningDeepDiveStepId?: string | null;
   agentActive: boolean;
   onClose: () => void;
   onAskAgent: () => void;
 }) {
+  const { language } = useI18n();
+  const imageSrc = card.illustrationId
+    ? card.isStructuredLearning
+      ? `${API_BASE_URL}/illustrations/structured-learning/${card.illustrationId}/image`
+      : `${API_BASE_URL}/illustrations/${card.illustrationId}/image`
+    : null;
+
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+      <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <button
           type="button"
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
-          aria-label="Cerrar"
+          aria-label={language === 'en' ? 'Close' : 'Cerrar'}
         >
           <X className="h-5 w-5" />
         </button>
 
-        {card.illustrationId ? (
+        {imageSrc ? (
           <img
-            src={`${API_BASE_URL}/illustrations/${card.illustrationId}/image`}
+            src={imageSrc}
             alt={card.title}
             className="mb-3 h-auto max-h-56 w-full rounded-xl object-contain bg-black/20"
           />
@@ -176,13 +223,22 @@ function DeepDiveCardModal({
         {!agentActive && <RichText className="mt-2 text-sm text-white/70" html={card.text} />}
 
         {agentActive ? (
-          <EngramReviewAgent
-            personId={personId}
-            capabilityGraphNodeId={capabilityGraphNodeId}
-            exampleCardIndex={card.index}
-            embedded
-            onExit={onClose}
-          />
+          card.isStructuredLearning && structuredLearningDeepDiveStepId ? (
+            <div className="mt-4">
+              <VoiceTutorAgent
+                structuredLearningSectionStepId={structuredLearningDeepDiveStepId}
+                exampleCardIndex={card.index}
+              />
+            </div>
+          ) : capabilityGraphNodeId ? (
+            <EngramReviewAgent
+              personId={personId}
+              capabilityGraphNodeId={capabilityGraphNodeId}
+              exampleCardIndex={card.index}
+              embedded
+              onExit={onClose}
+            />
+          ) : null
         ) : (
           <button
             type="button"
@@ -190,7 +246,7 @@ function DeepDiveCardModal({
             className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
             <Sparkles className="h-4 w-4" />
-            Que el agente me lo explique
+            {language === 'en' ? 'Ask the Agent to explain it' : 'Que el agente me lo explique'}
           </button>
         )}
       </div>
@@ -209,6 +265,7 @@ function DeepDiveCardModal({
  * grouping (this portal has no Programs concept — every root is one
  * assigned capability). */
 export function BrainPage() {
+  const { t, language } = useI18n();
   const { user } = useAuth();
   const personId = user?.personId ?? '';
 
@@ -217,7 +274,14 @@ export function BrainPage() {
 
   const [selectedNode, setSelectedNode] = useState<SelectedNeuron | null>(null);
   const [summary, setSummary] = useState<NodeSummaryDto | null>(null);
+  const [slSummary, setSlSummary] = useState<StructuredLearningSectionSummaryDto | null>(null);
+  const [rewardBreakdownOpen, setRewardBreakdownOpen] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [slDeepDiveCards, setSlDeepDiveCards] = useState<DeepDiveCardView[]>([]);
+  const [slDeepDiveStepId, setSlDeepDiveStepId] = useState<string | null>(null);
+  const [slTeachingStepId, setSlTeachingStepId] = useState<string | null>(null);
+  const [slTeachingIllustrationId, setSlTeachingIllustrationId] = useState<string | null>(null);
+  const [slVideos, setSlVideos] = useState<StructuredLearningSectionVideo[]>([]);
   const [engramOpen, setEngramOpen] = useState(false);
   const [cardModalIndex, setCardModalIndex] = useState<number | null>(null);
   const [cardAgentActive, setCardAgentActive] = useState(false);
@@ -274,9 +338,9 @@ export function BrainPage() {
       }),
     );
     return Array.from(categories)
-      .map((code) => ({ code, name: CATEGORY_LABELS[code] ?? code }))
+      .map((code) => ({ code, name: CATEGORY_LABELS[language]?.[code] ?? code }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [rootGroups]);
+  }, [rootGroups, language]);
 
   const filteredRootGroups = useMemo(() => {
     const hasDateFilter = dateFrom !== '' || dateTo !== '';
@@ -334,10 +398,72 @@ export function BrainPage() {
 
   function handleSelectNode(node: SelectedNeuron) {
     setSelectedNode(node);
-    setSummary(null);
-    setSummaryLoading(true);
     setCardModalIndex(null);
     setCardAgentActive(false);
+    setRewardBreakdownOpen(false);
+
+    if (node.isStructuredLearning) {
+      setSummary(null);
+      setSlSummary(null);
+      setSlDeepDiveCards([]);
+      setSlDeepDiveStepId(null);
+      setSlTeachingStepId(null);
+      setSlTeachingIllustrationId(null);
+      setSlVideos([]);
+      setSummaryLoading(true);
+
+      getStructuredLearningSectionSummary(node.structuredLearningSectionId, personId)
+        .then((data) => setSlSummary(data))
+        .catch(() => setSlSummary(null));
+
+      getStructuredLearningDocument(node.structuredLearningDocumentId)
+        .then((doc) => {
+          const section = doc.Sections.find((s) => s.StructuredLearningDocumentSectionId === node.structuredLearningSectionId);
+          const deepDiveStep = section?.Steps.find((s) => s.StepType === 'DeepDive');
+          const teachingStep = section?.Steps.find((s) => s.StepType === 'Teaching');
+          setSlTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
+          setSlDeepDiveStepId(deepDiveStep?.StructuredLearningSectionStepId ?? null);
+          if (teachingStep?.StepDataJson) {
+            try {
+              setSlTeachingIllustrationId((JSON.parse(teachingStep.StepDataJson) as { IllustrationId?: string | null }).IllustrationId ?? null);
+            } catch {
+              setSlTeachingIllustrationId(null);
+            }
+          }
+          if (deepDiveStep?.StepDataJson) {
+            try {
+              const cards = JSON.parse(deepDiveStep.StepDataJson) as { Title: string; Text: string; Emoji?: string | null; IllustrationId?: string | null; IllustrationIds?: string[] | null }[];
+              setSlDeepDiveCards(
+                cards.map((c, index) => ({
+                  index,
+                  title: c.Title,
+                  text: c.Text,
+                  emoji: c.Emoji ?? undefined,
+                  illustrationId: c.IllustrationId,
+                  illustrationIds: c.IllustrationIds,
+                  isStructuredLearning: true,
+                }))
+              );
+            } catch {
+              setSlDeepDiveCards([]);
+            }
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => setSummaryLoading(false));
+
+      listStructuredLearningSectionVideos(node.structuredLearningSectionId)
+        .then((videos) => {
+          setSlVideos(videos.filter((v) => v.IsPublished));
+        })
+        .catch(() => setSlVideos([]));
+
+      return;
+    }
+
+    setSummary(null);
+    setSlSummary(null);
+    setSummaryLoading(true);
     getNodeSummary(personId, node.capabilityGraphNodeId)
       .then((data) => setSummary(data))
       .catch(() => setSummary(null))
@@ -349,6 +475,7 @@ export function BrainPage() {
   // browsing them needs no extra request. Only the DeepDive step ever has
   // cards; every other step type's ExampleCards field is undefined.
   const deepDiveCards: DeepDiveCardView[] = useMemo(() => {
+    if (selectedNode?.isStructuredLearning) return slDeepDiveCards;
     const step = summary?.Steps.find((s) => s.StepType === 'DeepDive');
     return (step?.ExampleCards ?? []).map((c, index) => ({
       index,
@@ -356,14 +483,72 @@ export function BrainPage() {
       text: c.Text,
       emoji: c.Emoji,
       illustrationId: c.IllustrationId,
+      isStructuredLearning: false,
     }));
-  }, [summary]);
+  }, [summary, selectedNode, slDeepDiveCards]);
 
   function openRandomCard() {
     if (deepDiveCards.length === 0) return;
     setCardAgentActive(false);
     setCardModalIndex(Math.floor(Math.random() * deepDiveCards.length));
   }
+
+  const activeMemory = selectedNode?.isStructuredLearning ? slSummary?.Memory : summary?.Memory;
+  const activeReward = selectedNode?.isStructuredLearning ? slSummary?.Reward : summary?.Reward;
+  const activeImpact = selectedNode?.isStructuredLearning ? slSummary?.Impact : summary?.Impact;
+
+  const formatFriendlyDate = (dateStr?: string | null) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString(language === 'en' ? 'en-US' : 'es-MX', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const formatDaysUntil = (targetDateStr?: string | null) => {
+    if (!targetDateStr) return '';
+    try {
+      const target = new Date(targetDateStr).getTime();
+      const diffDays = Math.max(0, Math.round((target - Date.now()) / (24 * 60 * 60 * 1000)));
+      if (diffDays === 0) {
+        return language === 'en' ? 'today' : 'hoy';
+      }
+      if (diffDays === 1) {
+        return language === 'en' ? 'in 1 day' : 'en 1 día';
+      }
+      return language === 'en' ? `in ${diffDays} days` : `en ${diffDays} días`;
+    } catch {
+      return '';
+    }
+  };
+
+  const getTierBadgeStyle = (tier?: string | null) => {
+    const norm = (tier || '').toLowerCase().trim();
+    if (norm === 'critical') {
+      return 'bg-red-500/20 text-red-300 border-red-500/30';
+    }
+    if (norm === 'important') {
+      return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+    }
+    return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+  };
+
+  const getMemoryStateBadgeStyle = (state?: string | null) => {
+    const norm = (state || '').toLowerCase().trim();
+    if (norm === 'strong') {
+      return 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30';
+    }
+    if (norm === 'fading') {
+      return 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+    }
+    return 'text-red-400 bg-red-500/15 border-red-500/30';
+  };
 
   const selectedRetrievability = selectedNode
     ? getRetrievability(selectedNode.lastCompletedDate, selectedNode.reviewCount ?? 1)
@@ -379,9 +564,9 @@ export function BrainPage() {
           <Brain className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mi Cerebro</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{t.brainTitle}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cada neurona brillante de abajo es algo que ya dominaste — un mapa real de tu propio conocimiento.
+            {t.brainSubtitle}
           </p>
         </div>
       </div>
@@ -392,22 +577,22 @@ export function BrainPage() {
         <div className="mt-6 flex flex-wrap items-stretch gap-3">
           <div className="grid grid-cols-3 gap-3 sm:max-w-lg">
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Neuronas activas</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.brainActiveNeurons}</p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalNeurons}</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Áreas de conocimiento</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.brainKnowledgeAreas}</p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalAreas}</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Para repasar pronto</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.brainNeedsReview}</p>
               <p className="mt-1 text-2xl font-bold text-amber-500 dark:text-amber-400">{totalNeedsReview}</p>
             </Card>
           </div>
           <MemoryScoreGauge
             score={memoryScore}
-            label="Fuerza de memoria global"
-            caption="Qué tan fresco está tu conocimiento dominado ahora mismo, según la curva real del olvido."
+            label={t.brainMemoryStrength}
+            caption={t.brainMemoryStrengthCaption}
           />
         </div>
       )}
@@ -416,31 +601,30 @@ export function BrainPage() {
         <Card className="mt-4 flex items-start gap-3 border-dashed p-4">
           <Bot className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Preguntar sobre todo lo que has aprendido a la vez llegará pronto. Por ahora, elige una neurona específica
-            para hablar sobre ella.
+            {t.brainAskComingSoon}
           </p>
         </Card>
       )}
 
       {loading && (
         <LoadingBackdrop
-          title="Construyendo tu red de conocimiento"
-          description="Conectando tu aprendizaje bilingüe en todos tus Engramas..."
+          title={t.brainLoadingTitle}
+          description={t.brainLoadingDescription}
         />
       )}
 
       {isEmpty && (
         <Card className="mt-8 flex flex-col items-center gap-3 p-10 text-center">
           <Brain className="h-10 w-10 text-slate-300 dark:text-slate-600" />
-          <p className="text-base font-semibold text-slate-900 dark:text-white">Todavía no has dominado ningún nodo.</p>
+          <p className="text-base font-semibold text-slate-900 dark:text-white">{t.brainEmptyTitle}</p>
           <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
-            Completa tu primer nodo en un Engrama para verlo brillar aquí.
+            {t.brainEmptyDescription}
           </p>
           <Link
             to="/capabilities"
             className="mt-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
-            Explorar Engramas
+            {t.brainExploreButton}
           </Link>
         </Card>
       )}
@@ -453,7 +637,7 @@ export function BrainPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Busca un tema que ya aprendiste..."
+                placeholder={t.brainSearchPlaceholder}
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
               />
             </div>
@@ -468,7 +652,7 @@ export function BrainPage() {
                 }`}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
-                Grilla
+                {t.brainGrid}
               </button>
               <button
                 type="button"
@@ -480,19 +664,19 @@ export function BrainPage() {
                 }`}
               >
                 <Share2 className="h-3.5 w-3.5" />
-                Grafo
+                {t.brainGraph}
               </button>
             </div>
           </div>
 
           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            Selecciona una neurona para ver qué aprendiste y hablar con tu Agente sobre ese tema.
+            {t.brainSelectHint}
           </p>
 
           {subjectOptions.length > 1 && (
             <FilterChipRow
-              label="Materia:"
-              allLabel="Todas"
+              label={`${t.brainSubject}:`}
+              allLabel={t.allSubjectsFilter}
               value={subjectFilter}
               onChange={setSubjectFilter}
               options={subjectOptions.map((s) => ({ value: s.code, label: s.name, color: getSubjectColor(s.code) }))}
@@ -501,8 +685,8 @@ export function BrainPage() {
 
           {courseOptions.length > 1 && (
             <FilterChipRow
-              label="Curso:"
-              allLabel="Todos"
+              label={`${t.brainCourse}:`}
+              allLabel={t.brainAll}
               value={courseFilter}
               onChange={setCourseFilter}
               options={courseOptions.map((c) => ({ value: c.id, label: c.name }))}
@@ -511,8 +695,8 @@ export function BrainPage() {
 
           {categoryOptions.length > 0 && (
             <FilterChipRow
-              label="Tipo de curso:"
-              allLabel="Todos"
+              label={`${t.brainCourseType}:`}
+              allLabel={t.brainAll}
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={categoryOptions.map((c) => ({ value: c.code, label: c.name }))}
@@ -520,22 +704,22 @@ export function BrainPage() {
           )}
 
           <FilterChipRow
-            label="Estado:"
-            allLabel="Todas"
+            label={language === 'en' ? 'Status:' : 'Estado:'}
+            allLabel={t.brainAll}
             value={statusFilter === 'all' ? null : statusFilter}
             onChange={(v) => setStatusFilter((v as StatusFilter) ?? 'all')}
             options={[
-              { value: 'mastered', label: 'Dominado' },
-              { value: 'needs-review', label: 'Necesita repaso' },
+              { value: 'mastered', label: language === 'en' ? 'Mastered' : 'Dominado' },
+              { value: 'needs-review', label: language === 'en' ? 'Needs review' : 'Necesita repaso' },
             ]}
           />
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-              Último repaso:
+              {language === 'en' ? 'Last review:' : 'Último repaso:'}
             </span>
             <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-              Desde
+              {language === 'en' ? 'From' : 'Desde'}
               <input
                 type="date"
                 value={dateFrom}
@@ -545,7 +729,7 @@ export function BrainPage() {
               />
             </label>
             <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-              Hasta
+              {language === 'en' ? 'To' : 'Hasta'}
               <input
                 type="date"
                 value={dateTo}
@@ -563,7 +747,7 @@ export function BrainPage() {
                 }}
                 className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.12]"
               >
-                Limpiar fechas
+                {language === 'en' ? 'Clear dates' : 'Limpiar fechas'}
               </button>
             )}
           </div>
@@ -606,7 +790,7 @@ export function BrainPage() {
                   type="button"
                   onClick={() => setSelectedNode(null)}
                   className="rounded-full p-1 text-white/60 hover:bg-white/10 hover:text-white"
-                  aria-label="Cerrar"
+                  aria-label={language === 'en' ? 'Close' : 'Cerrar'}
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -619,34 +803,228 @@ export function BrainPage() {
                 <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                   <p className="text-xs text-amber-200">
-                    Este recuerdo se está desvaneciendo. Platicar con el agente te ayuda a repasarlo, pero rehacer el
-                    ciclo completo de 5 pasos lo reconstruye mucho más fuerte.
+                    {language === 'en'
+                      ? 'This memory is fading. Talking with the agent helps you review it, but redoing the full 5-step cycle rebuilds it much stronger.'
+                      : 'Este recuerdo se está desvaneciendo. Platicar con el agente te ayuda a repasarlo, pero rehacer el ciclo completo de 5 pasos lo reconstruye mucho más fuerte.'}
                   </p>
                 </div>
               )}
 
-              {summaryLoading && <p className="mt-6 text-sm text-white/50">Cargando...</p>}
+              {/* ENRICHED SECTIONS: MEMORY + REWARD + IMPACT */}
+              <div className="mt-5 space-y-3">
+                {/* 1. MEMORY SECTION */}
+                {activeMemory && (
+                  <div className="overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.03] to-white/[0.02] p-3.5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-400">
+                        <Brain className="h-4 w-4 text-emerald-400" />
+                        <span>{language === 'en' ? 'Memory' : 'Memoria'}</span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getMemoryStateBadgeStyle(
+                          activeMemory.MemoryState
+                        )}`}
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />
+                        {activeMemory.MemoryState}
+                      </span>
+                    </div>
 
-              {!summaryLoading && summary && (
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-white">{activeMemory.RecallPercent}%</span>
+                        <span className="text-[11px] text-white/50">
+                          {language === 'en' ? 'retention' : 'retención'}
+                        </span>
+                      </div>
+
+                      <div className="text-right">
+                        {activeMemory.IsAutomatic ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-extrabold text-amber-300">
+                            <Zap className="h-3 w-3 fill-amber-300" />
+                            {language === 'en' ? 'Automatic' : 'Automático'}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-white/70">
+                            {activeMemory.ReviewsUntilAutomatic}{' '}
+                            {language === 'en' ? 'reviews to Auto' : 'repasos para Automático'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-2 text-[11px] text-white/60">
+                      <span>
+                        {activeMemory.ReviewCount}{' '}
+                        {activeMemory.ReviewCount === 1
+                          ? language === 'en'
+                            ? 'review'
+                            : 'repaso'
+                          : language === 'en'
+                          ? 'reviews'
+                          : 'repasos'}
+                      </span>
+                      {activeMemory.NextReviewDate && (
+                        <span className="flex items-center gap-1 font-medium text-emerald-300/90">
+                          <Calendar className="h-3 w-3" />
+                          {language === 'en' ? 'Next review' : 'Próximo repaso'}:{' '}
+                          {formatFriendlyDate(activeMemory.NextReviewDate)} ({formatDaysUntil(activeMemory.NextReviewDate)})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. REWARD SECTION */}
+                {activeReward && (
+                  <div className="overflow-hidden rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-amber-500/[0.03] to-white/[0.02] p-3.5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-400">
+                        <Trophy className="h-4 w-4 text-amber-400" />
+                        <span>{language === 'en' ? 'Reward' : 'Recompensa'}</span>
+                      </div>
+
+                      {activeReward.WasSurprise && activeReward.SurpriseType !== 'NONE' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500/30 to-purple-500/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-200">
+                          {activeReward.SurpriseType === 'JACKPOT'
+                            ? '🎉 JACKPOT'
+                            : activeReward.SurpriseType === 'DOUBLE'
+                            ? '⚡ DOUBLE'
+                            : '🎲 BONUS'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-white/40 font-medium">
+                          {formatFriendlyDate(activeReward.EarnedAt)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-baseline justify-between">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-black text-amber-300">+{activeReward.PointsAwarded}</span>
+                        <span className="text-xs font-medium text-amber-400/80">pts</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setRewardBreakdownOpen((prev) => !prev)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 hover:text-amber-200"
+                      >
+                        <span>{language === 'en' ? 'View breakdown' : 'Ver desglose'}</span>
+                        {rewardBreakdownOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+
+                    {rewardBreakdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-3 rounded-xl bg-black/30 p-2.5 text-[11px] font-mono text-white/80 border border-white/5 space-y-1"
+                      >
+                        <div className="flex justify-between text-white/60">
+                          <span>{language === 'en' ? 'Base points' : 'Puntos base'}:</span>
+                          <span className="font-bold text-white">{activeReward.PointsBase}</span>
+                        </div>
+                        <div className="flex justify-between text-white/60">
+                          <span>{language === 'en' ? 'Difficulty' : 'Dificultad'}:</span>
+                          <span className="font-bold text-white">×{activeReward.DifficultyMultiplier}</span>
+                        </div>
+                        <div className="flex justify-between text-white/60">
+                          <span>{language === 'en' ? 'Memory effort' : 'Esfuerzo memoria'}:</span>
+                          <span className="font-bold text-white">×{activeReward.MemoryEffortMultiplier}</span>
+                        </div>
+                        <div className="flex justify-between text-white/60">
+                          <span>{language === 'en' ? 'Surprise bonus' : 'Bono sorpresa'}:</span>
+                          <span className="font-bold text-white">×{activeReward.SurpriseMultiplier}</span>
+                        </div>
+                        <div className="mt-1 flex justify-between border-t border-white/10 pt-1 font-bold text-amber-300">
+                          <span>{language === 'en' ? 'Total' : 'Total'}:</span>
+                          <span>{activeReward.PointsAwarded} pts</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. IMPACT SECTION */}
+                {activeImpact && (
+                  <div className="overflow-hidden rounded-2xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/10 via-indigo-500/[0.03] to-white/[0.02] p-3.5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-indigo-400">
+                        <Target className="h-4 w-4 text-indigo-400" />
+                        <span>{language === 'en' ? 'Role Impact' : 'Impacto en tu Puesto'}</span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${getTierBadgeStyle(
+                          activeImpact.Tier
+                        )}`}
+                      >
+                        {activeImpact.Tier}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex items-baseline gap-1.5">
+                      <span className="text-xl font-black text-white">{activeImpact.Score}</span>
+                      <span className="text-xs text-white/50">/ 100</span>
+                    </div>
+
+                    {activeImpact.Reason && (
+                      <p className="mt-2 text-xs leading-relaxed text-slate-300 dark:text-white/80 bg-black/20 rounded-xl p-2.5 border border-white/5">
+                        {activeImpact.Reason}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {summaryLoading && !selectedNode.isStructuredLearning && <p className="mt-6 text-sm text-white/50">{language === 'en' ? 'Loading...' : 'Cargando...'}</p>}
+
+              {!summaryLoading && summary && !selectedNode.isStructuredLearning && (
                 <div className="mt-6 grid grid-cols-2 gap-3">
-                  <SummaryStat label="Intentos" value={String(summary.AttemptCount)} />
+                  <SummaryStat label={language === 'en' ? 'Attempts' : 'Intentos'} value={String(summary.AttemptCount)} />
                   <SummaryStat
-                    label="Puntaje"
+                    label={language === 'en' ? 'Score' : 'Puntaje'}
                     value={typeof summary.FinalScore === 'number' ? `${summary.FinalScore}/100` : '—'}
                   />
                   <SummaryStat
-                    label="Dominado desde"
+                    label={language === 'en' ? 'Mastered since' : 'Dominado desde'}
                     value={
                       summary.FirstCompletedDate
-                        ? new Date(summary.FirstCompletedDate).toLocaleDateString('es', { dateStyle: 'medium' })
+                        ? new Date(summary.FirstCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
                         : '—'
                     }
                   />
                   <SummaryStat
-                    label="Último repaso"
+                    label={language === 'en' ? 'Last review' : 'Último repaso'}
                     value={
                       summary.LastCompletedDate
-                        ? new Date(summary.LastCompletedDate).toLocaleDateString('es', { dateStyle: 'medium' })
+                        ? new Date(summary.LastCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
+                        : '—'
+                    }
+                  />
+                </div>
+              )}
+
+              {selectedNode.isStructuredLearning && (
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <SummaryStat
+                    label={language === 'en' ? 'Score' : 'Puntaje'}
+                    value={
+                      typeof slSummary?.FinalScore === 'number'
+                        ? `${slSummary.FinalScore}/100`
+                        : typeof selectedNode.finalScore === 'number'
+                        ? `${selectedNode.finalScore}/100`
+                        : '—'
+                    }
+                  />
+                  <SummaryStat
+                    label={language === 'en' ? 'Mastered on' : 'Dominado el'}
+                    value={
+                      slSummary?.LastCompletedDate
+                        ? new Date(slSummary.LastCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
+                        : selectedNode.lastCompletedDate
+                        ? new Date(selectedNode.lastCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
                         : '—'
                     }
                   />
@@ -659,14 +1037,33 @@ export function BrainPage() {
                 className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Sparkles className="h-4 w-4" />
-                Habla con tu Agente sobre esto
+                {language === 'en' ? 'Talk with your Agent about this' : 'Habla con tu Agente sobre esto'}
               </button>
+
+              {slVideos.length > 0 && (
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-300">
+                    <Video className="h-4 w-4" />
+                    <span>{language === 'en' ? 'Video Lessons' : 'Lecciones en Video'} ({slVideos.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {slVideos.map((v) => (
+                      <video
+                        key={v.IllustrationId}
+                        src={`${API_BASE_URL}/illustrations/structured-learning/${v.IllustrationId}/image`}
+                        controls
+                        className="w-full rounded-xl border border-white/10 bg-black/40 shadow-md"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {deepDiveCards.length > 0 && (
                 <div className="mt-6">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-wide text-white/50">
-                      Tarjetas de repaso ({deepDiveCards.length})
+                      {language === 'en' ? 'Review cards' : 'Tarjetas de repaso'} ({deepDiveCards.length})
                     </p>
                     <button
                       type="button"
@@ -674,7 +1071,7 @@ export function BrainPage() {
                       className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/80 hover:bg-white/20"
                     >
                       <Shuffle className="h-3 w-3" />
-                      Aleatoria
+                      {language === 'en' ? 'Random' : 'Aleatoria'}
                     </button>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
@@ -696,13 +1093,23 @@ export function BrainPage() {
                 </div>
               )}
 
-              <Link
-                to={`/capabilities/${selectedNode.capabilityId}/nodes/${selectedNode.capabilityGraphNodeId}?from=brain`}
-                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Rehacer los 5 pasos (sube el score)
-              </Link>
+              {selectedNode.isStructuredLearning ? (
+                <Link
+                  to={`/structured-learning/${selectedNode.structuredLearningDocumentId}/sections/${selectedNode.structuredLearningSectionId}`}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {language === 'en' ? 'Redo the 5 steps' : 'Rehacer los 5 pasos (sube el score)'}
+                </Link>
+              ) : (
+                <Link
+                  to={`/capabilities/${selectedNode.capabilityId}/nodes/${selectedNode.capabilityGraphNodeId}?from=brain`}
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {language === 'en' ? 'Redo the 5 steps' : 'Rehacer los 5 pasos (sube el score)'}
+                </Link>
+              )}
             </motion.div>
           </>
         )}
@@ -712,7 +1119,8 @@ export function BrainPage() {
         <DeepDiveCardModal
           card={deepDiveCards[cardModalIndex]}
           personId={personId}
-          capabilityGraphNodeId={selectedNode.capabilityGraphNodeId}
+          capabilityGraphNodeId={selectedNode.isStructuredLearning ? undefined : selectedNode.capabilityGraphNodeId}
+          structuredLearningDeepDiveStepId={selectedNode.isStructuredLearning ? slDeepDiveStepId : undefined}
           agentActive={cardAgentActive}
           onClose={() => {
             setCardModalIndex(null);
@@ -723,11 +1131,39 @@ export function BrainPage() {
       )}
 
       {engramOpen && selectedNode && (
-        <EngramReviewAgent
-          personId={personId}
-          capabilityGraphNodeId={selectedNode.capabilityGraphNodeId}
-          onExit={() => setEngramOpen(false)}
-        />
+        selectedNode.isStructuredLearning ? (
+          slTeachingStepId && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+              <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => setEngramOpen(false)}
+                  className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  aria-label={language === 'en' ? 'Close' : 'Cerrar'}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <h3 className="text-base font-semibold text-white">{selectedNode.name}</h3>
+                {slTeachingIllustrationId && (
+                  <img
+                    src={`${API_BASE_URL}/illustrations/structured-learning/${slTeachingIllustrationId}/image`}
+                    alt={selectedNode.name}
+                    className="mt-3 h-auto max-h-56 w-full rounded-xl object-contain bg-black/20"
+                  />
+                )}
+                <div className="mt-4">
+                  <VoiceTutorAgent structuredLearningSectionStepId={slTeachingStepId} />
+                </div>
+              </div>
+            </div>
+          )
+        ) : (
+          <EngramReviewAgent
+            personId={personId}
+            capabilityGraphNodeId={selectedNode.capabilityGraphNodeId}
+            onExit={() => setEngramOpen(false)}
+          />
+        )
       )}
     </div>
   );

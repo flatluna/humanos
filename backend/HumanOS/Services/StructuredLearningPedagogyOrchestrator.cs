@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using HumanOS.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace HumanOS.Services;
 
@@ -12,14 +14,36 @@ namespace HumanOS.Services;
 public sealed class StructuredLearningPedagogyOrchestrator
 {
     private readonly StructuredLearningPedagogyService _pedagogy;
+    private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly ConcurrentDictionary<Guid, RunSession> _runs = new();
 
     private readonly object _activeRunLock = new();
     private Guid? _activeRunId;
 
-    public StructuredLearningPedagogyOrchestrator(StructuredLearningPedagogyService pedagogy)
+    public StructuredLearningPedagogyOrchestrator(StructuredLearningPedagogyService pedagogy, IDbContextFactory<HumanOsDbContext> dbContextFactory)
     {
         _pedagogy = pedagogy;
+        _dbContextFactory = dbContextFactory;
+    }
+
+    /// <summary>Returns the currently in-progress run, if any (2026-08-30) —
+    /// same recovery pattern as TraditionalCoursePipelineOrchestrator.GetActiveRun,
+    /// used by the global "a course is generating" banner so a designer who
+    /// navigated away (or reloaded/lost the in-memory RunId) can still find
+    /// their way back to it.</summary>
+    public StructuredLearningPedagogyRunStatus? GetActiveRun()
+    {
+        lock (_activeRunLock)
+        {
+            if (_activeRunId is Guid runId &&
+                _runs.TryGetValue(runId, out var session) &&
+                session.LatestStatus.Stage == StructuredLearningPedagogyStage.Running)
+            {
+                return session.LatestStatus;
+            }
+
+            return null;
+        }
     }
 
     public bool IsConfigured => _pedagogy.IsConfigured;
@@ -69,28 +93,42 @@ public sealed class StructuredLearningPedagogyOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, "Starting", null, null, null));
+        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, null, "Starting", null, null, null));
 
         session.BackgroundTask = Task.Run(async () =>
         {
             try
             {
+                string? documentName = null;
+                try
+                {
+                    await using var dbContext = await _dbContextFactory.CreateDbContextAsync(CancellationToken.None);
+                    documentName = await dbContext.StructuredLearningDocuments
+                        .Where(d => d.StructuredLearningDocumentId == documentId)
+                        .Select(d => d.DocumentName)
+                        .FirstOrDefaultAsync(CancellationToken.None);
+                }
+                catch
+                {
+                    // Best-effort only — the banner still works without a name.
+                }
+
                 var result = await _pedagogy.RunAsync(
                     documentId,
                     languageCode,
                     (step, completed, total, activeTitles) =>
-                        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, step, total, completed, activeTitles)),
+                        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, documentName, step, total, completed, activeTitles)),
                     CancellationToken.None,
                     forceRegenerateAll,
                     uploadedImageBytes,
                     uploadedImageContentType,
                     referenceImageUsageInstruction);
 
-                session.UpdateStatus(StructuredLearningPedagogyRunStatus.Completed(runId, result));
+                session.UpdateStatus(StructuredLearningPedagogyRunStatus.Completed(runId, documentId, result));
             }
             catch (Exception ex)
             {
-                session.UpdateStatus(StructuredLearningPedagogyRunStatus.Failed(runId, ex.Message));
+                session.UpdateStatus(StructuredLearningPedagogyRunStatus.Failed(runId, documentId, ex.Message));
             }
             finally
             {

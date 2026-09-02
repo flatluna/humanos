@@ -102,6 +102,25 @@ public sealed class GetMeFunction
             ? await _jobRoleService.GetResponseByIdAsync(jobRoleId, cancellationToken)
             : null;
 
+        string? managerDisplayName = null;
+        if (person.ManagerId is Guid managerId)
+        {
+            var managerProfile = await _personProfileService.GetByPersonIdAsync(managerId, cancellationToken);
+            if (managerProfile != null && !string.IsNullOrWhiteSpace(managerProfile.DisplayName))
+            {
+                managerDisplayName = managerProfile.DisplayName;
+            }
+            else if (managerProfile != null && (!string.IsNullOrWhiteSpace(managerProfile.FirstName) || !string.IsNullOrWhiteSpace(managerProfile.LastName)))
+            {
+                managerDisplayName = $"{managerProfile.FirstName} {managerProfile.LastName}".Trim();
+            }
+            else
+            {
+                var managerPerson = await _personService.GetByIdAsync(managerId, cancellationToken);
+                managerDisplayName = managerPerson?.Email;
+            }
+        }
+
         var response = await FunctionResponseFactory.SuccessResponseAsync(
             request,
             new MeResponse
@@ -116,6 +135,8 @@ public sealed class GetMeFunction
                 DepartmentName = department?.Name,
                 JobRoleId = person.JobRoleId,
                 JobRoleTitle = jobRole?.Title,
+                ManagerId = person.ManagerId,
+                ManagerDisplayName = managerDisplayName,
             },
             cancellationToken: cancellationToken);
         response.Headers.Add("Cache-Control", "no-store");

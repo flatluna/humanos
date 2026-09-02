@@ -1,160 +1,150 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation } from 'react-router';
-import { GraduationCap, Heart, Building2, ShieldCheck, Plus, Pencil, Trash2, X, RefreshCw, BookOpen, PlayCircle, ExternalLink } from 'lucide-react';
-import { useAuth } from '@/auth/AuthContext';
-import { getJobRoles } from '@/api/orgStructureApi';
+import { Link, useLocation, useNavigate } from 'react-router';
 import {
-  createSkill,
+  GraduationCap,
+  Heart,
+  Building2,
+  ShieldCheck,
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  BookOpen,
+  PlayCircle,
+  ExternalLink,
+  Search,
+  X,
+  Filter,
+  Sparkles,
+} from 'lucide-react';
+import { useAuth } from '@/auth/AuthContext';
+import {
   deleteSkill,
   getSkills,
   syncSkillsFromJobRoles,
-  updateSkill,
-  type SaveSkillRequest,
   type SkillDto,
 } from '@/api/skillsApi';
 
-/** The 4 career-plan tracks this catalog is organized into — same
- * categories used by JobRoleDto's technicalSkills/softSkills/
- * departmentProcesses/hrProcesses fields and by PersonCareerPlan's 4
- * roadmap tracks. Each is a REAL, separate ROUTE/page —
- * `/skills/job-skills`, `/skills/soft-skills`, `/skills/department-
- * processes`, `/skills/hr-processes` (see routes/index.tsx), mirroring
- * the employee portal's CareerPlanPage.tsx convention (explicit routes
- * per category, not a query-param/hash tab): one page per category, its
- * own list of skills with add/edit/delete, not everything stacked on one
- * shared page. `SkillsPage` is still one shared component (rendered by
- * all 5 routes, including the bare `/skills` index which falls back to
- * the first tab); it derives which category is active from the current
- * URL path, same technique as CareerPlanPage's `pathSegment`. */
 const CATEGORY_TABS = [
   {
     id: 'job-skills',
-    label: 'Habilidades Técnicas',
-    description: 'Conocimientos y competencias específicas del puesto.',
+    labelKey: 'skills.categoryTabs.job-skills.label',
+    descKey: 'skills.categoryTabs.job-skills.description',
     icon: GraduationCap,
     color: 'amber',
   },
   {
     id: 'soft-skills',
-    label: 'Habilidades Blandas',
-    description: 'Competencias interpersonales y de comportamiento.',
+    labelKey: 'skills.categoryTabs.soft-skills.label',
+    descKey: 'skills.categoryTabs.soft-skills.description',
     icon: Heart,
     color: 'violet',
   },
   {
     id: 'department-processes',
-    label: 'Procesos de Departamento',
-    description: 'Procedimientos internos propios del área o equipo.',
+    labelKey: 'skills.categoryTabs.department-processes.label',
+    descKey: 'skills.categoryTabs.department-processes.description',
     icon: Building2,
     color: 'sky',
   },
   {
     id: 'hr-processes',
-    label: 'Procesos de RRHH',
-    description: 'Políticas y procesos corporativos aplicables a todos (p. ej. inducción, prevención de acoso).',
+    labelKey: 'skills.categoryTabs.hr-processes.label',
+    descKey: 'skills.categoryTabs.hr-processes.description',
     icon: ShieldCheck,
     color: 'rose',
   },
 ] as const;
 
 type CategoryTabId = (typeof CATEGORY_TABS)[number]['id'];
+type CourseFilter = 'all' | 'with-course' | 'no-course' | 'linked' | 'unlinked';
 
-/** Same Capability Studio deep-link pattern EmployeeCareerPlanPage.tsx's
- * buildGenerateCourseUrl already uses for career-plan roadmap steps
- * (2026-08-07 "skills <-> engrams" feature) — replicated here so the Skill
- * catalog page offers the exact same "Generar curso" action, prefilled with
- * this skill's own name/description/category so the created Capability
- * auto-matches back to it (see SkillService.GetMatchedCapabilitiesAsync). */
 const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
 
-function buildGenerateCourseUrl(skill: SkillDto): string {
+function buildGenerateCourseUrl(skill: SkillDto, user: { oid: string; tid: string; email: string } | null): string {
   const params = new URLSearchParams();
+  params.set('skillId', skill.skillId);
   params.set('name', skill.name);
   if (skill.description) params.set('description', skill.description);
-  params.set('careerCategory', skill.category);
+  params.set('category', skill.category);
   params.set('targetSkill', skill.name);
-  return `${CAPABILITY_STUDIO_URL}/new?${params.toString()}`;
+  if (skill.documentStoragePath) {
+    params.set('hasDoc', 'true');
+    params.set('docFileName', skill.documentFileName || 'document.pdf');
+  }
+  const studioPath = `/new-structured-learning?${params.toString()}`;
+  if (user) {
+    return `http://localhost:7071/api/humanos/studio-launch?oid=${encodeURIComponent(user.oid)}&tid=${encodeURIComponent(user.tid)}&email=${encodeURIComponent(user.email)}&returnTo=${encodeURIComponent(studioPath)}`;
+  }
+  return `${CAPABILITY_STUDIO_URL}${studioPath}`;
 }
 
-function buildCapabilityStudioDetailUrl(capabilityId: string): string {
-  return `${CAPABILITY_STUDIO_URL}/capabilities/${capabilityId}`;
+function buildCapabilityStudioDetailUrl(
+  capabilityId: string,
+  courseType?: string | null,
+  user?: { oid: string; tid: string; email: string } | null,
+): string {
+  const studioPath =
+    courseType === 'graph'
+      ? `/capabilities/${capabilityId}`
+      : `/structured-learning/${capabilityId}`;
+
+  if (user) {
+    return `http://localhost:7071/api/humanos/studio-launch?oid=${encodeURIComponent(user.oid)}&tid=${encodeURIComponent(user.tid)}&email=${encodeURIComponent(user.email)}&returnTo=${encodeURIComponent(studioPath)}`;
+  }
+  return `${CAPABILITY_STUDIO_URL}${studioPath}`;
 }
 
 function isCategoryTabId(value: string | undefined): value is CategoryTabId {
   return CATEGORY_TABS.some((tab) => tab.id === value);
 }
 
-const COLOR_STYLES: Record<(typeof CATEGORY_TABS)[number]['color'], { chip: string; button: string }> = {
+const COLOR_STYLES: Record<(typeof CATEGORY_TABS)[number]['color'], { chip: string; button: string; border: string }> = {
   amber: {
-    chip: 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+    chip: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
     button: 'bg-gradient-to-r from-amber-500 to-amber-400 shadow-amber-500/30',
+    border: 'border-amber-200 dark:border-amber-500/30',
   },
   violet: {
-    chip: 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
+    chip: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
     button: 'bg-gradient-to-r from-violet-600 to-violet-500 shadow-violet-500/30',
+    border: 'border-violet-200 dark:border-violet-500/30',
   },
   sky: {
-    chip: 'bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300',
+    chip: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
     button: 'bg-gradient-to-r from-sky-600 to-sky-500 shadow-sky-500/30',
+    border: 'border-sky-200 dark:border-sky-500/30',
   },
   rose: {
-    chip: 'bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+    chip: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
     button: 'bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-500/30',
+    border: 'border-rose-200 dark:border-rose-500/30',
   },
 };
 
-interface SkillFormState {
-  skillId: string | null;
-  name: string;
-  description: string;
-  jobRoleIds: string[];
-}
-
-const inputClass =
-  'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white';
-const labelClass = 'block text-xs font-medium text-slate-500 dark:text-white/50';
-
 export function SkillsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const tenantId = user!.tenantId;
   const queryClient = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchAllCategories, setSearchAllCategories] = useState(false);
+  const [courseFilter, setCourseFilter] = useState<CourseFilter>('all');
 
   const pathSegment = location.pathname.split('/').filter(Boolean).pop();
   const activeCategory: CategoryTabId = isCategoryTabId(pathSegment) ? pathSegment : 'job-skills';
   const activeTab = CATEGORY_TABS.find((tab) => tab.id === activeCategory)!;
   const activeStyles = COLOR_STYLES[activeTab.color];
 
-  const [form, setForm] = useState<SkillFormState | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const skillsQuery = useQuery({
-    queryKey: ['skills', tenantId, activeCategory],
-    queryFn: () => getSkills(tenantId, activeCategory),
-  });
-
-  const jobRolesQuery = useQuery({
-    queryKey: ['job-roles', tenantId],
-    queryFn: () => getJobRoles(tenantId),
-  });
-
-  const closeForm = () => {
-    setForm(null);
-    setErrorMessage(null);
-  };
-
-  const saveMutation = useMutation({
-    mutationFn: (body: SaveSkillRequest) =>
-      form?.skillId ? updateSkill(form.skillId, body) : createSkill(tenantId, body),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['skills', tenantId] });
-      void queryClient.invalidateQueries({ queryKey: ['job-roles', tenantId] });
-      closeForm();
-    },
-    onError: (error: unknown) => {
-      setErrorMessage(error instanceof Error ? error.message : 'Ocurrió un error inesperado.');
-    },
+  // Fetch all skills for the tenant to enable instant cross-category search and accurate tab counts
+  const allSkillsQuery = useQuery({
+    queryKey: ['skills', tenantId],
+    queryFn: () => getSkills(tenantId),
   });
 
   const deleteMutation = useMutation({
@@ -173,71 +163,104 @@ export function SkillsPage() {
     },
   });
 
-  function openCreateForm() {
-    setErrorMessage(null);
-    setForm({ skillId: null, name: '', description: '', jobRoleIds: [] });
-  }
+  const allSkills = allSkillsQuery.data ?? [];
 
-  function openEditForm(skill: SkillDto) {
-    setErrorMessage(null);
-    setForm({
-      skillId: skill.skillId,
-      name: skill.name,
-      description: skill.description ?? '',
-      jobRoleIds: skill.jobRoles.map((r) => r.jobRoleId),
+  // Filter skills based on search term, category scope, and course/link status
+  const filteredSkills = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return allSkills.filter((skill) => {
+      // Category scope filter
+      if (!searchAllCategories && skill.category !== activeCategory) {
+        return false;
+      }
+
+      // Course / Role links filter
+      const roles = skill.jobRoles ?? [];
+      if (courseFilter === 'with-course' && !skill.matchedCapabilityId) return false;
+      if (courseFilter === 'no-course' && skill.matchedCapabilityId) return false;
+      if (courseFilter === 'linked' && roles.length === 0) return false;
+      if (courseFilter === 'unlinked' && roles.length > 0) return false;
+
+      // Text search matching
+      if (!term) return true;
+
+      const nameMatch = skill.name?.toLowerCase().includes(term) ?? false;
+      const descMatch = skill.description?.toLowerCase().includes(term) ?? false;
+      const roleMatch = roles.some(
+        (r) =>
+          (r.jobRoleTitle && r.jobRoleTitle.toLowerCase().includes(term)) ||
+          (r.departmentName && r.departmentName.toLowerCase().includes(term)),
+      );
+
+      return nameMatch || descMatch || roleMatch;
     });
-  }
+  }, [allSkills, searchTerm, searchAllCategories, activeCategory, courseFilter]);
 
-  function toggleJobRole(jobRoleId: string) {
-    setForm((f) => {
-      if (!f) return f;
-      const isSelected = f.jobRoleIds.includes(jobRoleId);
-      return {
-        ...f,
-        jobRoleIds: isSelected ? f.jobRoleIds.filter((id) => id !== jobRoleId) : [...f.jobRoleIds, jobRoleId],
-      };
-    });
-  }
+  // Compute counts per category tab to display helpful badges
+  const categoryCounts = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const counts: Record<CategoryTabId, number> = {
+      'job-skills': 0,
+      'soft-skills': 0,
+      'department-processes': 0,
+      'hr-processes': 0,
+    };
 
-  function toggleSelectAllJobRoles() {
-    setForm((f) => {
-      if (!f) return f;
-      const allIds = (jobRolesQuery.data ?? []).map((r) => r.jobRoleId);
-      const allSelected = allIds.length > 0 && allIds.every((id) => f.jobRoleIds.includes(id));
-      return { ...f, jobRoleIds: allSelected ? [] : allIds };
-    });
-  }
+    for (const skill of allSkills) {
+      if (!counts.hasOwnProperty(skill.category)) continue;
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!form || !form.name.trim()) return;
+      if (term) {
+        const nameMatch = skill.name?.toLowerCase().includes(term) ?? false;
+        const descMatch = skill.description?.toLowerCase().includes(term) ?? false;
+        const roleMatch = (skill.jobRoles ?? []).some(
+          (r) =>
+            (r.jobRoleTitle && r.jobRoleTitle.toLowerCase().includes(term)) ||
+            (r.departmentName && r.departmentName.toLowerCase().includes(term)),
+        );
+        if (nameMatch || descMatch || roleMatch) {
+          counts[skill.category]++;
+        }
+      } else {
+        counts[skill.category]++;
+      }
+    }
 
-    saveMutation.mutate({
-      category: activeCategory,
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-      jobRoleIds: form.jobRoleIds,
-    });
-  }
+    return counts;
+  }, [allSkills, searchTerm]);
 
-  const allJobRoles = jobRolesQuery.data ?? [];
-  const allSelected = form ? allJobRoles.length > 0 && allJobRoles.every((r) => form.jobRoleIds.includes(r.jobRoleId)) : false;
-  const skills = skillsQuery.data ?? [];
   const ActiveIcon = activeTab.icon;
+
+  const handleDelete = (skill: SkillDto) => {
+    if (window.confirm(t('common.confirmDelete', { name: skill.name }) || `Delete "${skill.name}"?`)) {
+      deleteMutation.mutate(skill.skillId);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Catálogo de Skills</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
-          Define una skill, proceso o política una sola vez y vincúlala a uno o varios puestos — cambios aquí se
-          reflejan automáticamente en las descripciones de puesto y planes de capacitación.
-        </p>
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">{t('skills.title')}</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
+            {t('skills.subtitle')}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate(`/skills/nuevo?category=${activeCategory}`)}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:brightness-105 ${activeStyles.button}`}
+        >
+          <Plus className="h-4 w-4" />
+          {t('skills.newSkill')}
+        </button>
       </div>
 
+      {/* Sync Banner */}
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
         <p className="text-xs text-slate-500 dark:text-white/50">
-          ¿No ves las skills que ya definiste en Roles y Puestos? Sincroniza el catálogo para traerlas todas desde ahí.
+          {t('skills.syncBannerText')}
         </p>
         <button
           type="button"
@@ -246,237 +269,260 @@ export function SkillsPage() {
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-          {syncMutation.isPending ? 'Sincronizando…' : 'Sincronizar desde Roles y Puestos'}
+          {syncMutation.isPending ? t('skills.syncing') : t('skills.syncButton')}
         </button>
       </div>
 
       {syncMutation.isSuccess && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-          Sincronizado con {syncMutation.data.syncedJobRoleCount} puesto(s).
+          {t('skills.syncedSuccess', { count: syncMutation.data.syncedJobRoleCount })}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4 dark:border-white/10">
-        {CATEGORY_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = tab.id === activeCategory;
-          const tabStyles = COLOR_STYLES[tab.color];
-          return (
-            <Link
-              key={tab.id}
-              to={`/skills/${tab.id}`}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                isActive ? `text-white shadow-md ${tabStyles.button}` : `${tabStyles.chip} hover:brightness-95`
+      {/* Smart Search Bar & Filter Options */}
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder={t('skills.searchPlaceholder')}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-10 pr-24 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white dark:focus:border-brand-400 dark:focus:bg-white/10"
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10"
+              title={t('skills.clearSearch')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Quick Filter Pills */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="flex items-center gap-1 font-medium text-slate-400 dark:text-white/40">
+              <Filter className="h-3 w-3" />
+            </span>
+            {(
+              [
+                { id: 'all', label: t('skills.allFilter') },
+                { id: 'with-course', label: t('skills.withCourseFilter') },
+                { id: 'no-course', label: t('skills.noCourseFilter') },
+                { id: 'linked', label: t('skills.linkedFilter') },
+                { id: 'unlinked', label: t('skills.unlinkedFilter') },
+              ] as const
+            ).map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setCourseFilter(filter.id)}
+                className={`rounded-lg px-2.5 py-1 font-medium transition ${
+                  courseFilter === filter.id
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchAllCategories((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                searchAllCategories
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400/30 dark:bg-indigo-500/15 dark:text-indigo-300'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-white/70 dark:hover:bg-white/10'
               }`}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {tab.label}
-            </Link>
-          );
-        })}
+              <Sparkles className="h-3 w-3" />
+              {searchAllCategories ? t('skills.searchAllCategories') : t('skills.searchInCurrent')}
+            </button>
+          </div>
+        </div>
       </div>
 
+      {/* Category Tabs */}
+      {!searchAllCategories && (
+        <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4 dark:border-white/10">
+          {CATEGORY_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = tab.id === activeCategory;
+            const tabStyles = COLOR_STYLES[tab.color];
+            const count = categoryCounts[tab.id];
+
+            return (
+              <Link
+                key={tab.id}
+                to={`/skills/${tab.id}`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  isActive ? `text-white shadow-md ${tabStyles.button}` : `${tabStyles.chip} hover:brightness-95`
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{t(tab.labelKey as any)}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    isActive ? 'bg-white/25 text-white' : 'bg-black/5 dark:bg-white/10'
+                  }`}
+                >
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Results Section */}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-white/5">
           <div className="flex items-start gap-3">
             <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${activeStyles.chip}`}>
               <ActiveIcon className="h-4 w-4" />
             </span>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{activeTab.label}</h2>
-              <p className="text-xs text-slate-400 dark:text-white/40">{activeTab.description}</p>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                {searchAllCategories ? t('skills.searchAllCategories') : t(activeTab.labelKey as any)}
+              </h2>
+              <p className="text-xs text-slate-400 dark:text-white/40">
+                {t('skills.searchResultsCount', { count: filteredSkills.length })}
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={openCreateForm}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-white shadow-md transition hover:brightness-105 ${activeStyles.button}`}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Nueva
-          </button>
         </div>
 
-        {skillsQuery.isLoading && <p className="pl-12 text-xs text-slate-400 dark:text-white/40">Cargando…</p>}
-
-        {skillsQuery.isSuccess && skills.length === 0 && (
-          <p className="pl-12 text-xs text-slate-400 dark:text-white/40">Aún no hay skills en esta categoría.</p>
+        {allSkillsQuery.isLoading && (
+          <p className="p-4 text-xs text-slate-400 dark:text-white/40">{t('common.loading')}</p>
         )}
 
-        {skills.length > 0 && (
-          <div className="space-y-2 pl-12">
-            {skills.map((skill) => (
-              <div
-                key={skill.skillId}
-                className="group flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-white/10 dark:bg-white/5"
+        {allSkillsQuery.isSuccess && filteredSkills.length === 0 && (
+          <div className="py-8 text-center">
+            <p className="text-sm text-slate-500 dark:text-white/50">
+              {searchTerm
+                ? t('skills.noSearchResults', { query: searchTerm })
+                : t('skills.emptyCategory')}
+            </p>
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setCourseFilter('all');
+                }}
+                className="mt-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
               >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">{skill.name}</p>
-                  {skill.description && (
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-white/50">{skill.description}</p>
-                  )}
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {skill.jobRoles.length === 0 ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-400 dark:bg-white/10 dark:text-white/30">
-                        Sin puestos vinculados
-                      </span>
-                    ) : (
-                      skill.jobRoles.map((role) => (
-                        <span
-                          key={role.jobRoleId}
-                          className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-white/10 dark:text-white/60"
-                        >
-                          {role.jobRoleTitle}
+                {t('skills.clearSearch')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {filteredSkills.length > 0 && (
+          <div className="space-y-2">
+            {filteredSkills.map((skill) => {
+              const tabDef = CATEGORY_TABS.find((ct) => ct.id === skill.category) ?? activeTab;
+              const styles = COLOR_STYLES[tabDef.color];
+
+              return (
+                <div
+                  key={skill.skillId}
+                  className="group flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">{skill.name}</p>
+                      {searchAllCategories && (
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${styles.chip}`}>
+                          {t(tabDef.labelKey as any)}
                         </span>
-                      ))
+                      )}
+                    </div>
+
+                    {skill.description && (
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-white/50">{skill.description}</p>
                     )}
+
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {skill.jobRoles.length === 0 ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-400 dark:bg-white/10 dark:text-white/30">
+                          {t('skills.noLinkedRoles')}
+                        </span>
+                      ) : (
+                        skill.jobRoles.map((role) => (
+                          <span
+                            key={role.jobRoleId}
+                            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-white/10 dark:text-white/60"
+                          >
+                            <span>{role.jobRoleTitle}</span>
+                            {role.departmentName && (
+                              <span className="text-[10px] text-slate-400 dark:text-white/40">
+                                ({role.departmentName})
+                              </span>
+                            )}
+                          </span>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="mt-2">
+                      {skill.matchedCapabilityId ? (
+                        <a
+                          href={buildCapabilityStudioDetailUrl(skill.matchedCapabilityId, skill.matchedCourseType, user)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-500"
+                        >
+                          <PlayCircle className="h-3.5 w-3.5" />
+                          {t('skills.courseCreated')}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <a
+                          href={buildGenerateCourseUrl(skill, user)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-500"
+                        >
+                          <BookOpen className="h-3 w-3" />
+                          {t('skills.generateCourse')}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <div className="mt-2">
-                    {skill.matchedCapabilityId ? (
-                      <a
-                        href={buildCapabilityStudioDetailUrl(skill.matchedCapabilityId)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-500"
-                      >
-                        <PlayCircle className="h-3 w-3" />
-                        Curso creado
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : (
-                      <a
-                        href={buildGenerateCourseUrl(skill)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-500"
-                      >
-                        <BookOpen className="h-3 w-3" />
-                        Generar curso
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
+
+                  <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                    <button
+                      type="button"
+                      title={t('common.edit')}
+                      onClick={() => navigate(`/skills/${skill.skillId}/edit`)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title={t('common.delete')}
+                      onClick={() => handleDelete(skill)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                  <button
-                    type="button"
-                    title="Editar"
-                    onClick={() => openEditForm(skill)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    title="Eliminar"
-                    onClick={() => deleteMutation.mutate(skill.skillId)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/10"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
-
-      {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 dark:bg-black/60">
-          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-[#0b0c12]">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                {form.skillId ? 'Editar skill' : 'Nueva skill'} · {activeTab.label}
-              </h3>
-              <button
-                type="button"
-                onClick={closeForm}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {errorMessage && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-                {errorMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className={labelClass}>Nombre</label>
-                <input
-                  className={inputClass}
-                  value={form.name}
-                  onChange={(e) => setForm((f) => (f ? { ...f, name: e.target.value } : f))}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Descripción (opcional)</label>
-                <textarea
-                  className={inputClass}
-                  rows={2}
-                  value={form.description}
-                  onChange={(e) => setForm((f) => (f ? { ...f, description: e.target.value } : f))}
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className={labelClass}>Puestos vinculados</label>
-                  <button
-                    type="button"
-                    onClick={toggleSelectAllJobRoles}
-                    className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    {allSelected ? 'Ninguno' : 'Seleccionar todos'}
-                  </button>
-                </div>
-                <div className="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-white/10">
-                  {allJobRoles.length === 0 && (
-                    <p className="px-1 py-1 text-xs text-slate-400">No hay puestos definidos aún.</p>
-                  )}
-                  {allJobRoles.map((role) => (
-                    <label
-                      key={role.jobRoleId}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/70 dark:hover:bg-white/5"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.jobRoleIds.includes(role.jobRoleId)}
-                        onChange={() => toggleJobRole(role.jobRoleId)}
-                        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                      />
-                      <span>
-                        {role.title} <span className="text-xs text-slate-400">· {role.departmentName}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/5"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saveMutation.isPending}
-                  className="rounded-full bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-2 text-sm font-medium text-white shadow-md shadow-brand-500/30 transition hover:brightness-105 disabled:opacity-50"
-                >
-                  {saveMutation.isPending ? 'Guardando…' : 'Guardar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

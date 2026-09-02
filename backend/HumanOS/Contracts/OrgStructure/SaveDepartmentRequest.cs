@@ -6,7 +6,21 @@ public sealed class SaveDepartmentRequest
 {
     public string Name { get; set; } = null!;
 
+    public string? Code { get; set; }
+
     public string? Description { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? ContactEmail { get; set; }
+
+    public string? Location { get; set; }
+
+    public string? CostCenter { get; set; }
+
+    public string? MissionStatement { get; set; }
+
+    public Guid? LeaderPersonId { get; set; }
 
     /// <summary>Null for a top-level Department (Área). When set, must
     /// belong to the SAME tenant.</summary>

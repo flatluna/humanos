@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Web;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Graph;
 using HumanOS.Services;
@@ -48,11 +49,19 @@ public sealed class VoiceTutorSessionFunction
 {
     private readonly RealtimeVoiceSessionService _voiceSessionService;
     private readonly HumanOsDbContext _dbContext;
+    private readonly ILearnerContextBuilder _learnerContextBuilder;
+    private readonly PersonService _personService;
 
-    public VoiceTutorSessionFunction(RealtimeVoiceSessionService voiceSessionService, HumanOsDbContext dbContext)
+    public VoiceTutorSessionFunction(
+        RealtimeVoiceSessionService voiceSessionService,
+        HumanOsDbContext dbContext,
+        ILearnerContextBuilder learnerContextBuilder,
+        PersonService personService)
     {
         _voiceSessionService = voiceSessionService;
         _dbContext = dbContext;
+        _learnerContextBuilder = learnerContextBuilder;
+        _personService = personService;
     }
 
     [Function("VoiceTutorSession")]
@@ -99,13 +108,13 @@ public sealed class VoiceTutorSessionFunction
         // ExperienceStepType-oriented flow below.
         if (body.TraditionalCourseLessonId.HasValue)
         {
-            return await RunTraditionalLessonAsync(request, body.TraditionalCourseLessonId.Value, body.PersonName, cancellationToken);
+            return await RunTraditionalLessonAsync(request, body.TraditionalCourseLessonId.Value, body.PersonName, body.PersonId, cancellationToken);
         }
 
         if (body.StructuredLearningSectionStepId.HasValue)
         {
             return await RunStructuredLearningStepAsync(
-                request, body.StructuredLearningSectionStepId.Value, body.PersonName, body.ExampleCardIndex, body.IsReviewOnly, body.IsQaMode, cancellationToken);
+                request, body.StructuredLearningSectionStepId.Value, body.PersonName, body.ExampleCardIndex, body.IsReviewOnly, body.IsQaMode, body.PersonId, cancellationToken);
         }
 
         ExperienceStepType stepType;
@@ -250,7 +259,7 @@ public sealed class VoiceTutorSessionFunction
             join g in _dbContext.CapabilityGraphs.AsNoTracking() on n.CapabilityGraphId equals g.CapabilityGraphId
             join c in _dbContext.Capabilities.AsNoTracking() on g.CapabilityId equals c.CapabilityId
             where n.CapabilityGraphNodeId == capabilityGraphNodeId
-            select new { NodeName = n.Name, CourseName = c.Name, c.ContentLanguageCode }
+            select new { CapabilityId = c.CapabilityId, NodeName = n.Name, CourseName = c.Name, c.ContentLanguageCode }
         ).FirstOrDefaultAsync(cancellationToken);
 
         // Read-only card review (2026-07-30): only meaningful for a DeepDive
@@ -262,6 +271,16 @@ public sealed class VoiceTutorSessionFunction
         var instructions = BuildInstructions(
             stepType, effectiveContent, body.PersonName, courseContext?.NodeName, courseContext?.CourseName,
             courseContext?.ContentLanguageCode, exampleCards, body.ExampleCardIndex, isReviewOnly);
+
+        // Personalized LEARNER CONTEXT injection (at the start of the system prompt)
+        var employeeId = body.PersonId ?? await ResolveAuthenticatedEmployeeIdAsync(request, cancellationToken);
+        var learnerContext = await _learnerContextBuilder.BuildLearnerContextBlockAsync(
+            employeeId, courseContext?.CapabilityId, capabilityGraphNodeId.ToString(), cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(learnerContext))
+        {
+            instructions = $"{learnerContext}\n\n{instructions}";
+        }
 
         // Deep Dive only (2026-07-30): a real Realtime function-calling tool,
         // same mechanism as EngramReviewSessionFunction's show_visual_aid.
@@ -309,7 +328,7 @@ public sealed class VoiceTutorSessionFunction
     /// separate, deterministic multiple-choice flow).
     /// </summary>
     private async Task<HttpResponseData> RunTraditionalLessonAsync(
-        HttpRequestData request, Guid lessonId, string? personName, CancellationToken cancellationToken)
+        HttpRequestData request, Guid lessonId, string? personName, Guid? explicitPersonId, CancellationToken cancellationToken)
     {
         var lesson = await _dbContext.CapabilityLessons
             .AsNoTracking()
@@ -339,6 +358,19 @@ public sealed class VoiceTutorSessionFunction
 
         var instructions = BuildTraditionalLessonInstructions(
             lesson.Title, lesson.CapabilityChapter.Title, contentBuilder.ToString(), personName, courseContext?.Name, courseContext?.ContentLanguageCode);
+
+        // Personalized LEARNER CONTEXT injection
+        var employeeId = explicitPersonId ?? await ResolveAuthenticatedEmployeeIdAsync(request, cancellationToken);
+        var learnerContext = await _learnerContextBuilder.BuildLearnerContextBlockAsync(
+            employeeId,
+            lesson.CapabilityChapter.CapabilityId,
+            lesson.CapabilityLessonId.ToString(),
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(learnerContext))
+        {
+            instructions = $"{learnerContext}\n\n{instructions}";
+        }
 
         try
         {
@@ -502,7 +534,7 @@ public sealed class VoiceTutorSessionFunction
     /// asking the agent to match whatever language the content is written in.
     /// </summary>
     private async Task<HttpResponseData> RunStructuredLearningStepAsync(
-        HttpRequestData request, Guid sectionStepId, string? personName, int? exampleCardIndex, bool isReviewOnly, bool isQaMode, CancellationToken cancellationToken)
+        HttpRequestData request, Guid sectionStepId, string? personName, int? exampleCardIndex, bool isReviewOnly, bool isQaMode, Guid? explicitPersonId, CancellationToken cancellationToken)
     {
         var step = await _dbContext.StructuredLearningSectionSteps
             .AsNoTracking()
@@ -515,6 +547,17 @@ public sealed class VoiceTutorSessionFunction
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.NotFound, "StepNotFound", "No StructuredLearningSectionStep was found with that id.", cancellationToken);
         }
+
+        // Personalized LEARNER CONTEXT resolution
+        var employeeId = explicitPersonId ?? await ResolveAuthenticatedEmployeeIdAsync(request, cancellationToken);
+        var courseId = step.Section.Document?.StructuredLearningDocumentId;
+        var engramId = step.Section.StructuredLearningDocumentSectionId.ToString();
+
+        var learnerContext = await _learnerContextBuilder.BuildLearnerContextBlockAsync(
+            employeeId,
+            courseId,
+            engramId,
+            cancellationToken);
 
         if (step.StepType == Models.Capabilities.Studio.StructuredLearningStepType.DeepDive)
         {
@@ -551,6 +594,12 @@ public sealed class VoiceTutorSessionFunction
             var deepDiveInstructions = BuildInstructions(
                 ExperienceStepType.DeepDive, step.Content, personName, nodeName: null, courseName: null,
                 detectedLanguageCode, exampleCards, exampleCardIndex, effectiveIsReviewOnly);
+
+            if (!string.IsNullOrWhiteSpace(learnerContext))
+            {
+                deepDiveInstructions = $"{learnerContext}\n\n{deepDiveInstructions}";
+            }
+
             var deepDiveTools = effectiveIsReviewOnly ? null : BuildDeepDiveTools();
 
             try
@@ -591,9 +640,14 @@ public sealed class VoiceTutorSessionFunction
         // request), so they are deliberately NOT queried/passed here.
         var instructions = isQaMode
             ? BuildStructuredLearningQaInstructions(
-                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document.DocumentName)
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document?.DocumentName)
             : BuildStructuredLearningStepInstructions(
-                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document.DocumentName);
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document?.DocumentName);
+
+        if (!string.IsNullOrWhiteSpace(learnerContext))
+        {
+            instructions = $"{learnerContext}\n\n{instructions}";
+        }
 
         try
         {
@@ -613,6 +667,46 @@ public sealed class VoiceTutorSessionFunction
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.BadGateway, "VoiceSessionMintFailed", ex.Message, cancellationToken);
         }
+    }
+
+    private async Task<Guid?> ResolveAuthenticatedEmployeeIdAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
+    {
+        // 1. Identity headers (MSAL / Enterprise auth)
+        if (request.Headers.TryGetValues("X-Azure-OID", out var oidValues) && !string.IsNullOrWhiteSpace(oidValues.FirstOrDefault()) &&
+            request.Headers.TryGetValues("X-Azure-TID", out var tidValues) && !string.IsNullOrWhiteSpace(tidValues.FirstOrDefault()))
+        {
+            var person = await _personService.GetByAzureIdentityAsync(oidValues.First(), tidValues.First(), cancellationToken);
+            if (person is not null)
+            {
+                return person.PersonId;
+            }
+        }
+
+        // 2. Direct header
+        if (request.Headers.TryGetValues("X-Person-Id", out var personValues) &&
+            Guid.TryParse(personValues.FirstOrDefault(), out var personId))
+        {
+            return personId;
+        }
+
+        // 3. Query string parameter (?personId=... or ?employeeId=...)
+        var query = HttpUtility.ParseQueryString(request.Url.Query);
+        var queryPersonId = query["personId"] ?? query["employeeId"];
+        if (!string.IsNullOrWhiteSpace(queryPersonId) && Guid.TryParse(queryPersonId, out var parsedQueryId))
+        {
+            return parsedQueryId;
+        }
+
+        // 4. Fallback for single-tenant / local development context
+        var defaultPersonId = await _dbContext.People
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.CreatedDate)
+            .Select(p => (Guid?)p.PersonId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return defaultPersonId;
     }
 
     /// <summary>Very cheap English-vs-Spanish heuristic (2026-08-10) — counts

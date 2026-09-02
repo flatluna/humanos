@@ -969,7 +969,11 @@ function DeleteTraditionalCourseItemModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isConfirmationValid = confirmationText.trim() === itemName.trim();
+  // Collapses repeated whitespace before comparing — a stored name can have
+  // an accidental double space that is visually indistinguishable from a
+  // single space, making an exact-string match impossible for the user.
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const isConfirmationValid = normalize(confirmationText) === normalize(itemName);
 
   async function handleConfirm() {
     if (!isConfirmationValid || isDeleting) return;

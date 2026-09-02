@@ -53,6 +53,8 @@ async function rPost<T>(path: string, body?: unknown): Promise<T> {
   return toPascalCaseDeep(data) as T;
 }
 
+import type { GamificationRewardBundleDto } from '../../gamification/types';
+
 export type ExperienceStepType = 'Hypothesis' | 'Teaching' | 'DeepDive' | 'Recall' | 'Production' | 'Assessment';
 
 export interface ExampleCardDto {
@@ -195,23 +197,27 @@ export interface VoiceTutorSessionDto {
 
 export function requestVoiceTutorSession(
   target:
-    | { learningSessionStepId: string; promptText?: string; exampleCardIndex?: number }
-    | { capabilityGraphNodeId: string; stepType: ExperienceStepType; exampleCardIndex?: number; isReviewOnly?: boolean }
+    | { learningSessionStepId: string; promptText?: string; personName?: string; exampleCardIndex?: number }
+    | { capabilityGraphNodeId: string; stepType: ExperienceStepType; personName?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
+    | { structuredLearningSectionStepId: string; personName?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>(
     '/instructor-runtime/tutor/voice-session',
-    'learningSessionStepId' in target
-      ? {
-          LearningSessionStepId: target.learningSessionStepId,
-          CurrentPromptText: target.promptText,
-          ExampleCardIndex: target.exampleCardIndex,
-        }
-      : {
-          CapabilityGraphNodeId: target.capabilityGraphNodeId,
-          StepType: target.stepType,
-          ExampleCardIndex: target.exampleCardIndex,
-          IsReviewOnly: target.isReviewOnly,
-        }
+    {
+      LearningSessionStepId: 'learningSessionStepId' in target ? target.learningSessionStepId : undefined,
+      CurrentPromptText: 'learningSessionStepId' in target ? target.promptText : undefined,
+      CapabilityGraphNodeId: 'capabilityGraphNodeId' in target ? target.capabilityGraphNodeId : undefined,
+      StepType: 'capabilityGraphNodeId' in target ? target.stepType : undefined,
+      StructuredLearningSectionStepId: 'structuredLearningSectionStepId' in target ? target.structuredLearningSectionStepId : undefined,
+      PersonName: target.personName,
+      ExampleCardIndex: 'exampleCardIndex' in target ? target.exampleCardIndex : undefined,
+      IsReviewOnly:
+        'capabilityGraphNodeId' in target
+          ? target.isReviewOnly ?? false
+          : 'structuredLearningSectionStepId' in target
+          ? target.isReviewOnly ?? false
+          : false,
+    }
   );
 }
 
@@ -402,6 +408,34 @@ export interface NodeAttemptSummaryDto {
   Passed: boolean;
 }
 
+export interface NodeMemorySummaryDto {
+  RecallPercent: number;
+  MemoryState: 'Strong' | 'Fading' | 'AlmostForgotten' | string;
+  ReviewCount: number;
+  LastReviewDate?: string | null;
+  IsAutomatic: boolean;
+  ReviewsUntilAutomatic: number;
+  NextReviewDate?: string | null;
+}
+
+export interface NodeRewardSummaryDto {
+  PointsAwarded: number;
+  WasSurprise: boolean;
+  SurpriseType: 'NONE' | 'BONUS' | 'DOUBLE' | 'JACKPOT' | string;
+  PointsBase: number;
+  DifficultyMultiplier: number;
+  MemoryEffortMultiplier: number;
+  SurpriseMultiplier: number;
+  EarnedAt?: string | null;
+}
+
+export interface NodeImpactSummaryDto {
+  Score: number;
+  Tier: 'Critical' | 'Important' | 'Foundational' | 'Refresher' | string;
+  PrimarySignal?: string | null;
+  Reason?: string | null;
+}
+
 /**
  * Read-only "what happened the last time I completed this node" recap —
  * shown when opening a node that is already Mastered on the map, instead
@@ -417,6 +451,9 @@ export interface NodeSummaryDto {
   FinalScore?: number;
   Steps: StepReviewDto[];
   PastAttempts: NodeAttemptSummaryDto[];
+  Memory?: NodeMemorySummaryDto | null;
+  Reward?: NodeRewardSummaryDto | null;
+  Impact?: NodeImpactSummaryDto | null;
 }
 
 export function getNodeSummary(personId: string, capabilityGraphNodeId: string): Promise<NodeSummaryDto> {
@@ -527,6 +564,8 @@ export interface SubmitAssessmentAnswerResponse {
   NextQuestion?: AssessmentQuestionDto | null;
   NewRoundNumber?: number | null;
   NewAssessmentRoundId?: string | null;
+  Gamification?: GamificationRewardBundleDto | null;
+  gamification?: GamificationRewardBundleDto | null;
 }
 
 export function getActiveAssessmentRound(

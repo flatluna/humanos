@@ -1,6 +1,7 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
 
@@ -133,6 +134,26 @@ public sealed class TocExtractionAgent
         Do not default to one chapter just because there are no explicit
         chapter-style headings — look at actual topic boundaries instead.
 
+        WATCH FOR TOPIC HEADINGS GLUED TO SURROUNDING TEXT WITH NO
+        WHITESPACE: real PDF text extraction commonly collapses ALL line
+        breaks and spacing, so a running page header/footer (e.g. a page
+        number immediately followed by the repeated document/guide title)
+        gets glued directly onto the very next topic heading, which is in
+        turn glued directly onto its own body prose — e.g.
+        "...12Azure APIs+ Microservices GuideAPIs break down silosOrganizations
+        continue to struggle..." actually contains a page-footer stamp
+        ("12Azure APIs+ Microservices Guide"), a genuine NEW topic heading
+        ("APIs break down silos"), and that topic's body prose, all with
+        zero separating characters. Never let this glued-together
+        appearance make you treat the whole run-on span as one topic, and
+        never mistake the repeated page-footer stamp itself for a topic
+        heading — read past it to find the real heading text that follows
+        it, then split there. A short, title-like phrase (often just a few
+        words, no punctuation) sitting between two clear shifts in subject
+        matter is a topic heading even with no visible whitespace/newline
+        around it and even if it never appears with any special formatting
+        anywhere in the extracted text.
+
         SKIP TABLE-OF-CONTENTS / INDEX LISTINGS — NEVER A DUPLICATE ENTRY
         Some documents contain their own table of contents or index near
         the start (a block that just lists heading titles one after
@@ -161,16 +182,18 @@ public sealed class TocExtractionAgent
     /// them.</summary>
     private const string StrictSyllabusModeAddendum = """
 
-        STRICT SYLLABUS MODE — ACTIVE FOR THIS DOCUMENT: this document has
-        its own explicit, formal, numbered curriculum outline (e.g.
-        numbered "Unidades"/sections with numbered subsections like "1.0",
-        "1.1", "1.2"...). For THIS document, do NOT stop at the top-level
-        unit/section headings — you MUST detect EVERY numbered subsection
-        as its OWN separate chapter entry, in the exact same order they
-        appear:
-        - One chapter per numbered subsection line (e.g. "1.0", "1.1",
-          "1.2", ... "1.8"), never one chapter per top-level unit covering
-          several subsections at once.
+        STRICT SYLLABUS MODE — ACTIVE FOR THIS DOCUMENT: do NOT stop at the
+        top-level chapter/unit headings — you MUST also detect every finer
+        subsection/topic heading nested under each chapter as its OWN
+        separate chapter entry, in the exact same order they appear. This
+        applies regardless of whether the subsections use formal numbering
+        (e.g. "1.0", "1.1", "1.2"...) or are just distinct named topic
+        headings with no numbering at all (e.g. under a "CHAPTER ONE —
+        What are web APIs?" heading, narrower headings like "The growth of
+        web and mobile APIs", "APIs as capabilities", "API business
+        models" are each their own subsection, not filler text):
+        - One chapter entry per subsection/topic heading, never one entry
+          per top-level unit covering several subsections at once.
         - Include every subsection, even short/procedural ones that might
           otherwise seem like scaffolding (e.g. "Introducción, competencias
           y objetivos", "Actividad complementaria", "Criterios de
@@ -179,18 +202,20 @@ public sealed class TocExtractionAgent
         - Title each detected chapter after that subsection's own heading
           text (numbering may be included or dropped, your choice, but the
           Title must clearly correspond to exactly that one subsection).
-        - This applies uniformly to every unit/section in the document, not
-          just the first one. Before finishing, re-scan your own numbering
+        - This applies uniformly to every unit/section/chapter in the
+          document, not just the first one. If the document uses numbered
+          subsections, before finishing re-scan your own numbering
           sequence end-to-end (1.1, 1.2, 1.3, 2.1, 2.2, ...) and confirm no
           number is missing — a gap almost always means you skipped a real
           subsection rather than the document actually lacking one.
-        - Set ParentModuleTitle on EVERY subsection-level chapter entry to
-          that subsection's own parent Unit/Module's heading text (e.g.
+        - Set ParentModuleTitle on EVERY subsection/topic-level chapter
+          entry to that subsection's own parent chapter/Unit/Module's
+          heading text (e.g. "CHAPTER ONE — What are web APIs?" or
           "Introducción a la Álgebra"), exactly as it appears in the
           source — this groups subsections back under their shared level.
           Leave ParentModuleTitle null ONLY for a genuine top-level chapter
-          that has no such parent (e.g. this document turns out to have no
-          real 2-level nesting after all).
+          heading that has no such parent (e.g. this document turns out to
+          have no real 2-level nesting at all).
         """;
 
     /// <summary>Instructions for <see cref="InferOutlineAsync"/> — a
@@ -233,6 +258,8 @@ public sealed class TocExtractionAgent
 
     private readonly AIAgent? _agent;
     private readonly AIAgent? _inferOutlineAgent;
+    private readonly ChatClientAgentRunOptions? _extractRunOptions;
+    private readonly ChatClientAgentRunOptions? _inferOutlineRunOptions;
 
     public TocExtractionAgent(IConfiguration configuration)
     {
@@ -256,6 +283,7 @@ public sealed class TocExtractionAgent
         _agent = client
             .GetChatClient(deploymentName)
             .AsAIAgent(instructions: Instructions, name: "TocExtractionAgent");
+        _extractRunOptions = BuildDeterministicRunOptions(deploymentName);
 
         // Main (non-economy) deployment for inference — this call requires
         // genuine reading comprehension/judgment (proposing a pedagogical
@@ -264,6 +292,31 @@ public sealed class TocExtractionAgent
         _inferOutlineAgent = string.IsNullOrWhiteSpace(inferDeploymentName)
             ? null
             : client.GetChatClient(inferDeploymentName).AsAIAgent(instructions: InferOutlineInstructions, name: "TocInferOutlineAgent");
+        _inferOutlineRunOptions = string.IsNullOrWhiteSpace(inferDeploymentName) ? null : BuildDeterministicRunOptions(inferDeploymentName);
+    }
+
+    // Boundary detection is a reading-comprehension/pattern-matching task with
+    // one correct answer, not a creative one — temperature 0 makes the same
+    // document split the same way every run instead of the granularity
+    // silently varying between otherwise-identical requests. Reasoning models
+    // (e.g. gpt-5, o1/o3) reject the Temperature parameter outright (500 from
+    // the API), so it's only set for non-reasoning deployments.
+    private static ChatClientAgentRunOptions? BuildDeterministicRunOptions(string deploymentName)
+    {
+        var isReasoningModel = deploymentName.Contains("gpt-5", StringComparison.OrdinalIgnoreCase)
+            || deploymentName.Contains("o1", StringComparison.OrdinalIgnoreCase)
+            || deploymentName.Contains("o3", StringComparison.OrdinalIgnoreCase);
+        if (isReasoningModel)
+        {
+            return null;
+        }
+
+        return new ChatClientAgentRunOptions(new ChatOptions
+        {
+#pragma warning disable OPENAI001
+            RawRepresentationFactory = _ => new ChatCompletionOptions { Temperature = 0f }
+#pragma warning restore OPENAI001
+        });
     }
 
     public bool IsConfigured => _agent is not null;
@@ -293,7 +346,7 @@ public sealed class TocExtractionAgent
         }
 
         var prompt = "Propose a two-level chapter/node outline for the following document:\n\n" + documentText;
-        var response = await _inferOutlineAgent.RunAsync<InferredOutline>(prompt, cancellationToken: cancellationToken);
+        var response = await _inferOutlineAgent.RunAsync<InferredOutline>(prompt, options: _inferOutlineRunOptions, cancellationToken: cancellationToken);
         return response.Result;
     }
 
@@ -312,7 +365,7 @@ public sealed class TocExtractionAgent
         var prompt = "Detect the chapter/section structure of the following document:\n\n" + documentText +
             (strictSyllabusMode ? StrictSyllabusModeAddendum : string.Empty);
 
-        var response = await _agent.RunAsync<TableOfContents>(prompt, cancellationToken: cancellationToken);
+        var response = await _agent.RunAsync<TableOfContents>(prompt, options: _extractRunOptions, cancellationToken: cancellationToken);
 
         return response.Result;
     }

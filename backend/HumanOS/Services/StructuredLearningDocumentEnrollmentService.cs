@@ -84,19 +84,42 @@ public sealed class StructuredLearningDocumentEnrollmentService
         Guid personId,
         CancellationToken cancellationToken = default)
     {
-        var enrollments = await _dbContext.StructuredLearningDocumentEnrollments
+        var explicitEnrollments = await _dbContext.StructuredLearningDocumentEnrollments
             .AsNoTracking()
             .Where(x => x.PersonId == personId)
-            .OrderByDescending(x => x.EnrolledDate)
+            .Select(x => new { DocumentId = x.StructuredLearningDocumentId, Date = x.EnrolledDate })
             .ToListAsync(cancellationToken);
 
+        var roundDocIds = await _dbContext.StructuredLearningAssessmentRounds
+            .AsNoTracking()
+            .Where(r => r.PersonId == personId)
+            .Join(
+                _dbContext.StructuredLearningDocumentSections.AsNoTracking(),
+                r => r.StructuredLearningDocumentSectionId,
+                s => s.StructuredLearningDocumentSectionId,
+                (r, s) => new { DocumentId = s.StructuredLearningDocumentId, Date = r.CompletedDate ?? r.CreatedDate })
+            .ToListAsync(cancellationToken);
+
+        var rewardDocIds = await _dbContext.RewardLedgerEntries
+            .AsNoTracking()
+            .Where(r => r.PersonId == personId && (r.SourceType == "Structured" || r.SourceType == null))
+            .Select(r => new { DocumentId = r.CourseId, Date = r.EarnedAt })
+            .ToListAsync(cancellationToken);
+
+        var allDocItems = explicitEnrollments
+            .Concat(roundDocIds)
+            .Concat(rewardDocIds)
+            .GroupBy(x => x.DocumentId)
+            .Select(g => new { DocumentId = g.Key, EnrolledDate = g.Max(x => x.Date) })
+            .ToList();
+
         var results = new List<EnrolledStructuredLearningDocumentResponse>();
-        foreach (var enrollment in enrollments)
+        foreach (var item in allDocItems)
         {
             var document = await _dbContext.StructuredLearningDocuments
                 .AsNoTracking()
                 .Include(d => d.Sections)
-                .FirstOrDefaultAsync(d => d.StructuredLearningDocumentId == enrollment.StructuredLearningDocumentId, cancellationToken);
+                .FirstOrDefaultAsync(d => d.StructuredLearningDocumentId == item.DocumentId, cancellationToken);
 
             if (document is null)
             {
@@ -123,10 +146,10 @@ public sealed class StructuredLearningDocumentEnrollmentService
                 DocumentName = document.DocumentName,
                 SectionCount = document.Sections.Count,
                 CoverIllustrationId = coverIllustrationId,
-                EnrolledDate = enrollment.EnrolledDate
+                EnrolledDate = item.EnrolledDate
             });
         }
 
-        return results;
+        return results.OrderByDescending(r => r.EnrolledDate).ToList();
     }
 }

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using HumanOS.Agents.Runtime;
+using HumanOS.Contracts.Gamification;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Graph;
 using HumanOS.Models.Learning;
@@ -64,19 +65,22 @@ public sealed class AdaptiveAssessmentEngine
     private readonly MathDiagramRenderService _mathDiagramRenderService;
     private readonly HumanOS.Storage.CapabilityGraphIllustrationStorageService _illustrationStorage;
     private readonly Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> _logger;
+    private readonly GamificationOrchestrator? _gamificationOrchestrator;
 
     public AdaptiveAssessmentEngine(
         AdaptiveAssessmentAgent agent,
         HumanOS.Agents.Studio.GraphIllustrationImageService imageService,
         MathDiagramRenderService mathDiagramRenderService,
         HumanOS.Storage.CapabilityGraphIllustrationStorageService illustrationStorage,
-        Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> logger)
+        Microsoft.Extensions.Logging.ILogger<AdaptiveAssessmentEngine> logger,
+        GamificationOrchestrator? gamificationOrchestrator = null)
     {
         _agent = agent;
         _imageService = imageService;
         _mathDiagramRenderService = mathDiagramRenderService;
         _illustrationStorage = illustrationStorage;
         _logger = logger;
+        _gamificationOrchestrator = gamificationOrchestrator;
     }
 
     public sealed class QuestionInfo
@@ -129,6 +133,9 @@ public sealed class AdaptiveAssessmentEngine
         /// <summary>Set only when a new round was auto-started (the round just closed as Failed).</summary>
         public int? NewRoundNumber { get; set; }
         public Guid? NewAssessmentRoundId { get; set; }
+
+        /// <summary>Gamification reward bundle on a Passed round (null if in-progress or failed).</summary>
+        public GamificationRewardBundle? Gamification { get; set; }
     }
 
     /// <summary>
@@ -375,6 +382,41 @@ public sealed class AdaptiveAssessmentEngine
             });
 
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            // Trigger gamification (rewards, streak, badges) with isolated error handling
+            if (_gamificationOrchestrator != null)
+            {
+                try
+                {
+                    var sessionInfo = await dbContext.LearningSessionNodes
+                        .AsNoTracking()
+                        .Include(n => n.LearningSession)
+                        .Where(n => n.LearningSessionNodeId == round.LearningSessionNodeId)
+                        .Select(n => new
+                        {
+                            PersonId = n.LearningSession != null ? n.LearningSession.PersonId : Guid.Empty,
+                            CourseId = n.LearningSession != null ? n.LearningSession.CapabilityId : Guid.Empty
+                        })
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (sessionInfo != null && sessionInfo.PersonId != Guid.Empty && sessionInfo.CourseId != Guid.Empty)
+                    {
+                        result.Gamification = await _gamificationOrchestrator.ProcessEngramMasteryAsync(
+                            sessionInfo.PersonId,
+                            sessionInfo.CourseId,
+                            context.NodeId.ToString(),
+                            sourceType: "Graph",
+                            engramDifficultyLevel: null,
+                            memoryRecallPct: null,
+                            ct: cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Gamification award failed for LearningSessionNode {NodeId}, but assessment remains successfully passed.", round.LearningSessionNodeId);
+                }
+            }
+
             return result;
         }
 

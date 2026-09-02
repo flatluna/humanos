@@ -25,7 +25,7 @@ public sealed class JobRole
 
     public Guid TenantId { get; set; }
 
-    public Guid DepartmentId { get; set; }
+    public Guid? DepartmentId { get; set; }
 
     public string Title { get; set; } = null!;
 
@@ -137,9 +137,11 @@ public sealed class JobRole
 
     public Tenant Tenant { get; set; } = null!;
 
-    public Department Department { get; set; } = null!;
+    public Department? Department { get; set; }
 
     public JobRole? ReportsToJobRole { get; set; }
 
     public ICollection<JobRole> DirectReportRoles { get; set; } = [];
+
+    public ICollection<DepartmentJobRole> DepartmentJobRoles { get; set; } = [];
 }

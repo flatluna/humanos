@@ -14,6 +14,22 @@ export const router = createBrowserRouter([
         path: 'organizacion/importar',
         lazy: () => import('@/pages/OrgChartImportPage').then((m) => ({ Component: m.OrgChartImportPage })),
       },
+      {
+        path: 'departamentos',
+        lazy: () => import('@/pages/DepartmentsPage').then((m) => ({ Component: m.DepartmentsPage })),
+      },
+      {
+        path: 'departamentos/nuevo',
+        lazy: () => import('@/pages/DepartmentDetailPage').then((m) => ({ Component: m.DepartmentDetailPage })),
+      },
+      {
+        path: 'departamentos/:departmentId',
+        lazy: () => import('@/pages/DepartmentDetailPage').then((m) => ({ Component: m.DepartmentDetailPage })),
+      },
+      {
+        path: 'objetivos',
+        lazy: () => import('@/pages/BusinessGoalsPage').then((m) => ({ Component: m.BusinessGoalsPage })),
+      },
       { path: 'personal', lazy: () => import('@/pages/PeoplePage').then((m) => ({ Component: m.PeoplePage })) },
       {
         path: 'personal/:personId',
@@ -35,6 +51,18 @@ export const router = createBrowserRouter([
       },
       { path: 'skills', lazy: () => import('@/pages/SkillsPage').then((m) => ({ Component: m.SkillsPage })) },
       {
+        path: 'skills/nuevo',
+        lazy: () => import('@/pages/SkillDetailPage').then((m) => ({ Component: m.SkillDetailPage })),
+      },
+      {
+        path: 'skills/:skillId/edit',
+        lazy: () => import('@/pages/SkillDetailPage').then((m) => ({ Component: m.SkillDetailPage })),
+      },
+      {
+        path: 'skills/edit/:skillId',
+        lazy: () => import('@/pages/SkillDetailPage').then((m) => ({ Component: m.SkillDetailPage })),
+      },
+      {
         path: 'skills/job-skills',
         lazy: () => import('@/pages/SkillsPage').then((m) => ({ Component: m.SkillsPage })),
       },
@@ -50,8 +78,46 @@ export const router = createBrowserRouter([
         path: 'skills/hr-processes',
         lazy: () => import('@/pages/SkillsPage').then((m) => ({ Component: m.SkillsPage })),
       },
+      {
+        path: 'responsibilities',
+        lazy: () => import('@/pages/ResponsibilitiesPage').then((m) => ({ Component: m.ResponsibilitiesPage })),
+      },
+      {
+        path: 'responsibilities/nuevo',
+        lazy: () =>
+          import('@/pages/ResponsibilityDetailPage').then((m) => ({ Component: m.ResponsibilityDetailPage })),
+      },
+      {
+        path: 'responsibilities/:responsibilityId/edit',
+        lazy: () =>
+          import('@/pages/ResponsibilityDetailPage').then((m) => ({ Component: m.ResponsibilityDetailPage })),
+      },
+      {
+        path: 'certifications',
+        lazy: () => import('@/pages/CertificationsPage').then((m) => ({ Component: m.CertificationsPage })),
+      },
+      {
+        path: 'certifications/nuevo',
+        lazy: () =>
+          import('@/pages/CertificationDetailPage').then((m) => ({ Component: m.CertificationDetailPage })),
+      },
+      {
+        path: 'certifications/:certificationId/edit',
+        lazy: () =>
+          import('@/pages/CertificationDetailPage').then((m) => ({ Component: m.CertificationDetailPage })),
+      },
       { path: 'roadmaps', lazy: () => import('@/pages/RoadmapsPage').then((m) => ({ Component: m.RoadmapsPage })) },
       { path: 'reportes', lazy: () => import('@/pages/ReportsPage').then((m) => ({ Component: m.ReportsPage })) },
+      {
+        path: 'perfil',
+        lazy: () =>
+          import('@/pages/ProfileRedirectPage').then((m) => ({ Component: m.ProfileRedirectPage })),
+      },
+      {
+        path: 'profile',
+        lazy: () =>
+          import('@/pages/ProfileRedirectPage').then((m) => ({ Component: m.ProfileRedirectPage })),
+      },
     ],
   },
 ]);

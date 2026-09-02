@@ -60,7 +60,12 @@ public sealed class UpdateJobRoleFunction
         catch (InvalidOperationException ex)
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
-                request, HttpStatusCode.BadRequest, "InvalidDepartment", ex.Message, cancellationToken);
+                request, HttpStatusCode.BadRequest, "InvalidJobRole", ex.Message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.InternalServerError, "UpdateFailed", ex.Message + (ex.InnerException != null ? " --> " + ex.InnerException.Message : string.Empty), cancellationToken);
         }
     }
 }

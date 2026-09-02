@@ -1,5 +1,6 @@
 namespace HumanOS.Models.OrgStructure;
 
+using System.ComponentModel.DataAnnotations.Schema;
 using HumanOS.Models.Tenancy;
 
 /// <summary>
@@ -21,7 +22,21 @@ public sealed class Department
 
     public string Name { get; set; } = null!;
 
+    public string? Code { get; set; }
+
     public string? Description { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? ContactEmail { get; set; }
+
+    public string? Location { get; set; }
+
+    public string? CostCenter { get; set; }
+
+    public string? MissionStatement { get; set; }
+
+    public Guid? LeaderPersonId { get; set; }
 
     public bool IsActive { get; set; } = true;
 
@@ -37,7 +52,12 @@ public sealed class Department
 
     public Department? ParentDepartment { get; set; }
 
+    [ForeignKey(nameof(LeaderPersonId))]
+    public People.Person? LeaderPerson { get; set; }
+
     public ICollection<Department> ChildDepartments { get; set; } = [];
 
     public ICollection<JobRole> JobRoles { get; set; } = [];
+
+    public ICollection<DepartmentJobRole> DepartmentJobRoles { get; set; } = [];
 }

@@ -24,7 +24,11 @@ export default function DeleteStructuredLearningSectionModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isConfirmationValid = confirmationText.trim() === sectionName.trim();
+  // Collapses repeated whitespace before comparing — same rationale as
+  // DeleteCapabilityModal (a stored name can have an accidental double space
+  // that is visually indistinguishable from a single space).
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const isConfirmationValid = normalize(confirmationText) === normalize(sectionName);
 
   const handleConfirm = async () => {
     if (!isConfirmationValid || isDeleting) return;

@@ -1,51 +1,39 @@
-import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Menu } from 'lucide-react';
+import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Menu, Target } from 'lucide-react';
 import { NavLink } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
 import { useSidebarStore } from '@/store/useSidebarStore';
 
-/** Sidebar for the employee portal. 2026-08-01: added "Hoy" (dashboard,
- * ported from human-os-web's /today) and "Mi Cerebro" (mastered-engrams +
- * fading-memory dashboard, ported from human-os-web's /brain) alongside
- * the original "Mis Cursos" catalog — see /memories/repo for what each
- * page covers and why some human-os-web features (Programs, Growth Plan,
- * human-state check-in) were deliberately left out of this portal's v1
- * scope.
- *
- * 2026-08-01 (later same day): "Mis Cursos" now points at the employee's
- * own career-plan roadmap (see routes/index.tsx) instead of a free-browse
- * catalog, so the separate "Mi Plan de Capacitación" entry that used to
- * live here was removed — it would now be an exact duplicate.
- *
- * 2026-08-01 (evening, take 3): course categories are now REAL separate
- * routes (`/capabilities/job-skills`, `/capabilities/soft-skills`,
- * `/capabilities/department-processes`, `/capabilities/hr-processes` —
- * see routes/index.tsx) instead of a `?tab=` query param on one shared
- * URL — the user explicitly rejected both the earlier hash-anchor-scroll
- * AND the query-param-tab versions ("quiero que cada uno tenga su propia
- * página"). Since these are now genuine distinct routes, plain `NavLink`
- * with its built-in `isActive` works correctly — no more manual
- * search-param comparison needed.
- *
- * 2026-08-08: added a hamburger toggle (same `useSidebarStore` +
- * zustand-persist pattern as human-os-web's AppSidebar) to collapse this
- * down to icon-only and free up screen space — collapsed state persists
- * across reloads via localStorage. Sub-nav (course categories) and labels
- * hide while collapsed; icons get a `title` tooltip instead. */
-const COURSE_CATEGORY_LINKS = [
-  { to: '/capabilities/job-skills', label: 'Mi Puesto' },
-  { to: '/capabilities/soft-skills', label: 'Soft Skills' },
-  { to: '/capabilities/department-processes', label: 'Procesos de Depto.' },
-  { to: '/capabilities/hr-processes', label: 'Procesos de RRHH' },
-];
-
-const NAV_LINKS = [
-  { to: '/', end: true, icon: Home, label: 'Hoy' },
-  { to: '/brain', end: false, icon: Brain, label: 'Mi Cerebro' },
-  { to: '/my-evolution', end: false, icon: TrendingUp, label: 'Mi Evolución' },
-  { to: '/profile', end: false, icon: UserCircle, label: 'Mi Perfil' },
-];
-
+/** Sidebar for the employee portal using standard react-i18next translations. */
 export function EmployeeSidebar() {
+  const { t } = useTranslation();
+
+  const labels = {
+    today: t('nav.today'),
+    objectives: t('nav.objectives'),
+    brain: t('nav.brain'),
+    evolution: t('nav.evolution'),
+    profile: t('nav.profile'),
+    courses: t('nav.courses'),
+    job: t('nav.job'),
+    department: t('nav.department'),
+    hr: t('nav.hr'),
+    expand: t('nav.expand'),
+    collapse: t('nav.collapse'),
+  };
+
+  const courseCategoryLinks = [
+    { to: '/capabilities/job-skills', label: labels.job },
+    { to: '/capabilities/department-processes', label: labels.department },
+    { to: '/capabilities/hr-processes', label: labels.hr },
+  ];
+  const navLinks = [
+    { to: '/', end: true, icon: Home, label: labels.today },
+    { to: '/objectives', end: false, icon: Target, label: labels.objectives },
+    { to: '/brain', end: false, icon: Brain, label: labels.brain },
+    { to: '/my-evolution', end: false, icon: TrendingUp, label: labels.evolution },
+    { to: '/profile', end: false, icon: UserCircle, label: labels.profile },
+  ];
   const collapsed = useSidebarStore((state) => state.collapsed);
   const toggleSidebar = useSidebarStore((state) => state.toggle);
 
@@ -76,8 +64,8 @@ export function EmployeeSidebar() {
       <button
         type="button"
         onClick={toggleSidebar}
-        aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-        title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+        aria-label={collapsed ? labels.expand : labels.collapse}
+        title={collapsed ? labels.expand : labels.collapse}
         className={clsx(
           'mb-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 dark:text-white/40 dark:hover:bg-white/5 dark:hover:text-white',
           collapsed && 'mx-auto',
@@ -88,7 +76,7 @@ export function EmployeeSidebar() {
 
       <nav>
         <ul className="space-y-1">
-          {NAV_LINKS.slice(0, 1).map((link) => (
+          {navLinks.slice(0, 1).map((link) => (
             <li key={link.to}>
               <NavLink to={link.to} end={link.end} className={navItemClass} title={collapsed ? link.label : undefined}>
                 <link.icon className="h-4 w-4 shrink-0" />
@@ -100,14 +88,14 @@ export function EmployeeSidebar() {
             <NavLink
               to="/capabilities"
               className={navItemClass}
-              title={collapsed ? 'Mis Cursos' : undefined}
+              title={collapsed ? labels.courses : undefined}
             >
               <GraduationCap className="h-4 w-4 shrink-0" />
-              {!collapsed && 'Mis Cursos'}
+              {!collapsed && labels.courses}
             </NavLink>
             {!collapsed && (
               <ul className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-3 dark:border-white/10">
-                {COURSE_CATEGORY_LINKS.map((link) => (
+                {courseCategoryLinks.map((link) => (
                   <li key={link.to}>
                     <NavLink to={link.to} className={subNavItemClass}>
                       {link.label}
@@ -117,7 +105,7 @@ export function EmployeeSidebar() {
               </ul>
             )}
           </li>
-          {NAV_LINKS.slice(1).map((link) => (
+          {navLinks.slice(1).map((link) => (
             <li key={link.to}>
               <NavLink to={link.to} end={link.end} className={navItemClass} title={collapsed ? link.label : undefined}>
                 <link.icon className="h-4 w-4 shrink-0" />

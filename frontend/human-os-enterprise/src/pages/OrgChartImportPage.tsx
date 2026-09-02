@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router';
 import { ArrowLeft, Briefcase, Building2, CheckCircle2, Plus, Sparkles, Trash2 } from 'lucide-react';
@@ -29,19 +30,19 @@ const newId = () => crypto.randomUUID();
 /** Translates the numeric hierarchy depth (0 = top of the chart) the AI
  *  agent returns into a free-text seniority label, matching the same
  *  convention used by RolesPage's "Nivel / Seniority" field. */
-function levelLabelFromDepth(level: number): string {
-  if (level <= 0) return 'Ejecutivo';
-  if (level === 1) return 'Director';
-  if (level === 2) return 'Gerente';
-  if (level === 3) return 'Coordinador';
-  return 'Especialista';
+function levelLabelFromDepth(level: number, t: (key: string) => string): string {
+  if (level <= 0) return t('orgChartImport.seniorityLevels.executive');
+  if (level === 1) return t('orgChartImport.seniorityLevels.director');
+  if (level === 2) return t('orgChartImport.seniorityLevels.manager');
+  if (level === 3) return t('orgChartImport.seniorityLevels.coordinator');
+  return t('orgChartImport.seniorityLevels.specialist');
 }
 
 /** Builds the editable department/role tree from the raw AI extraction —
  *  reconciling department names (matching people to their DepartmentName)
  *  and falling back to a single "Organización General" bucket for people
  *  the image didn't group under any department box. */
-function buildEditableState(result: OrgChartExtractionResult): EditableDepartment[] {
+function buildEditableState(result: OrgChartExtractionResult, t: (key: string) => string): EditableDepartment[] {
   const departments: EditableDepartment[] = result.departments.map((d) => ({
     id: newId(),
     name: d.name,
@@ -78,7 +79,7 @@ function buildEditableState(result: OrgChartExtractionResult): EditableDepartmen
       return created;
     }
     if (!fallbackDepartment) {
-      fallbackDepartment = { id: newId(), name: 'Organización General', parentId: null, roles: [] };
+      fallbackDepartment = { id: newId(), name: t('orgChartImport.seniorityLevels.generalOrg'), parentId: null, roles: [] };
       departments.push(fallbackDepartment);
     }
     return fallbackDepartment;
@@ -88,8 +89,8 @@ function buildEditableState(result: OrgChartExtractionResult): EditableDepartmen
     const department = departmentFor(person.departmentName);
     department.roles.push({
       id: newId(),
-      title: person.position?.trim() || 'Puesto sin título',
-      levelLabel: levelLabelFromDepth(person.level),
+      title: person.position?.trim() || t('orgChartImport.seniorityLevels.untitledRole'),
+      levelLabel: levelLabelFromDepth(person.level, t),
       detectedPersonName: person.name?.trim() ?? '',
     });
   }
@@ -98,6 +99,7 @@ function buildEditableState(result: OrgChartExtractionResult): EditableDepartmen
 }
 
 export function OrgChartImportPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const tenantId = user!.tenantId;
   const navigate = useNavigate();
@@ -107,7 +109,7 @@ export function OrgChartImportPage() {
   const extraction = (location.state as { result?: OrgChartExtractionResult } | null)?.result ?? null;
 
   const [departments, setDepartments] = useState<EditableDepartment[]>(() =>
-    extraction ? buildEditableState(extraction) : [],
+    extraction ? buildEditableState(extraction, (k) => t(k as any)) : [],
   );
   const [createTestPersonRecords, setCreateTestPersonRecords] = useState(false);
 
@@ -139,7 +141,10 @@ export function OrgChartImportPage() {
   }
 
   function addDepartment() {
-    setDepartments((prev) => [...prev, { id: newId(), name: 'Nuevo departamento', parentId: null, roles: [] }]);
+    setDepartments((prev) => [
+      ...prev,
+      { id: newId(), name: t('orgChartImport.seniorityLevels.newDepartment'), parentId: null, roles: [] },
+    ]);
   }
 
   function updateRole(departmentId: string, roleId: string, patch: Partial<EditableRole>) {
@@ -164,7 +169,10 @@ export function OrgChartImportPage() {
         d.id === departmentId
           ? {
               ...d,
-              roles: [...d.roles, { id: newId(), title: 'Nuevo puesto', levelLabel: '', detectedPersonName: '' }],
+              roles: [
+                ...d.roles,
+                { id: newId(), title: t('orgChartImport.seniorityLevels.newRole'), levelLabel: '', detectedPersonName: '' },
+              ],
             }
           : d,
       ),
@@ -197,8 +205,7 @@ export function OrgChartImportPage() {
       <div className="mx-auto max-w-2xl space-y-4 text-center">
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 dark:border-white/10 dark:bg-white/5">
           <p className="text-sm text-slate-500 dark:text-white/50">
-            No hay una extracción de organigrama pendiente de revisión. Sube una imagen desde la página de
-            Organización para empezar.
+            {t('orgChartImport.noPendingExtraction')}
           </p>
           <button
             type="button"
@@ -206,7 +213,7 @@ export function OrgChartImportPage() {
             className="mt-4 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-violet-500 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-violet-500/30 transition hover:brightness-110"
           >
             <ArrowLeft className="h-4 w-4" />
-            Volver a Organización
+            {t('orgChartImport.returnToOrganization')}
           </button>
         </div>
       </div>
@@ -222,18 +229,22 @@ export function OrgChartImportPage() {
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-white/50 dark:hover:text-white"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Organización
+          {t('orgChartImport.backToOrganization')}
         </button>
         <div className="mt-2 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-violet-500 text-white shadow-md shadow-violet-500/30">
             <Sparkles className="h-5 w-5" />
           </span>
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Revisar organigrama importado</h1>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">{t('orgChartImport.title')}</h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
-              La IA detectó {departments.length} departamento{departments.length === 1 ? '' : 's'} y{' '}
-              {detectedPeopleCount} puesto{detectedPeopleCount === 1 ? '' : 's'}. Edita lo que necesites y confirma
-              para crearlos en {user?.tenantName}.
+              {t('orgChartImport.subtitle', {
+                deptCount: departments.length,
+                deptPlural: departments.length === 1 ? '' : 's',
+                peopleCount: detectedPeopleCount,
+                peoplePlural: detectedPeopleCount === 1 ? '' : 's',
+                tenant: user?.tenantName ?? '',
+              })}
             </p>
           </div>
         </div>
@@ -241,7 +252,7 @@ export function OrgChartImportPage() {
 
       {applyMutation.error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-          {applyMutation.error instanceof Error ? applyMutation.error.message : 'Ocurrió un error inesperado.'}
+          {applyMutation.error instanceof Error ? applyMutation.error.message : t('common.unexpectedError')}
         </div>
       )}
 
@@ -259,14 +270,14 @@ export function OrgChartImportPage() {
                 value={dept.name}
                 onChange={(e) => updateDepartment(dept.id, { name: e.target.value })}
                 className="min-w-[160px] flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-violet-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
-                placeholder="Nombre del departamento"
+                placeholder={t('orgChartImport.departmentNamePlaceholder')}
               />
               <select
                 value={dept.parentId ?? ''}
                 onChange={(e) => updateDepartment(dept.id, { parentId: e.target.value || null })}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-violet-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
               >
-                <option value="">— Nivel superior (Área) —</option>
+                <option value="">{t('orgChartImport.topLevelArea')}</option>
                 {departments
                   .filter((d) => d.id !== dept.id)
                   .map((d) => (
@@ -277,7 +288,7 @@ export function OrgChartImportPage() {
               </select>
               <button
                 type="button"
-                title="Eliminar departamento"
+                title={t('orgChartImport.deleteDepartmentTitle')}
                 onClick={() => removeDepartment(dept.id)}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/10"
               >
@@ -294,24 +305,24 @@ export function OrgChartImportPage() {
                   <input
                     value={role.title}
                     onChange={(e) => updateRole(dept.id, role.id, { title: e.target.value })}
-                    placeholder="Título del puesto"
+                    placeholder={t('orgChartImport.roleTitlePlaceholder')}
                     className="min-w-[140px] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-amber-500 dark:border-white/10 dark:bg-white/10 dark:text-white"
                   />
                   <input
                     value={role.levelLabel}
                     onChange={(e) => updateRole(dept.id, role.id, { levelLabel: e.target.value })}
-                    placeholder="Nivel (Ejecutivo, Gerente…)"
+                    placeholder={t('orgChartImport.roleLevelPlaceholder')}
                     className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-amber-500 dark:border-white/10 dark:bg-white/10 dark:text-white"
                   />
                   <input
                     value={role.detectedPersonName}
                     onChange={(e) => updateRole(dept.id, role.id, { detectedPersonName: e.target.value })}
-                    placeholder="Persona detectada (opcional)"
+                    placeholder={t('orgChartImport.detectedPersonPlaceholder')}
                     className="w-48 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-500 outline-none focus:border-amber-500 dark:border-white/10 dark:bg-white/10 dark:text-white/60"
                   />
                   <button
                     type="button"
-                    title="Eliminar puesto"
+                    title={t('orgChartImport.deleteRoleTitle')}
                     onClick={() => removeRole(dept.id, role.id)}
                     className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/10"
                   >
@@ -325,7 +336,7 @@ export function OrgChartImportPage() {
                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-500/10"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Agregar puesto
+                {t('orgChartImport.addRole')}
               </button>
             </div>
           </div>
@@ -337,7 +348,7 @@ export function OrgChartImportPage() {
           className="inline-flex items-center gap-2 rounded-full border border-dashed border-violet-300 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 dark:border-violet-500/30 dark:text-violet-300 dark:hover:bg-violet-500/10"
         >
           <Plus className="h-4 w-4" />
-          Agregar departamento
+          {t('orgChartImport.addDepartment')}
         </button>
       </div>
 
@@ -349,9 +360,7 @@ export function OrgChartImportPage() {
           className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
         />
         <span className="text-amber-800 dark:text-amber-200">
-          <span className="font-medium">Crear también personas de prueba</span> para cada puesto con nombre
-          detectado. Son cuentas de demostración (sin Azure AD real): aparecerán en el directorio y en cada puesto,
-          pero nunca podrán iniciar sesión de verdad. Úsalo solo para probar el flujo, no en organizaciones reales.
+          {t('orgChartImport.createTestPersonsCheckbox')}
         </span>
       </label>
 
@@ -361,7 +370,7 @@ export function OrgChartImportPage() {
           onClick={() => navigate('/organizacion')}
           className="rounded-full px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-white/50 dark:hover:bg-white/10"
         >
-          Cancelar
+          {t('common.cancel')}
         </button>
         <button
           type="button"
@@ -370,7 +379,7 @@ export function OrgChartImportPage() {
           className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-2.5 text-sm font-medium text-white shadow-md shadow-emerald-500/30 transition hover:brightness-110 disabled:opacity-50 disabled:shadow-none"
         >
           <CheckCircle2 className="h-4 w-4" />
-          {applyMutation.isPending ? 'Creando…' : 'Confirmar y crear organización'}
+          {applyMutation.isPending ? t('orgChartImport.creating') : t('orgChartImport.confirmAndCreate')}
         </button>
       </div>
     </div>

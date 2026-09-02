@@ -29,6 +29,40 @@ public sealed class GetStudioContextFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "me/studio-context")] HttpRequestData request,
         CancellationToken cancellationToken)
     {
+        // A HumanOS-issued launch token already carries its own signed
+        // claims (see HumanOsStudioSsoToken) — answer directly instead of
+        // proxying to the NGO backend, which only knows how to validate
+        // NGO-issued tokens and would reject this one.
+        var authorization = request.Headers.TryGetValues("Authorization", out var authValues) ? authValues.FirstOrDefault() : null;
+        var bearerToken = HumanOS.Services.HumanOsStudioSsoToken.TryGetBearerToken(authorization);
+        if (bearerToken is not null)
+        {
+            var humanOsPrincipal = HumanOS.Services.HumanOsStudioSsoToken.Validate(_configuration, bearerToken);
+            if (humanOsPrincipal is not null)
+            {
+                var result = request.CreateResponse(HttpStatusCode.OK);
+                result.Headers.Add("Content-Type", "application/json; charset=utf-8");
+                var payload = new
+                {
+                    sourceApplication = "humanos",
+                    tenantId = humanOsPrincipal.FindFirst("tenantId")?.Value,
+                    organizationName = humanOsPrincipal.FindFirst("tenantName")?.Value,
+                    memberId = humanOsPrincipal.FindFirst("memberId")?.Value,
+                    memberType = humanOsPrincipal.FindFirst("memberType")?.Value,
+                    email = humanOsPrincipal.FindFirst("email")?.Value,
+                    permissions = new
+                    {
+                        studioView = humanOsPrincipal.FindFirst("studioView")?.Value == "True",
+                        studioCreate = humanOsPrincipal.FindFirst("studioCreate")?.Value == "True",
+                        studioEdit = humanOsPrincipal.FindFirst("studioEdit")?.Value == "True",
+                        studioDelete = humanOsPrincipal.FindFirst("studioDelete")?.Value == "True",
+                    },
+                };
+                await result.WriteStringAsync(JsonSerializer.Serialize(payload), cancellationToken);
+                return result;
+            }
+        }
+
         var ngoBaseUrl = _configuration["NgoBackendBaseUrl"] ?? "http://localhost:7072/api";
         using var outgoing = new HttpRequestMessage(HttpMethod.Get, $"{ngoBaseUrl.TrimEnd('/')}/me/studio-context");
 

@@ -12,7 +12,23 @@ public sealed class DepartmentResponse
 
     public string Name { get; set; } = null!;
 
+    public string? Code { get; set; }
+
     public string? Description { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? ContactEmail { get; set; }
+
+    public string? Location { get; set; }
+
+    public string? CostCenter { get; set; }
+
+    public string? MissionStatement { get; set; }
+
+    public Guid? LeaderPersonId { get; set; }
+
+    public string? LeaderDisplayName { get; set; }
 
     public bool IsActive { get; set; }
 

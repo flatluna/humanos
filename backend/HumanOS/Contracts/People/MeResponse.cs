@@ -38,6 +38,10 @@ public sealed class MeResponse
     public Guid? JobRoleId { get; set; }
 
     public string? JobRoleTitle { get; set; }
+
+    public Guid? ManagerId { get; set; }
+
+    public string? ManagerDisplayName { get; set; }
 }
 
 /// <summary>Response for POST /api/onboarding or /api/onboarding/individual —

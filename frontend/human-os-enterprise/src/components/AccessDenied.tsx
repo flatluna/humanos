@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 
@@ -5,6 +6,7 @@ import { useAuth } from '@/auth/AuthContext';
  *  'Employee' (or the account has no Tenant at all) — this console is
  *  scoped to Manager/HRAdmin only. */
 export function AccessDenied({ reason }: { reason: 'role' | 'no-enterprise-account' }) {
+  const { t } = useTranslation();
   const { logout, signedInEmail } = useAuth();
 
   return (
@@ -13,16 +15,17 @@ export function AccessDenied({ reason }: { reason: 'role' | 'no-enterprise-accou
         <ShieldAlert className="h-7 w-7" />
       </div>
       <p className="text-lg font-semibold text-slate-900 dark:text-white">
-        {reason === 'role' ? 'No tienes acceso a la consola Enterprise' : 'Esta cuenta no pertenece a una empresa'}
+        {reason === 'role' ? t('accessDenied.titleRole') : t('accessDenied.titleNoAccount')}
       </p>
       <p className="max-w-md text-sm text-slate-500 dark:text-white/50">
         {reason === 'role'
-          ? 'La Consola Enterprise es solo para Managers y Administradores de RRHH. Pide a un HRAdmin de tu organización que te asigne el rol correspondiente.'
-          : 'Esta consola es para empresas ya registradas en Human OS. Si acabas de crear tu cuenta, completa el onboarding en la app principal (localhost:5178).'}
+          ? t('accessDenied.messageRole')
+          : t('accessDenied.messageNoAccount')}
       </p>
       {signedInEmail && (
         <p className="text-xs text-slate-400 dark:text-white/30">
-          Conectado como <span className="font-medium text-slate-500 dark:text-white/50">{signedInEmail}</span>
+          {t('accessDenied.signedInAs')}{' '}
+          <span className="font-medium text-slate-500 dark:text-white/50">{signedInEmail}</span>
         </p>
       )}
       <button
@@ -30,7 +33,7 @@ export function AccessDenied({ reason }: { reason: 'role' | 'no-enterprise-accou
         onClick={() => void logout()}
         className="inline-flex min-h-11 items-center justify-center rounded-full bg-gradient-to-r from-slate-900 to-slate-700 px-6 py-2.5 text-sm font-medium text-white shadow-md transition hover:brightness-110 dark:from-white dark:to-white dark:text-slate-900 dark:hover:bg-white/90"
       >
-        Cerrar sesión
+        {t('accessDenied.signOut')}
       </button>
     </div>
   );

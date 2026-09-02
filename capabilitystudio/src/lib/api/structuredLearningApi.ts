@@ -265,6 +265,8 @@ export interface StructuredLearningPedagogyResult {
 
 export interface StructuredLearningPedagogyRunStatus {
   RunId: string;
+  DocumentId: string;
+  DocumentName: string | null;
   Stage: StructuredLearningPedagogyStage;
   CurrentStepDescription: string;
   TotalSections: number | null;
@@ -294,6 +296,13 @@ export function startStructuredLearningPedagogy(
 
 export function getStructuredLearningPedagogyStatus(runId: string): Promise<StructuredLearningPedagogyRunStatus> {
   return apiGet<StructuredLearningPedagogyRunStatus>(`/studio/structured-learning/pedagogy/${runId}/status`);
+}
+
+/** The single currently in-progress pedagogy (Step 3) run, if any — lets
+ * the global "generating" banner find its way back after the browser lost
+ * the in-memory RunId (2026-08-30). Null when nothing is running. */
+export function getActiveStructuredLearningPedagogyRun(): Promise<StructuredLearningPedagogyRunStatus | null> {
+  return apiGet<StructuredLearningPedagogyRunStatus | null>('/studio/structured-learning/pedagogy/active');
 }
 
 export interface StructuredLearningStepDetail {
@@ -594,6 +603,8 @@ export interface StructuredLearningDocumentDetail {
   IsPublished: boolean;
   SubjectId?: string | null;
   TopicId?: string | null;
+  Category?: string | null;
+  TargetSkill?: string | null;
   ExecutiveSummary?: string | null;
   CoverIllustrationId?: string | null;
   PedagogicalAudience: string | null;
@@ -630,9 +641,23 @@ export function deleteStructuredLearningDocument(documentId: string): Promise<vo
 
 export function updateStructuredLearningClassification(
   documentId: string,
+  subjectId: string | null,
   topicId: string | null,
-): Promise<{ StructuredLearningDocumentId: string; TopicId: string | null }> {
-  return apiPatch(`/studio/structured-learning/${documentId}/classification`, { topicId });
+  category?: string | null,
+  targetSkill?: string | null,
+): Promise<{
+  StructuredLearningDocumentId: string;
+  SubjectId: string | null;
+  TopicId: string | null;
+  Category: string | null;
+  TargetSkill: string | null;
+}> {
+  return apiPatch(`/studio/structured-learning/${documentId}/classification`, {
+    subjectId,
+    topicId,
+    category,
+    targetSkill,
+  });
 }
 
 export function updateStructuredLearningDocumentName(

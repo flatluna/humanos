@@ -4,6 +4,7 @@ import { BookOpen, Layers, Sparkles, Zap } from 'lucide-react';
 import type { RootGroup, SelectedNeuron } from './types';
 import { getSubjectColor } from './subjectColor';
 import { getMemoryColor, getMemoryTextColor, getRetrievability, isAutomatic } from './memoryScience';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
 
 /** Same 8-color palette used across the feature — one color per assigned
  *  capability root, so everything belonging to one area reads as one
@@ -12,10 +13,10 @@ const CLUSTER_HEX = ['#22d3ee', '#e879f9', '#34d399', '#fbbf24', '#fb7185', '#38
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function relativeLabel(lastCompletedDate: string | undefined) {
+function relativeLabel(lastCompletedDate: string | undefined, lang: 'en' | 'es') {
   if (!lastCompletedDate) return '—';
   const days = Math.floor((Date.now() - new Date(lastCompletedDate).getTime()) / DAY_MS);
-  const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
   if (days < 1) return rtf.format(0, 'day');
   if (days < 30) return rtf.format(-days, 'day');
   if (days < 365) return rtf.format(-Math.round(days / 30), 'month');
@@ -37,6 +38,7 @@ export interface BrainRecallGridProps {
  *  "what should I refresh?" queue rather than a network diagram. Ported
  *  from human-os-web's /brain (2026-08-01). */
 export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainRecallGridProps) {
+  const { language } = useI18n();
   const normalizedQuery = query.trim().toLowerCase();
 
   // Forces a re-render every minute so the memory-strength rings keep
@@ -73,7 +75,9 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
   if (sections.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center p-10 text-center">
-        <p className="text-sm text-white/50">Ninguna neurona coincide con tu búsqueda.</p>
+        <p className="text-sm text-white/50">
+          {language === 'en' ? 'No neuron matches your search.' : 'Ninguna neurona coincide con tu búsqueda.'}
+        </p>
       </div>
     );
   }
@@ -159,17 +163,19 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
                                 style={automatic ? undefined : { color: memoryColor }}
                                 title={
                                   automatic
-                                    ? 'Esta habilidad ya se volvió automática (como andar en bici) tras suficiente práctica — casi no se desvanece.'
+                                    ? (language === 'en'
+                                        ? 'This skill became automatic (like riding a bike) after enough practice.'
+                                        : 'Esta habilidad ya se volvió automática (como andar en bici) tras suficiente práctica — casi no se desvanece.')
                                     : undefined
                                 }
                               >
                                 {automatic && <Zap className="h-3 w-3" />}
-                                {automatic ? 'Automático' : `${percent}%`}
+                                {automatic ? (language === 'en' ? 'Automatic' : 'Automático') : `${percent}%`}
                               </span>
                             )}
                           </div>
                           <p className="line-clamp-2 text-sm font-semibold text-white">{node.name}</p>
-                          <p className="text-[11px] text-white/50">{relativeLabel(node.lastCompletedDate)}</p>
+                          <p className="text-[11px] text-white/50">{relativeLabel(node.lastCompletedDate, language)}</p>
                         </motion.button>
                       );
                     })}

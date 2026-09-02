@@ -1,13 +1,22 @@
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import { translations, type Language } from './translations';
 
-/**
- * Human OS Employee Portal is Spanish-only for now (no language switcher,
- * mirrors human-os-enterprise) — kept the same `{ t, language }` shape the
- * ported capabilities pages (copied from human-os-web) already expect,
- * without pulling in the full react-i18next setup those pages depended on
- * over there. Revisit if this app ever needs a language toggle too.
- */
+const LANGUAGE_KEY = 'humanos_employee_language';
+
+export function setLanguage(language: Language) {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(LANGUAGE_KEY, language);
+    window.localStorage.setItem('humanos.employee.language', language);
+  }
+  void i18n.changeLanguage(language);
+}
+
 export function useI18n() {
-  const language: Language = 'es';
-  return { t: translations[language], language };
+  const { i18n: i18nInstance } = useTranslation();
+  const currentLang = (i18nInstance.language?.startsWith('en') ? 'en' : 'es') as Language;
+  return {
+    t: translations[currentLang],
+    language: currentLang,
+  };
 }

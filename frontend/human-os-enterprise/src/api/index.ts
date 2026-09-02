@@ -14,6 +14,7 @@ export const queryClient = new QueryClient({
 export const apiClient = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  timeout: 180000,
 });
 
 /** Attach a Bearer token from MSAL before every request, plus the

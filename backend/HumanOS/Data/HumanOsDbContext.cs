@@ -3,6 +3,7 @@ using HumanOS.Models.Assessments;
 using HumanOS.Models.Capabilities;
 using HumanOS.Models.Capabilities.Graph;
 using HumanOS.Models.Evidence;
+using HumanOS.Models.Gamification;
 using HumanOS.Models.Goals;
 using HumanOS.Models.GrowthActions;
 using HumanOS.Models.JobDescriptions;
@@ -235,6 +236,11 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<EngramReviewCompletion> EngramReviewCompletions =>
         Set<EngramReviewCompletion>();
 
+    /// <summary>Impact score for an Engram evaluated for an Employee within a Course/Document —
+    /// see <see cref="EngramImpactScore"/>.</summary>
+    public DbSet<EngramImpactScore> EngramImpactScores =>
+        Set<EngramImpactScore>();
+
     /// <summary>Dynamic-assessment attempt cycles (5 questions, one at a
     /// time, never a fixed bank) for a node's Assessment step — see
     /// <see cref="Models.Learning.AssessmentRound"/>.</summary>
@@ -277,6 +283,10 @@ public sealed class HumanOsDbContext : DbContext
     /// see <see cref="JobRole"/>.</summary>
     public DbSet<JobRole> JobRoles => Set<JobRole>();
 
+    /// <summary>Department↔JobRole many-to-many junction — see
+    /// <see cref="DepartmentJobRole"/>.</summary>
+    public DbSet<DepartmentJobRole> DepartmentJobRoles => Set<DepartmentJobRole>();
+
     /// <summary>Reusable, catalog-level training requirements shareable
     /// across many JobRoles — see <see cref="Skill"/>.</summary>
     public DbSet<Skill> Skills => Set<Skill>();
@@ -284,6 +294,46 @@ public sealed class HumanOsDbContext : DbContext
     /// <summary>JobRole↔Skill many-to-many join — see
     /// <see cref="JobRoleSkill"/>.</summary>
     public DbSet<JobRoleSkill> JobRoleSkills => Set<JobRoleSkill>();
+
+    /// <summary>Reusable, catalog-level activities shareable
+    /// across many JobRoles — see <see cref="Activity"/>.</summary>
+    public DbSet<Activity> Activities => Set<Activity>();
+
+    /// <summary>JobRole↔Activity many-to-many join — see
+    /// <see cref="JobRoleActivity"/>.</summary>
+    public DbSet<JobRoleActivity> JobRoleActivities => Set<JobRoleActivity>();
+
+    /// <summary>Reusable, catalog-level key responsibilities shareable
+    /// across many JobRoles — see <see cref="Responsibility"/>.</summary>
+    public DbSet<Responsibility> Responsibilities => Set<Responsibility>();
+
+    /// <summary>JobRole↔Responsibility many-to-many join — see
+    /// <see cref="JobRoleResponsibility"/>.</summary>
+    public DbSet<JobRoleResponsibility> JobRoleResponsibilities => Set<JobRoleResponsibility>();
+
+    /// <summary>Reusable, catalog-level experience requirements shareable
+    /// across many JobRoles — see <see cref="ExperienceRequirement"/>.</summary>
+    public DbSet<ExperienceRequirement> ExperienceRequirements => Set<ExperienceRequirement>();
+
+    /// <summary>JobRole↔ExperienceRequirement many-to-many join — see
+    /// <see cref="JobRoleExperienceRequirement"/>.</summary>
+    public DbSet<JobRoleExperienceRequirement> JobRoleExperienceRequirements => Set<JobRoleExperienceRequirement>();
+
+    /// <summary>Reusable, catalog-level certifications shareable
+    /// across many JobRoles — see <see cref="Certification"/>.</summary>
+    public DbSet<Certification> Certifications => Set<Certification>();
+
+    /// <summary>JobRole↔Certification many-to-many join — see
+    /// <see cref="JobRoleCertification"/>.</summary>
+    public DbSet<JobRoleCertification> JobRoleCertifications => Set<JobRoleCertification>();
+
+    /// <summary>Reusable, catalog-level tools or technologies shareable
+    /// across many JobRoles — see <see cref="Tool"/>.</summary>
+    public DbSet<Tool> Tools => Set<Tool>();
+
+    /// <summary>JobRole↔Tool many-to-many join — see
+    /// <see cref="JobRoleTool"/>.</summary>
+    public DbSet<JobRoleTool> JobRoleTools => Set<JobRoleTool>();
 
     /// <summary>Traditional (Coursera-style) course chapters — see
     /// <see cref="Models.Capabilities.Traditional.CapabilityChapter"/>.</summary>
@@ -407,6 +457,26 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<Models.Capabilities.Studio.FilmScene> FilmScenes =>
         Set<Models.Capabilities.Studio.FilmScene>();
+
+    /// <summary>Gamification: Immutable record of each earned reward/points entry —
+    /// see <see cref="RewardLedgerEntry"/>.</summary>
+    public DbSet<RewardLedgerEntry> RewardLedgerEntries =>
+        Set<RewardLedgerEntry>();
+
+    /// <summary>Gamification: Per-student summary profile (points, levels, streaks) —
+    /// see <see cref="PlayerProfile"/>.</summary>
+    public DbSet<PlayerProfile> PlayerProfiles =>
+        Set<PlayerProfile>();
+
+    /// <summary>Gamification: Catalog of available badges —
+    /// see <see cref="BadgeCatalog"/>.</summary>
+    public DbSet<BadgeCatalog> BadgeCatalogs =>
+        Set<BadgeCatalog>();
+
+    /// <summary>Gamification: Earned badges per student —
+    /// see <see cref="PlayerBadge"/>.</summary>
+    public DbSet<PlayerBadge> PlayerBadges =>
+        Set<PlayerBadge>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

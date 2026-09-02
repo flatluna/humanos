@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, LogOut, Moon, Sun } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useThemeStore } from '@/store/useThemeStore';
+import { setLanguage, useI18n } from '@/features/capabilities/i18n/useI18n';
+import { GamificationProfilePanel } from '@/features/gamification/components/GamificationProfilePanel';
 
 /** Top bar for the employee portal — deliberately plain/corporate (no
  * "Engram Academy" consumer marketing), same visual family (brand/accent
@@ -11,6 +13,7 @@ import { useThemeStore } from '@/store/useThemeStore';
 export function EmployeeHeader() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useThemeStore();
+  const { language, t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +56,8 @@ export function EmployeeHeader() {
       </div>
 
       <div className="flex items-center gap-3">
+        <GamificationProfilePanel />
+
         <button
           type="button"
           onClick={toggleTheme}
@@ -61,6 +66,15 @@ export function EmployeeHeader() {
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
+        <select
+          aria-label={t.language}
+          value={language}
+          onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 outline-none transition hover:border-brand-400 dark:border-white/10 dark:bg-white/5 dark:text-white/70"
+        >
+          <option value="es">ES</option>
+          <option value="en">EN</option>
+        </select>
         <div ref={menuRef} className="relative">
           <button
             type="button"
@@ -92,7 +106,7 @@ export function EmployeeHeader() {
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-red-50 hover:text-red-600 dark:text-white/70 dark:hover:bg-red-500/10 dark:hover:text-red-300"
               >
                 <LogOut className="h-4 w-4" />
-                Cerrar sesión
+                {t.signOut}
               </button>
             </div>
           )}

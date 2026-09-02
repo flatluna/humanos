@@ -2,6 +2,7 @@ using HumanOS.Agents.Studio;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Studio;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace HumanOS.Services;
 
@@ -56,6 +57,7 @@ public sealed class StructuredLearningConnectionExtractionService
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         var section = await dbContext.StructuredLearningDocumentSections
+            .Include(s => s.Document)
             .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId, cancellationToken)
             ?? throw new InvalidOperationException($"No se encontró la sección '{sectionId}'.");
 
@@ -103,8 +105,9 @@ public sealed class StructuredLearningConnectionExtractionService
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var languageCode = ResolveLanguage(section.Document.ConfigSnapshotJson);
         var extractionResult = await _extractionAgent.ExtractAsync(
-            section.SubchapterTitle, section.Text, candidateIdNamePairs, cancellationToken);
+            section.SubchapterTitle, section.Text, candidateIdNamePairs, existingRelationshipLabels: [], languageCode, cancellationToken);
         stopwatch.Stop();
 
         // TEMP DEBUG (2026-08-15) — diagnosing why this agent returns 0
@@ -228,6 +231,32 @@ public sealed class StructuredLearningConnectionExtractionService
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return created;
+    }
+
+    /// <summary>Reads the document's own configured LanguageCode (2026-08-30
+    /// fix — connection extraction previously never read this at all, so
+    /// RelationshipLabel came back in Spanish even for English documents).
+    /// Falls back to "en" if unset/unparsable, same fallback convention as
+    /// StructuredLearningKnowledgeFactGenerationService.ResolveLanguage.</summary>
+    private static string ResolveLanguage(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson))
+        {
+            return "en";
+        }
+
+        try
+        {
+            var snapshot = JsonSerializer.Deserialize<JsonElement>(configSnapshotJson);
+            if (snapshot.TryGetProperty("LanguageCode", out var language) &&
+                !string.IsNullOrWhiteSpace(language.GetString()))
+            {
+                return language.GetString()!;
+            }
+        }
+        catch (JsonException) { }
+
+        return "en";
     }
 
     private static bool IsCompatibleCategory(string category, string label)

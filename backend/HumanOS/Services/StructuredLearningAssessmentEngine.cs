@@ -1,9 +1,11 @@
 using System.Text;
 using System.Text.Json;
 using HumanOS.Agents.Studio;
+using HumanOS.Contracts.Gamification;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Studio;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace HumanOS.Services;
 
@@ -46,10 +48,17 @@ public sealed class StructuredLearningAssessmentEngine
     private const int PassThreshold = 80;
 
     private readonly StructuredLearningAssessmentAgent _agent;
+    private readonly GamificationOrchestrator? _gamificationOrchestrator;
+    private readonly ILogger<StructuredLearningAssessmentEngine>? _logger;
 
-    public StructuredLearningAssessmentEngine(StructuredLearningAssessmentAgent agent)
+    public StructuredLearningAssessmentEngine(
+        StructuredLearningAssessmentAgent agent,
+        GamificationOrchestrator? gamificationOrchestrator = null,
+        ILogger<StructuredLearningAssessmentEngine>? logger = null)
     {
         _agent = agent;
+        _gamificationOrchestrator = gamificationOrchestrator;
+        _logger = logger;
     }
 
     public sealed class QuestionInfo
@@ -98,6 +107,9 @@ public sealed class StructuredLearningAssessmentEngine
         /// <summary>Set only when a new round was auto-started (the round just closed as Failed).</summary>
         public int? NewRoundNumber { get; set; }
         public Guid? NewStructuredLearningAssessmentRoundId { get; set; }
+
+        /// <summary>Gamification reward bundle on a Passed round (null if in-progress or failed).</summary>
+        public GamificationRewardBundle? Gamification { get; set; }
     }
 
     private sealed class SectionContext
@@ -295,6 +307,36 @@ public sealed class StructuredLearningAssessmentEngine
             result.FinalScore = score;
 
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            // Trigger gamification (rewards, streak, badges) with isolated error handling
+            if (_gamificationOrchestrator != null && round.PersonId.HasValue && round.PersonId.Value != Guid.Empty)
+            {
+                try
+                {
+                    var sectionInfo = await dbContext.StructuredLearningDocumentSections
+                        .AsNoTracking()
+                        .Where(s => s.StructuredLearningDocumentSectionId == round.StructuredLearningDocumentSectionId)
+                        .Select(s => new { s.StructuredLearningDocumentId, s.StructuredLearningDocumentSectionId })
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (sectionInfo != null)
+                    {
+                        result.Gamification = await _gamificationOrchestrator.ProcessEngramMasteryAsync(
+                            round.PersonId.Value,
+                            sectionInfo.StructuredLearningDocumentId,
+                            sectionInfo.StructuredLearningDocumentSectionId.ToString(),
+                            sourceType: "Structured",
+                            engramDifficultyLevel: null,
+                            memoryRecallPct: null,
+                            ct: cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Gamification award failed for StructuredLearningSection {SectionId}, but assessment remains successfully passed.", round.StructuredLearningDocumentSectionId);
+                }
+            }
+
             return result;
         }
 

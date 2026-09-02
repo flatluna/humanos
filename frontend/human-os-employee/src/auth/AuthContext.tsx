@@ -28,6 +28,8 @@ export interface EmployeePortalUser {
   departmentName: string | null;
   jobRoleId: string | null;
   jobRoleTitle: string | null;
+  managerId: string | null;
+  managerDisplayName: string | null;
 }
 
 interface AuthContextValue {
@@ -82,6 +84,8 @@ interface MeResponse {
   departmentName: string | null;
   jobRoleId: string | null;
   jobRoleTitle: string | null;
+  managerId: string | null;
+  managerDisplayName: string | null;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -170,6 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           departmentName: data.departmentName,
           jobRoleId: data.jobRoleId,
           jobRoleTitle: data.jobRoleTitle,
+          managerId: data.managerId,
+          managerDisplayName: data.managerDisplayName,
         });
       } else if (res.status === 404) {
         // No Human OS account at all yet — must onboard via human-os-web

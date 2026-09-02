@@ -118,33 +118,34 @@ public sealed class SkillService
             .ToList();
     }
 
-    /// <summary>For each given Skill, finds the active Capability (if any)
-    /// that already satisfies it — same two-step matching
-    /// PersonCareerPlanService.AutoMatchCapabilitiesAsync uses for career-plan
-    /// roadmap steps: (1) EXPLICIT — Capability.TargetSkill equals this
-    /// skill's Name (case-insensitive), Category matches (or is null on the
-    /// Capability, for backward compatibility); (2) FALLBACK — Capability.Name
-    /// equals this skill's Name, Category matches (or is null). No tenant
-    /// filter on Capabilities, same as AutoMatchCapabilitiesAsync — the
-    /// catalog is shared, a course authored anywhere can close this gap.
+    /// <summary>For each given Skill, finds the active course (Structured
+    /// Learning document or Capability graph, if any) that already satisfies it —
+    /// same matching logic as PersonCareerPlanService:
+    /// (1) Structured Learning Document: TargetSkill or DocumentName matches
+    /// this skill's Name (case-insensitive & whitespace-normalized);
+    /// (2) Capability Graph: TargetSkill or Name matches.
     /// Powers the "Curso creado" vs "Generar curso" indicator on the Skill
     /// catalog page.</summary>
-    public async Task<Dictionary<Guid, (Guid CapabilityId, string CapabilityName)?>> GetMatchedCapabilitiesAsync(
+    public async Task<Dictionary<Guid, (Guid CourseId, string CourseName, string CourseType)?>> GetMatchedCapabilitiesAsync(
         IReadOnlyList<Skill> skills,
         CancellationToken cancellationToken = default)
     {
-        // Value type is a NULLABLE tuple, not just a tuple: GetValueOrDefault
-        // on a Dictionary<K, (Guid, string)> (non-nullable tuple) returns
-        // default((Guid, string)) = (Guid.Empty, null) for a missing key, which
-        // then implicitly wraps into a non-null (Guid.Empty, null) nullable
-        // tuple below — silently serializing MatchedCapabilityId as all-zeros
-        // instead of a real null. Nullable<T>'s own default IS null, so this
-        // dictionary shape makes GetValueOrDefault correct for unmatched skills.
-        var result = new Dictionary<Guid, (Guid, string)?>();
+        var result = new Dictionary<Guid, (Guid, string, string)?>();
         if (skills.Count == 0)
         {
             return result;
         }
+
+        static string Normalize(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+            return System.Text.RegularExpressions.Regex.Replace(s.Trim(), @"\s+", " ");
+        }
+
+        var structuredDocuments = await _dbContext.StructuredLearningDocuments
+            .AsNoTracking()
+            .Select(d => new { d.StructuredLearningDocumentId, Name = d.DocumentName, d.Category, d.TargetSkill })
+            .ToListAsync(cancellationToken);
 
         var activeCapabilities = await _dbContext.Capabilities
             .AsNoTracking()
@@ -154,18 +155,50 @@ public sealed class SkillService
 
         foreach (var skill in skills)
         {
-            var explicitMatch = activeCapabilities.FirstOrDefault(
+            var skillNorm = Normalize(skill.Name);
+            if (string.IsNullOrEmpty(skillNorm)) continue;
+
+            // 1. Structured Learning Documents (primary Studio authoring format)
+            var explicitDoc = structuredDocuments.FirstOrDefault(
+                d => d.TargetSkill is not null
+                    && (d.Category is null || d.Category == skill.Category)
+                    && string.Equals(Normalize(d.TargetSkill), skillNorm, StringComparison.OrdinalIgnoreCase));
+
+            var docMatch = explicitDoc ?? structuredDocuments.FirstOrDefault(
+                d => (d.Category is null || d.Category == skill.Category)
+                    && string.Equals(Normalize(d.Name), skillNorm, StringComparison.OrdinalIgnoreCase));
+
+            docMatch ??= structuredDocuments.FirstOrDefault(
+                d => (d.Category is null || d.Category == skill.Category)
+                    && !string.IsNullOrEmpty(Normalize(d.TargetSkill))
+                    && (Normalize(d.TargetSkill).Contains(skillNorm, StringComparison.OrdinalIgnoreCase)
+                        || skillNorm.Contains(Normalize(d.TargetSkill), StringComparison.OrdinalIgnoreCase)));
+
+            docMatch ??= structuredDocuments.FirstOrDefault(
+                d => (d.Category is null || d.Category == skill.Category)
+                    && !string.IsNullOrEmpty(Normalize(d.Name))
+                    && (Normalize(d.Name).Contains(skillNorm, StringComparison.OrdinalIgnoreCase)
+                        || skillNorm.Contains(Normalize(d.Name), StringComparison.OrdinalIgnoreCase)));
+
+            if (docMatch is not null)
+            {
+                result[skill.SkillId] = (docMatch.StructuredLearningDocumentId, docMatch.Name, "structured-learning");
+                continue;
+            }
+
+            // 2. Capability Graph courses
+            var explicitCap = activeCapabilities.FirstOrDefault(
                 c => c.TargetSkill is not null
                     && (c.Category is null || c.Category == skill.Category)
-                    && string.Equals(c.TargetSkill.Trim(), skill.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(Normalize(c.TargetSkill), skillNorm, StringComparison.OrdinalIgnoreCase));
 
-            var match = explicitMatch ?? activeCapabilities.FirstOrDefault(
+            var capMatch = explicitCap ?? activeCapabilities.FirstOrDefault(
                 c => (c.Category is null || c.Category == skill.Category)
-                    && string.Equals(c.Name.Trim(), skill.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(Normalize(c.Name), skillNorm, StringComparison.OrdinalIgnoreCase));
 
-            if (match is not null)
+            if (capMatch is not null)
             {
-                result[skill.SkillId] = (match.CapabilityId, match.Name);
+                result[skill.SkillId] = (capMatch.CapabilityId, capMatch.Name, "graph");
             }
         }
 
@@ -456,7 +489,7 @@ public sealed class SkillService
     private static SkillResponse ToResponse(
         Skill skill,
         IReadOnlyList<SkillJobRoleLinkResponse> jobRoles,
-        (Guid CapabilityId, string CapabilityName)? matchedCapability = null) => new()
+        (Guid CourseId, string CourseName, string CourseType)? matchedCapability = null) => new()
     {
         SkillId = skill.SkillId,
         TenantId = skill.TenantId,
@@ -464,12 +497,38 @@ public sealed class SkillService
         Name = skill.Name,
         Description = skill.Description,
         IsActive = skill.IsActive,
+        DocumentStoragePath = skill.DocumentStoragePath,
+        DocumentFileName = skill.DocumentFileName,
+        DocumentUrl = !string.IsNullOrEmpty(skill.DocumentStoragePath) ? $"/skills/{skill.SkillId}/document" : null,
         JobRoles = jobRoles,
         CreatedDate = skill.CreatedDate,
         UpdatedDate = skill.UpdatedDate,
-        MatchedCapabilityId = matchedCapability?.CapabilityId,
-        MatchedCapabilityName = matchedCapability?.CapabilityName,
+        MatchedCapabilityId = matchedCapability?.CourseId,
+        MatchedCapabilityName = matchedCapability?.CourseName,
+        MatchedCourseType = matchedCapability?.CourseType,
     };
+
+    public async Task<Skill?> GetEntityByIdAsync(Guid skillId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Skills.SingleOrDefaultAsync(s => s.SkillId == skillId, cancellationToken);
+    }
+
+    public async Task<SkillResponse?> UpdateDocumentPathAsync(
+        Guid skillId,
+        string? storagePath,
+        string? fileName,
+        CancellationToken cancellationToken = default)
+    {
+        var skill = await _dbContext.Skills.SingleOrDefaultAsync(s => s.SkillId == skillId, cancellationToken);
+        if (skill is null) return null;
+
+        skill.DocumentStoragePath = storagePath;
+        skill.DocumentFileName = fileName;
+        skill.UpdatedDate = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetByIdOrThrowAsync(skillId, cancellationToken);
+    }
 
     // ── Shared with JobRoleService/PersonCareerPlanService ────────────────
 

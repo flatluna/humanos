@@ -7,6 +7,7 @@ import { ProgressOverview } from './components/ProgressOverview';
 import { CapabilitiesSection } from './components/CapabilitiesSection';
 import { ContinueLearningSection, type ContinueLearningItem } from './components/ContinueLearningSection';
 import type { CapabilityLevel, CapabilityProgress } from './types';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
 
 type GreetingKey = 'morning' | 'afternoon' | 'evening';
 
@@ -16,12 +17,6 @@ function useGreetingKey(): GreetingKey {
   if (hour < 18) return 'afternoon';
   return 'evening';
 }
-
-const GREETINGS: Record<GreetingKey, string> = {
-  morning: 'Buenos días',
-  afternoon: 'Buenas tardes',
-  evening: 'Buenas noches',
-};
 
 /** Courses don't have a "mastery" flag — level is derived from the average
  *  score of nodes already mastered so far in that capability. */
@@ -41,8 +36,15 @@ function scoreToLevel(averageScore: number | null | undefined): CapabilityLevel 
  *  learning runtime, see EmployeeSidebar's doc comment). */
 export function TodayPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const personId = user?.personId ?? '';
   const greetingKey = useGreetingKey();
+
+  const greetings: Record<GreetingKey, string> = useMemo(() => ({
+    morning: t.todayGreetingMorning,
+    afternoon: t.todayGreetingAfternoon,
+    evening: t.todayGreetingEvening,
+  }), [t]);
 
   const [capabilities, setCapabilities] = useState<EnrolledCapability[]>([]);
   const [continueItems, setContinueItems] = useState<ContinueLearningItem[]>([]);
@@ -131,12 +133,12 @@ export function TodayPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#05060a]">
       {initialLoading && (
-        <LoadingBackdrop title="Preparando tu panel..." description="Cargando tu progreso y cursos asignados." />
+        <LoadingBackdrop title={t.todayLoadingTitle} description={t.todayLoadingDesc} />
       )}
       <main>
         <div className="mx-auto max-w-6xl px-6 pt-8">
           <p className="text-2xl font-semibold text-slate-900 dark:text-white">
-            {GREETINGS[greetingKey]}{displayName ? `, ${displayName}` : ''}
+            {greetings[greetingKey]}{displayName ? `, ${displayName}` : ''}
           </p>
         </div>
 

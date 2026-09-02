@@ -21,7 +21,11 @@ export default function DeleteGraphNodeModal({ nodeName, onConfirm, onCancel }: 
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isConfirmationValid = confirmationText.trim() === nodeName.trim();
+  // Collapses repeated whitespace before comparing — same rationale as
+  // DeleteCapabilityModal (a stored name can have an accidental double space
+  // that is visually indistinguishable from a single space).
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const isConfirmationValid = normalize(confirmationText) === normalize(nodeName);
 
   const handleConfirm = async () => {
     if (!isConfirmationValid || isDeleting) return;

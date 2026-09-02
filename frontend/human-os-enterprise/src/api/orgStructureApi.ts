@@ -7,7 +7,15 @@ export interface DepartmentDto {
   tenantId: string;
   parentDepartmentId: string | null;
   name: string;
+  code: string | null;
   description: string | null;
+  category: string | null;
+  contactEmail: string | null;
+  location: string | null;
+  costCenter: string | null;
+  missionStatement: string | null;
+  leaderPersonId: string | null;
+  leaderDisplayName: string | null;
   isActive: boolean;
   jobRoleCount: number;
   personCount: number;
@@ -17,15 +25,22 @@ export interface DepartmentDto {
 
 export interface SaveDepartmentRequest {
   name: string;
+  code?: string | null;
   description?: string | null;
+  category?: string | null;
+  contactEmail?: string | null;
+  location?: string | null;
+  costCenter?: string | null;
+  missionStatement?: string | null;
+  leaderPersonId?: string | null;
   parentDepartmentId?: string | null;
 }
 
 export interface JobRoleDto {
   jobRoleId: string;
   tenantId: string;
-  departmentId: string;
-  departmentName: string;
+  departmentId: string | null;
+  departmentName: string | null;
   title: string;
   levelLabel: string | null;
   purpose: string | null;
@@ -63,7 +78,7 @@ export interface JobRoleDto {
 }
 
 export interface SaveJobRoleRequest {
-  departmentId: string;
+  departmentId?: string | null;
   title: string;
   levelLabel?: string | null;
   purpose?: string | null;
@@ -96,7 +111,7 @@ export interface SaveJobRoleRequest {
 
 export interface GenerateJobRoleDescriptionRequest {
   jobRoleId?: string | null;
-  departmentId: string;
+  departmentId?: string | null;
   title: string;
   levelLabel?: string | null;
   purpose?: string | null;
@@ -245,10 +260,38 @@ export interface ExtractPersonResumeResponse {
   outputTokens: number;
 }
 
+// ── Tenant ──────────────────────────────────────────────────────────────
+
+export interface TenantDto {
+  tenantId: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+  description: string | null;
+  cultureCode: string;
+  timeZone: string;
+  isActive: boolean;
+}
+
+export async function getTenant(tenantId: string): Promise<TenantDto> {
+  const { data } = await apiClient.get<TenantDto>(`/tenants/${tenantId}`);
+  return data;
+}
+
+export async function updateTenant(tenantId: string, body: Partial<TenantDto>): Promise<TenantDto> {
+  const { data } = await apiClient.put<TenantDto>(`/tenants/${tenantId}`, body);
+  return data;
+}
+
 // ── Departments ─────────────────────────────────────────────────────────
 
 export async function getDepartments(tenantId: string): Promise<DepartmentDto[]> {
   const { data } = await apiClient.get<DepartmentDto[]>(`/tenants/${tenantId}/departments`);
+  return data;
+}
+
+export async function getDepartment(departmentId: string): Promise<DepartmentDto> {
+  const { data } = await apiClient.get<DepartmentDto>(`/departments/${departmentId}`);
   return data;
 }
 
@@ -303,6 +346,14 @@ export async function generateJobRoleDescription(
 
 export async function deleteJobRole(jobRoleId: string): Promise<void> {
   await apiClient.delete(`/job-roles/${jobRoleId}`);
+}
+
+export async function attachDepartmentJobRole(departmentId: string, jobRoleId: string): Promise<void> {
+  await apiClient.post(`/departments/${departmentId}/job-roles/${jobRoleId}`);
+}
+
+export async function detachDepartmentJobRole(departmentId: string, jobRoleId: string): Promise<void> {
+  await apiClient.delete(`/departments/${departmentId}/job-roles/${jobRoleId}`);
 }
 
 // ── People directory ───────────────────────────────────────────────────

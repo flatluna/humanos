@@ -165,6 +165,18 @@ public class StructuredLearningKnowledgeFactGenerationAgent
         return response;
     }
 
+    /// <summary>Unvalidated variant used by callers (e.g. the persistence
+    /// service) that need to drop individually invalid facts instead of
+    /// failing the whole batch when the model puts one bad fact alongside
+    /// otherwise-valid ones.</summary>
+    public virtual async Task<StructuredLearningKnowledgeFactGenerationResponse> GenerateRawAsync(
+        StructuredLearningKnowledgeFactGenerationRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return await RunModelAsync(request, cancellationToken);
+    }
+
     protected virtual async Task<StructuredLearningKnowledgeFactGenerationResponse> RunModelAsync(
         StructuredLearningKnowledgeFactGenerationRequest request,
         CancellationToken cancellationToken)

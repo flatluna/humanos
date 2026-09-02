@@ -31,6 +31,7 @@ export default function LaunchPage() {
 
     const code = searchParams.get('code');
     const exchangeUrl = searchParams.get('exchangeUrl') ?? DEFAULT_EXCHANGE_URL;
+    const returnTo = searchParams.get('returnTo') || '/';
 
     if (!code) {
       setError(t('launchPage.missingCode'));
@@ -56,7 +57,7 @@ export default function LaunchPage() {
           setError(t('launchPage.invalidToken'));
           return;
         }
-        navigate('/', { replace: true });
+        navigate(returnTo, { replace: true });
       } catch {
         setError(t('launchPage.validationFailed'));
       }

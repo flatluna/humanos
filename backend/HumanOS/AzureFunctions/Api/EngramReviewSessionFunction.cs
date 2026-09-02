@@ -40,17 +40,20 @@ public sealed class EngramReviewSessionFunction
     private readonly InstructorRuntimeOrchestrator _orchestrator;
     private readonly HumanOsDbContext _dbContext;
     private readonly NodeKnowledgeIndexService _knowledgeIndexService;
+    private readonly ILearnerContextBuilder _learnerContextBuilder;
 
     public EngramReviewSessionFunction(
         RealtimeVoiceSessionService voiceSessionService,
         InstructorRuntimeOrchestrator orchestrator,
         HumanOsDbContext dbContext,
-        NodeKnowledgeIndexService knowledgeIndexService)
+        NodeKnowledgeIndexService knowledgeIndexService,
+        ILearnerContextBuilder learnerContextBuilder)
     {
         _voiceSessionService = voiceSessionService;
         _orchestrator = orchestrator;
         _dbContext = dbContext;
         _knowledgeIndexService = knowledgeIndexService;
+        _learnerContextBuilder = learnerContextBuilder;
     }
 
     [Function("EngramReviewSession")]
@@ -167,6 +170,24 @@ public sealed class EngramReviewSessionFunction
         var knowledgeSearchAvailable = _knowledgeIndexService.IsConfigured && otherChapterNames.Count > 0;
 
         var instructions = BuildInstructions(summary, node, profile, latestAssessment, latestAttempt, illustrations, focusCard, otherChapterNames, knowledgeSearchAvailable);
+
+        // Personalized LEARNER CONTEXT injection
+        var courseId = node is not null
+            ? await _dbContext.CapabilityGraphs
+                .AsNoTracking()
+                .Where(g => g.CapabilityGraphId == node.CapabilityGraphId)
+                .Select(g => (Guid?)g.CapabilityId)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        var learnerContext = await _learnerContextBuilder.BuildLearnerContextBlockAsync(
+            body.PersonId, courseId, body.CapabilityGraphNodeId.ToString(), cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(learnerContext))
+        {
+            instructions = $"{learnerContext}\n\n{instructions}";
+        }
+
         var tools = knowledgeSearchAvailable
             ? new object[] { BuildShowVisualAidTool(illustrations), BuildKnowledgeSearchTool(), BuildCompleteReviewTool() }
             : new object[] { BuildShowVisualAidTool(illustrations), BuildCompleteReviewTool() };

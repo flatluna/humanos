@@ -26,24 +26,33 @@ public sealed class DepartmentService
         Guid tenantId,
         CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Departments
+        var departments = await _dbContext.Departments
             .AsNoTracking()
             .Where(d => d.TenantId == tenantId)
-            .Select(d => new DepartmentResponse
+            .Select(d => new
             {
-                DepartmentId = d.DepartmentId,
-                TenantId = d.TenantId,
-                ParentDepartmentId = d.ParentDepartmentId,
-                Name = d.Name,
-                Description = d.Description,
-                IsActive = d.IsActive,
-                JobRoleCount = d.JobRoles.Count,
+                Department = d,
+                JobRoleCount = d.DepartmentJobRoles.Count > 0 ? d.DepartmentJobRoles.Count : d.JobRoles.Count,
                 PersonCount = _dbContext.People.Count(p => p.DepartmentId == d.DepartmentId),
-                CreatedDate = d.CreatedDate,
-                UpdatedDate = d.UpdatedDate,
             })
-            .OrderBy(d => d.Name)
+            .OrderBy(x => x.Department.Name)
             .ToListAsync(cancellationToken);
+
+        var leaderIds = departments
+            .Where(x => x.Department.LeaderPersonId.HasValue)
+            .Select(x => x.Department.LeaderPersonId!.Value);
+
+        var leaderNames = await ResolveLeaderNamesAsync(leaderIds, cancellationToken);
+
+        return departments
+            .Select(x => ToResponse(
+                x.Department,
+                x.JobRoleCount,
+                x.PersonCount,
+                x.Department.LeaderPersonId.HasValue && leaderNames.TryGetValue(x.Department.LeaderPersonId.Value, out var name)
+                    ? name
+                    : null))
+            .ToList();
     }
 
     public async Task<Department?> GetByIdAsync(
@@ -53,6 +62,33 @@ public sealed class DepartmentService
         return await _dbContext.Departments
             .AsNoTracking()
             .SingleOrDefaultAsync(d => d.DepartmentId == departmentId, cancellationToken);
+    }
+
+    public async Task<DepartmentResponse?> GetResponseByIdAsync(
+        Guid departmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var row = await _dbContext.Departments
+            .AsNoTracking()
+            .Where(d => d.DepartmentId == departmentId)
+            .Select(d => new
+            {
+                Department = d,
+                JobRoleCount = d.DepartmentJobRoles.Count > 0 ? d.DepartmentJobRoles.Count : d.JobRoles.Count,
+                PersonCount = _dbContext.People.Count(p => p.DepartmentId == d.DepartmentId),
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (row is null) return null;
+
+        string? leaderName = null;
+        if (row.Department.LeaderPersonId is Guid leaderId)
+        {
+            var leaderNames = await ResolveLeaderNamesAsync([leaderId], cancellationToken);
+            leaderNames.TryGetValue(leaderId, out leaderName);
+        }
+
+        return ToResponse(row.Department, row.JobRoleCount, row.PersonCount, leaderName);
     }
 
     public async Task<DepartmentResponse> CreateAsync(
@@ -70,6 +106,16 @@ public sealed class DepartmentService
             }
         }
 
+        if (request.LeaderPersonId is Guid leaderId)
+        {
+            var leaderExists = await _dbContext.People
+                .AnyAsync(p => p.PersonId == leaderId && p.TenantId == tenantId, cancellationToken);
+            if (!leaderExists)
+            {
+                throw new InvalidOperationException($"Leader person {leaderId} does not belong to this tenant.");
+            }
+        }
+
         var now = DateTime.UtcNow;
         var department = new Department
         {
@@ -77,7 +123,14 @@ public sealed class DepartmentService
             TenantId = tenantId,
             ParentDepartmentId = request.ParentDepartmentId,
             Name = request.Name.Trim(),
+            Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            Category = string.IsNullOrWhiteSpace(request.Category) ? null : request.Category.Trim(),
+            ContactEmail = string.IsNullOrWhiteSpace(request.ContactEmail) ? null : request.ContactEmail.Trim(),
+            Location = string.IsNullOrWhiteSpace(request.Location) ? null : request.Location.Trim(),
+            CostCenter = string.IsNullOrWhiteSpace(request.CostCenter) ? null : request.CostCenter.Trim(),
+            MissionStatement = string.IsNullOrWhiteSpace(request.MissionStatement) ? null : request.MissionStatement.Trim(),
+            LeaderPersonId = request.LeaderPersonId,
             IsActive = true,
             CreatedDate = now,
             UpdatedDate = now,
@@ -86,7 +139,14 @@ public sealed class DepartmentService
         _dbContext.Departments.Add(department);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToResponse(department, jobRoleCount: 0, personCount: 0);
+        string? leaderName = null;
+        if (department.LeaderPersonId is Guid lId)
+        {
+            var leaderNames = await ResolveLeaderNamesAsync([lId], cancellationToken);
+            leaderNames.TryGetValue(lId, out leaderName);
+        }
+
+        return ToResponse(department, jobRoleCount: 0, personCount: 0, leaderName);
     }
 
     public async Task<DepartmentResponse?> UpdateAsync(
@@ -117,8 +177,25 @@ public sealed class DepartmentService
             }
         }
 
+        if (request.LeaderPersonId is Guid leaderId)
+        {
+            var leaderExists = await _dbContext.People
+                .AnyAsync(p => p.PersonId == leaderId && p.TenantId == department.TenantId, cancellationToken);
+            if (!leaderExists)
+            {
+                throw new InvalidOperationException($"Leader person {leaderId} does not belong to this tenant.");
+            }
+        }
+
         department.Name = request.Name.Trim();
+        department.Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
         department.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        department.Category = string.IsNullOrWhiteSpace(request.Category) ? null : request.Category.Trim();
+        department.ContactEmail = string.IsNullOrWhiteSpace(request.ContactEmail) ? null : request.ContactEmail.Trim();
+        department.Location = string.IsNullOrWhiteSpace(request.Location) ? null : request.Location.Trim();
+        department.CostCenter = string.IsNullOrWhiteSpace(request.CostCenter) ? null : request.CostCenter.Trim();
+        department.MissionStatement = string.IsNullOrWhiteSpace(request.MissionStatement) ? null : request.MissionStatement.Trim();
+        department.LeaderPersonId = request.LeaderPersonId;
         department.ParentDepartmentId = request.ParentDepartmentId;
         department.UpdatedDate = DateTime.UtcNow;
 
@@ -127,7 +204,14 @@ public sealed class DepartmentService
         var jobRoleCount = await _dbContext.JobRoles.CountAsync(r => r.DepartmentId == departmentId, cancellationToken);
         var personCount = await _dbContext.People.CountAsync(p => p.DepartmentId == departmentId, cancellationToken);
 
-        return ToResponse(department, jobRoleCount, personCount);
+        string? leaderName = null;
+        if (department.LeaderPersonId is Guid lId)
+        {
+            var leaderNames = await ResolveLeaderNamesAsync([lId], cancellationToken);
+            leaderNames.TryGetValue(lId, out leaderName);
+        }
+
+        return ToResponse(department, jobRoleCount, personCount, leaderName);
     }
 
     /// <summary>Soft-deletes (deactivates) a Department. Refuses if it
@@ -166,13 +250,62 @@ public sealed class DepartmentService
         return true;
     }
 
-    private static DepartmentResponse ToResponse(Department department, int jobRoleCount, int personCount) => new()
+    private async Task<Dictionary<Guid, string>> ResolveLeaderNamesAsync(
+        IEnumerable<Guid> leaderPersonIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = leaderPersonIds.Distinct().ToList();
+        if (ids.Count == 0) return [];
+
+        var profiles = await _dbContext.PersonProfiles
+            .AsNoTracking()
+            .Where(pp => ids.Contains(pp.PersonId))
+            .ToDictionaryAsync(pp => pp.PersonId, cancellationToken);
+
+        var people = await _dbContext.People
+            .AsNoTracking()
+            .Where(p => ids.Contains(p.PersonId))
+            .ToDictionaryAsync(p => p.PersonId, cancellationToken);
+
+        var dict = new Dictionary<Guid, string>();
+        foreach (var id in ids)
+        {
+            if (profiles.TryGetValue(id, out var profile) && !string.IsNullOrWhiteSpace(profile.DisplayName))
+            {
+                dict[id] = profile.DisplayName;
+            }
+            else if (profile != null && (!string.IsNullOrWhiteSpace(profile.FirstName) || !string.IsNullOrWhiteSpace(profile.LastName)))
+            {
+                dict[id] = $"{profile.FirstName} {profile.LastName}".Trim();
+            }
+            else if (people.TryGetValue(id, out var person) && !string.IsNullOrWhiteSpace(person.Email))
+            {
+                dict[id] = person.Email;
+            }
+        }
+
+        return dict;
+    }
+
+    private static DepartmentResponse ToResponse(
+        Department department,
+        int jobRoleCount,
+        int personCount,
+        string? leaderDisplayName = null) => new()
     {
         DepartmentId = department.DepartmentId,
         TenantId = department.TenantId,
         ParentDepartmentId = department.ParentDepartmentId,
         Name = department.Name,
+        Code = department.Code,
         Description = department.Description,
+        Category = department.Category,
+        ContactEmail = department.ContactEmail,
+        Location = department.Location,
+        CostCenter = department.CostCenter,
+        MissionStatement = department.MissionStatement,
+        LeaderPersonId = department.LeaderPersonId,
+        LeaderDisplayName = leaderDisplayName,
         IsActive = department.IsActive,
         JobRoleCount = jobRoleCount,
         PersonCount = personCount,

@@ -122,6 +122,9 @@ var host = new HostBuilder()
         services.AddScoped<DepartmentService>();
         services.AddScoped<JobRoleService>();
         services.AddScoped<SkillService>();
+        services.AddScoped<ResponsibilityService>();
+        services.AddScoped<CertificationService>();
+        services.AddScoped<ToolService>();
         services.AddScoped<PersonProfileService>();
         services.AddScoped<GrowthPlanService>();
         services.AddScoped<CapabilityEnrollmentService>();
@@ -160,6 +163,7 @@ var host = new HostBuilder()
         services.AddScoped<TranslationService>();
         services.AddScoped<RoleDocumentStorageService>();
         services.AddScoped<CapabilityMaterialStorageService>();
+        services.AddScoped<HumanOS.Storage.SkillDocumentStorageService>();
         services.AddScoped<JobDescriptionExtractionAgent>();
         services.AddScoped<HumanOS.Storage.CapabilityGraphIllustrationStorageService>();
         // Enterprise console "Importar organigrama (IA)" (2026-07-31) —
@@ -191,6 +195,17 @@ var host = new HostBuilder()
         // every other Studio/agent-framework agent (no per-request state).
         services.AddSingleton<HumanOS.Agents.CareerDevelopmentPlanAgent>();
         services.AddScoped<PersonCareerPlanService>();
+
+        // Employee professional profile consolidation service for AI scoring
+        services.AddScoped<EmployeeScoringProfileService>();
+        services.AddScoped<ILearnerContextBuilder, LearnerContextBuilder>();
+        services.AddSingleton<HumanOS.Agents.EngramImpactScoringAgent>();
+        services.AddScoped<EngramImpactScorePersistenceService>();
+        services.AddScoped<EngramImpactOrchestrator>();
+        services.AddScoped<RewardEngineService>();
+        services.AddScoped<StreakService>();
+        services.AddScoped<BadgeService>();
+        services.AddScoped<GamificationOrchestrator>();
 
         // Growth Plan Step 3 ("Planeemos Juntos tu Desarrollo", merged
         // Steps 3+4, 2026-07-22): recommends a Program or individual
@@ -535,12 +550,16 @@ if (args.Contains("--run-test"))
         await test.RunAsync();
     }
 }
-else if (args.Contains("--seed-catalog"))
+else if (args.Contains("--seed-catalog") || args.Contains("--seed-badges"))
 {
     using (var scope = host.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<HumanOsDbContext>();
-        await HumanOS.Data.CatalogSeeder.SeedGoalsAndMotivationsAsync(dbContext);
+        if (args.Contains("--seed-catalog"))
+        {
+            await HumanOS.Data.CatalogSeeder.SeedGoalsAndMotivationsAsync(dbContext);
+        }
+        await HumanOS.Data.CatalogSeeder.SeedBadgesAsync(dbContext);
     }
 }
 else

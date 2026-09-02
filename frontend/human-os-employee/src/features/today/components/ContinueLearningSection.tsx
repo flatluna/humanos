@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router';
 import { PlayCircle, Compass, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
 
 export interface ContinueLearningItem {
   capabilityId: string;
@@ -20,12 +21,13 @@ interface ContinueLearningSectionProps {
  *  "nothing in progress" empty state is shown when there's truly nothing
  *  to resume, rather than fabricating recommended actions. */
 export function ContinueLearningSection({ items, loading }: ContinueLearningSectionProps) {
+  const { t, language } = useI18n();
   if (loading) return null;
 
   return (
     <section aria-labelledby="continue-learning-heading" className="mx-auto max-w-6xl px-6 pt-14 pb-14">
       <h2 id="continue-learning-heading" className="text-2xl font-semibold text-slate-900 dark:text-white">
-        Continuar aprendiendo
+        {t.todayContinueLearning}
       </h2>
 
       {items.length === 0 ? (
@@ -35,15 +37,17 @@ export function ContinueLearningSection({ items, loading }: ContinueLearningSect
               <Compass className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-medium text-slate-900 dark:text-white">No tienes nada en progreso ahora mismo.</p>
-              <p className="text-sm text-slate-500 dark:text-white/50">Elige un curso para empezar.</p>
+              <p className="font-medium text-slate-900 dark:text-white">{t.todayNoInProcess}</p>
+              <p className="text-sm text-slate-500 dark:text-white/50">
+                {language === 'en' ? 'Choose a course to start.' : 'Elige un curso para empezar.'}
+              </p>
             </div>
           </div>
           <Link
             to="/capabilities"
             className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
           >
-            Ver mis cursos
+            {language === 'en' ? 'View my courses' : 'Ver mis cursos'}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Card>
@@ -67,7 +71,7 @@ export function ContinueLearningSection({ items, loading }: ContinueLearningSect
                       {item.subjectName}
                     </p>
                     <p className="mt-1 font-medium text-slate-900 dark:text-white">{item.capabilityName}</p>
-                    <p className="mt-1 text-sm text-brand-600 dark:text-brand-300">Continuar</p>
+                    <p className="mt-1 text-sm text-brand-600 dark:text-brand-300">{t.todayResume}</p>
                   </div>
                 </Card>
               </Link>

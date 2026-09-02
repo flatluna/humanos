@@ -19,6 +19,9 @@ export function AppSidebar() {
   const collapsed = useSidebarStore((state) => state.collapsed);
   const toggleSidebar = useSidebarStore((state) => state.toggle);
   const { user } = useAuth();
+  const studioUrl = user
+    ? `http://localhost:7071/api/humanos/studio-launch?oid=${encodeURIComponent(user.oid)}&tid=${encodeURIComponent(user.tid)}&email=${encodeURIComponent(user.email)}`
+    : CAPABILITY_STUDIO_URL;
 
   return (
     <aside
@@ -96,7 +99,7 @@ export function AppSidebar() {
             <ul className="mt-2 space-y-1">
               <li>
                 <a
-                  href={CAPABILITY_STUDIO_URL}
+                  href={studioUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white"

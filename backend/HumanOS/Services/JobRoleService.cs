@@ -16,11 +16,22 @@ public sealed class JobRoleService
 {
     private readonly HumanOsDbContext _dbContext;
     private readonly SkillService _skillService;
+    private readonly ResponsibilityService _responsibilityService;
+    private readonly CertificationService _certificationService;
+    private readonly ToolService _toolService;
 
-    public JobRoleService(HumanOsDbContext dbContext, SkillService skillService)
+    public JobRoleService(
+        HumanOsDbContext dbContext,
+        SkillService skillService,
+        ResponsibilityService responsibilityService,
+        CertificationService certificationService,
+        ToolService toolService)
     {
         _dbContext = dbContext;
         _skillService = skillService;
+        _responsibilityService = responsibilityService;
+        _certificationService = certificationService;
+        _toolService = toolService;
     }
 
     public async Task<IReadOnlyList<JobRoleResponse>> GetByTenantAsync(
@@ -34,29 +45,40 @@ public sealed class JobRoleService
 
         if (departmentId is Guid deptId)
         {
-            query = query.Where(r => r.DepartmentId == deptId);
+            query = query.Where(r => r.DepartmentJobRoles.Any(dj => dj.DepartmentId == deptId) || r.DepartmentId == deptId);
         }
 
         var roles = await query
             .Select(r => new
             {
                 Role = r,
-                DepartmentName = r.Department.Name,
+                DepartmentName = r.Department != null ? r.Department.Name : null,
                 PersonCount = _dbContext.People.Count(p => p.JobRoleId == r.JobRoleId),
                 ReportsToTitle = r.ReportsToJobRole != null ? r.ReportsToJobRole.Title : null,
                 HasDirectReports = _dbContext.JobRoles.Any(x => x.ReportsToJobRoleId == r.JobRoleId),
             })
-            .OrderBy(x => x.DepartmentName)
+            .OrderBy(x => x.DepartmentName ?? string.Empty)
             .ThenBy(x => x.Role.Title)
             .ToListAsync(cancellationToken);
 
+        var roleIds = roles.Select(x => x.Role.JobRoleId).ToList();
+
         var catalogByRole = await SkillService.GetCatalogNamesByRolesAsync(
-            _dbContext, roles.Select(x => x.Role.JobRoleId), cancellationToken);
+            _dbContext, roleIds, cancellationToken);
+        var responsibilitiesByRole = await ResponsibilityService.GetCatalogNamesByRolesAsync(
+            _dbContext, roleIds, cancellationToken);
+        var certificationsByRole = await CertificationService.GetCatalogNamesByRolesAsync(
+            _dbContext, roleIds, cancellationToken);
+        var toolsByRole = await ToolService.GetCatalogNamesByRolesAsync(
+            _dbContext, roleIds, cancellationToken);
 
         return roles
             .Select(x => ToResponse(
                 x.Role, x.DepartmentName, x.PersonCount, x.ReportsToTitle, x.HasDirectReports,
-                catalogByRole.GetValueOrDefault(x.Role.JobRoleId)))
+                catalogByRole.GetValueOrDefault(x.Role.JobRoleId),
+                responsibilitiesByRole.GetValueOrDefault(x.Role.JobRoleId),
+                certificationsByRole.GetValueOrDefault(x.Role.JobRoleId),
+                toolsByRole.GetValueOrDefault(x.Role.JobRoleId)))
             .ToList();
     }
 
@@ -82,7 +104,7 @@ public sealed class JobRoleService
             .Select(r => new
             {
                 Role = r,
-                DepartmentName = r.Department.Name,
+                DepartmentName = r.Department != null ? r.Department.Name : null,
                 PersonCount = _dbContext.People.Count(p => p.JobRoleId == r.JobRoleId),
                 ReportsToTitle = r.ReportsToJobRole != null ? r.ReportsToJobRole.Title : null,
                 HasDirectReports = _dbContext.JobRoles.Any(x => x.ReportsToJobRoleId == r.JobRoleId),
@@ -95,7 +117,11 @@ public sealed class JobRoleService
         }
 
         var catalog = await SkillService.GetCatalogNamesByCategoryAsync(_dbContext, row.Role.JobRoleId, cancellationToken);
-        return ToResponse(row.Role, row.DepartmentName, row.PersonCount, row.ReportsToTitle, row.HasDirectReports, catalog);
+        var responsibilities = await ResponsibilityService.GetCatalogNamesByRoleAsync(_dbContext, row.Role.JobRoleId, cancellationToken);
+        var certifications = await CertificationService.GetCatalogNamesByRoleAsync(_dbContext, row.Role.JobRoleId, cancellationToken);
+        var tools = await ToolService.GetCatalogNamesByRoleAsync(_dbContext, row.Role.JobRoleId, cancellationToken);
+
+        return ToResponse(row.Role, row.DepartmentName, row.PersonCount, row.ReportsToTitle, row.HasDirectReports, catalog, responsibilities, certifications, tools);
     }
 
     public async Task<JobRoleResponse> CreateAsync(
@@ -103,9 +129,13 @@ public sealed class JobRoleService
         SaveJobRoleRequest request,
         CancellationToken cancellationToken = default)
     {
-        var department = await _dbContext.Departments
-            .SingleOrDefaultAsync(d => d.DepartmentId == request.DepartmentId && d.TenantId == tenantId, cancellationToken)
-            ?? throw new InvalidOperationException($"Department {request.DepartmentId} does not belong to this tenant.");
+        string? departmentName = null;
+        if (request.DepartmentId.HasValue && request.DepartmentId.Value != Guid.Empty)
+        {
+            var dept = await _dbContext.Departments
+                .SingleOrDefaultAsync(d => d.DepartmentId == request.DepartmentId.Value && d.TenantId == tenantId, cancellationToken);
+            departmentName = dept?.Name;
+        }
 
         await ValidateReportsToAsync(tenantId, request.ReportsToJobRoleId, currentJobRoleId: null, cancellationToken);
 
@@ -121,12 +151,30 @@ public sealed class JobRoleService
         ApplyRequest(jobRole, request, now);
 
         _dbContext.JobRoles.Add(jobRole);
+
+        if (request.DepartmentId.HasValue && request.DepartmentId.Value != Guid.Empty)
+        {
+            _dbContext.DepartmentJobRoles.Add(new DepartmentJobRole
+            {
+                DepartmentId = request.DepartmentId.Value,
+                JobRoleId = jobRole.JobRoleId,
+                AssignedDate = now,
+            });
+        }
+
         await _skillService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
+        await _responsibilityService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
+        await _certificationService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
+        await _toolService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var reportsToTitle = await ResolveReportsToTitleAsync(jobRole.ReportsToJobRoleId, cancellationToken);
         var catalog = await SkillService.GetCatalogNamesByCategoryAsync(_dbContext, jobRole.JobRoleId, cancellationToken);
-        return ToResponse(jobRole, department.Name, personCount: 0, reportsToTitle, hasDirectReports: false, catalog);
+        var responsibilities = await ResponsibilityService.GetCatalogNamesByRoleAsync(_dbContext, jobRole.JobRoleId, cancellationToken);
+        var certifications = await CertificationService.GetCatalogNamesByRoleAsync(_dbContext, jobRole.JobRoleId, cancellationToken);
+        var tools = await ToolService.GetCatalogNamesByRoleAsync(_dbContext, jobRole.JobRoleId, cancellationToken);
+
+        return ToResponse(jobRole, departmentName, personCount: 0, reportsToTitle, hasDirectReports: false, catalog, responsibilities, certifications, tools);
     }
 
     public async Task<JobRoleResponse?> UpdateAsync(
@@ -142,23 +190,33 @@ public sealed class JobRoleService
             return null;
         }
 
-        var department = await _dbContext.Departments
-            .SingleOrDefaultAsync(d => d.DepartmentId == request.DepartmentId && d.TenantId == jobRole.TenantId, cancellationToken)
-            ?? throw new InvalidOperationException($"Department {request.DepartmentId} does not belong to this tenant.");
+        string? departmentName = null;
+        if (request.DepartmentId.HasValue && request.DepartmentId.Value != Guid.Empty)
+        {
+            var dept = await _dbContext.Departments
+                .SingleOrDefaultAsync(d => d.DepartmentId == request.DepartmentId.Value && d.TenantId == jobRole.TenantId, cancellationToken);
+            departmentName = dept?.Name;
+        }
 
         await ValidateReportsToAsync(jobRole.TenantId, request.ReportsToJobRoleId, currentJobRoleId: jobRoleId, cancellationToken);
 
         ApplyRequest(jobRole, request, DateTime.UtcNow);
 
         await _skillService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
+        await _responsibilityService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
+        await _certificationService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
+        await _toolService.ReconcileForJobRoleAsync(jobRole, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var personCount = await _dbContext.People.CountAsync(p => p.JobRoleId == jobRoleId, cancellationToken);
         var reportsToTitle = await ResolveReportsToTitleAsync(jobRole.ReportsToJobRoleId, cancellationToken);
         var hasDirectReports = await _dbContext.JobRoles.AnyAsync(r => r.ReportsToJobRoleId == jobRoleId, cancellationToken);
         var catalog = await SkillService.GetCatalogNamesByCategoryAsync(_dbContext, jobRoleId, cancellationToken);
+        var responsibilities = await ResponsibilityService.GetCatalogNamesByRoleAsync(_dbContext, jobRoleId, cancellationToken);
+        var certifications = await CertificationService.GetCatalogNamesByRoleAsync(_dbContext, jobRoleId, cancellationToken);
+        var tools = await ToolService.GetCatalogNamesByRoleAsync(_dbContext, jobRoleId, cancellationToken);
 
-        return ToResponse(jobRole, department.Name, personCount, reportsToTitle, hasDirectReports, catalog);
+        return ToResponse(jobRole, departmentName, personCount, reportsToTitle, hasDirectReports, catalog, responsibilities, certifications, tools);
     }
 
     /// <summary>Copies every editable field from the request onto the
@@ -267,13 +325,76 @@ public sealed class JobRoleService
         return true;
     }
 
+    /// <summary>Attaches a Job Role to a Department without modifying other departments it may belong to.</summary>
+    public async Task<bool> AttachToDepartmentAsync(
+        Guid departmentId,
+        Guid jobRoleId,
+        CancellationToken cancellationToken = default)
+    {
+        var exists = await _dbContext.DepartmentJobRoles
+            .AnyAsync(x => x.DepartmentId == departmentId && x.JobRoleId == jobRoleId, cancellationToken);
+
+        if (exists)
+        {
+            return true;
+        }
+
+        var deptExists = await _dbContext.Departments.AnyAsync(d => d.DepartmentId == departmentId, cancellationToken);
+        var roleExists = await _dbContext.JobRoles.AnyAsync(r => r.JobRoleId == jobRoleId, cancellationToken);
+
+        if (!deptExists || !roleExists)
+        {
+            return false;
+        }
+
+        _dbContext.DepartmentJobRoles.Add(new DepartmentJobRole
+        {
+            DepartmentId = departmentId,
+            JobRoleId = jobRoleId,
+            AssignedDate = DateTime.UtcNow,
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>Detaches a Job Role from a specific Department without deleting the Job Role entity.</summary>
+    public async Task<bool> DetachFromDepartmentAsync(
+        Guid departmentId,
+        Guid jobRoleId,
+        CancellationToken cancellationToken = default)
+    {
+        var links = await _dbContext.DepartmentJobRoles
+            .Where(x => x.DepartmentId == departmentId && x.JobRoleId == jobRoleId)
+            .ToListAsync(cancellationToken);
+
+        if (links.Count > 0)
+        {
+            _dbContext.DepartmentJobRoles.RemoveRange(links);
+        }
+
+        var role = await _dbContext.JobRoles
+            .SingleOrDefaultAsync(r => r.JobRoleId == jobRoleId, cancellationToken);
+
+        if (role != null && role.DepartmentId == departmentId)
+        {
+            role.DepartmentId = null;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static JobRoleResponse ToResponse(
         JobRole jobRole,
-        string departmentName,
+        string? departmentName,
         int personCount,
         string? reportsToTitle,
         bool hasDirectReports,
-        Dictionary<string, List<string>>? catalogByCategory = null) => new()
+        Dictionary<string, List<string>>? catalogByCategory = null,
+        List<string>? catalogResponsibilities = null,
+        List<string>? catalogCertifications = null,
+        List<string>? catalogTools = null) => new()
     {
         JobRoleId = jobRole.JobRoleId,
         TenantId = jobRole.TenantId,
@@ -283,10 +404,12 @@ public sealed class JobRoleService
         LevelLabel = jobRole.LevelLabel,
         Purpose = jobRole.Purpose,
         Summary = jobRole.Summary,
-        Responsibilities = JsonSerializer.Deserialize<List<string>>(jobRole.ResponsibilitiesJson) ?? [],
+        Responsibilities = ResponsibilityService.UnionWithCatalog(
+            JsonSerializer.Deserialize<List<string>>(jobRole.ResponsibilitiesJson) ?? [], catalogResponsibilities),
         RequiredExperience = jobRole.RequiredExperience,
         RequiredEducation = jobRole.RequiredEducation,
-        RequiredCertifications = JsonSerializer.Deserialize<List<string>>(jobRole.RequiredCertificationsJson) ?? [],
+        RequiredCertifications = CertificationService.UnionWithCatalog(
+            JsonSerializer.Deserialize<List<string>>(jobRole.RequiredCertificationsJson) ?? [], catalogCertifications),
         RequiredLanguages = JsonSerializer.Deserialize<List<string>>(jobRole.RequiredLanguagesJson) ?? [],
         TechnicalSkills = SkillService.UnionWithCatalog(
             JsonSerializer.Deserialize<List<string>>(jobRole.TechnicalSkillsJson) ?? [], catalogByCategory, "job-skills"),
@@ -296,7 +419,8 @@ public sealed class JobRoleService
             JsonSerializer.Deserialize<List<string>>(jobRole.DepartmentProcessesJson) ?? [], catalogByCategory, "department-processes"),
         HrProcesses = SkillService.UnionWithCatalog(
             JsonSerializer.Deserialize<List<string>>(jobRole.HrProcessesJson) ?? [], catalogByCategory, "hr-processes"),
-        Tools = JsonSerializer.Deserialize<List<string>>(jobRole.ToolsJson) ?? [],
+        Tools = ToolService.UnionWithCatalog(
+            JsonSerializer.Deserialize<List<string>>(jobRole.ToolsJson) ?? [], catalogTools),
         DailyActivities = JsonSerializer.Deserialize<List<string>>(jobRole.DailyActivitiesJson) ?? [],
         PerformanceIndicators = JsonSerializer.Deserialize<List<string>>(jobRole.PerformanceIndicatorsJson) ?? [],
         ExpectedOutcomes = JsonSerializer.Deserialize<List<string>>(jobRole.ExpectedOutcomesJson) ?? [],

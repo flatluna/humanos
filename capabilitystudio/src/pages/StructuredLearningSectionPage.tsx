@@ -1482,6 +1482,17 @@ function VideoGenerationBox({
 
   async function handleWizardGeneratePrompts() {
     if (!wizardObjective.trim() || !wizardVideoDescription.trim() || !wizardEnvironment.trim()) return;
+    // Guard (2026-08-30 fix): if the reviewer picked upload/ai/edit but the
+    // image hasn't actually arrived yet (still generating, or they forgot
+    // to click "Generate image"/"Edit image with AI" first), silently
+    // proceeding here would capture wizardChainImage as null below —
+    // permanently losing the intended anchor for the WHOLE clip sequence,
+    // so every clip falls back to pure text-to-video instead of using the
+    // requested image.
+    if (wizardImageMode !== 'none' && !wizardImage) {
+      setWizardError('Please generate/upload the starting image first (or switch to "No image") before generating the prompt sequence.');
+      return;
+    }
     setWizardGeneratingPrompts(true);
     setWizardError(null);
     try {
@@ -1493,7 +1504,7 @@ function VideoGenerationBox({
       );
       setWizardPrompts(result.RecommendedPrompts);
       setWizardActiveClip(0);
-      setWizardChainImage(wizardImage ? { base64: wizardImage.base64, contentType: wizardImage.contentType } : null);
+      setWizardChainImage(wizardImageMode !== 'none' && wizardImage ? { base64: wizardImage.base64, contentType: wizardImage.contentType } : null);
     } catch (err) {
       setWizardError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2118,7 +2129,7 @@ function VideoGenerationBox({
             <button
               type="button"
               onClick={handleWizardGeneratePrompts}
-              disabled={wizardGeneratingPrompts || !wizardObjective.trim() || !wizardVideoDescription.trim() || !wizardEnvironment.trim()}
+              disabled={wizardGeneratingPrompts || wizardGeneratingImage || !wizardObjective.trim() || !wizardVideoDescription.trim() || !wizardEnvironment.trim()}
               className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
               {wizardGeneratingPrompts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
@@ -2685,7 +2696,7 @@ function DeepDiveQuiz({
   sectionId,
   stepId,
   stepDataJson,
-  mode,
+  mode: _mode,
   onComplete,
 }: {
   sectionId: string;

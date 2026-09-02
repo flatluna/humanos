@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, Briefcase, Users, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { getDepartments, getJobRoles, getTenantPeople } from '@/api/orgStructureApi';
 
 export function OverviewPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const tenantId = user!.tenantId;
 
@@ -22,7 +24,7 @@ export function OverviewPage() {
 
   const cards = [
     {
-      label: 'Departamentos / Áreas',
+      label: t('overview.cards.departments'),
       value: departmentsQuery.data?.length,
       icon: Building2,
       href: '/organizacion',
@@ -30,7 +32,7 @@ export function OverviewPage() {
       bar: 'from-violet-500 to-violet-400',
     },
     {
-      label: 'Roles y Puestos',
+      label: t('overview.cards.roles'),
       value: jobRolesQuery.data?.length,
       icon: Briefcase,
       href: '/roles',
@@ -38,31 +40,33 @@ export function OverviewPage() {
       bar: 'from-amber-500 to-amber-400',
     },
     {
-      label: 'Personas',
+      label: t('overview.cards.people'),
       value: peopleQuery.data?.length,
       icon: Users,
-      href: '/roles',
+      href: '/personal',
       chip: 'bg-brand-100 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300',
       bar: 'from-brand-600 to-brand-400',
     },
     {
-      label: 'Sin Puesto asignado',
+      label: t('overview.cards.unassigned'),
       value: peopleQuery.data?.filter((p) => !p.jobRoleId).length,
       icon: ShieldCheck,
-      href: '/roles',
+      href: '/personal',
       chip: 'bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
       bar: 'from-rose-500 to-rose-400',
     },
   ] as const;
 
+  const upcomingItems = t('overview.upcomingItems', { returnObjects: true }) as string[];
+
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
-          Hola, {user?.name?.split(' ')[0]} 👋
+          {t('overview.greeting', { name: user?.name?.split(' ')[0] ?? '' })}
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
-          Este es el estado de capacitación de {user?.tenantName ?? 'tu organización'}.
+          {t('overview.subtitle', { tenant: user?.tenantName ?? t('overview.defaultTenant') })}
         </p>
       </div>
 
@@ -86,12 +90,10 @@ export function OverviewPage() {
       </div>
 
       <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 dark:border-white/10 dark:from-white/5 dark:to-white/[0.02]">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Próximamente en esta consola</h2>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{t('overview.upcomingTitle')}</h2>
         <ul className="mt-3 space-y-2 text-sm text-slate-500 dark:text-white/50">
-          <li>• Requisitos de capacitación y certificaciones por Rol (Role ↔ Capability).</li>
-          <li>• Rutas de carrera y criterios de promoción entre Roles.</li>
-          <li>• Reportes de brechas de capacidad por equipo/departamento.</li>
-          <li>• Catálogo privado de la empresa en Capability Studio.</li>
+          {Array.isArray(upcomingItems) &&
+            upcomingItems.map((item, idx) => <li key={idx}>• {item}</li>)}
         </ul>
       </div>
     </div>

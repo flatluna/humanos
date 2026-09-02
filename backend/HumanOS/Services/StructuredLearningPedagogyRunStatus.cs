@@ -17,6 +17,14 @@ public sealed class StructuredLearningPedagogyRunStatus
 {
     public Guid RunId { get; set; }
 
+    /// <summary>The document this run belongs to — set on every status so
+    /// a caller with no other context (e.g. the global "active run" banner,
+    /// which never saw this run's own RunId) can still link back to the
+    /// right document (2026-08-30).</summary>
+    public Guid DocumentId { get; set; }
+
+    public string? DocumentName { get; set; }
+
     public StructuredLearningPedagogyStage Stage { get; set; }
 
     public string CurrentStepDescription { get; set; } = string.Empty;
@@ -35,9 +43,11 @@ public sealed class StructuredLearningPedagogyRunStatus
     public StructuredLearningPedagogyResult? Result { get; set; }
 
     public static StructuredLearningPedagogyRunStatus Running(
-        Guid runId, string step, int? totalSections, int? completedSections, IReadOnlyList<string>? activeSectionTitles) => new()
+        Guid runId, Guid documentId, string? documentName, string step, int? totalSections, int? completedSections, IReadOnlyList<string>? activeSectionTitles) => new()
     {
         RunId = runId,
+        DocumentId = documentId,
+        DocumentName = documentName,
         Stage = StructuredLearningPedagogyStage.Running,
         CurrentStepDescription = step,
         TotalSections = totalSections,
@@ -45,16 +55,18 @@ public sealed class StructuredLearningPedagogyRunStatus
         ActiveSectionTitles = activeSectionTitles
     };
 
-    public static StructuredLearningPedagogyRunStatus Failed(Guid runId, string error) => new()
+    public static StructuredLearningPedagogyRunStatus Failed(Guid runId, Guid documentId, string error) => new()
     {
         RunId = runId,
+        DocumentId = documentId,
         Stage = StructuredLearningPedagogyStage.Failed,
         ErrorMessage = error
     };
 
-    public static StructuredLearningPedagogyRunStatus Completed(Guid runId, StructuredLearningPedagogyResult result) => new()
+    public static StructuredLearningPedagogyRunStatus Completed(Guid runId, Guid documentId, StructuredLearningPedagogyResult result) => new()
     {
         RunId = runId,
+        DocumentId = documentId,
         Stage = StructuredLearningPedagogyStage.Completed,
         CurrentStepDescription = "Completed",
         TotalSections = result.SectionsCompleted + result.SectionsFailed,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X, Loader2, Sparkles, Building2, Award, GraduationCap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   addStructuredLearningDocumentToProgram,
@@ -11,12 +11,17 @@ import {
   updateStructuredLearningDocumentName,
   removeStructuredLearningDocumentFromProgram,
   updateStructuredLearningVisibility,
+  startStructuredLearningPedagogy,
+  getActiveStructuredLearningPedagogyRun,
   type StructuredLearningDocumentDetail,
   type StructuredLearningDocumentProgramMembership,
+  type StructuredLearningPedagogyRunStatus,
 } from '../lib/api/structuredLearningApi';
 import { getPrograms, type BackendProgram } from '../lib/api/programsApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getStructuredLearningTopics, type StructuredLearningTopic } from '../lib/api/structuredLearningTopicsApi';
+import { getSkills, type SkillDto } from '../lib/api/skillsApi';
+import SearchableCombobox from '../components/SearchableCombobox';
 import { DEFAULT_STUDIO_TENANT_ID } from '../lib/api/pdfPipelineApi';
 import { useAuth } from '../auth/AuthContext';
 import { apiImageUrl } from '../lib/api/httpClient';
@@ -44,13 +49,26 @@ export default function StructuredLearningDocumentDetailPage() {
   const [visibility, setVisibility] = useState({ isGlobal: false, isPublished: false, showKnowledgeGraphToLearners: true });
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState('');
+  const [classificationType, setClassificationType] = useState<'enterprise' | 'academic'>('enterprise');
+  const [selectedCategory, setSelectedCategory] = useState<string>('job-skills');
+  const [selectedTargetSkill, setSelectedTargetSkill] = useState<string>('');
+  const [allCompanySkills, setAllCompanySkills] = useState<SkillDto[]>([]);
   const [classificationBusy, setClassificationBusy] = useState(false);
   const [classificationMessage, setClassificationMessage] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [titleSaving, setTitleSaving] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
+  // Pedagogy generation resume (2026-08-30) — lets a designer who lost the
+  // original run's page (or whose func host restarted mid-run, orphaning any
+  // in-flight sections) find their way back and continue where it left off,
+  // instead of the document being silently stuck forever with no visible way
+  // to finish it. Polls the SAME active-run endpoint the global banner uses.
+  const [pedagogyRun, setPedagogyRun] = useState<StructuredLearningPedagogyRunStatus | null>(null);
+  const [pedagogyStarting, setPedagogyStarting] = useState(false);
+  const [pedagogyError, setPedagogyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!documentId) {
@@ -68,18 +86,28 @@ export default function StructuredLearningDocumentDetailPage() {
       getProgramsForStructuredLearningDocument(documentId),
       getPrograms(),
       getSubjects(),
+      getSkills(effectiveTenantId).catch(() => []),
     ])
-      .then(([detail, currentMemberships, allPrograms, allSubjects]) => {
+      .then(([detail, currentMemberships, allPrograms, allSubjects, companySkills]) => {
         if (cancelled) return;
         setDocument(detail);
         setVisibility({ isGlobal: detail.IsGlobal, isPublished: detail.IsPublished, showKnowledgeGraphToLearners: detail.ShowKnowledgeGraphToLearners });
         setMemberships(currentMemberships);
         setPrograms(allPrograms);
         setSubjects(allSubjects);
+        setAllCompanySkills(companySkills);
+
+        const isEnterprise = !!(detail.Category || detail.TargetSkill);
+        setClassificationType(isEnterprise ? 'enterprise' : 'academic');
+        setSelectedCategory(detail.Category || 'job-skills');
+        setSelectedTargetSkill(detail.TargetSkill || '');
+
+        const initialSubjectId = detail.SubjectId ?? '';
+        setSelectedSubjectId(initialSubjectId);
         setSelectedTopicId(detail.TopicId ?? '');
-        if (detail.SubjectId) {
-          getStructuredLearningTopics(effectiveTenantId, detail.SubjectId).then(setTopics).catch(() => setTopics([]));
-        }
+        getStructuredLearningTopics(effectiveTenantId, initialSubjectId || undefined)
+          .then(setTopics)
+          .catch(() => setTopics([]));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load this document.');
@@ -92,6 +120,45 @@ export default function StructuredLearningDocumentDetailPage() {
       cancelled = true;
     };
   }, [documentId]);
+
+  useEffect(() => {
+    if (!documentId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function poll() {
+      const run = await getActiveStructuredLearningPedagogyRun().catch(() => null);
+      if (cancelled) return;
+      const belongsToThisDocument = run?.DocumentId === documentId;
+      setPedagogyRun(belongsToThisDocument ? run : null);
+      if (belongsToThisDocument && run?.Stage === 'Running') {
+        timer = setTimeout(poll, 3000);
+      } else if (belongsToThisDocument && run?.Stage === 'Completed' && documentId) {
+        // Refresh section statuses once the run this page was watching finishes.
+        getStructuredLearningDocument(documentId).then((detail) => { if (!cancelled) setDocument(detail); }).catch(() => {});
+      }
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [documentId]);
+
+  async function handleResumePedagogy() {
+    if (!documentId || pedagogyStarting) return;
+    setPedagogyStarting(true);
+    setPedagogyError(null);
+    try {
+      const run = await startStructuredLearningPedagogy(documentId);
+      setPedagogyRun(run);
+    } catch (err) {
+      setPedagogyError(err instanceof Error ? err.message : 'Could not start pedagogy generation.');
+    } finally {
+      setPedagogyStarting(false);
+    }
+  }
 
   async function handleSaveVisibility() {
     if (!documentId || visibilityBusy) return;
@@ -108,16 +175,41 @@ export default function StructuredLearningDocumentDetailPage() {
     }
   }
 
+  function handleSubjectChange(newSubjectId: string) {
+    setSelectedSubjectId(newSubjectId);
+    setSelectedTopicId('');
+    getStructuredLearningTopics(effectiveTenantId, newSubjectId || undefined)
+      .then(setTopics)
+      .catch(() => setTopics([]));
+  }
+
   async function handleSaveClassification() {
     if (!documentId || classificationBusy) return;
     setClassificationBusy(true);
     setClassificationMessage(null);
     try {
-      const saved = await updateStructuredLearningClassification(documentId, selectedTopicId || null);
-      setDocument((current) => current ? { ...current, TopicId: saved.TopicId } : current);
-      setClassificationMessage('Tipo de dominio actualizado.');
+      const isEnterprise = classificationType === 'enterprise';
+      const saved = await updateStructuredLearningClassification(
+        documentId,
+        isEnterprise ? null : (selectedSubjectId || null),
+        isEnterprise ? null : (selectedTopicId || null),
+        isEnterprise ? (selectedCategory || null) : null,
+        isEnterprise ? (selectedTargetSkill.trim() || null) : null,
+      );
+      setDocument((current) =>
+        current
+          ? {
+              ...current,
+              SubjectId: saved.SubjectId,
+              TopicId: saved.TopicId,
+              Category: saved.Category,
+              TargetSkill: saved.TargetSkill,
+            }
+          : current,
+      );
+      setClassificationMessage(t('structuredLearningDetail.classificationSuccess'));
     } catch (err) {
-      setClassificationMessage(err instanceof Error ? `No se pudo actualizar el tipo de dominio: ${err.message}` : 'No se pudo actualizar el tipo de dominio.');
+      setClassificationMessage(err instanceof Error ? err.message : t('structuredLearningDetail.classificationError'));
     } finally {
       setClassificationBusy(false);
     }
@@ -134,7 +226,7 @@ export default function StructuredLearningDocumentDetailPage() {
     if (!documentId || titleSaving) return;
     const trimmed = titleDraft.trim();
     if (!trimmed) {
-      setTitleError('El título no puede estar vacío.');
+      setTitleError(t('structuredLearningDetail.titleEmptyError'));
       return;
     }
     setTitleSaving(true);
@@ -144,7 +236,7 @@ export default function StructuredLearningDocumentDetailPage() {
       setDocument((current) => current ? { ...current, DocumentName: saved.DocumentName } : current);
       setEditingTitle(false);
     } catch (err) {
-      setTitleError(err instanceof Error ? err.message : 'No se pudo actualizar el título.');
+      setTitleError(err instanceof Error ? err.message : t('structuredLearningDetail.titleUpdateError'));
     } finally {
       setTitleSaving(false);
     }
@@ -213,8 +305,9 @@ export default function StructuredLearningDocumentDetailPage() {
   }
 
   const createdDate = new Date().toLocaleDateString();
-  const subjectName = subjects.find((subject) => subject.SubjectId === document.SubjectId)?.Name ?? 'No asignado';
-  const topicName = topics.find((topic) => topic.StructuredLearningTopicId === document.TopicId)?.Name ?? 'No asignado';
+  const subjectName = subjects.find((subject) => subject.SubjectId === document.SubjectId)?.Name ?? t('structuredLearningDetail.unassigned');
+  const topicName = topics.find((topic) => topic.StructuredLearningTopicId === document.TopicId)?.Name ?? t('structuredLearningDetail.unassigned');
+  const isEnterpriseCourse = !!(document.TargetSkill || document.Category);
 
   return (
     <div>
@@ -264,39 +357,210 @@ export default function StructuredLearningDocumentDetailPage() {
 
       <div className="mx-auto max-w-7xl px-6 py-10">
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <InfoCard icon={BookOpen} label="Dominio" value={subjectName} />
-          <InfoCard icon={Layers} label="Tipo de dominio" value={topicName} />
+          {isEnterpriseCourse ? (
+            <>
+              <InfoCard icon={Building2} label={t('structuredLearningDetail.skillLabel')} value={document.TargetSkill || t('structuredLearningDetail.unassigned')} />
+              <InfoCard icon={Award} label={t('structuredLearningDetail.skillCategoryLabel')} value={getCategoryLabel(document.Category, t) || t('structuredLearningDetail.unassigned')} />
+            </>
+          ) : (
+            <>
+              <InfoCard icon={BookOpen} label={t('structuredLearningDetail.domainLabel')} value={subjectName} />
+              <InfoCard icon={Layers} label={t('structuredLearningDetail.domainTypeLabel')} value={topicName} />
+            </>
+          )}
           <InfoCard icon={Layers} label="Sections" value={document.Sections.length} />
           <InfoCard icon={BookOpen} label="Mode" value="Structured learning" />
           <InfoCard icon={Calendar} label="Created" value={createdDate} />
         </div>
 
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <h3 className="text-lg font-semibold text-white">Clasificación del curso</h3>
-          <p className="mt-1 text-sm text-slate-400">Cambia el tipo del dominio temático al que pertenece este curso.</p>
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="min-w-64 flex-1 text-sm text-slate-300">
-              Tipo de dominio
-              <select
-                value={selectedTopicId}
-                onChange={(event) => setSelectedTopicId(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
-              >
-                <option value="">No asignado</option>
-                {topics.map((topic) => <option key={topic.StructuredLearningTopicId} value={topic.StructuredLearningTopicId}>{topic.Name}</option>)}
-              </select>
-            </label>
+          <h3 className="text-lg font-semibold text-white">{t('structuredLearningDetail.classificationTitle')}</h3>
+          <p className="mt-1 text-sm text-slate-400">{t('structuredLearningDetail.classificationSubtitle')}</p>
+
+          {/* Mode Switch Cards */}
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setClassificationType('enterprise')}
+              className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
+                classificationType === 'enterprise'
+                  ? 'border-brand-400 bg-brand-500/10 text-white shadow-lg shadow-brand-500/10'
+                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/20 text-brand-300">
+                <Building2 className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">{t('newStructuredLearning.enterpriseCourseTitle')}</p>
+                <p className="mt-0.5 text-xs text-slate-400">{t('newStructuredLearning.enterpriseCourseDesc')}</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setClassificationType('academic')}
+              className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
+                classificationType === 'academic'
+                  ? 'border-cyan-400 bg-cyan-500/10 text-white shadow-lg shadow-cyan-500/10'
+                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-300">
+                <GraduationCap className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">{t('newStructuredLearning.academicCourseTitle')}</p>
+                <p className="mt-0.5 text-xs text-slate-400">{t('newStructuredLearning.academicCourseDesc')}</p>
+              </div>
+            </button>
+          </div>
+
+          {/* ENTERPRISE CLASSIFICATION FORM */}
+          {classificationType === 'enterprise' && (
+            <div className="mt-5 space-y-4 rounded-xl border border-brand-500/20 bg-brand-500/[0.03] p-4">
+              <div>
+                <label className="mb-2 block text-xs font-medium text-slate-400">{t('newStructuredLearning.filterSkillsLabel')}</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'job-skills', label: t('newStructuredLearning.categoryFilterTechnical') },
+                    { id: 'soft-skills', label: t('newStructuredLearning.categoryFilterSoft') },
+                    { id: 'department-processes', label: t('newStructuredLearning.categoryFilterDept') },
+                    { id: 'hr-processes', label: t('newStructuredLearning.categoryFilterHR') },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        selectedCategory === cat.id
+                          ? 'bg-brand-500/20 text-brand-300 border border-brand-400/40'
+                          : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-300">
+                  {t('newStructuredLearning.companyCatalogSkillLabel')}
+                </label>
+                <SearchableCombobox
+                  value={selectedTargetSkill}
+                  onChange={(val) => setSelectedTargetSkill(val)}
+                  onSelect={(option) => {
+                    const skill = allCompanySkills.find((s) => s.SkillId === option.id || s.Name === option.label);
+                    if (skill) {
+                      setSelectedTargetSkill(skill.Name);
+                      setSelectedCategory(skill.Category);
+                    }
+                  }}
+                  options={allCompanySkills
+                    .filter((s) => !selectedCategory || s.Category === selectedCategory)
+                    .map((s) => ({
+                      id: s.SkillId,
+                      label: s.Name,
+                      meta: getCategoryBadgeText(s.Category),
+                    }))}
+                  placeholder={t('newStructuredLearning.companyCatalogSkillPlaceholder')}
+                  emptyOptionsText={t('newStructuredLearning.companyCatalogSkillEmpty')}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs font-medium text-emerald-400">
+                <Check className="h-4 w-4" />
+                <span>{t('newStructuredLearning.domainSubjectNotRequired')}</span>
+              </div>
+            </div>
+          )}
+
+          {/* ACADEMIC CLASSIFICATION FORM */}
+          {classificationType === 'academic' && (
+            <div className="mt-5 flex flex-wrap items-end gap-3">
+              <label className="min-w-64 flex-1 text-sm text-slate-300">
+                {t('structuredLearningDetail.domainSubjectLabel')}
+                <select
+                  value={selectedSubjectId}
+                  onChange={(event) => handleSubjectChange(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                >
+                  <option value="">{t('structuredLearningDetail.unassigned')}</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.SubjectId} value={subject.SubjectId}>
+                      {subject.Name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-64 flex-1 text-sm text-slate-300">
+                {t('structuredLearningDetail.domainTypeLabel')}
+                <select
+                  value={selectedTopicId}
+                  onChange={(event) => setSelectedTopicId(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                >
+                  <option value="">{t('structuredLearningDetail.unassigned')}</option>
+                  {topics.map((topic) => (
+                    <option key={topic.StructuredLearningTopicId} value={topic.StructuredLearningTopicId}>
+                      {topic.Name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          <div className="mt-5 flex items-center gap-3">
             <button
               type="button"
               onClick={handleSaveClassification}
               disabled={classificationBusy}
               className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {classificationBusy ? 'Actualizando...' : 'Actualizar'}
+              {classificationBusy ? t('structuredLearningDetail.updating') : t('structuredLearningDetail.update')}
             </button>
+            {classificationMessage && <span className="text-sm text-slate-300">{classificationMessage}</span>}
           </div>
-          {classificationMessage && <p className="mt-3 text-sm text-slate-300">{classificationMessage}</p>}
         </div>
+
+        {(() => {
+          const totalSections = document.Sections.length;
+          const pendingSections = document.Sections.filter((s) => s.PedagogyStatus !== 'Completed').length;
+          const isRunningHere = pedagogyRun?.Stage === 'Running';
+          if (isRunningHere) {
+            return (
+              <div className="mt-8 flex items-center gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
+                <Loader2 className="h-4 w-4 flex-none animate-spin" />
+                <span>
+                  Generating pedagogy… {pedagogyRun?.CompletedSections ?? 0}/{pedagogyRun?.TotalSections ?? '?'} remaining sections done
+                </span>
+              </div>
+            );
+          }
+          if (totalSections > 0 && pendingSections > 0) {
+            return (
+              <div className="mt-8 flex flex-wrap items-center gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-100">
+                <span>
+                  {pendingSections} of {totalSections} sections still need pedagogy content.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResumePedagogy}
+                  disabled={pedagogyStarting}
+                  className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {pedagogyStarting ? 'Starting…' : 'Continue generating'}
+                </button>
+                {pedagogyError && <span className="text-red-300">{pedagogyError}</span>}
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         <div className="mt-8 flex flex-wrap gap-3">
           <button
@@ -471,6 +735,37 @@ export default function StructuredLearningDocumentDetailPage() {
       )}
     </div>
   );
+}
+
+function getCategoryBadgeText(category: string): string {
+  switch (category) {
+    case 'job-skills':
+      return 'Técnica';
+    case 'soft-skills':
+      return 'Blanda';
+    case 'department-processes':
+      return 'Proceso Dpto';
+    case 'hr-processes':
+      return 'Proceso RRHH';
+    default:
+      return category;
+  }
+}
+
+function getCategoryLabel(category: string | null | undefined, t: (key: string) => string): string {
+  if (!category) return '';
+  switch (category) {
+    case 'job-skills':
+      return t('newStructuredLearning.categoryFilterTechnical');
+    case 'soft-skills':
+      return t('newStructuredLearning.categoryFilterSoft');
+    case 'department-processes':
+      return t('newStructuredLearning.categoryFilterDept');
+    case 'hr-processes':
+      return t('newStructuredLearning.categoryFilterHR');
+    default:
+      return category;
+  }
 }
 
 function InfoCard({ icon: Icon, label, value }: { icon: typeof Layers; label: string; value: string | number }) {

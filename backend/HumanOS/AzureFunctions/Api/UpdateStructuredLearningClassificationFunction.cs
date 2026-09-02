@@ -18,7 +18,10 @@ public sealed class UpdateStructuredLearningClassificationFunction
 
     public sealed class UpdateRequest
     {
+        public Guid? SubjectId { get; set; }
         public Guid? TopicId { get; set; }
+        public string? Category { get; set; }
+        public string? TargetSkill { get; set; }
     }
 
     [Function("UpdateStructuredLearningClassification")]
@@ -43,12 +46,15 @@ public sealed class UpdateStructuredLearningClassificationFunction
                 "The requested structured learning document was not found.", cancellationToken);
         }
 
+        document.SubjectId = body.SubjectId;
         document.TopicId = body.TopicId;
+        document.Category = body.Category;
+        document.TargetSkill = body.TargetSkill;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return await FunctionResponseFactory.SuccessResponseAsync(
             request,
-            new { document.StructuredLearningDocumentId, document.TopicId },
+            new { document.StructuredLearningDocumentId, document.SubjectId, document.TopicId, document.Category, document.TargetSkill },
             cancellationToken: cancellationToken);
     }
 }

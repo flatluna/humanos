@@ -17,17 +17,20 @@ public sealed class PersonCareerPlanService
     private readonly CareerDevelopmentPlanAgent _agent;
     private readonly GrowthPlanService _growthPlanService;
     private readonly CapabilityEnrollmentService _capabilityEnrollmentService;
+    private readonly StructuredLearningDocumentEnrollmentService _structuredLearningEnrollmentService;
 
     public PersonCareerPlanService(
         HumanOsDbContext dbContext,
         CareerDevelopmentPlanAgent agent,
         GrowthPlanService growthPlanService,
-        CapabilityEnrollmentService capabilityEnrollmentService)
+        CapabilityEnrollmentService capabilityEnrollmentService,
+        StructuredLearningDocumentEnrollmentService structuredLearningEnrollmentService)
     {
         _dbContext = dbContext;
         _agent = agent;
         _growthPlanService = growthPlanService;
         _capabilityEnrollmentService = capabilityEnrollmentService;
+        _structuredLearningEnrollmentService = structuredLearningEnrollmentService;
     }
 
     /// <summary>Never returns null — a person with no plan yet gets
@@ -264,6 +267,18 @@ public sealed class PersonCareerPlanService
             return;
         }
 
+        static string Normalize(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+            return System.Text.RegularExpressions.Regex.Replace(s.Trim(), @"\s+", " ");
+        }
+
+        var structuredDocuments = await _dbContext.StructuredLearningDocuments
+            .AsNoTracking()
+            .Select(d => new { d.StructuredLearningDocumentId, Name = d.DocumentName, d.Category, d.TargetSkill })
+            .ToListAsync(cancellationToken);
+        var activeStructuredDocIds = structuredDocuments.Select(d => d.StructuredLearningDocumentId).ToHashSet();
+
         var activeCapabilities = await _dbContext.Capabilities
             .AsNoTracking()
             .Where(c => c.IsActive)
@@ -277,7 +292,9 @@ public sealed class PersonCareerPlanService
         {
             foreach (var step in steps)
             {
-                if (step.MatchedCapabilityId is not null && !activeCapabilityIds.Contains(step.MatchedCapabilityId.Value))
+                if (step.MatchedCapabilityId is not null
+                    && !activeCapabilityIds.Contains(step.MatchedCapabilityId.Value)
+                    && !activeStructuredDocIds.Contains(step.MatchedCapabilityId.Value))
                 {
                     step.MatchedCapabilityId = null;
                     step.MatchedCapabilityName = null;
@@ -289,15 +306,40 @@ public sealed class PersonCareerPlanService
                     continue;
                 }
 
+                var stepSkillNorm = Normalize(step.Skill);
+                var stepTitleNorm = Normalize(step.Title);
+
+                // 1. Check Structured Learning Documents
+                var explicitDoc = structuredDocuments.FirstOrDefault(
+                    d => d.TargetSkill is not null
+                        && (d.Category is null || d.Category == category)
+                        && string.Equals(Normalize(d.TargetSkill), stepSkillNorm, StringComparison.OrdinalIgnoreCase));
+
+                var docMatch = explicitDoc ?? structuredDocuments.FirstOrDefault(
+                    d => (d.Category is null || d.Category == category)
+                        && (string.Equals(Normalize(d.Name), stepSkillNorm, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(Normalize(d.Name), stepTitleNorm, StringComparison.OrdinalIgnoreCase)));
+
+                if (docMatch is not null)
+                {
+                    step.MatchedCapabilityId = docMatch.StructuredLearningDocumentId;
+                    step.MatchedCapabilityName = docMatch.Name;
+                    changed = true;
+
+                    await _structuredLearningEnrollmentService.EnrollAsync(personId, docMatch.StructuredLearningDocumentId, cancellationToken);
+                    continue;
+                }
+
+                // 2. Check Capability Graph
                 var explicitMatch = activeCapabilities.FirstOrDefault(
                     c => c.TargetSkill is not null
                         && (c.Category is null || c.Category == category)
-                        && string.Equals(c.TargetSkill.Trim(), step.Skill.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(Normalize(c.TargetSkill), stepSkillNorm, StringComparison.OrdinalIgnoreCase)
                         && (c.TargetJobRoleId is null || c.TargetJobRoleId == plan.JobRoleId));
 
                 var match = explicitMatch ?? activeCapabilities.FirstOrDefault(
                     c => (c.Category is null || c.Category == category)
-                        && string.Equals(c.Name.Trim(), step.Title.Trim(), StringComparison.OrdinalIgnoreCase));
+                        && string.Equals(Normalize(c.Name), stepTitleNorm, StringComparison.OrdinalIgnoreCase));
 
                 if (match is null)
                 {
@@ -391,11 +433,25 @@ public sealed class PersonCareerPlanService
             var enrolledCapabilities = await _capabilityEnrollmentService.GetEnrolledCapabilitiesAsync(personId, cancellationToken);
             var statusByCapabilityId = enrolledCapabilities.ToDictionary(c => c.CapabilityId, DeriveCapabilityStatus);
 
+            var enrolledStructuredDocs = await _structuredLearningEnrollmentService.GetEnrolledDocumentsAsync(personId, cancellationToken);
+            var enrolledDocIds = enrolledStructuredDocs.Select(d => d.StructuredLearningDocumentId).ToHashSet();
+
             foreach (var step in allSteps)
             {
-                if (step.MatchedCapabilityId.HasValue && statusByCapabilityId.TryGetValue(step.MatchedCapabilityId.Value, out var status))
+                if (step.MatchedCapabilityId.HasValue)
                 {
-                    step.TrainingStatus = status;
+                    if (statusByCapabilityId.TryGetValue(step.MatchedCapabilityId.Value, out var status))
+                    {
+                        step.TrainingStatus = status;
+                    }
+                    else if (enrolledDocIds.Contains(step.MatchedCapabilityId.Value))
+                    {
+                        // Enrolled in structured learning document
+                        if (step.TrainingStatus == "Pending")
+                        {
+                            step.TrainingStatus = "InProgress";
+                        }
+                    }
                 }
             }
         }

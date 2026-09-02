@@ -33,6 +33,10 @@ public sealed class Skill
 
     public bool IsActive { get; set; } = true;
 
+    public string? DocumentStoragePath { get; set; }
+
+    public string? DocumentFileName { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }

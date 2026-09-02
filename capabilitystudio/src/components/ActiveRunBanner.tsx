@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { getActiveCapabilityGraphRun, type PdfCapabilityGraphRunStatus } from '../lib/api/pdfPipelineApi';
 import { getActiveTraditionalCourseRun, type TraditionalCourseRunStatus } from '../lib/api/traditionalCourseApi';
+import { getActiveStructuredLearningPedagogyRun, type StructuredLearningPedagogyRunStatus } from '../lib/api/structuredLearningApi';
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -22,19 +23,22 @@ export default function ActiveRunBanner() {
   const location = useLocation();
   const [activeGraphRun, setActiveGraphRun] = useState<PdfCapabilityGraphRunStatus | null>(null);
   const [activeTraditionalRun, setActiveTraditionalRun] = useState<TraditionalCourseRunStatus | null>(null);
+  const [activeStructuredLearningRun, setActiveStructuredLearningRun] = useState<StructuredLearningPedagogyRunStatus | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     let cancelled = false;
 
     async function poll() {
-      const [graphRun, traditionalRun] = await Promise.all([
+      const [graphRun, traditionalRun, structuredLearningRun] = await Promise.all([
         getActiveCapabilityGraphRun().catch(() => null),
         getActiveTraditionalCourseRun().catch(() => null),
+        getActiveStructuredLearningPedagogyRun().catch(() => null),
       ]);
       if (!cancelled) {
         setActiveGraphRun(graphRun);
         setActiveTraditionalRun(traditionalRun);
+        setActiveStructuredLearningRun(structuredLearningRun);
         timerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
       }
     }
@@ -49,8 +53,10 @@ export default function ActiveRunBanner() {
   const showGraphBanner = activeGraphRun && location.pathname !== `/runs/${activeGraphRun.RunId}`;
   const showTraditionalBanner =
     activeTraditionalRun && location.pathname !== `/traditional-runs/${activeTraditionalRun.RunId}`;
+  const showStructuredLearningBanner =
+    activeStructuredLearningRun && location.pathname !== `/structured-learning/${activeStructuredLearningRun.DocumentId}`;
 
-  if (!showGraphBanner && !showTraditionalBanner) {
+  if (!showGraphBanner && !showTraditionalBanner && !showStructuredLearningBanner) {
     return null;
   }
 
@@ -85,6 +91,29 @@ export default function ActiveRunBanner() {
             </div>
             <Link
               to={`/traditional-runs/${activeTraditionalRun.RunId}`}
+              className="flex flex-none items-center gap-1 font-medium text-brand-300 hover:text-brand-200"
+            >
+              {t('activeRunBanner.viewProgress')} <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      )}
+      {showStructuredLearningBanner && activeStructuredLearningRun && (
+        <div className="border-b border-emerald-500/20 bg-emerald-500/10">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-2.5 text-sm">
+            <div className="flex items-center gap-2.5 text-brand-100">
+              <Loader2 className="h-4 w-4 flex-none animate-spin" />
+              <span>
+                {t('activeRunBanner.generatingPrefix')}{' '}
+                <span className="text-slate-300">
+                  {activeStructuredLearningRun.DocumentName ?? activeStructuredLearningRun.CurrentStepDescription}
+                  {activeStructuredLearningRun.TotalSections != null && activeStructuredLearningRun.CompletedSections != null &&
+                    ` (${activeStructuredLearningRun.CompletedSections}/${activeStructuredLearningRun.TotalSections})`}
+                </span>
+              </span>
+            </div>
+            <Link
+              to={`/structured-learning/${activeStructuredLearningRun.DocumentId}`}
               className="flex flex-none items-center gap-1 font-medium text-brand-300 hover:text-brand-200"
             >
               {t('activeRunBanner.viewProgress')} <ArrowRight className="h-3.5 w-3.5" />

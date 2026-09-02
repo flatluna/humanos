@@ -87,3 +87,15 @@ export const loginRequest = {
 export const humanOsApiScopes = import.meta.env.VITE_API_SCOPE
   ? [import.meta.env.VITE_API_SCOPE as string]
   : [];
+
+/** X-Azure-OID / X-Azure-TID headers for the active MSAL account, or {}
+ *  when signed out — matches backend PersonService identity lookups. */
+export function getIdentityHeaders(): Record<string, string> {
+  const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0] ?? null;
+  if (!account) return {};
+
+  const claims = account.idTokenClaims as Record<string, unknown> | undefined;
+  const oid = (claims?.oid as string) ?? (claims?.sub as string) ?? account.homeAccountId.split('.')[0];
+  const tid = (claims?.tid as string) ?? account.homeAccountId.split('.')[1];
+  return { 'X-Azure-OID': oid, 'X-Azure-TID': tid };
+}

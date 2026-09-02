@@ -9,10 +9,17 @@
 import { decodeJwtPayload, type StudioLaunchClaims } from './jwt';
 
 const STORAGE_KEY = 'humanos.studio.launchSession';
+export const STORAGE_CHANGE_EVENT = 'humanos-studio-session-change';
 
 export interface LaunchSession {
   token: string;
   claims: StudioLaunchClaims;
+}
+
+function notifySessionChange(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(STORAGE_CHANGE_EVENT));
+  }
 }
 
 export function saveLaunchSession(token: string): LaunchSession | null {
@@ -20,6 +27,7 @@ export function saveLaunchSession(token: string): LaunchSession | null {
   if (!claims) return null;
   const session: LaunchSession = { token, claims };
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  notifySessionChange();
   return session;
 }
 
@@ -46,5 +54,6 @@ export function hasValidLaunchSession(): boolean {
 
 export function clearLaunchSession(): void {
   sessionStorage.removeItem(STORAGE_KEY);
+  notifySessionChange();
 }
 

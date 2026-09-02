@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Briefcase, Sparkles } from 'lucide-react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { ArrowLeft, Award, Briefcase, ExternalLink, Globe, GraduationCap, Heart, ListChecks, Sparkles, Wrench, X } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import {
+  attachDepartmentJobRole,
   createJobRole,
   generateJobRoleDescription,
-  getDepartments,
   getJobRole,
   getJobRoles,
   updateJobRole,
@@ -14,6 +15,10 @@ import {
   type GenerateJobRoleDescriptionResponse,
   type SaveJobRoleRequest,
 } from '@/api/orgStructureApi';
+import { getSkills } from '@/api/skillsApi';
+import { getResponsibilities } from '@/api/responsibilitiesApi';
+import { getCertifications } from '@/api/certificationsApi';
+import { getTools } from '@/api/toolsApi';
 
 function linesToArray(value: string): string[] {
   return value
@@ -24,6 +29,10 @@ function linesToArray(value: string): string[] {
 
 function arrayToLines(value: string[] | undefined): string {
   return (value ?? []).join('\n');
+}
+
+function normalizeItemName(name: string): string {
+  return name.trim().toLowerCase().replace(/[.\s]+$/, '');
 }
 
 type RoleFormState = typeof emptyForm;
@@ -37,6 +46,7 @@ interface DescriptionDiffRow {
   key: RoleFormKey;
   label: string;
   before: string;
+  hasPreviousValue: boolean;
   after: string;
   applyValue: string | boolean;
 }
@@ -47,49 +57,63 @@ interface DescriptionDiffRow {
 function buildDescriptionDiffRows(
   formSnapshot: RoleFormState,
   proposal: GenerateJobRoleDescriptionResponse,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): DescriptionDiffRow[] {
   const rows: DescriptionDiffRow[] = [];
 
-  function addText(key: RoleFormKey, label: string, current: string, proposed: string | null | undefined) {
+  function addText(key: RoleFormKey, labelKey: string, current: string, proposed: string | null | undefined) {
     const proposedTrimmed = (proposed ?? '').trim();
     if (!proposedTrimmed || proposedTrimmed === current.trim()) return;
-    rows.push({ key, label, before: current.trim() || '(vacío)', after: proposedTrimmed, applyValue: proposedTrimmed });
+    rows.push({
+      key,
+      label: t(labelKey),
+      before: current.trim(),
+      hasPreviousValue: Boolean(current.trim()),
+      after: proposedTrimmed,
+      applyValue: proposedTrimmed,
+    });
   }
 
-  function addList(key: RoleFormKey, label: string, current: string, proposed: string[]) {
+  function addList(key: RoleFormKey, labelKey: string, current: string, proposed: string[]) {
     const proposedLines = arrayToLines(proposed).trim();
     if (!proposedLines || proposedLines === current.trim()) return;
-    rows.push({ key, label, before: current.trim() || '(vacío)', after: proposedLines, applyValue: proposedLines });
+    rows.push({
+      key,
+      label: t(labelKey),
+      before: current.trim(),
+      hasPreviousValue: Boolean(current.trim()),
+      after: proposedLines,
+      applyValue: proposedLines,
+    });
   }
 
-  addText('levelLabel', 'Nivel / Seniority', formSnapshot.levelLabel, proposal.levelLabel);
-  addText('purpose', 'Propósito', formSnapshot.purpose, proposal.purpose);
-  addText('summary', 'Resumen', formSnapshot.summary, proposal.summary);
-  addList('responsibilities', 'Responsabilidades principales', formSnapshot.responsibilities, proposal.responsibilities);
-  addList('dailyActivities', 'Actividades diarias o periódicas', formSnapshot.dailyActivities, proposal.dailyActivities);
-  addText('requiredExperience', 'Experiencia requerida', formSnapshot.requiredExperience, proposal.requiredExperience);
-  addText('requiredEducation', 'Educación requerida', formSnapshot.requiredEducation, proposal.requiredEducation);
-  addList('technicalSkills', 'Habilidades técnicas', formSnapshot.technicalSkills, proposal.technicalSkills);
-  addList('requiredCertifications', 'Certificaciones requeridas', formSnapshot.requiredCertifications, proposal.requiredCertifications);
-  addList('requiredLanguages', 'Idiomas requeridos', formSnapshot.requiredLanguages, proposal.requiredLanguages);
-  addList('softSkills', 'Habilidades blandas', formSnapshot.softSkills, proposal.softSkills);
-  addList('tools', 'Herramientas / tecnologías', formSnapshot.tools, proposal.tools);
-  addList('performanceIndicators', 'Indicadores de desempeño', formSnapshot.performanceIndicators, proposal.performanceIndicators);
-  addList('expectedOutcomes', 'Objetivos del puesto', formSnapshot.expectedOutcomes, proposal.expectedOutcomes);
-  addText('workSchedule', 'Horario de trabajo', formSnapshot.workSchedule, proposal.workSchedule);
-  addText('workModality', 'Modalidad de trabajo', formSnapshot.workModality, proposal.workModality);
-  addText('workLocation', 'Ubicación', formSnapshot.workLocation, proposal.workLocation);
-  addText('availabilityNotes', 'Disponibilidad', formSnapshot.availabilityNotes, proposal.availabilityNotes);
-  addText('employmentType', 'Tipo de contratación', formSnapshot.employmentType, proposal.employmentType);
-  addList('benefits', 'Prestaciones', formSnapshot.benefits, proposal.benefits);
-  addText('salaryCurrency', 'Moneda', formSnapshot.salaryCurrency, proposal.salaryCurrency);
+  addText('levelLabel', 'roleDetail.diffFieldLabels.levelLabel', formSnapshot.levelLabel, proposal.levelLabel);
+  addText('purpose', 'roleDetail.diffFieldLabels.purpose', formSnapshot.purpose, proposal.purpose);
+  addText('summary', 'roleDetail.diffFieldLabels.summary', formSnapshot.summary, proposal.summary);
+  addList('responsibilities', 'roleDetail.diffFieldLabels.responsibilities', formSnapshot.responsibilities, proposal.responsibilities);
+  addText('requiredExperience', 'roleDetail.diffFieldLabels.requiredExperience', formSnapshot.requiredExperience, proposal.requiredExperience);
+  addText('requiredEducation', 'roleDetail.diffFieldLabels.requiredEducation', formSnapshot.requiredEducation, proposal.requiredEducation);
+  addList('technicalSkills', 'roleDetail.diffFieldLabels.technicalSkills', formSnapshot.technicalSkills, proposal.technicalSkills);
+  addList('requiredCertifications', 'roleDetail.diffFieldLabels.requiredCertifications', formSnapshot.requiredCertifications, proposal.requiredCertifications);
+  addList('requiredLanguages', 'roleDetail.diffFieldLabels.requiredLanguages', formSnapshot.requiredLanguages, proposal.requiredLanguages);
+  addList('softSkills', 'roleDetail.diffFieldLabels.softSkills', formSnapshot.softSkills, proposal.softSkills);
+  addList('tools', 'roleDetail.diffFieldLabels.tools', formSnapshot.tools, proposal.tools);
+  addList('performanceIndicators', 'roleDetail.diffFieldLabels.performanceIndicators', formSnapshot.performanceIndicators, proposal.performanceIndicators);
+  addText('workSchedule', 'roleDetail.diffFieldLabels.workSchedule', formSnapshot.workSchedule, proposal.workSchedule);
+  addText('workModality', 'roleDetail.diffFieldLabels.workModality', formSnapshot.workModality, proposal.workModality);
+  addText('workLocation', 'roleDetail.diffFieldLabels.workLocation', formSnapshot.workLocation, proposal.workLocation);
+  addText('availabilityNotes', 'roleDetail.diffFieldLabels.availabilityNotes', formSnapshot.availabilityNotes, proposal.availabilityNotes);
+  addText('employmentType', 'roleDetail.diffFieldLabels.employmentType', formSnapshot.employmentType, proposal.employmentType);
+  addList('benefits', 'roleDetail.diffFieldLabels.benefits', formSnapshot.benefits, proposal.benefits);
+  addText('salaryCurrency', 'roleDetail.diffFieldLabels.salaryCurrency', formSnapshot.salaryCurrency, proposal.salaryCurrency);
 
   if (proposal.requiresTravel !== formSnapshot.requiresTravel) {
     rows.push({
       key: 'requiresTravel',
-      label: 'Requiere viajes',
-      before: formSnapshot.requiresTravel ? 'Sí' : 'No',
-      after: proposal.requiresTravel ? 'Sí' : 'No',
+      label: t('roleDetail.diffFieldLabels.requiresTravel'),
+      before: formSnapshot.requiresTravel ? t('common.yes') : t('common.no'),
+      hasPreviousValue: true,
+      after: proposal.requiresTravel ? t('common.yes') : t('common.no'),
       applyValue: proposal.requiresTravel,
     });
   }
@@ -97,8 +121,9 @@ function buildDescriptionDiffRows(
   if (proposal.salaryRangeMin != null && String(proposal.salaryRangeMin) !== formSnapshot.salaryRangeMin) {
     rows.push({
       key: 'salaryRangeMin',
-      label: 'Salario mínimo',
-      before: formSnapshot.salaryRangeMin || '(vacío)',
+      label: t('roleDetail.diffFieldLabels.salaryRangeMin'),
+      before: formSnapshot.salaryRangeMin,
+      hasPreviousValue: Boolean(formSnapshot.salaryRangeMin),
       after: String(proposal.salaryRangeMin),
       applyValue: String(proposal.salaryRangeMin),
     });
@@ -107,8 +132,9 @@ function buildDescriptionDiffRows(
   if (proposal.salaryRangeMax != null && String(proposal.salaryRangeMax) !== formSnapshot.salaryRangeMax) {
     rows.push({
       key: 'salaryRangeMax',
-      label: 'Salario máximo',
-      before: formSnapshot.salaryRangeMax || '(vacío)',
+      label: t('roleDetail.diffFieldLabels.salaryRangeMax'),
+      before: formSnapshot.salaryRangeMax,
+      hasPreviousValue: Boolean(formSnapshot.salaryRangeMax),
       after: String(proposal.salaryRangeMax),
       applyValue: String(proposal.salaryRangeMax),
     });
@@ -153,6 +179,59 @@ const inputClass =
   'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white';
 const labelClass = 'block text-xs font-medium text-slate-500 dark:text-white/50';
 
+const SENIORITY_LEVEL_KEYS = [
+  'cLevel',
+  'vp',
+  'director',
+  'manager',
+  'lead',
+  'senior',
+  'mid',
+  'junior',
+  'associate',
+  'coordinator',
+  'specialist',
+  'analyst',
+  'assistant',
+  'intern',
+] as const;
+
+const EDUCATION_LEVEL_KEYS = [
+  'basicEducation',
+  'highSchool',
+  'technicalDegree',
+  'bachelorsDegree',
+  'specialization',
+  'mastersDegree',
+  'doctorate',
+  'postDoctorate',
+  'notRequired',
+] as const;
+
+const COMMON_LANGUAGE_KEYS = [
+  'english',
+  'spanish',
+  'mandarin',
+  'french',
+  'german',
+  'portuguese',
+  'japanese',
+  'italian',
+  'russian',
+  'arabic',
+] as const;
+
+const EMPLOYMENT_TYPE_KEYS = [
+  'fullTime',
+  'partTime',
+  'permanent',
+  'temporary',
+  'contractor',
+  'internship',
+  'byProject',
+  'seasonal',
+] as const;
+
 function Section({
   number,
   title,
@@ -181,13 +260,20 @@ function Section({
 }
 
 export function RoleDetailPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const tenantId = user!.tenantId;
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const params = useParams<{ jobRoleId?: string }>();
   const jobRoleId = params.jobRoleId;
   const isEditing = Boolean(jobRoleId);
+
+  const locationState = location.state as { returnUrl?: string; departmentId?: string } | null;
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const returnUrl = locationState?.returnUrl || searchParams.get('returnUrl') || '/roles';
+  const callerDepartmentId = locationState?.departmentId || searchParams.get('departmentId') || null;
 
   const [form, setForm] = useState(emptyForm);
   const [reviewRows, setReviewRows] = useState<DescriptionDiffRow[] | null>(null);
@@ -195,11 +281,6 @@ export function RoleDetailPage() {
   // Lets the HRAdmin tweak the AI's "after" text per field before applying it — starts as a
   // copy of each row's applyValue and only diverges once the user edits that field's box.
   const [editedValues, setEditedValues] = useState<Partial<Record<RoleFormKey, string | boolean>>>({});
-
-  const departmentsQuery = useQuery({
-    queryKey: ['departments', tenantId],
-    queryFn: () => getDepartments(tenantId),
-  });
 
   const jobRolesQuery = useQuery({
     queryKey: ['job-roles', tenantId],
@@ -212,6 +293,121 @@ export function RoleDetailPage() {
     enabled: isEditing,
   });
 
+  const responsibilitiesCatalogQuery = useQuery({
+    queryKey: ['responsibilities', tenantId],
+    queryFn: () => getResponsibilities(tenantId),
+  });
+
+  const responsibilitiesList = useMemo(() => linesToArray(form.responsibilities), [form.responsibilities]);
+
+  const addResponsibility = (respName: string) => {
+    const trimmed = respName.trim();
+    if (!trimmed) return;
+    if (responsibilitiesList.some((r) => r.toLowerCase() === trimmed.toLowerCase())) return;
+    const nextList = [...responsibilitiesList, trimmed];
+    setForm((f) => ({ ...f, responsibilities: arrayToLines(nextList) }));
+  };
+
+  const removeResponsibility = (respName: string) => {
+    const nextList = responsibilitiesList.filter((r) => r.toLowerCase() !== respName.toLowerCase());
+    setForm((f) => ({ ...f, responsibilities: arrayToLines(nextList) }));
+  };
+
+  const technicalSkillsCatalogQuery = useQuery({
+    queryKey: ['skills', tenantId, 'job-skills'],
+    queryFn: () => getSkills(tenantId, 'job-skills'),
+  });
+
+  const technicalSkillsList = useMemo(() => linesToArray(form.technicalSkills), [form.technicalSkills]);
+
+  const addTechnicalSkill = (skillName: string) => {
+    const trimmed = skillName.trim();
+    if (!trimmed) return;
+    if (technicalSkillsList.some((s) => s.toLowerCase() === trimmed.toLowerCase())) return;
+    const nextList = [...technicalSkillsList, trimmed];
+    setForm((f) => ({ ...f, technicalSkills: arrayToLines(nextList) }));
+  };
+
+  const removeTechnicalSkill = (skillName: string) => {
+    const nextList = technicalSkillsList.filter((s) => s.toLowerCase() !== skillName.toLowerCase());
+    setForm((f) => ({ ...f, technicalSkills: arrayToLines(nextList) }));
+  };
+
+  const languagesList = useMemo(() => linesToArray(form.requiredLanguages), [form.requiredLanguages]);
+
+  const addLanguage = (langName: string) => {
+    const trimmed = langName.trim();
+    if (!trimmed) return;
+    if (languagesList.some((l) => l.toLowerCase() === trimmed.toLowerCase())) return;
+    const nextList = [...languagesList, trimmed];
+    setForm((f) => ({ ...f, requiredLanguages: arrayToLines(nextList) }));
+  };
+
+  const removeLanguage = (langName: string) => {
+    const nextList = languagesList.filter((l) => l.toLowerCase() !== langName.toLowerCase());
+    setForm((f) => ({ ...f, requiredLanguages: arrayToLines(nextList) }));
+  };
+
+  const certificationsCatalogQuery = useQuery({
+    queryKey: ['certifications', tenantId],
+    queryFn: () => getCertifications(tenantId),
+  });
+
+  const certificationsList = useMemo(() => linesToArray(form.requiredCertifications), [form.requiredCertifications]);
+
+  const addCertification = (certName: string) => {
+    const trimmed = certName.trim();
+    if (!trimmed) return;
+    if (certificationsList.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return;
+    const nextList = [...certificationsList, trimmed];
+    setForm((f) => ({ ...f, requiredCertifications: arrayToLines(nextList) }));
+  };
+
+  const removeCertification = (certName: string) => {
+    const nextList = certificationsList.filter((c) => c.toLowerCase() !== certName.toLowerCase());
+    setForm((f) => ({ ...f, requiredCertifications: arrayToLines(nextList) }));
+  };
+
+  const softSkillsCatalogQuery = useQuery({
+    queryKey: ['skills', tenantId, 'soft-skills'],
+    queryFn: () => getSkills(tenantId, 'soft-skills'),
+  });
+
+  const softSkillsList = useMemo(() => linesToArray(form.softSkills), [form.softSkills]);
+
+  const addSoftSkill = (skillName: string) => {
+    const trimmed = skillName.trim();
+    if (!trimmed) return;
+    if (softSkillsList.some((s) => s.toLowerCase() === trimmed.toLowerCase())) return;
+    const nextList = [...softSkillsList, trimmed];
+    setForm((f) => ({ ...f, softSkills: arrayToLines(nextList) }));
+  };
+
+  const removeSoftSkill = (skillName: string) => {
+    const nextList = softSkillsList.filter((s) => s.toLowerCase() !== skillName.toLowerCase());
+    setForm((f) => ({ ...f, softSkills: arrayToLines(nextList) }));
+  };
+
+  const toolsCatalogQuery = useQuery({
+    queryKey: ['tools', tenantId],
+    queryFn: () => getTools(tenantId),
+  });
+
+  const toolsList = useMemo(() => linesToArray(form.tools), [form.tools]);
+
+  const addTool = (toolName: string) => {
+    const trimmed = toolName.trim();
+    if (!trimmed) return;
+    if (toolsList.some((t) => t.toLowerCase() === trimmed.toLowerCase())) return;
+    const nextList = [...toolsList, trimmed];
+    setForm((f) => ({ ...f, tools: arrayToLines(nextList) }));
+  };
+
+  const removeTool = (toolName: string) => {
+    const nextList = toolsList.filter((t) => t.toLowerCase() !== toolName.toLowerCase());
+    setForm((f) => ({ ...f, tools: arrayToLines(nextList) }));
+  };
+
   // Seeds the form from the fetched role exactly once per jobRoleId — after that, the
   // form is fully user-controlled so a background refetch (e.g. window refocus, or the
   // invalidation triggered by updateMutation's own onSuccess) never clobbers an in-flight
@@ -223,7 +419,7 @@ export function RoleDetailPage() {
       seededJobRoleIdRef.current = jobRoleId ?? null;
       const r = roleQuery.data;
       setForm({
-        departmentId: r.departmentId,
+        departmentId: r.departmentId ?? callerDepartmentId ?? '',
         title: r.title,
         levelLabel: r.levelLabel ?? '',
         purpose: r.purpose ?? '',
@@ -253,10 +449,10 @@ export function RoleDetailPage() {
         benefits: arrayToLines(r.benefits),
         expectedOutcomes: arrayToLines(r.expectedOutcomes),
       });
-    } else if (!isEditing && departmentsQuery.data?.length) {
-      setForm((f) => (f.departmentId ? f : { ...f, departmentId: departmentsQuery.data![0].departmentId }));
+    } else if (!isEditing && callerDepartmentId) {
+      setForm((f) => (f.departmentId ? f : { ...f, departmentId: callerDepartmentId }));
     }
-  }, [roleQuery.data, isEditing, departmentsQuery.data, jobRoleId]);
+  }, [roleQuery.data, isEditing, jobRoleId, callerDepartmentId]);
 
   const otherJobRoles = useMemo(
     () => (jobRolesQuery.data ?? []).filter((r) => r.jobRoleId !== jobRoleId),
@@ -264,10 +460,25 @@ export function RoleDetailPage() {
   );
 
   const createMutation = useMutation({
-    mutationFn: (body: SaveJobRoleRequest) => createJobRole(tenantId, body),
+    mutationFn: async (body: SaveJobRoleRequest) => {
+      const created = await createJobRole(tenantId, body);
+      if (callerDepartmentId) {
+        try {
+          await attachDepartmentJobRole(callerDepartmentId, created.jobRoleId);
+        } catch {
+          // Ignore if already linked
+        }
+      }
+      return created;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['job-roles', tenantId] });
-      navigate('/roles');
+      if (callerDepartmentId) {
+        void queryClient.invalidateQueries({ queryKey: ['job-roles', tenantId, callerDepartmentId] });
+        void queryClient.invalidateQueries({ queryKey: ['departments', tenantId] });
+        void queryClient.invalidateQueries({ queryKey: ['department', callerDepartmentId] });
+      }
+      navigate(returnUrl);
     },
   });
 
@@ -276,9 +487,24 @@ export function RoleDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['job-roles', tenantId] });
       void queryClient.invalidateQueries({ queryKey: ['job-role', jobRoleId] });
-      navigate('/roles');
+      if (callerDepartmentId) {
+        void queryClient.invalidateQueries({ queryKey: ['job-roles', tenantId, callerDepartmentId] });
+        void queryClient.invalidateQueries({ queryKey: ['departments', tenantId] });
+        void queryClient.invalidateQueries({ queryKey: ['department', callerDepartmentId] });
+      }
+      navigate(returnUrl);
     },
   });
+
+  function handleGoBack() {
+    if (locationState?.returnUrl || searchParams.get('returnUrl')) {
+      navigate(returnUrl);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/roles');
+    }
+  }
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
   const mutationError = createMutation.error ?? updateMutation.error;
@@ -293,7 +519,7 @@ export function RoleDetailPage() {
     mutationFn: () => {
       const body: GenerateJobRoleDescriptionRequest = {
         jobRoleId: jobRoleId ?? null,
-        departmentId: form.departmentId,
+        departmentId: form.departmentId || null,
         title: form.title,
         levelLabel: form.levelLabel || null,
         purpose: form.purpose || null,
@@ -323,7 +549,7 @@ export function RoleDetailPage() {
       return generateJobRoleDescription(tenantId, body);
     },
     onSuccess: (data) => {
-      const rows = buildDescriptionDiffRows(form, data);
+      const rows = buildDescriptionDiffRows(form, data, t);
       setReviewRows(rows);
       setAcceptedKeys(new Set(rows.map((row) => row.key)));
       setEditedValues(Object.fromEntries(rows.map((row) => [row.key, row.applyValue])));
@@ -368,7 +594,7 @@ export function RoleDetailPage() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const body: SaveJobRoleRequest = {
-      departmentId: form.departmentId,
+      departmentId: form.departmentId || null,
       title: form.title,
       levelLabel: form.levelLabel || null,
       purpose: form.purpose || null,
@@ -407,10 +633,10 @@ export function RoleDetailPage() {
   }
 
   if (isEditing && roleQuery.isLoading) {
-    return <p className="mx-auto max-w-3xl p-6 text-sm text-slate-400">Cargando…</p>;
+    return <p className="mx-auto max-w-3xl p-6 text-sm text-slate-400">{t('common.loading')}</p>;
   }
 
-  const canGenerate = Boolean(form.title.trim()) && Boolean(form.departmentId);
+  const canGenerate = Boolean(form.title.trim());
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-16">
@@ -418,7 +644,7 @@ export function RoleDetailPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/roles')}
+            onClick={handleGoBack}
             className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -426,10 +652,10 @@ export function RoleDetailPage() {
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900 dark:text-white">
               <Briefcase className="h-5 w-5 text-amber-500" />
-              {isEditing ? 'Editar puesto' : 'Nuevo puesto'}
+              {isEditing ? t('roleDetail.titleEdit') : t('roleDetail.titleNew')}
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
-              Descripción de trabajo completa: título, responsabilidades, requisitos, condiciones y más.
+              {t('roleDetail.subtitle')}
             </p>
           </div>
         </div>
@@ -437,23 +663,23 @@ export function RoleDetailPage() {
           type="button"
           onClick={() => generateMutation.mutate()}
           disabled={!canGenerate || generateMutation.isPending}
-          title={canGenerate ? undefined : 'Indica al menos el departamento y el título del puesto'}
+          title={canGenerate ? undefined : t('roleDetail.generateTooltipDisabled')}
           className="flex shrink-0 items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
         >
           <Sparkles className="h-4 w-4" />
-          {generateMutation.isPending ? 'Generando…' : 'Generar con IA'}
+          {generateMutation.isPending ? t('roleDetail.generating') : t('roleDetail.generateAi')}
         </button>
       </div>
 
       {mutationError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-          {mutationError instanceof Error ? mutationError.message : 'Ocurrió un error inesperado.'}
+          {mutationError instanceof Error ? mutationError.message : t('common.unexpectedError')}
         </div>
       )}
 
       {generateMutation.error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-          {generateMutation.error instanceof Error ? generateMutation.error.message : 'No se pudo generar la propuesta.'}
+          {generateMutation.error instanceof Error ? generateMutation.error.message : t('roleDetail.generateError')}
         </div>
       )}
 
@@ -463,11 +689,10 @@ export function RoleDetailPage() {
             <div>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
                 <Sparkles className="h-4 w-4" />
-                Propuesta generada por IA
+                {t('roleDetail.aiProposalTitle')}
               </h2>
               <p className="mt-1 text-xs text-amber-800/70 dark:text-amber-200/70">
-                Revisa cada campo: edita el texto propuesto si lo necesitas, y acepta o descarta los cambios
-                individualmente antes de aplicarlos al formulario.
+                {t('roleDetail.aiProposalSubtitle')}
               </p>
             </div>
             <button
@@ -475,13 +700,13 @@ export function RoleDetailPage() {
               onClick={closeReview}
               className="shrink-0 text-xs font-medium text-amber-800/80 hover:underline dark:text-amber-200/80"
             >
-              Cerrar
+              {t('common.close')}
             </button>
           </div>
 
           {reviewRows.length === 0 ? (
             <p className="text-xs text-amber-800/70 dark:text-amber-200/70">
-              La IA no encontró cambios que proponer sobre el contenido actual.
+              {t('roleDetail.aiProposalEmpty')}
             </p>
           ) : (
             <>
@@ -510,22 +735,28 @@ export function RoleDetailPage() {
                               onClick={() => updateEditedValue(row.key, row.applyValue)}
                               className="shrink-0 text-[11px] font-medium text-amber-700 hover:underline dark:text-amber-300"
                             >
-                              Restaurar sugerencia
+                              {t('common.restoreSuggestion')}
                             </button>
                           )}
                         </div>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          <div className="whitespace-pre-wrap rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700 line-through decoration-red-300 dark:bg-red-500/10 dark:text-red-300">
-                            {row.before}
-                          </div>
+                          {row.hasPreviousValue ? (
+                            <div className="whitespace-pre-wrap rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700 line-through decoration-red-300 dark:bg-red-500/10 dark:text-red-300">
+                              {row.before}
+                            </div>
+                          ) : (
+                            <div className="flex items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs italic text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-white/40">
+                              {t('common.noPreviousValue')}
+                            </div>
+                          )}
                           {row.key === 'requiresTravel' ? (
                             <select
                               value={String(currentValue)}
                               onChange={(e) => updateEditedValue(row.key, e.target.value === 'true')}
                               className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs text-green-800 outline-none focus:border-green-400 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-300"
                             >
-                              <option value="true">Sí</option>
-                              <option value="false">No</option>
+                              <option value="true">{t('common.yes')}</option>
+                              <option value="false">{t('common.no')}</option>
                             </select>
                           ) : (
                             <textarea
@@ -548,7 +779,7 @@ export function RoleDetailPage() {
                   onClick={closeReview}
                   className="rounded-full px-4 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:text-white/60 dark:hover:bg-white/10"
                 >
-                  Descartar todo
+                  {t('common.discardAll')}
                 </button>
                 <button
                   type="button"
@@ -556,7 +787,7 @@ export function RoleDetailPage() {
                   disabled={acceptedKeys.size === 0}
                   className="rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Aplicar seleccionados ({acceptedKeys.size})
+                  {t('common.applySelected', { count: acceptedKeys.size })}
                 </button>
               </div>
             </>
@@ -565,57 +796,52 @@ export function RoleDetailPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Section number={1} title="Título del puesto">
+        <Section number={1} title={t('roleDetail.section1.title')}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Departamento</label>
-              <select
-                required
-                value={form.departmentId}
-                onChange={(e) => setForm((f) => ({ ...f, departmentId: e.target.value }))}
-                className={inputClass}
-              >
-                <option value="" disabled>
-                  Selecciona…
-                </option>
-                {departmentsQuery.data?.map((d) => (
-                  <option key={d.departmentId} value={d.departmentId}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Título del puesto</label>
+              <label className={labelClass}>{t('roleDetail.section1.jobTitle')}</label>
               <input
                 required
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="p. ej. Ejecutivo de Ventas"
+                placeholder={t('roleDetail.section1.jobTitlePlaceholder')}
                 className={inputClass}
               />
             </div>
-          </div>
-          <div className="mt-4">
-            <label className={labelClass}>Nivel / Seniority (opcional)</label>
-            <input
-              value={form.levelLabel}
-              onChange={(e) => setForm((f) => ({ ...f, levelLabel: e.target.value }))}
-              placeholder="Junior, Senior, Lead…"
-              className={inputClass}
-            />
+            <div>
+              <label className={labelClass}>{t('roleDetail.section1.seniority')}</label>
+              <select
+                value={form.levelLabel}
+                onChange={(e) => setForm((f) => ({ ...f, levelLabel: e.target.value }))}
+                className={inputClass}
+              >
+                <option value="">{t('roleDetail.section1.noLevel')}</option>
+                {SENIORITY_LEVEL_KEYS.map((key) => {
+                  const label = t(`roleDetail.section1.levels.${key}`);
+                  return (
+                    <option key={key} value={label}>
+                      {label}
+                    </option>
+                  );
+                })}
+                {form.levelLabel &&
+                  !SENIORITY_LEVEL_KEYS.some((k) => t(`roleDetail.section1.levels.${k}`) === form.levelLabel) && (
+                    <option value={form.levelLabel}>{form.levelLabel}</option>
+                  )}
+              </select>
+            </div>
           </div>
         </Section>
 
-        <Section number={2} title="Resumen del puesto" description="Una breve descripción general del rol y su propósito.">
-          <label className={labelClass}>Resumen</label>
+        <Section number={2} title={t('roleDetail.section2.title')} description={t('roleDetail.section2.description')}>
+          <label className={labelClass}>{t('roleDetail.section2.summary')}</label>
           <textarea
             value={form.summary}
             onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
             rows={3}
             className={inputClass}
           />
-          <label className={`${labelClass} mt-4`}>Propósito (opcional)</label>
+          <label className={`${labelClass} mt-4`}>{t('roleDetail.section2.purpose')}</label>
           <textarea
             value={form.purpose}
             onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))}
@@ -624,115 +850,466 @@ export function RoleDetailPage() {
           />
         </Section>
 
-        <Section number={3} title="Responsabilidades principales" description="Una responsabilidad por línea.">
-          <textarea
-            value={form.responsibilities}
-            onChange={(e) => setForm((f) => ({ ...f, responsibilities: e.target.value }))}
-            rows={4}
-            placeholder={'Gestionar la cartera de clientes\nCumplir metas mensuales de ventas'}
-            className={inputClass}
-          />
-        </Section>
+        <Section number={3} title={t('roleDetail.section3.title')} description={t('roleDetail.section3.description')}>
+          <div className="flex items-center justify-end -mt-2 mb-2">
+            <Link
+              to="/responsibilities"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              <span>{t('roleDetail.section3.viewCatalog')}</span>
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
 
-        <Section number={4} title="Actividades diarias o periódicas" description="Una actividad por línea.">
-          <textarea
-            value={form.dailyActivities}
-            onChange={(e) => setForm((f) => ({ ...f, dailyActivities: e.target.value }))}
-            rows={4}
-            placeholder={'Revisar correos y pendientes\nReunión semanal de equipo'}
+          <select
             className={inputClass}
-          />
+            value=""
+            onChange={(e) => {
+              if (e.target.value) {
+                addResponsibility(e.target.value);
+              }
+            }}
+          >
+            <option value="">
+              {responsibilitiesCatalogQuery.isLoading
+                ? t('common.loading')
+                : t('roleDetail.section3.selectFromCatalog')}
+            </option>
+            {(responsibilitiesCatalogQuery.data ?? [])
+              .filter((r) => !responsibilitiesList.some((rl) => normalizeItemName(rl) === normalizeItemName(r.name)))
+              .map((r) => (
+                <option key={r.responsibilityId} value={r.name}>
+                  {r.name} {r.description ? `— ${r.description}` : ''}
+                </option>
+              ))}
+          </select>
+
+          {responsibilitiesList.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {responsibilitiesList.map((respName) => {
+                const isInCatalog = (responsibilitiesCatalogQuery.data ?? []).some(
+                  (r) => normalizeItemName(r.name) === normalizeItemName(respName),
+                );
+                return (
+                  <span
+                    key={respName}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ${
+                      isInCatalog
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300'
+                        : 'border border-dashed border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                    }`}
+                  >
+                    <ListChecks className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>{respName}</span>
+                    {!isInCatalog && (
+                      <span className="rounded bg-amber-200/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-400/30 dark:text-amber-200">
+                        {t('common.newBadge')}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeResponsibility(respName)}
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                      title={t('common.remove')}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </Section>
 
         <Section
-          number={5}
-          title="Requisitos del puesto"
-          description="Escolaridad, experiencia, conocimientos técnicos, certificaciones e idiomas."
+          number={4}
+          title={t('roleDetail.section5.title')}
+          description={t('roleDetail.section5.description')}
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Escolaridad</label>
-              <input
+              <label className={labelClass}>{t('roleDetail.section5.education')}</label>
+              <select
                 value={form.requiredEducation}
                 onChange={(e) => setForm((f) => ({ ...f, requiredEducation: e.target.value }))}
-                placeholder="p. ej. Licenciatura en Administración"
                 className={inputClass}
-              />
+              >
+                <option value="">{t('roleDetail.section5.selectEducation')}</option>
+                {EDUCATION_LEVEL_KEYS.map((key) => {
+                  const label = t(`roleDetail.section5.educationLevels.${key}`);
+                  return (
+                    <option key={key} value={label}>
+                      {label}
+                    </option>
+                  );
+                })}
+                {form.requiredEducation &&
+                  !EDUCATION_LEVEL_KEYS.some((k) => t(`roleDetail.section5.educationLevels.${k}`) === form.requiredEducation) && (
+                    <option value={form.requiredEducation}>{form.requiredEducation}</option>
+                  )}
+              </select>
             </div>
             <div>
-              <label className={labelClass}>Experiencia requerida</label>
+              <label className={labelClass}>{t('roleDetail.section5.experience')}</label>
               <input
                 value={form.requiredExperience}
                 onChange={(e) => setForm((f) => ({ ...f, requiredExperience: e.target.value }))}
-                placeholder="p. ej. 3+ años en ventas B2B"
+                placeholder={t('roleDetail.section5.experiencePlaceholder')}
                 className={inputClass}
               />
             </div>
           </div>
           <div className="mt-4">
-            <label className={labelClass}>Conocimientos técnicos (uno por línea)</label>
-            <textarea
-              value={form.technicalSkills}
-              onChange={(e) => setForm((f) => ({ ...f, technicalSkills: e.target.value }))}
-              rows={3}
-              className={inputClass}
-            />
+            <div className="flex items-center justify-between">
+              <label className={labelClass}>{t('roleDetail.section5.technicalSkills')}</label>
+              <Link
+                to="/skills/job-skills"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+              >
+                <span>{t('roleDetail.section5.viewCatalog')}</span>
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+
+            {/* Catalog Selector combobox */}
+            <div className="mt-2">
+              <select
+                className={inputClass}
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    addTechnicalSkill(e.target.value);
+                  }
+                }}
+              >
+                <option value="">
+                  {technicalSkillsCatalogQuery.isLoading
+                    ? t('common.loading')
+                    : t('roleDetail.section5.selectFromCatalog')}
+                </option>
+                {(technicalSkillsCatalogQuery.data ?? [])
+                  .filter((s) => !technicalSkillsList.some((ts) => ts.toLowerCase() === s.name.toLowerCase()))
+                  .map((s) => (
+                    <option key={s.skillId} value={s.name}>
+                      {s.name} {s.description ? `— ${s.description}` : ''}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Selected Skills Chips */}
+            {technicalSkillsList.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {technicalSkillsList.map((skillName) => {
+                  const isInCatalog = (technicalSkillsCatalogQuery.data ?? []).some(
+                    (s) => s.name.toLowerCase() === skillName.toLowerCase(),
+                  );
+                  return (
+                    <span
+                      key={skillName}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ${
+                        isInCatalog
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
+                          : 'border border-dashed border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                      }`}
+                    >
+                      <GraduationCap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      <span>{skillName}</span>
+                      {!isInCatalog && (
+                        <span className="rounded bg-amber-200/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-400/30 dark:text-amber-200">
+                          {t('common.newBadge')}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeTechnicalSkill(skillName)}
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                        title={t('common.remove')}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Certificaciones (una por línea)</label>
-              <textarea
-                value={form.requiredCertifications}
-                onChange={(e) => setForm((f) => ({ ...f, requiredCertifications: e.target.value }))}
-                rows={3}
+              <div className="flex items-center justify-between">
+                <label className={labelClass}>{t('roleDetail.section5.certifications')}</label>
+                <Link
+                  to="/certifications"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                >
+                  <span>{t('roleDetail.section5.viewCertificationsCatalog')}</span>
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+
+              <select
                 className={inputClass}
-              />
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    addCertification(e.target.value);
+                  }
+                }}
+              >
+                <option value="">
+                  {certificationsCatalogQuery.isLoading
+                    ? t('common.loading')
+                    : t('roleDetail.section5.selectCertification')}
+                </option>
+                {(certificationsCatalogQuery.data ?? [])
+                  .filter((c) => !certificationsList.some((cl) => cl.toLowerCase() === c.name.toLowerCase()))
+                  .map((c) => (
+                    <option key={c.certificationId} value={c.name}>
+                      {c.name} {c.issuer ? `(${c.issuer})` : ''}
+                    </option>
+                  ))}
+              </select>
+
+              {certificationsList.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {certificationsList.map((certName) => {
+                    const isInCatalog = (certificationsCatalogQuery.data ?? []).some(
+                      (c) => c.name.toLowerCase() === certName.toLowerCase(),
+                    );
+                    return (
+                      <span
+                        key={certName}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ${
+                          isInCatalog
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
+                            : 'border border-dashed border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                        }`}
+                      >
+                        <Award className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>{certName}</span>
+                        {!isInCatalog && (
+                          <span className="rounded bg-amber-200/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-400/30 dark:text-amber-200">
+                            {t('common.newBadge')}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeCertification(certName)}
+                          className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                          title={t('common.remove')}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div>
-              <label className={labelClass}>Idiomas (uno por línea)</label>
-              <textarea
-                value={form.requiredLanguages}
-                onChange={(e) => setForm((f) => ({ ...f, requiredLanguages: e.target.value }))}
-                rows={3}
-                placeholder={'Inglés avanzado\nEspañol nativo'}
+              <label className={labelClass}>{t('roleDetail.section5.languages')}</label>
+              <select
                 className={inputClass}
-              />
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    addLanguage(e.target.value);
+                  }
+                }}
+              >
+                <option value="">{t('roleDetail.section5.selectLanguage')}</option>
+                {COMMON_LANGUAGE_KEYS.filter(
+                  (k) =>
+                    !languagesList.some(
+                      (l) => l.toLowerCase() === t(`roleDetail.section5.languagesList.${k}`).toLowerCase(),
+                    ),
+                ).map((key) => {
+                  const label = t(`roleDetail.section5.languagesList.${key}`);
+                  return (
+                    <option key={key} value={label}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+
+              {languagesList.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {languagesList.map((langName) => (
+                    <span
+                      key={langName}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800 dark:bg-sky-500/20 dark:text-sky-300"
+                    >
+                      <Globe className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                      <span>{langName}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeLanguage(langName)}
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                        title={t('common.remove')}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </Section>
 
-        <Section number={6} title="Habilidades y competencias" description="Habilidades blandas, una por línea.">
-          <textarea
-            value={form.softSkills}
-            onChange={(e) => setForm((f) => ({ ...f, softSkills: e.target.value }))}
-            rows={3}
-            placeholder={'Comunicación efectiva\nTrabajo en equipo'}
+        <Section number={5} title={t('roleDetail.section6.title')} description={t('roleDetail.section6.description')}>
+          <div className="flex items-center justify-end -mt-2 mb-2">
+            <Link
+              to="/skills/soft-skills"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+            >
+              <span>{t('roleDetail.section6.viewCatalog')}</span>
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+
+          <select
             className={inputClass}
-          />
+            value=""
+            onChange={(e) => {
+              if (e.target.value) {
+                addSoftSkill(e.target.value);
+              }
+            }}
+          >
+            <option value="">
+              {softSkillsCatalogQuery.isLoading
+                ? t('common.loading')
+                : t('roleDetail.section6.selectFromCatalog')}
+            </option>
+            {(softSkillsCatalogQuery.data ?? [])
+              .filter((s) => !softSkillsList.some((ss) => ss.toLowerCase() === s.name.toLowerCase()))
+              .map((s) => (
+                <option key={s.skillId} value={s.name}>
+                  {s.name} {s.description ? `— ${s.description}` : ''}
+                </option>
+              ))}
+          </select>
+
+          {softSkillsList.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {softSkillsList.map((skillName) => {
+                const isInCatalog = (softSkillsCatalogQuery.data ?? []).some(
+                  (s) => s.name.toLowerCase() === skillName.toLowerCase(),
+                );
+                return (
+                  <span
+                    key={skillName}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ${
+                      isInCatalog
+                        ? 'bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-300'
+                        : 'border border-dashed border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                    }`}
+                  >
+                    <Heart className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                    <span>{skillName}</span>
+                    {!isInCatalog && (
+                      <span className="rounded bg-amber-200/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-400/30 dark:text-amber-200">
+                        {t('common.newBadge')}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeSoftSkill(skillName)}
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                      title={t('common.remove')}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </Section>
 
-        <Section number={7} title="Herramientas o tecnologías" description="Una herramienta por línea.">
-          <textarea
-            value={form.tools}
-            onChange={(e) => setForm((f) => ({ ...f, tools: e.target.value }))}
-            rows={3}
-            placeholder={'Excel avanzado\nSalesforce'}
+        <Section number={6} title={t('roleDetail.section7.title')} description={t('roleDetail.section7.description')}>
+          <select
             className={inputClass}
-          />
+            value=""
+            onChange={(e) => {
+              if (e.target.value) {
+                addTool(e.target.value);
+              }
+            }}
+          >
+            <option value="">
+              {toolsCatalogQuery.isLoading
+                ? t('common.loading')
+                : t('roleDetail.section7.selectTool')}
+            </option>
+            {(toolsCatalogQuery.data ?? [])
+              .filter((tool) => !toolsList.some((t) => t.toLowerCase() === tool.name.toLowerCase()))
+              .map((tool) => (
+                <option key={tool.toolId} value={tool.name}>
+                  {tool.name} {tool.description ? `— ${tool.description}` : ''}
+                </option>
+              ))}
+          </select>
+
+          {toolsList.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {toolsList.map((toolName) => {
+                const isInCatalog = (toolsCatalogQuery.data ?? []).some(
+                  (t) => t.name.toLowerCase() === toolName.toLowerCase(),
+                );
+                return (
+                  <span
+                    key={toolName}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ${
+                      isInCatalog
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'
+                        : 'border border-dashed border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                    }`}
+                  >
+                    <Wrench className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{toolName}</span>
+                    {!isInCatalog && (
+                      <span className="rounded bg-amber-200/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-400/30 dark:text-amber-200">
+                        {t('common.newBadge')}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeTool(toolName)}
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                      title={t('common.remove')}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </Section>
 
         <Section
-          number={8}
-          title="Relación jerárquica"
-          description="A quién reporta este puesto y si tiene personal a cargo."
+          number={7}
+          title={t('roleDetail.section8.title')}
+          description={t('roleDetail.section8.description')}
         >
-          <label className={labelClass}>Reporta a</label>
+          <label className={labelClass}>{t('roleDetail.section8.reportsTo')}</label>
           <select
             value={form.reportsToJobRoleId}
             onChange={(e) => setForm((f) => ({ ...f, reportsToJobRoleId: e.target.value }))}
             className={inputClass}
           >
-            <option value="">Sin jefe directo / N/A</option>
+            <option value="">{t('roleDetail.section8.noDirectBoss')}</option>
             {otherJobRoles.map((r) => (
               <option key={r.jobRoleId} value={r.jobRoleId}>
                 {r.title}
@@ -742,54 +1319,54 @@ export function RoleDetailPage() {
           {isEditing && roleQuery.data && (
             <p className="mt-2 text-xs text-slate-400 dark:text-white/40">
               {roleQuery.data.hasDirectReports
-                ? 'Este puesto tiene personal a cargo (otros puestos reportan a él).'
-                : 'Este puesto no tiene personal a cargo actualmente.'}
+                ? t('roleDetail.section8.hasDirectReportsInfo')
+                : t('roleDetail.section8.noDirectReportsInfo')}
             </p>
           )}
         </Section>
 
-        <Section number={9} title="Indicadores de desempeño" description="Un indicador (KPI) por línea.">
+        <Section number={8} title={t('roleDetail.section9.title')} description={t('roleDetail.section9.description')}>
           <textarea
             value={form.performanceIndicators}
             onChange={(e) => setForm((f) => ({ ...f, performanceIndicators: e.target.value }))}
             rows={3}
-            placeholder={'Cumplimiento de meta mensual de ventas\nNPS de clientes atendidos'}
+            placeholder={t('roleDetail.section9.placeholder')}
             className={inputClass}
           />
         </Section>
 
         <Section
-          number={10}
-          title="Condiciones de trabajo"
-          description="Horario, modalidad, viajes, ubicación y disponibilidad."
+          number={9}
+          title={t('roleDetail.section10.title')}
+          description={t('roleDetail.section10.description')}
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Horario</label>
+              <label className={labelClass}>{t('roleDetail.section10.schedule')}</label>
               <input
                 value={form.workSchedule}
                 onChange={(e) => setForm((f) => ({ ...f, workSchedule: e.target.value }))}
-                placeholder="Lunes a viernes, 9:00–18:00"
+                placeholder={t('roleDetail.section10.schedulePlaceholder')}
                 className={inputClass}
               />
             </div>
             <div>
-              <label className={labelClass}>Modalidad</label>
+              <label className={labelClass}>{t('roleDetail.section10.modality')}</label>
               <input
                 value={form.workModality}
                 onChange={(e) => setForm((f) => ({ ...f, workModality: e.target.value }))}
-                placeholder="Presencial, remoto, híbrido…"
+                placeholder={t('roleDetail.section10.modalityPlaceholder')}
                 className={inputClass}
               />
             </div>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelClass}>Ubicación</label>
+              <label className={labelClass}>{t('roleDetail.section10.location')}</label>
               <input
                 value={form.workLocation}
                 onChange={(e) => setForm((f) => ({ ...f, workLocation: e.target.value }))}
-                placeholder="Oficina central, CDMX"
+                placeholder={t('roleDetail.section10.locationPlaceholder')}
                 className={inputClass}
               />
             </div>
@@ -802,34 +1379,47 @@ export function RoleDetailPage() {
                 className="h-4 w-4 rounded border-slate-300"
               />
               <label htmlFor="requiresTravel" className="text-sm text-slate-600 dark:text-white/60">
-                Requiere viajes
+                {t('roleDetail.section10.requiresTravel')}
               </label>
             </div>
           </div>
           <div className="mt-4">
-            <label className={labelClass}>Disponibilidad (opcional)</label>
+            <label className={labelClass}>{t('roleDetail.section10.availability')}</label>
             <input
               value={form.availabilityNotes}
               onChange={(e) => setForm((f) => ({ ...f, availabilityNotes: e.target.value }))}
-              placeholder="Disponibilidad para guardias los fines de semana"
+              placeholder={t('roleDetail.section10.availabilityPlaceholder')}
               className={inputClass}
             />
           </div>
         </Section>
 
-        <Section number={11} title="Tipo de contratación">
-          <input
+        <Section number={10} title={t('roleDetail.section11.title')}>
+          <select
             value={form.employmentType}
             onChange={(e) => setForm((f) => ({ ...f, employmentType: e.target.value }))}
-            placeholder="Tiempo completo, medio tiempo, honorarios…"
             className={inputClass}
-          />
+          >
+            <option value="">{t('roleDetail.section11.selectType')}</option>
+            {EMPLOYMENT_TYPE_KEYS.map((key) => {
+              const label = t(`roleDetail.section11.types.${key}`);
+              return (
+                <option key={key} value={label}>
+                  {label}
+                </option>
+              );
+            })}
+            {form.employmentType &&
+              !EMPLOYMENT_TYPE_KEYS.some((k) => t(`roleDetail.section11.types.${k}`) === form.employmentType) && (
+                <option value={form.employmentType}>{form.employmentType}</option>
+              )}
+          </select>
         </Section>
 
-        <Section number={12} title="Rango salarial y prestaciones">
+        <Section number={11} title={t('roleDetail.section12.title')}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <label className={labelClass}>Salario mínimo</label>
+              <label className={labelClass}>{t('roleDetail.section12.salaryMin')}</label>
               <input
                 type="number"
                 value={form.salaryRangeMin}
@@ -838,7 +1428,7 @@ export function RoleDetailPage() {
               />
             </div>
             <div>
-              <label className={labelClass}>Salario máximo</label>
+              <label className={labelClass}>{t('roleDetail.section12.salaryMax')}</label>
               <input
                 type="number"
                 value={form.salaryRangeMax}
@@ -847,80 +1437,41 @@ export function RoleDetailPage() {
               />
             </div>
             <div>
-              <label className={labelClass}>Moneda</label>
+              <label className={labelClass}>{t('roleDetail.section12.currency')}</label>
               <input
                 value={form.salaryCurrency}
                 onChange={(e) => setForm((f) => ({ ...f, salaryCurrency: e.target.value }))}
-                placeholder="MXN, USD…"
+                placeholder={t('roleDetail.section12.currencyPlaceholder')}
                 className={inputClass}
               />
             </div>
           </div>
           <div className="mt-4">
-            <label className={labelClass}>Prestaciones (una por línea)</label>
+            <label className={labelClass}>{t('roleDetail.section12.benefits')}</label>
             <textarea
               value={form.benefits}
               onChange={(e) => setForm((f) => ({ ...f, benefits: e.target.value }))}
               rows={3}
-              placeholder={'Seguro de gastos médicos mayores\nVales de despensa'}
+              placeholder={t('roleDetail.section12.benefitsPlaceholder')}
               className={inputClass}
             />
-          </div>
-        </Section>
-
-        <Section number={13} title="Objetivos del puesto" description="Resultados esperados, uno por línea.">
-          <textarea
-            value={form.expectedOutcomes}
-            onChange={(e) => setForm((f) => ({ ...f, expectedOutcomes: e.target.value }))}
-            rows={3}
-            placeholder={'Incrementar la cartera de clientes activos en 20%\nReducir tiempo de respuesta a clientes'}
-            className={inputClass}
-          />
-        </Section>
-
-        <Section
-          number={14}
-          title="Procesos de empresa (Rutas de Carrera)"
-          description="Requisitos de capacitación específicos de la empresa para este puesto — alimentan las categorías 'Procesos de Depto.' y 'Procesos de RRHH' en el plan de carrera del colaborador."
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelClass}>Procesos de departamento (uno por línea)</label>
-              <textarea
-                value={form.departmentProcesses}
-                onChange={(e) => setForm((f) => ({ ...f, departmentProcesses: e.target.value }))}
-                rows={3}
-                placeholder={'Proceso de armado de reportes de ventas\nProceso de cierre mensual'}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Procesos de RRHH / cumplimiento (uno por línea)</label>
-              <textarea
-                value={form.hrProcesses}
-                onChange={(e) => setForm((f) => ({ ...f, hrProcesses: e.target.value }))}
-                rows={3}
-                placeholder={'Prevención de Acoso Sexual Laboral\nCódigo de Ética y Conducta'}
-                className={inputClass}
-              />
-            </div>
           </div>
         </Section>
 
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
-            onClick={() => navigate('/roles')}
+            onClick={handleGoBack}
             className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-white/50 dark:hover:bg-white/10"
           >
-            Cancelar
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={isSaving}
             className="rounded-full bg-brand-600 px-6 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-60"
           >
-            {isSaving ? 'Guardando…' : 'Guardar puesto'}
+            {isSaving ? t('common.saving') : t('roleDetail.saveRole')}
           </button>
         </div>
       </form>

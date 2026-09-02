@@ -45,11 +45,23 @@ public sealed class GetStructuredLearningDocumentsFunction
         HttpRequestData request,
         CancellationToken cancellationToken)
     {
+        // Studio's own authoring catalog — same global-vs-tenant visibility
+        // rule as the student catalog (GetStudentStructuredLearningDocumentsFunction),
+        // but without the IsPublished restriction (authors must see their
+        // own drafts). Caller tenant comes from the signed launch JWT via
+        // the X-Studio-Tenant-Id header (see capabilitystudio's
+        // getIdentityHeaders()); an explicit ?tenantId= query param is
+        // still honored for backward compatibility.
+        Guid? callerTenantId = request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+            Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId)
+                ? studioTenantId
+                : null;
+
         var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
-        var tenantId = Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null;
+        var tenantId = callerTenantId ?? (Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null);
         var documents = await _dbContext.StructuredLearningDocuments
             .AsNoTracking()
-            .Where(d => !tenantId.HasValue || d.TenantId == tenantId.Value)
+            .Where(d => d.IsGlobal || (tenantId != null && d.TenantId == tenantId))
             .Select(d => new StructuredLearningDocumentSummaryDto
             {
                 StructuredLearningDocumentId = d.StructuredLearningDocumentId,

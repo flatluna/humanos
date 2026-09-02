@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Bot, Sparkles } from 'lucide-react';
 import { requestVoiceTutorSession } from '../api/runtimeSessionApi';
+import { useI18n } from '../i18n/useI18n';
 
 type VoiceState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error';
-
-const STATE_LABELS: Record<VoiceState, string> = {
-  idle: 'Toca para hablar',
-  connecting: 'Conectando…',
-  connected: 'Conectado — puedes hablar',
-  listening: 'Escuchando…',
-  speaking: 'Hablando…',
-  error: 'No se pudo conectar',
-};
 
 /**
  * "Agente de voz" — a real-time WebRTC voice presence for the Instructor
@@ -39,6 +31,10 @@ export default function VoiceTutorAgent({
   capabilityGraphNodeId,
   stepType,
   isReviewOnly,
+  reviewOnly,
+  structuredLearningSectionStepId,
+  personName,
+  startLabel,
   promptText,
   onTranscript,
   onExplanationAccepted,
@@ -55,33 +51,30 @@ export default function VoiceTutorAgent({
   stepType?: 'Hypothesis' | 'Teaching' | 'DeepDive';
   /** Blueprint-only DeepDive only: no grading tool is offered, the Agent just talks about the card. */
   isReviewOnly?: boolean;
+  reviewOnly?: boolean;
+  /** Structured Learning path — a single StructuredLearningSectionStep id */
+  structuredLearningSectionStepId?: string;
+  personName?: string;
+  startLabel?: string;
   promptText?: string;
   onTranscript?: (transcript: string) => void;
-  /** Deep Dive only: fired when the voice Agent itself calls the
-   * `mark_explanation_understood` Realtime tool — i.e. the exact moment
-   * IT decides the student's spoken explanation is good enough. Forward
-   * this straight to the same deterministic grading endpoint used for a
-   * typed answer (submitDeepDiveAttempt) — this callback only signals
-   * WHEN to grade, never the grade itself. */
   onExplanationAccepted?: (explanation: string) => void;
-  /** Only for the Examples step (2026-07-29) — which ExampleCard's "habla
-   * con tu maestro" button was pressed, so the voice Agent explains THAT
-   * specific example (with its result) instead of the step's own generic
-   * content. */
   exampleCardIndex?: number;
-  /** Set to false for a per-ExampleCard button (2026-07-29) — the Agent
-   * must only start talking when the student explicitly presses that
-   * card's button, never auto-connect on a timer like Hypothesis/Teaching. */
   autoConnect?: boolean;
-  /** Renders a small inline button instead of the full glowing-orb card —
-   * used for the per-ExampleCard "habla con tu maestro" button. */
   compact?: boolean;
 }) {
-  // Stable identity for "which step is this widget currently about" — used
-  // to reset/re-auto-connect when the parent page swaps in a different
-  // step without remounting this component instance.
+  const { t, language } = useI18n();
+
+  const stateLabels: Record<VoiceState, string> = {
+    idle: t.voiceIdle,
+    connecting: t.voiceConnecting,
+    connected: t.voiceConnected,
+    listening: t.voiceListening,
+    speaking: t.voiceSpeaking,
+    error: t.voiceError,
+  };
   const targetKey =
-    (learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`) +
+    (structuredLearningSectionStepId ?? learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`) +
     (exampleCardIndex !== undefined ? ':' + exampleCardIndex : '');
 
   const [state, setState] = useState<VoiceState>('idle');
@@ -189,11 +182,27 @@ export default function VoiceTutorAgent({
     setState('connecting');
     handledToolCallIdsRef.current.clear();
     try {
-      const session = await requestVoiceTutorSession(
-        learningSessionStepId
-          ? { learningSessionStepId, promptText, exampleCardIndex }
-          : { capabilityGraphNodeId: capabilityGraphNodeId!, stepType: stepType!, exampleCardIndex, isReviewOnly }
-      );
+      const session = structuredLearningSectionStepId
+        ? await requestVoiceTutorSession({
+            structuredLearningSectionStepId,
+            personName,
+            exampleCardIndex,
+            isReviewOnly: isReviewOnly || reviewOnly,
+          })
+        : learningSessionStepId
+        ? await requestVoiceTutorSession({
+            learningSessionStepId,
+            promptText,
+            personName,
+            exampleCardIndex,
+          })
+        : await requestVoiceTutorSession({
+            capabilityGraphNodeId: capabilityGraphNodeId!,
+            stepType: stepType!,
+            personName,
+            exampleCardIndex,
+            isReviewOnly: isReviewOnly || reviewOnly,
+          });
 
       // Explicit (not just `true`) so the browser can't skip echo
       // cancellation — without it, the mic picks up the Agent's own voice
@@ -359,7 +368,21 @@ export default function VoiceTutorAgent({
       teardown();
       setState('error');
     }
-  }, [learningSessionStepId, capabilityGraphNodeId, stepType, isReviewOnly, promptText, onTranscript, onExplanationAccepted, exampleCardIndex, monitorRemoteAudioLevel, teardown]);
+  }, [
+    learningSessionStepId,
+    capabilityGraphNodeId,
+    stepType,
+    isReviewOnly,
+    reviewOnly,
+    structuredLearningSectionStepId,
+    personName,
+    promptText,
+    onTranscript,
+    onExplanationAccepted,
+    exampleCardIndex,
+    monitorRemoteAudioLevel,
+    teardown,
+  ]);
 
   const isActive = state === 'connected' || state === 'listening' || state === 'speaking';
   const isBusy = state === 'connecting';
@@ -420,7 +443,7 @@ export default function VoiceTutorAgent({
           ) : (
             <Bot className="h-3.5 w-3.5" />
           )}
-          {isActive ? STATE_LABELS[state] : 'Habla con tu maestro sobre este ejemplo'}
+          {isActive ? stateLabels[state] : (language === 'en' ? 'Speak with your agent about this example' : 'Habla con tu maestro sobre este ejemplo')}
         </button>
         {errorMessage && <p className="text-[11px] text-red-600 dark:text-red-400">{errorMessage}</p>}
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
@@ -433,7 +456,7 @@ export default function VoiceTutorAgent({
     <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-accent-200 bg-gradient-to-b from-accent-50 to-white p-6 dark:border-accent-400/20 dark:from-accent-500/[0.08] dark:to-transparent">
       <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-accent-600 dark:from-brand-400 dark:to-accent-400">
         <Sparkles className="h-3.5 w-3.5 text-accent-600 dark:text-accent-400" />
-        Agente Engram de IA
+        {language === 'en' ? 'AI Engram Agent' : 'Agente Engram de IA'}
       </p>
 
       <button
@@ -441,7 +464,7 @@ export default function VoiceTutorAgent({
         onClick={isActive ? stopConversation : connect}
         disabled={isBusy}
         className="group relative flex h-20 w-20 items-center justify-center rounded-full outline-none"
-        aria-label={isActive ? 'Detener al Agente de voz' : 'Hablar con el Agente de voz'}
+        aria-label={isActive ? (language === 'en' ? 'Stop voice Agent' : 'Detener al Agente de voz') : (language === 'en' ? 'Talk to voice Agent' : 'Hablar con el Agente de voz')}
       >
         {(state === 'listening' || state === 'speaking' || state === 'connecting') && (
           <span className="absolute inset-0 animate-ping rounded-full bg-accent-400/30" />
@@ -462,7 +485,11 @@ export default function VoiceTutorAgent({
         </span>
       </button>
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent-600 dark:text-accent-300">{STATE_LABELS[state]}</p>
+      {startLabel && state === 'idle' ? (
+        <p className="text-xs font-semibold text-slate-300">{startLabel}</p>
+      ) : (
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent-600 dark:text-accent-300">{stateLabels[state]}</p>
+      )}
       {errorMessage && <p className="text-xs text-red-600 dark:text-red-400">{errorMessage}</p>}
 
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

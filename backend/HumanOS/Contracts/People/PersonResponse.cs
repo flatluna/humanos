@@ -24,4 +24,7 @@ public sealed class PersonResponse
 
     /// <summary>Job Role ("puesto") assignment — see <see cref="HumanOS.Models.People.Person.JobRoleId"/>. Null until an HRAdmin assigns it.</summary>
     public Guid? JobRoleId { get; set; }
+
+    /// <summary>Self-referencing "reports to" pointer — see <see cref="HumanOS.Models.People.Person.ManagerId"/>. Null until an HRAdmin assigns it.</summary>
+    public Guid? ManagerId { get; set; }
 }

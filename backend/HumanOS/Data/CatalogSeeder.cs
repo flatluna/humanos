@@ -1,3 +1,4 @@
+using HumanOS.Models.Gamification;
 using HumanOS.Models.Goals;
 using HumanOS.Models.Motivations;
 using Microsoft.EntityFrameworkCore;
@@ -170,5 +171,123 @@ public static class CatalogSeeder
         await dbContext.SaveChangesAsync();
 
         Console.WriteLine("Catalog seeding complete.");
+    }
+
+    public sealed record BadgeSeed(
+        string Code,
+        string Category,
+        string Name,
+        string Description,
+        string IconEmoji,
+        string RuleType,
+        int RuleThreshold);
+
+    public static readonly BadgeSeed[] InitialBadges =
+    [
+        // CATEGORY A — EFFORT MILESTONES (cumulative engrams mastered, any course)
+        new("first_neuron", "Effort", "First Neuron", "You've mastered your first engram! The journey of knowledge has begun.", "🎯", "engrams_mastered", 1),
+        new("effort_10", "Effort", "Apprentice", "You've mastered 10 engrams — laying down strong foundational neural pathways.", "🌱", "engrams_mastered", 10),
+        new("effort_25", "Effort", "Practitioner", "You've mastered 25 engrams — your knowledge network is growing strong.", "📘", "engrams_mastered", 25),
+        new("effort_50", "Effort", "Expert", "You've mastered 50 engrams — turning continuous effort into deep expertise.", "🎓", "engrams_mastered", 50),
+        new("effort_100", "Effort", "Master", "You've mastered 100 engrams — a century of consolidated knowledge.", "🏅", "engrams_mastered", 100),
+        new("effort_200", "Effort", "Scholar", "You've mastered 200 engrams — demonstrating exceptional dedication to learning.", "💎", "engrams_mastered", 200),
+        new("effort_300", "Effort", "Legend", "You've mastered 300 engrams — an iconic milestone of profound mastery.", "👑", "engrams_mastered", 300),
+
+        // CATEGORY B — COURSE / SKILL PROGRESS (% of a single course)
+        new("skill_progress_25", "Progress", "Quarter Way", "You've completed 25% of a course — momentum is building.", "🥉", "course_progress_pct", 25),
+        new("skill_progress_50", "Progress", "Halfway There", "You've completed 50% of a course — halfway to complete mastery.", "🥈", "course_progress_pct", 50),
+        new("skill_progress_75", "Progress", "Home Stretch", "You've completed 75% of a course — the finish line is in sight.", "🥇", "course_progress_pct", 75),
+        new("skill_complete_1", "Progress", "Skill Mastered", "You've completed 100% of a course — a complete skill fully mastered.", "🛡️", "course_completed", 1),
+
+        // CATEGORY C — SKILLS ACCUMULATED (number of fully completed courses/skills)
+        new("skills_1", "Skills", "First Skill", "You've fully completed your first entire skill course.", "🏆", "skills_completed", 1),
+        new("skills_3", "Skills", "Getting Started", "You've fully completed 3 distinct skill courses across your training plan.", "🌱", "skills_completed", 3),
+        new("skills_6", "Skills", "Building Momentum", "You've fully completed 6 distinct skill courses — versatile and capable.", "🚀", "skills_completed", 6),
+        new("skills_10", "Skills", "Halfway Expert", "You've fully completed 10 distinct skill courses — deep multi-domain competence.", "🥈", "skills_completed", 10),
+        new("skills_15", "Skills", "Almost There", "You've fully completed 15 distinct skill courses — exceptional breadth of knowledge.", "🥇", "skills_completed", 15),
+        new("skills_all", "Skills", "Skill Master", "You've completed all assigned skill courses in your learning plan.", "🥷", "skills_completed", 20),
+
+        // CATEGORY D — MASTERY / QUALITY
+        new("quality_perfect_10", "Quality", "Perfectionist", "Scored a perfect 100% on 10 assessment rounds.", "🎯", "perfect_scores", 10),
+        new("quality_firsttry_10", "Quality", "One-Shot", "Mastered 10 engrams on the very first attempt without needing a retry.", "🧠", "first_try_masteries", 10),
+        new("quality_flawless_5", "Quality", "Flawless", "Mastered 5 consecutive engrams on the first attempt with high scores.", "🔥", "flawless_streak", 5),
+
+        // CATEGORY E — CHALLENGE (uses Critical tier)
+        new("critical_guardian", "Challenge", "Critical Guardian", "Mastered 10 Critical tier engrams essential for your role.", "🛡️", "critical_mastered", 10),
+
+        // CATEGORY F — HABIT / CONSISTENCY
+        new("streak_7", "Habit", "7-Day Streak", "Maintained a 7-day daily learning streak.", "🔥", "streak_days", 7),
+        new("streak_30", "Habit", "30-Day Streak", "Maintained a 30-day daily learning streak — a rock-solid habit.", "🌟", "streak_days", 30),
+        new("streak_100", "Habit", "100-Day Streak", "Maintained a 100-day daily learning streak — truly remarkable consistency.", "💫", "streak_days", 100),
+        new("automatic_pilot", "Habit", "Autopilot", "Consolidated 5 engrams into permanent, automatic memory.", "⚡", "automatic_engrams", 5),
+        new("memory_rescuer", "Habit", "Memory Rescuer", "Rescued 10 fading engrams with heroic active memory recall.", "🧠", "memory_rescued", 10),
+
+        // CATEGORY G — LUCK / SURPRISE
+        new("lucky_jackpot", "Luck", "Lucky", "Hit a rare 3.0x Jackpot reward multiplier.", "🎲", "jackpot_hit", 1),
+        new("lucky_triple", "Luck", "Triple Luck", "Hit 3 Jackpot reward multipliers — fortune favors the dedicated.", "🎰", "jackpot_hit", 3),
+    ];
+
+    public static async Task SeedBadgesAsync(HumanOsDbContext dbContext)
+    {
+        var existingBadges = await dbContext.BadgeCatalogs.ToListAsync();
+        var existingLookup = existingBadges.ToDictionary(b => b.Code, StringComparer.OrdinalIgnoreCase);
+        var activeCodesInSeed = InitialBadges.Select(b => b.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var addedCount = 0;
+        var updatedCount = 0;
+        var deactivatedCount = 0;
+
+        foreach (var seed in InitialBadges)
+        {
+            if (existingLookup.TryGetValue(seed.Code, out var existing))
+            {
+                existing.Category = seed.Category;
+                existing.Name = seed.Name;
+                existing.Description = seed.Description;
+                existing.IconEmoji = seed.IconEmoji;
+                existing.RuleType = seed.RuleType;
+                existing.RuleThreshold = seed.RuleThreshold;
+                existing.IsActive = true;
+                updatedCount++;
+            }
+            else
+            {
+                var badge = new BadgeCatalog
+                {
+                    Id = Guid.NewGuid(),
+                    Code = seed.Code,
+                    Category = seed.Category,
+                    Name = seed.Name,
+                    Description = seed.Description,
+                    IconEmoji = seed.IconEmoji,
+                    RuleType = seed.RuleType,
+                    RuleThreshold = seed.RuleThreshold,
+                    IsActive = true
+                };
+
+                dbContext.BadgeCatalogs.Add(badge);
+                addedCount++;
+            }
+        }
+
+        // Deactivate any existing badges that are no longer part of the redesigned catalog (e.g. complete_brain)
+        foreach (var existing in existingBadges)
+        {
+            if (!activeCodesInSeed.Contains(existing.Code) && existing.IsActive)
+            {
+                existing.IsActive = false;
+                deactivatedCount++;
+            }
+        }
+
+        if (addedCount > 0 || updatedCount > 0 || deactivatedCount > 0)
+        {
+            await dbContext.SaveChangesAsync();
+            Console.WriteLine($"Seeded {addedCount} new badges, updated {updatedCount} badges, deactivated {deactivatedCount} obsolete badges in BadgeCatalog.");
+        }
+        else
+        {
+            Console.WriteLine("All badges are already present and up to date in BadgeCatalog.");
+        }
     }
 }

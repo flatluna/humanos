@@ -113,7 +113,14 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
         StructuredLearningKnowledgeFactGenerationResponse response;
         try
         {
-            response = await _agent.GenerateAsync(request, cancellationToken);
+            // Raw (unvalidated): the model occasionally puts one invalid
+            // fact (e.g. a discontinuous Composite GraphPath) alongside many
+            // otherwise-valid ones. Validating fact-by-fact below drops only
+            // the bad apples instead of discarding the whole batch, which
+            // previously turned a single bad fact into zero facts for the
+            // entire Engram.
+            response = await _agent.GenerateRawAsync(request, cancellationToken);
+            response.KnowledgeFacts = FilterValidFacts(request, response, entityInputs, connectionInputs, engramId);
             if (response.KnowledgeFacts.Count == 0)
             {
                 // Empty is only a hard failure when it would REGRESS an
@@ -125,12 +132,8 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
                 // generation — that's a valid, not an error, outcome.
                 if (hadPreviousFacts)
                 {
-                    throw new InvalidOperationException("Knowledge Fact generation returned no KnowledgeFacts; previous facts must be preserved.");
+                    throw new InvalidOperationException("Knowledge Fact generation returned no valid KnowledgeFacts; previous facts must be preserved.");
                 }
-            }
-            else
-            {
-                ValidateAgainstPersistedContext(request, response, entityInputs, connectionInputs);
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -211,6 +214,48 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
             .OrderBy(fact => fact.Importance)
             .ThenBy(fact => fact.KnowledgeFactId)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Validates each proposed fact independently (reusing the same
+    /// identity/structural/context checks as the strict path) and keeps only
+    /// the ones that pass, logging a warning for every fact it drops. This
+    /// prevents one malformed fact from wiping out an entire otherwise-good
+    /// generation for the Engram.</summary>
+    private List<StructuredLearningGeneratedKnowledgeFact> FilterValidFacts(
+        StructuredLearningKnowledgeFactGenerationRequest request,
+        StructuredLearningKnowledgeFactGenerationResponse response,
+        IReadOnlyList<StructuredLearningKnowledgeFactEntityInput> entities,
+        IReadOnlyList<StructuredLearningKnowledgeFactConnectionInput> connections,
+        Guid engramId)
+    {
+        var validFacts = new List<StructuredLearningGeneratedKnowledgeFact>();
+        var seenStatements = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var fact in response.KnowledgeFacts)
+        {
+            var candidate = new StructuredLearningKnowledgeFactGenerationResponse
+            {
+                EngramId = response.EngramId,
+                EngramName = response.EngramName,
+                Language = response.Language,
+                KnowledgeFacts = [fact]
+            };
+            try
+            {
+                ValidateAgainstPersistedContext(request, candidate, entities, connections);
+                if (!seenStatements.Add(NormalizeWhitespace(fact.Statement).ToLowerInvariant()))
+                {
+                    _logger.LogWarning("Knowledge Facts generation for Engram {EngramId} dropped duplicate fact '{Statement}'", engramId, fact.Statement);
+                    continue;
+                }
+                validFacts.Add(fact);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogWarning("Knowledge Facts generation for Engram {EngramId} dropped invalid fact '{Statement}': {Reason}", engramId, fact.Statement, exception.Message);
+            }
+        }
+
+        return validFacts;
     }
 
     private static void ValidateAgainstPersistedContext(

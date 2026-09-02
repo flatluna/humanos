@@ -189,6 +189,40 @@ public sealed class NodeAttemptSummaryDto
     public bool Passed { get; set; }
 }
 
+/// <summary>Memory block for node summary modal.</summary>
+public sealed class NodeMemorySummaryDto
+{
+    public int RecallPercent { get; set; }
+    public string MemoryState { get; set; } = "Strong"; // "Strong" | "Fading" | "AlmostForgotten"
+    public int ReviewCount { get; set; }
+    public DateTime? LastReviewDate { get; set; }
+    public bool IsAutomatic { get; set; }
+    public int ReviewsUntilAutomatic { get; set; }
+    public DateTime? NextReviewDate { get; set; }
+}
+
+/// <summary>Reward block for node summary modal.</summary>
+public sealed class NodeRewardSummaryDto
+{
+    public int PointsAwarded { get; set; }
+    public bool WasSurprise { get; set; }
+    public string SurpriseType { get; set; } = "NONE"; // "NONE" | "BONUS" | "DOUBLE" | "JACKPOT"
+    public int PointsBase { get; set; }
+    public decimal DifficultyMultiplier { get; set; }
+    public decimal MemoryEffortMultiplier { get; set; }
+    public decimal SurpriseMultiplier { get; set; }
+    public DateTime? EarnedAt { get; set; }
+}
+
+/// <summary>Impact block for node summary modal.</summary>
+public sealed class NodeImpactSummaryDto
+{
+    public int Score { get; set; }
+    public string Tier { get; set; } = string.Empty; // "Critical" | "Important" | "Foundational"
+    public string? PrimarySignal { get; set; }
+    public string? Reason { get; set; }
+}
+
 /// <summary>
 /// Output of GetNodeSummary — read-only recap shown when opening a node
 /// that is already Mastered on the map, instead of silently starting a new
@@ -206,6 +240,9 @@ public sealed class NodeSummaryDto
     public int? FinalScore { get; set; }
     public List<StepReviewDto> Steps { get; set; } = [];
     public List<NodeAttemptSummaryDto> PastAttempts { get; set; } = [];
+    public NodeMemorySummaryDto? Memory { get; set; }
+    public NodeRewardSummaryDto? Reward { get; set; }
+    public NodeImpactSummaryDto? Impact { get; set; }
 }
 
 /// <summary>
@@ -287,7 +324,35 @@ internal static class RuntimeGraphApiMappers
             CompletedDate = a.CompletedDate,
             FinalScore = a.FinalScore,
             Passed = a.Passed
-        }).ToList()
+        }).ToList(),
+        Memory = summary.Memory == null ? null : new NodeMemorySummaryDto
+        {
+            RecallPercent = summary.Memory.RecallPercent,
+            MemoryState = summary.Memory.MemoryState,
+            ReviewCount = summary.Memory.ReviewCount,
+            LastReviewDate = summary.Memory.LastReviewDate,
+            IsAutomatic = summary.Memory.IsAutomatic,
+            ReviewsUntilAutomatic = summary.Memory.ReviewsUntilAutomatic,
+            NextReviewDate = summary.Memory.NextReviewDate
+        },
+        Reward = summary.Reward == null ? null : new NodeRewardSummaryDto
+        {
+            PointsAwarded = summary.Reward.PointsAwarded,
+            WasSurprise = summary.Reward.WasSurprise,
+            SurpriseType = summary.Reward.SurpriseType,
+            PointsBase = summary.Reward.PointsBase,
+            DifficultyMultiplier = summary.Reward.DifficultyMultiplier,
+            MemoryEffortMultiplier = summary.Reward.MemoryEffortMultiplier,
+            SurpriseMultiplier = summary.Reward.SurpriseMultiplier,
+            EarnedAt = summary.Reward.EarnedAt
+        },
+        Impact = summary.Impact == null ? null : new NodeImpactSummaryDto
+        {
+            Score = summary.Impact.Score,
+            Tier = summary.Impact.Tier,
+            PrimarySignal = summary.Impact.PrimarySignal,
+            Reason = summary.Impact.Reason
+        }
     };
 
     public static RuntimeCurrentStepResponse ToCurrentStepResponse(SessionRecoveryEngine.ResumeSessionResult resumed) => new()

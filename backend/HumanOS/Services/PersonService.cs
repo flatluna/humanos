@@ -64,6 +64,7 @@ public sealed class PersonService
             OrgRole = person.OrgRole.ToString(),
             DepartmentId = person.DepartmentId,
             JobRoleId = person.JobRoleId,
+            ManagerId = person.ManagerId,
         };
     }
 

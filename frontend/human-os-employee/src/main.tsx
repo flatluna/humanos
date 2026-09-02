@@ -7,6 +7,7 @@ import { msalInstance } from '@/auth';
 import { AuthProvider } from '@/auth/AuthContext';
 import { queryClient } from '@/api';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import '@/i18n';
 import App from '@/app/App';
 import '@/index.css';
 

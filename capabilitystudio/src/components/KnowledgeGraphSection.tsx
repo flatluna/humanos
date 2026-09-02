@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw } from 'lucide-react';
+import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw, X } from 'lucide-react';
 import {
   getStructuredLearningDocumentEntities,
   getStructuredLearningDocumentConnections,
@@ -120,7 +120,7 @@ function TreeNode({ node, large = false }: { node: TreeNodeData; large?: boolean
         <div className="font-medium">{node.entity.CanonicalName}</div>
         <div className={`opacity-70 ${large ? 'text-xs' : 'text-[10px]'}`}>{node.entity.EntityType}</div>
         {node.entity.OntologicalClass && (
-          <div className={`italic opacity-60 ${large ? 'text-[11px]' : 'text-[9px]'}`}>Clase: {node.entity.OntologicalClass}</div>
+          <div className={`italic opacity-60 ${large ? 'text-[11px]' : 'text-[9px]'}`}>Class: {node.entity.OntologicalClass}</div>
         )}
       </div>
 
@@ -339,11 +339,11 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
             </span>
             <button
               type="button"
-              onClick={loadAllFacts}
+              onClick={() => (showAllFacts ? setShowAllFacts(false) : loadAllFacts())}
               className="rounded-full border border-brand-400/40 bg-brand-500/10 px-2.5 py-1 text-[11px] font-medium text-brand-200 hover:bg-brand-500/20 focus:outline-none focus:ring-2 focus:ring-brand-400"
               aria-label={t('structuredLearningRunProgress.knowledgeFactsViewAll')}
             >
-              {t('structuredLearningRunProgress.knowledgeFactsViewAll')}
+              {showAllFacts ? t('structuredLearningRunProgress.knowledgeFactsHideAll') : t('structuredLearningRunProgress.knowledgeFactsViewAll')}
             </button>
           </div>
         )}
@@ -588,6 +588,17 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
       </div>
       {showAllFacts && engramGraphs && (
         <section className="mt-4 space-y-2 border-t border-white/10 pt-4" aria-label={t('structuredLearningRunProgress.knowledgeFactsViewAll')}>
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-white">{t('structuredLearningRunProgress.knowledgeFactsViewAll')}</h4>
+            <button
+              type="button"
+              onClick={() => setShowAllFacts(false)}
+              className="ml-auto rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-brand-400"
+              aria-label={t('structuredLearningRunProgress.knowledgeFactsHideAll')}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           {engramGraphs.map(({ section }) => {
             const facts = factsBySection[section.StructuredLearningDocumentSectionId];
             if (!facts) return null;

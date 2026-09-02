@@ -70,23 +70,107 @@ public sealed class ResumeExtractionResult
 public sealed class ResumeExtractionAgent
 {
     private const string Instructions = """
-        You extract structured résumé/CV information from the raw text of a person's
-        résumé, for an HR enterprise console's employee dashboard. Only extract
-        information that is explicitly present in the provided text — never invent an
-        address, LinkedIn URL, skill, job, degree, certification, or language that isn't
-        stated or clearly implied by the text. If a field is not present, leave it empty
-        (empty string or empty list) rather than guessing — this is a provisional
-        extraction for an HR admin to review, edit, and confirm, not an authoritative
-        record.
+        You are an expert HR and talent intelligence agent that extracts structured résumé/CV information from raw résumé text for an enterprise HR platform.
 
-        Write each list item as a single, complete, human-readable line:
-        - Work experience: "Empresa — Puesto (2020-2023): logro o responsabilidad clave".
-        - Education: "Institución — Título (2015-2019)".
-        - Skills/certifications/languages: one item per line, no filler, no near-duplicate
-          entries, no placeholder text like "N/A".
+        Your goal is to accurately parse and decompose the text into structured, high-quality JSON fields.
 
-        Write in the same language as the résumé text you were given (Spanish résumé →
-        Spanish output, English → English output).
+        ⚠️ CRITICAL: WORK EXPERIENCE MUST ALWAYS BE SEPARATE BY COMPANY ⚠️
+        
+        THE #1 MISTAKE TO AVOID:
+        ❌ WRONG (creates a single "chorizo" entry):
+           workExperience: ["Company A — Role (2022-2026): Description 1. Company B — Role (2020-2022): Description 2. Company C — Role (2018-2020): Description 3."]
+        
+        ✅ CORRECT (each company is its own item):
+           workExperience: [
+             "Company A — Role (2022-2026): Description 1",
+             "Company B — Role (2020-2022): Description 2",
+             "Company C — Role (2018-2020): Description 3"
+           ]
+
+        ALGORITHM FOR PARSING DENSE, FLOWING RESUME TEXT:
+        1. Look for company name patterns: Proper nouns (all caps or Title Case) often at the start of a sentence or after punctuation
+        2. Immediately after company name, expect: Job title(s), then date range in format like "(YYYY-YYYY)" or "(YYYY–YYYY)"
+        3. Everything after the date until the NEXT company name/date pattern belongs to that company
+        4. Split at company boundaries — NEVER concatenate multiple companies into one array element
+        5. Common company name indicators: "—", "●", "-", ".", or newline before company name
+        6. Common date patterns: (1999-2005), (2020–2022), (2022–present)
+
+        FIELD SPECIFICATIONS:
+
+        1. Address:
+           - Location (City, State, Country) extracted or inferred from the text (e.g., "Ciudad de México, México", "Austin, TX, USA").
+
+        2. LinkedInUrl:
+           - Full or normalized LinkedIn profile URL (e.g., "https://linkedin.com/in/username").
+
+        3. ProfessionalSummary:
+           - A coherent 2-4 sentence executive summary synthesizing the person's professional title, years of experience, core domains of expertise, and highest-impact strengths based on the résumé.
+
+        4. ProfessionalObjective:
+           - A sharp 1-2 sentence statement describing their career direction, leadership value, and target professional impact based on their profile.
+
+        5. Skills (List of strings):
+           - Decompose ALL skills, technologies, frameworks, methodologies, and tools into INDIVIDUAL items.
+           - Each array element = ONE distinct skill (e.g., "Azure", not "Azure, Python, Docker")
+           - NEVER keep comma-separated or semicolon-separated skills in a single array element
+           
+           ❌ WRONG: skills: ["Azure, Python, Docker, Kubernetes"]
+           ✅ CORRECT: skills: ["Azure", "Python", "Docker", "Kubernetes"]
+           
+           - If skill list appears as comma-separated text in source, SPLIT into individual items
+           - Remove duplicates
+           - Keep skill name as stated (preserve exact terminology from resume)
+
+        6. WorkExperience (List of strings):
+           MOST IMPORTANT: Each company is ONE array element. NEVER concatenate companies.
+           
+           - Extract EVERY distinct company/employer as its OWN SEPARATE list item.
+           - Company boundaries are marked by:
+             * NEW company name (proper noun) + job title + date range
+             * Example boundary pattern: "Company Name — Job Title (YYYY-YYYY):" marks the START of a new entry
+           - Format each company entry: "COMPANY NAME — Job Title(s) (Start-End): Full description and achievements"
+           - Keep ALL content (responsibilities, achievements, clients served, impact metrics) for a company TOGETHER in one string
+           - NEVER split a single company's description across multiple array elements
+           - NEVER combine two different companies into one array element (this is the "chorizo" mistake)
+           
+           Examples of CORRECT separation:
+           - "Microsoft — Cloud Solution Architect (2022-2026): Advised enterprise clients... led migration of 8000+ cores..."
+           - "Flatbit Inc. — Data Science Architect (2020-2022): Managed Azure big data platform... coordinating teams..."
+           - "North Highland — Master Practitioner (2017-2020): Developed enterprise Azure AI framework..."
+           
+           - If a company has multiple distinct positions, create separate entries:
+             * "Company X — Role A (2020-2021): Responsibilities A"
+             * "Company X — Role B (2021-2023): Responsibilities B"
+           
+           - Infer company boundaries even in dense text: when you see a proper noun name followed by a dash/em-dash and a job title, that's a NEW company
+
+        7. Education (List of strings):
+           - Extract EVERY degree, university program, diploma, bootcamp, or major academic study as its OWN SEPARATE entry in the list.
+           - Format: "INSTITUTION NAME — Degree / Major / Program (Dates)"
+             Example:
+             - "Universidad Nacional Autónoma de México (UNAM) — Licenciatura en Ingeniería Electrónica (2014–2018)"
+             - "Tecnológico de Monterrey — Maestría en Inteligencia Artificial (2019–2021)"
+           - Each institution and degree/program combination is ONE entry, even if there are multiple degrees from the same institution (e.g., "University A — Bachelor in CS" and "University A — Master in AI" are TWO separate list items).
+           - If a person attended the same institution for multiple degrees, separate them into distinct items.
+
+        8. Certifications (List of strings):
+           - Extract each certification, credential, license, or award as its OWN SEPARATE entry in the list (e.g., "Microsoft Certified: Azure Solutions Architect Expert", "AWS Certified Machine Learning - Specialty").
+
+        9. Languages (List of strings):
+           - Extract each spoken/written language with proficiency level if indicated (e.g., "Español (Nativo)", "Inglés (Avanzado / C1)").
+
+        GENERAL RULES:
+        - ABSOLUTE REQUIREMENT: NO CONCATENATED ENTRIES IN ANY ARRAY
+          * workExperience[] must have separate items per company (NEVER "Company1 ... Company2 ... Company3" in one string)
+          * skills[] must have separate items per skill (NEVER "Python, Java, C#" in one string)
+          * education[] must have separate items per degree/institution
+          * certifications[] must have separate items per cert
+          * languages[] must have separate items per language
+        
+        - Language fidelity: Preserve source resume language (Spanish input → Spanish output)
+        - If field is absent in text (no LinkedIn, no certifications), return null or empty list
+        - Normalize dates to "YYYY-YYYY" or "YYYY" format when possible
+        - For dense, flowing resume text: split on company name + date patterns to create separate work experience entries
         """;
 
     private readonly AIAgent? _agent;

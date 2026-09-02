@@ -17,6 +17,12 @@ public sealed class SkillResponse
 
     public bool IsActive { get; set; }
 
+    public string? DocumentStoragePath { get; set; }
+
+    public string? DocumentFileName { get; set; }
+
+    public string? DocumentUrl { get; set; }
+
     public IReadOnlyList<SkillJobRoleLinkResponse> JobRoles { get; set; } = [];
 
     public DateTime CreatedDate { get; set; }
@@ -31,6 +37,10 @@ public sealed class SkillResponse
     public Guid? MatchedCapabilityId { get; set; }
 
     public string? MatchedCapabilityName { get; set; }
+
+    /// <summary>"structured-learning" or "graph" — indicates which Studio
+    /// player/detail route to open.</summary>
+    public string? MatchedCourseType { get; set; }
 }
 
 /// <summary>One Job Role this Skill is currently linked to — enough to

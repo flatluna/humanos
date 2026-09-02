@@ -271,11 +271,11 @@ function EngramModal({
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
           <span>Engram ID: <span className="font-mono text-slate-400">{engram.EngramId}</span></span>
           <span>·</span>
-          <span>Curso: <span className="text-slate-400">{engram.CourseName}</span> <span className="font-mono">({engram.DocumentId})</span></span>
+          <span>Course: <span className="text-slate-400">{engram.CourseName}</span> <span className="font-mono">({engram.DocumentId})</span></span>
           {(subjectName || topicName) && (
             <>
               <span>·</span>
-              <span>Clase: <span className="text-slate-400">{[subjectName, topicName].filter(Boolean).join(' / ')}</span></span>
+              <span>Domain / Topic: <span className="text-slate-400">{[subjectName, topicName].filter(Boolean).join(' / ')}</span></span>
             </>
           )}
         </div>

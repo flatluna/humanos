@@ -19,15 +19,14 @@ public sealed class JobRoleConfiguration : IEntityTypeConfiguration<JobRole>
         builder.Property(x => x.TenantId)
             .IsRequired();
 
-        builder.Property(x => x.DepartmentId)
-            .IsRequired();
+        builder.Property(x => x.DepartmentId);
 
         builder.Property(x => x.Title)
             .HasMaxLength(200)
             .IsRequired();
 
         builder.Property(x => x.LevelLabel)
-            .HasMaxLength(50);
+            .HasMaxLength(150);
 
         builder.Property(x => x.Purpose)
             .HasMaxLength(2000);
@@ -41,10 +40,10 @@ public sealed class JobRoleConfiguration : IEntityTypeConfiguration<JobRole>
             .IsRequired();
 
         builder.Property(x => x.RequiredExperience)
-            .HasMaxLength(1000);
+            .HasMaxLength(2000);
 
         builder.Property(x => x.RequiredEducation)
-            .HasMaxLength(500);
+            .HasMaxLength(1000);
 
         builder.Property(x => x.RequiredCertificationsJson)
             .HasColumnType("nvarchar(max)")
@@ -97,23 +96,23 @@ public sealed class JobRoleConfiguration : IEntityTypeConfiguration<JobRole>
             .IsRequired();
 
         builder.Property(x => x.WorkSchedule)
-            .HasMaxLength(200);
+            .HasMaxLength(500);
 
         builder.Property(x => x.WorkModality)
-            .HasMaxLength(50);
+            .HasMaxLength(300);
 
         builder.Property(x => x.RequiresTravel)
             .HasDefaultValue(false)
             .IsRequired();
 
         builder.Property(x => x.WorkLocation)
-            .HasMaxLength(200);
-
-        builder.Property(x => x.AvailabilityNotes)
             .HasMaxLength(500);
 
+        builder.Property(x => x.AvailabilityNotes)
+            .HasMaxLength(1000);
+
         builder.Property(x => x.EmploymentType)
-            .HasMaxLength(50);
+            .HasMaxLength(150);
 
         builder.Property(x => x.SalaryRangeMin)
             .HasColumnType("decimal(12,2)");
@@ -152,7 +151,7 @@ public sealed class JobRoleConfiguration : IEntityTypeConfiguration<JobRole>
         builder.HasOne(x => x.Department)
             .WithMany(x => x.JobRoles)
             .HasForeignKey(x => x.DepartmentId)
-            .OnDelete(DeleteBehavior.Restrict)
+            .OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("FK_JobRole_Department");
 
         builder.HasOne(x => x.ReportsToJobRole)

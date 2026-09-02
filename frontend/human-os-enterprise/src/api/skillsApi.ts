@@ -19,6 +19,9 @@ export interface SkillDto {
   name: string;
   description: string | null;
   isActive: boolean;
+  documentStoragePath?: string | null;
+  documentFileName?: string | null;
+  documentUrl?: string | null;
   jobRoles: SkillJobRoleLinkDto[];
   createdDate: string;
   updatedDate: string;
@@ -28,6 +31,7 @@ export interface SkillDto {
    * indicator. */
   matchedCapabilityId: string | null;
   matchedCapabilityName: string | null;
+  matchedCourseType?: 'structured-learning' | 'graph' | null;
 }
 
 export interface SaveSkillRequest {
@@ -56,6 +60,24 @@ export async function updateSkill(skillId: string, body: SaveSkillRequest): Prom
 
 export async function deleteSkill(skillId: string): Promise<void> {
   await apiClient.delete(`/skills/${skillId}`);
+}
+
+export async function uploadSkillDocument(skillId: string, file: File): Promise<SkillDto> {
+  const { data } = await apiClient.post<SkillDto>(`/skills/${skillId}/document`, file, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'X-File-Name': file.name,
+    },
+    params: {
+      fileName: file.name,
+    },
+  });
+  return data;
+}
+
+export async function deleteSkillDocument(skillId: string): Promise<SkillDto> {
+  const { data } = await apiClient.delete<SkillDto>(`/skills/${skillId}/document`);
+  return data;
 }
 
 /// One-time/on-demand backfill: reconciles every active Job Role's

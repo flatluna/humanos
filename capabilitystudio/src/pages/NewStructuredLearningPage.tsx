@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
+  CheckCircle2,
   FileText,
   Globe,
   GraduationCap,
-  Layers,
   MessageSquareText,
-  Network,
   RefreshCw,
-  SlidersHorizontal,
   Wand2,
   ListTree,
   Sparkles,
@@ -33,8 +32,7 @@ import {
 } from '../lib/api/pdfPipelineApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getStructuredLearningTopics, type StructuredLearningTopic } from '../lib/api/structuredLearningTopicsApi';
-import { getSkillsSummary, type SkillSummaryDto } from '../lib/api/skillsApi';
-import { getJobRoles, type JobRoleDto } from '../lib/api/jobRolesApi';
+import { getSkills, type SkillDto } from '../lib/api/skillsApi';
 import StepIndicator from '../components/StepIndicator';
 import TypeOptionCard from '../components/TypeOptionCard';
 import FileDropzone from '../components/FileDropzone';
@@ -42,17 +40,6 @@ import SearchableCombobox from '../components/SearchableCombobox';
 import { useAuth } from '../auth/AuthContext';
 
 const STEPS_KEY = 'newStructuredLearning.steps';
-
-/** Same 4 employer career-plan training tracks as NewCapabilityPage.tsx —
- * kept here as a literal copy rather than a shared import so this page
- * never depends on NewCapabilityPage.tsx (see this file's own doc comment
- * below). */
-const CAREER_CATEGORIES = [
-  { value: 'job-skills' as const, labelKey: 'newCapability.careerCategoryJobSkills' },
-  { value: 'soft-skills' as const, labelKey: 'newCapability.careerCategorySoftSkills' },
-  { value: 'department-processes' as const, labelKey: 'newCapability.careerCategoryDepartmentProcesses' },
-  { value: 'hr-processes' as const, labelKey: 'newCapability.careerCategoryHrProcesses' },
-];
 
 /** Document Type Detection Engine (2026-08-17) — the 8 structural types the
  * backend classifier can recommend, shown as override options once a
@@ -68,9 +55,19 @@ const DOCUMENT_TYPE_OPTIONS: DocumentTypeName[] = [
   'Unknown',
 ];
 
-function jobRoleOptionLabel(role: JobRoleDto): string {
-  const withLevel = role.LevelLabel ? `${role.Title} (${role.LevelLabel})` : role.Title;
-  return `${withLevel} — ${role.DepartmentName}`;
+function getCategoryBadgeText(category: string): string {
+  switch (category) {
+    case 'job-skills':
+      return 'Habilidades Técnicas';
+    case 'soft-skills':
+      return 'Habilidades Blandas';
+    case 'department-processes':
+      return 'Procesos de Departamento';
+    case 'hr-processes':
+      return 'Procesos de RRHH';
+    default:
+      return category;
+  }
 }
 
 /**
@@ -119,15 +116,79 @@ export default function NewStructuredLearningPage() {
   const [includeKnowledgeGraphEntities, setIncludeKnowledgeGraphEntities] = useState(true);
   const [includeKnowledgeGraphConnections, setIncludeKnowledgeGraphConnections] = useState(true);
 
+  const [searchParams] = useSearchParams();
+  const [autoLoadedPdfStatus, setAutoLoadedPdfStatus] = useState<string | null>(null);
+
   const [careerCategory, setCareerCategory] = useState<string>('');
   const [targetSkill, setTargetSkill] = useState<string>('');
-  const [catalogSkills, setCatalogSkills] = useState<SkillSummaryDto[]>([]);
-  const [jobRoles, setJobRoles] = useState<JobRoleDto[]>([]);
-  const [targetJobRoleSearch, setTargetJobRoleSearch] = useState('');
+  const [allCompanySkills, setAllCompanySkills] = useState<SkillDto[]>([]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [courseType, setCourseType] = useState<'enterprise' | 'academic'>(isCompanyAccount ? 'enterprise' : 'academic');
+  const autoSetDocumentNameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const urlSkillId = searchParams.get('skillId');
+    const urlName = searchParams.get('name') || searchParams.get('targetSkill');
+    const urlCategory = searchParams.get('category') || searchParams.get('careerCategory');
+    const urlDocFileName = searchParams.get('docFileName') || 'document.pdf';
+
+    if (urlName || urlSkillId) {
+      setCourseType('enterprise');
+      if (urlCategory) {
+        setCareerCategory(urlCategory);
+        setSelectedCategoryFilter(urlCategory);
+      }
+      if (urlName) {
+        setTargetSkill(urlName);
+        setDocumentName(urlName);
+        autoSetDocumentNameRef.current = urlName;
+      }
+
+      if (urlSkillId) {
+        setAutoLoadedPdfStatus(`Cargando documento PDF desde el Data Lake para "${urlName || 'Skill'}"...`);
+        fetch(`http://localhost:7071/api/skills/${urlSkillId}/document`)
+          .then(async (res) => {
+            if (!res.ok) throw new Error('No PDF found');
+            const blob = await res.blob();
+            if (blob && blob.size > 0) {
+              const pdfFile = new File([blob], urlDocFileName, { type: 'application/pdf' });
+              setFile(pdfFile);
+              setSourceType('pdf');
+              setAutoLoadedPdfStatus(`PDF "${urlDocFileName}" cargado automáticamente desde el Data Lake.`);
+            } else {
+              setAutoLoadedPdfStatus(null);
+            }
+          })
+          .catch(() => {
+            setAutoLoadedPdfStatus(null);
+          });
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     getSubjects().then(setSubjects).catch(() => setSubjects([]));
   }, []);
+
+  useEffect(() => {
+    if (!isCompanyAccount) return;
+    let cancelled = false;
+    getSkills(effectiveTenantId)
+      .then((skills) => {
+        if (!cancelled) setAllCompanySkills(skills);
+      })
+      .catch(() => {
+        if (!cancelled) setAllCompanySkills([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTenantId, isCompanyAccount]);
+
+  const filteredCompanySkills = useMemo(() => {
+    if (selectedCategoryFilter === 'all') return allCompanySkills;
+    return allCompanySkills.filter((s) => s.Category === selectedCategoryFilter);
+  }, [allCompanySkills, selectedCategoryFilter]);
 
   // Load the types belonging to the selected domain, matching the domain
   // detail page's catalog.
@@ -143,65 +204,6 @@ export default function NewStructuredLearningPage() {
       .catch(() => { if (!cancelled) setTopics([]); });
     return () => { cancelled = true; };
   }, [effectiveTenantId, subjectId]);
-
-  useEffect(() => {
-    if (!careerCategory || careerCategory === 'job-skills') {
-      setCatalogSkills([]);
-      return;
-    }
-    let cancelled = false;
-    getSkillsSummary(effectiveTenantId, careerCategory)
-      .then((skills) => {
-        if (!cancelled) setCatalogSkills(skills);
-      })
-      .catch(() => {
-        if (!cancelled) setCatalogSkills([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [careerCategory, effectiveTenantId]);
-
-  useEffect(() => {
-    if (careerCategory !== 'job-skills') {
-      setJobRoles([]);
-      return;
-    }
-    let cancelled = false;
-    getJobRoles(effectiveTenantId)
-      .then((roles) => {
-        if (!cancelled) setJobRoles(roles);
-      })
-      .catch(() => {
-        if (!cancelled) setJobRoles([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [careerCategory, effectiveTenantId]);
-
-  useEffect(() => {
-    if (!careerCategory) {
-      setTargetSkill('');
-    }
-    if (careerCategory !== 'job-skills') {
-      setTargetJobRoleSearch('');
-    }
-  }, [careerCategory]);
-
-  const selectedJobRole = useMemo(
-    () => jobRoles.find((role) => jobRoleOptionLabel(role) === targetJobRoleSearch) ?? null,
-    [jobRoles, targetJobRoleSearch],
-  );
-
-  const skipFirstJobRoleReset = useRef(true);
-  useEffect(() => {
-    if (skipFirstJobRoleReset.current) {
-      skipFirstJobRoleReset.current = false;
-      return;
-    }
-    setTargetSkill('');
-  }, [selectedJobRole?.JobRoleId]);
 
   const [sourceType, setSourceType] = useState<'pdf' | 'text'>('pdf');
   const [file, setFile] = useState<File | null>(null);
@@ -243,8 +245,10 @@ export default function NewStructuredLearningPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const canAdvanceFromStep1 = documentName.trim().length > 0;
-  const canAdvanceFromStep2 = !!subjectId && !!topicId;
+  const canAdvanceFromStep1 =
+    courseType === 'enterprise'
+      ? documentName.trim().length > 0 && targetSkill.trim().length > 0
+      : documentName.trim().length > 0 && !!subjectId && !!topicId;
   const canAdvanceFromStep8 = sourceType === 'pdf' ? !!file : ideaText.trim().length > 0;
 
   /** Runs the cheap detection-only outline preview — same generic
@@ -394,10 +398,10 @@ export default function NewStructuredLearningPage() {
         languageCode,
         approvedOutline: outline,
         preExpandedDocumentText: sourceType === 'text' ? expandedDocumentText : null,
-        subjectId: subjectId || null,
-        topicId: topicId || null,
-        category: careerCategory || null,
-        targetSkill: careerCategory ? targetSkill.trim() || null : null,
+        subjectId: courseType === 'academic' ? (subjectId || null) : null,
+        topicId: courseType === 'academic' ? (topicId || null) : null,
+        category: courseType === 'enterprise' ? (careerCategory || null) : null,
+        targetSkill: courseType === 'enterprise' ? (targetSkill.trim() || null) : null,
         pedagogicalAudience,
         maxDeepDiveCardsPerNode: Math.max(1, Math.min(10, maxDeepDiveCardsPerNode)),
         includeProductionStep,
@@ -457,11 +461,188 @@ export default function NewStructuredLearningPage() {
       {step === 1 && (
         <div className="animate-fade-in space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.step1Title')}</h2>
-            <p className="mt-1 text-slate-400">{t('newStructuredLearning.step1Subtitle')}</p>
+            <h2 className="text-2xl font-bold text-white">{t('newStructuredLearning.courseTypeHeader')}</h2>
+            <p className="mt-1 text-slate-400">
+              {t('newStructuredLearning.step2Subtitle')}
+            </p>
           </div>
 
-          <Field label={t('newStructuredLearning.documentNameLabel')}>
+          {/* Type Selector Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (isCompanyAccount) {
+                  setCourseType('enterprise');
+                }
+              }}
+              disabled={!isCompanyAccount}
+              className={`flex flex-col items-start gap-3 rounded-2xl border p-5 text-left transition-all ${
+                courseType === 'enterprise'
+                  ? 'border-brand-400 bg-brand-500/10 shadow-lg shadow-brand-500/10'
+                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
+              } ${!isCompanyAccount ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-300">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">{t('newStructuredLearning.enterpriseCourseTitle')}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {t('newStructuredLearning.enterpriseCourseDesc')}
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCourseType('academic');
+                setTargetSkill('');
+                setCareerCategory('');
+              }}
+              className={`flex flex-col items-start gap-3 rounded-2xl border p-5 text-left transition-all ${
+                courseType === 'academic'
+                  ? 'border-cyan-400 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
+                <GraduationCap className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">{t('newStructuredLearning.academicCourseTitle')}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {t('newStructuredLearning.academicCourseDesc')}
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* MODE 1: ENTERPRISE SKILL COURSE */}
+          {courseType === 'enterprise' && (
+            <div className="space-y-5 rounded-2xl border border-brand-500/20 bg-brand-500/[0.03] p-5">
+              <div className="flex items-center gap-2 text-brand-300">
+                <Building2 className="h-4 w-4" />
+                <h3 className="text-sm font-semibold">{t('newStructuredLearning.enterpriseSkillConfigTitle')}</h3>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div>
+                <label className="mb-2 block text-xs font-medium text-slate-400">{t('newStructuredLearning.filterSkillsLabel')}</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'all', label: t('newStructuredLearning.categoryFilterAll') },
+                    { id: 'job-skills', label: t('newStructuredLearning.categoryFilterTechnical') },
+                    { id: 'soft-skills', label: t('newStructuredLearning.categoryFilterSoft') },
+                    { id: 'department-processes', label: t('newStructuredLearning.categoryFilterDept') },
+                    { id: 'hr-processes', label: t('newStructuredLearning.categoryFilterHR') },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setSelectedCategoryFilter(filter.id)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        selectedCategoryFilter === filter.id
+                          ? 'bg-brand-500/20 text-brand-300 border border-brand-400/40'
+                          : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Field label={t('newStructuredLearning.companyCatalogSkillLabel')} hint={t('newStructuredLearning.companyCatalogSkillHint')} required>
+                <SearchableCombobox
+                  value={targetSkill}
+                  onChange={(val) => setTargetSkill(val)}
+                  onSelect={(option) => {
+                    const skill = allCompanySkills.find((s) => s.SkillId === option.id || s.Name === option.label);
+                    if (skill) {
+                      setTargetSkill(skill.Name);
+                      setCareerCategory(skill.Category);
+                      if (!documentName.trim() || documentName === autoSetDocumentNameRef.current) {
+                        setDocumentName(skill.Name);
+                        autoSetDocumentNameRef.current = skill.Name;
+                      }
+                    }
+                  }}
+                  options={filteredCompanySkills.map((s) => ({
+                    id: s.SkillId,
+                    label: s.Name,
+                    meta: getCategoryBadgeText(s.Category),
+                  }))}
+                  placeholder={t('newStructuredLearning.companyCatalogSkillPlaceholder')}
+                  emptyOptionsText={t('newStructuredLearning.companyCatalogSkillEmpty')}
+                />
+              </Field>
+
+              {careerCategory && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/5 px-3.5 py-2.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-white">{t('newStructuredLearning.assignedCategoryLabel')}</span>
+                    <span className="rounded-full bg-brand-500/20 px-2.5 py-0.5 font-medium text-brand-300 border border-brand-500/30">
+                      {getCategoryBadgeText(careerCategory)}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-emerald-400 font-medium">{t('newStructuredLearning.domainSubjectNotRequired')}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MODE 2: ACADEMIC GENERAL COURSE */}
+          {courseType === 'academic' && (
+            <div className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="flex items-center gap-2 text-cyan-300">
+                <GraduationCap className="h-4 w-4" />
+                <h3 className="text-sm font-semibold">{t('newStructuredLearning.academicClassificationTitle')}</h3>
+              </div>
+
+              <Field label={t('newCapability.domainLabel')} required>
+                <SearchableCombobox
+                  value={subjects.find((subject) => subject.SubjectId === subjectId)?.Name ?? ''}
+                  onChange={(value) => {
+                    if (!value) {
+                      setSubjectId('');
+                      setTopicId('');
+                    }
+                  }}
+                  onSelect={(option) => {
+                    if (option.id !== subjectId) setTopicId('');
+                    setSubjectId(option.id);
+                  }}
+                  options={subjects.map((subject) => ({ id: subject.SubjectId, label: subject.Name }))}
+                  placeholder={t('newStructuredLearning.domainPlaceholder')}
+                  emptyOptionsText={t('newStructuredLearning.domainNoOptions')}
+                />
+              </Field>
+
+              {subjectId && (
+                <Field
+                  label={t('newStructuredLearning.domainTypeLabel')}
+                  hint={t('newStructuredLearning.domainTypeHint')}
+                  required
+                >
+                  <SearchableCombobox
+                    value={topics.find((topic) => topic.StructuredLearningTopicId === topicId)?.Name ?? ''}
+                    onChange={(value) => {
+                      if (!value) setTopicId('');
+                    }}
+                    onSelect={(option) => setTopicId(option.id)}
+                    options={topics.map((topic) => ({ id: topic.StructuredLearningTopicId, label: topic.Name }))}
+                    placeholder={t('newStructuredLearning.domainTypePlaceholder')}
+                    emptyOptionsText={t('newStructuredLearning.domainTypeNoOptions')}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
+
+          {/* COMMON FIELDS */}
+          <Field label={t('newStructuredLearning.documentNameLabel')} required>
             <input
               type="text"
               value={documentName}
@@ -471,200 +652,62 @@ export default function NewStructuredLearningPage() {
             />
           </Field>
 
-          <Field label={t('newStructuredLearning.contentLanguageLabel')}>
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={t('newStructuredLearning.contentLanguageLabel')}>
+              <div className="grid grid-cols-2 gap-2">
+                {[
                   { code: 'es' as const, label: t('common.languageSpanish') },
                   { code: 'en' as const, label: t('common.languageEnglish') },
-                ]
-              ).map((option) => {
-                const active = languageCode === option.code;
-                return (
-                  <button
-                    key={option.code}
-                    type="button"
-                    onClick={() => setLanguageCode(option.code)}
-                    className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step2Title')}</h3>
-            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step2Subtitle')}</p>
-          </div>
-
-          <Field label={t('newCapability.domainLabel')} required>
-            <SearchableCombobox
-              value={subjects.find((subject) => subject.SubjectId === subjectId)?.Name ?? ''}
-              onChange={(value) => {
-                if (!value) {
-                  setSubjectId('');
-                  setTopicId('');
-                }
-              }}
-              onSelect={(option) => {
-                if (option.id !== subjectId) setTopicId('');
-                setSubjectId(option.id);
-              }}
-              options={subjects.map((subject) => ({ id: subject.SubjectId, label: subject.Name }))}
-              placeholder={t('newStructuredLearning.domainPlaceholder')}
-              emptyOptionsText={t('newStructuredLearning.domainNoOptions')}
-            />
-          </Field>
-
-          {subjectId && (
-            <Field
-              label={t('newStructuredLearning.domainTypeLabel')}
-              hint={t('newStructuredLearning.domainTypeHint')}
-              required
-            >
-              <SearchableCombobox
-                value={topics.find((topic) => topic.StructuredLearningTopicId === topicId)?.Name ?? ''}
-                onChange={(value) => {
-                  if (!value) setTopicId('');
-                }}
-                onSelect={(option) => setTopicId(option.id)}
-                options={topics.map((topic) => ({ id: topic.StructuredLearningTopicId, label: topic.Name }))}
-                placeholder={t('newStructuredLearning.domainTypePlaceholder')}
-                emptyOptionsText={t('newStructuredLearning.domainTypeNoOptions')}
-              />
-            </Field>
-          )}
-
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step3Title')}</h3>
-            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step3Subtitle')}</p>
-          </div>
-
-          {!isCompanyAccount && (
-            <p className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-slate-400">
-              {t('newStructuredLearning.step3PersonalAccountHint')}
-            </p>
-          )}
-
-          {isCompanyAccount && (
-            <Field label={t('newCapability.visibilityLabel')} hint={t('newCapability.visibilityHint')}>
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { value: false, label: t('newCapability.visibilityPersonal') },
-                    { value: true, label: t('newCapability.visibilityGlobal') },
-                  ]
-                ).map((option) => {
-                  const active = isGlobal === option.value;
+                ].map((option) => {
+                  const active = languageCode === option.code;
                   return (
                     <button
-                      key={String(option.value)}
+                      key={option.code}
                       type="button"
-                      onClick={() => setIsGlobal(option.value)}
-                      className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                      onClick={() => setLanguageCode(option.code)}
+                      className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
                         active
                           ? 'border-brand-400/60 bg-brand-500/10 text-white'
                           : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
                       }`}
                     >
-                      <Globe className="h-4 w-4 shrink-0" />
                       {option.label}
                     </button>
                   );
                 })}
               </div>
             </Field>
-          )}
 
-          {isCompanyAccount && (
-            <>
-              <Field label={t('newCapability.careerCategoryLabel')} hint={t('newCapability.careerCategoryHint')}>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    onClick={() => setCareerCategory('')}
-                    className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      careerCategory === ''
-                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                    }`}
-                  >
-                    {t('newCapability.careerCategoryNone')}
-                  </button>
-                  {CAREER_CATEGORIES.map((option) => {
-                    const active = careerCategory === option.value;
+            {isCompanyAccount && (
+              <Field label={t('newCapability.visibilityLabel')} hint={t('newCapability.visibilityHint')}>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: false, label: t('newCapability.visibilityPersonal') },
+                    { value: true, label: t('newCapability.visibilityGlobal') },
+                  ].map((option) => {
+                    const active = isGlobal === option.value;
                     return (
                       <button
-                        key={option.value}
+                        key={String(option.value)}
                         type="button"
-                        onClick={() => setCareerCategory(active ? '' : option.value)}
-                        className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                        onClick={() => setIsGlobal(option.value)}
+                        className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
                           active
                             ? 'border-brand-400/60 bg-brand-500/10 text-white'
                             : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
                         }`}
                       >
-                        {t(option.labelKey)}
+                        <Globe className="h-4 w-4 shrink-0" />
+                        {option.label}
                       </button>
                     );
                   })}
                 </div>
               </Field>
+            )}
+          </div>
 
-              {careerCategory === 'job-skills' && (
-                <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                  <Field label={t('newCapability.targetJobRoleLabel')} hint={t('newCapability.targetJobRoleHint')}>
-                    <SearchableCombobox
-                      value={targetJobRoleSearch}
-                      onChange={setTargetJobRoleSearch}
-                      options={jobRoles.map((role) => ({ id: role.JobRoleId, label: jobRoleOptionLabel(role) }))}
-                      placeholder={t('newCapability.targetJobRolePlaceholder')}
-                      emptyOptionsText={t('newCapability.targetJobRoleNoOptions')}
-                    />
-                  </Field>
-
-                  <Field
-                    label={t('newCapability.targetSkillLabel')}
-                    hint={selectedJobRole ? t('newCapability.targetSkillRoleHint') : undefined}
-                  >
-                    <SearchableCombobox
-                      value={targetSkill}
-                      onChange={setTargetSkill}
-                      disabled={!selectedJobRole}
-                      options={(selectedJobRole?.TechnicalSkills ?? []).map((skill) => ({ id: skill, label: skill }))}
-                      placeholder={t('newCapability.targetSkillPlaceholder')}
-                      emptyOptionsText={t('newCapability.targetSkillNoMatches')}
-                    />
-                    {!selectedJobRole && (
-                      <p className="mt-1 text-xs text-slate-500">{t('newCapability.targetSkillNoRoleSelected')}</p>
-                    )}
-                  </Field>
-                </div>
-              )}
-
-              {careerCategory && careerCategory !== 'job-skills' && (
-                <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                  <Field label={t('newCapability.targetSkillLabel')} hint={t('newCapability.targetSkillCatalogHint')}>
-                    <SearchableCombobox
-                      value={targetSkill}
-                      onChange={setTargetSkill}
-                      options={catalogSkills.map((skill) => ({ id: skill.SkillId, label: skill.Name, meta: `${skill.JobRoleCount}` }))}
-                      placeholder={t('newCapability.targetSkillPlaceholder')}
-                      emptyOptionsText={t('newCapability.targetSkillNoMatches')}
-                    />
-                  </Field>
-                </div>
-              )}
-            </>
-          )}
-
-          <WizardNav onNext={() => setStep(2)} nextDisabled={!canAdvanceFromStep1 || !canAdvanceFromStep2} />
+          <WizardNav onNext={() => setStep(2)} nextDisabled={!canAdvanceFromStep1} />
         </div>
       )}
 
@@ -675,32 +718,36 @@ export default function NewStructuredLearningPage() {
             <p className="mt-1 text-slate-400">{t('newStructuredLearning.step4Subtitle')}</p>
           </div>
 
-          <Field label={t('newCapability.pedagogicalAudienceLabel')} hint={t('newCapability.pedagogicalAudienceHint')}>
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
+          {courseType !== 'enterprise' ? (
+            <Field label={t('newCapability.pedagogicalAudienceLabel')} hint={t('newCapability.pedagogicalAudienceHint')}>
+              <div className="grid grid-cols-2 gap-2">
+                {[
                   { value: 'Standard' as const, label: t('newCapability.audienceStandard') },
                   { value: 'YoungLearner' as const, label: t('newCapability.audienceYoungLearner') },
-                ]
-              ).map((option) => {
-                const active = pedagogicalAudience === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setPedagogicalAudience(option.value)}
-                    className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+                ].map((option) => {
+                  const active = pedagogicalAudience === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setPedagogicalAudience(option.value)}
+                      className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                        active
+                          ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                          : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          ) : (
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 text-xs text-slate-300">
+              <span className="font-semibold text-white">Audiencia pedagógica:</span> Estándar (Adultos / Profesional). <span className="text-slate-400 font-normal">Young Learners (K-1/K-2) no aplica para cursos corporativos.</span>
             </div>
-          </Field>
+          )}
 
           <Field label={t('newCapability.maxDeepDiveCardsLabel')} hint={t('newCapability.maxDeepDiveCardsHint')}>
             <input
@@ -913,6 +960,21 @@ export default function NewStructuredLearningPage() {
             </p>
           </div>
 
+          {autoLoadedPdfStatus && sourceType === 'pdf' && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-300">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                <div>
+                  <p className="font-semibold text-white">Documento PDF cargado automáticamente</p>
+                  <p className="mt-0.5 text-emerald-300/80">{autoLoadedPdfStatus}</p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-emerald-400/20 px-3 py-1 font-mono text-[11px] font-semibold text-emerald-200">
+                Data Lake
+              </span>
+            </div>
+          )}
+
           {sourceType === 'pdf' && <FileDropzone file={file} onFileSelected={setFile} />}
 
           {sourceType === 'text' && (
@@ -940,6 +1002,28 @@ export default function NewStructuredLearningPage() {
 
           <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <SummaryRow label={t('newStructuredLearning.summaryDocumentName')} value={documentName} />
+            <SummaryRow
+              label={t('newStructuredLearning.summaryCourseType')}
+              value={courseType === 'enterprise' ? t('newStructuredLearning.courseTypeEnterprise') : t('newStructuredLearning.courseTypeAcademic')}
+            />
+            {courseType === 'enterprise' && targetSkill && (
+              <>
+                <SummaryRow label={t('newStructuredLearning.companyCatalogSkillLabel')} value={targetSkill} />
+                <SummaryRow label={t('newStructuredLearning.summarySkillCategory')} value={getCategoryBadgeText(careerCategory)} />
+              </>
+            )}
+            {courseType === 'academic' && (
+              <>
+                <SummaryRow
+                  label={t('newStructuredLearning.summaryDomainSubject')}
+                  value={subjects.find((s) => s.SubjectId === subjectId)?.Name ?? t('structuredLearningDetail.unassigned')}
+                />
+                <SummaryRow
+                  label={t('newStructuredLearning.summaryDomainType')}
+                  value={topics.find((t) => t.StructuredLearningTopicId === topicId)?.Name ?? t('structuredLearningDetail.unassigned')}
+                />
+              </>
+            )}
             <SummaryRow
               label={t('newStructuredLearning.summaryLanguage')}
               value={languageCode === 'en' ? t('common.languageEnglish') : t('common.languageSpanish')}

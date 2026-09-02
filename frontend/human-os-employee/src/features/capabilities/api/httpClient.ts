@@ -6,9 +6,15 @@
  * serializer) — see PascalCase response types across this app's api/ files.
  */
 
+import { getIdentityHeaders } from '@/auth';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 export { API_BASE_URL };
+
+export function apiImageUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
 
 interface ApiErrorBody {
   error?: string;
@@ -18,7 +24,7 @@ interface ApiErrorBody {
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
   });
   return handleResponse<T>(response);
 }
@@ -26,7 +32,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getIdentityHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return handleResponse<T>(response);
@@ -35,7 +41,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getIdentityHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return handleResponse<T>(response);
@@ -44,7 +50,7 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
 export async function apiDelete<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'DELETE',
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
   });
   return handleResponse<T>(response);
 }
@@ -61,6 +67,13 @@ async function handleResponse<T>(response: Response): Promise<T> {
     throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return undefined as unknown as T;
+  }
+
   const text = await response.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  if (!text || text.trim() === '') {
+    return undefined as unknown as T;
+  }
+  return JSON.parse(text) as T;
 }

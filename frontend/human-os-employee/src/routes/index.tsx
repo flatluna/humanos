@@ -67,6 +67,16 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/profile').then((m) => ({ Component: m.ProfilePage })),
       },
       {
+        // "Objetivos & Mi Puesto" — Full Job Description + SMART Employee Objectives
+        // aligned with Department Objectives and Company Strategy.
+        path: 'objectives',
+        lazy: () => import('@/features/objectives').then((m) => ({ Component: m.ObjectivesPage })),
+      },
+      {
+        path: 'objetivos',
+        loader: () => redirect('/objectives'),
+      },
+      {
         path: 'capabilities',
         loader: () => redirect('/capabilities/job-skills'),
       },
@@ -93,6 +103,14 @@ export const router = createBrowserRouter([
       {
         path: 'capabilities/:capabilityId/nodes/:nodeId',
         lazy: () => import('@/features/capabilities').then((m) => ({ Component: m.CapabilityNodePage })),
+      },
+      {
+        path: 'structured-learning/:documentId',
+        lazy: () => import('@/features/capabilities/pages/StructuredLearningCoursePage').then((m) => ({ Component: m.default })),
+      },
+      {
+        path: 'structured-learning/:documentId/sections/:sectionId',
+        lazy: () => import('@/features/capabilities/pages/StructuredLearningSectionPage').then((m) => ({ Component: m.default })),
       },
     ],
   },

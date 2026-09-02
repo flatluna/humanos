@@ -12,11 +12,20 @@ import {
   type UpsertPersonProfileRequest,
 } from './api/personProfileApi';
 import { getJobRole } from './api/jobRoleApi';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
+import { BadgeGallery } from '@/features/gamification/components/BadgeGallery';
 
-const ORG_ROLE_LABELS: Record<string, string> = {
-  Employee: 'Empleado',
-  Manager: 'Gerente',
-  HRAdmin: 'Administrador RRHH',
+const ORG_ROLE_LABELS: Record<'en' | 'es', Record<string, string>> = {
+  es: {
+    Employee: 'Empleado',
+    Manager: 'Gerente',
+    HRAdmin: 'Administrador RRHH',
+  },
+  en: {
+    Employee: 'Employee',
+    Manager: 'Manager',
+    HRAdmin: 'HR Administrator',
+  },
 };
 
 const LANGUAGE_OPTIONS = [
@@ -168,6 +177,7 @@ const labelClass = 'block text-xs font-medium text-slate-500 dark:text-white/50'
  *  section relies on indirectly (PersonProfileService). */
 export function ProfilePage() {
   const { user } = useAuth();
+  const { t, language } = useI18n();
   const personId = user?.personId ?? '';
   const queryClient = useQueryClient();
 
@@ -240,7 +250,7 @@ export function ProfilePage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-16">
       {profileQuery.isLoading && (
-        <LoadingBackdrop title="Cargando tu perfil..." description="Preparando tu información personal." icon={User} />
+        <LoadingBackdrop title={t.profileLoading} description={t.profileLoadingDesc} icon={User} />
       )}
 
       {/* Gradient header banner — same visual family as CareerPlanPage's. */}
@@ -258,7 +268,7 @@ export function ProfilePage() {
               )}
               {user?.orgRole && (
                 <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">
-                  {ORG_ROLE_LABELS[user.orgRole] ?? user.orgRole}
+                  {ORG_ROLE_LABELS[language][user.orgRole] ?? user.orgRole}
                 </span>
               )}
               {user?.jobRoleTitle && (
@@ -267,18 +277,28 @@ export function ProfilePage() {
               {user?.departmentName && (
                 <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">{user.departmentName}</span>
               )}
+              {user?.managerDisplayName && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">
+                  {t.profileReportsToPrefix} {user.managerDisplayName}
+                </span>
+              )}
             </div>
           </div>
         </div>
       </div>
 
+      {/* Gamification Badge Gallery Card */}
+      <Card className="p-6 sm:p-8">
+        <BadgeGallery />
+      </Card>
+
       <Card className="p-6 sm:p-8">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Información personal</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t.profileTitle}</h2>
           {savedMessage && (
             <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="h-4 w-4" />
-              Guardado
+              {t.profileSaved}
             </span>
           )}
         </div>
@@ -286,7 +306,7 @@ export function ProfilePage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label>
-              <span className={labelClass}>Nombre(s)</span>
+              <span className={labelClass}>{t.profileFirstName}</span>
               <input
                 className={inputClass}
                 value={form.firstName}
@@ -294,7 +314,7 @@ export function ProfilePage() {
               />
             </label>
             <label>
-              <span className={labelClass}>Apellido(s)</span>
+              <span className={labelClass}>{t.profileLastName}</span>
               <input
                 className={inputClass}
                 value={form.lastName}
@@ -302,7 +322,7 @@ export function ProfilePage() {
               />
             </label>
             <label>
-              <span className={labelClass}>Nombre para mostrar</span>
+              <span className={labelClass}>{t.profileDisplayName}</span>
               <input
                 className={inputClass}
                 value={form.displayName}
@@ -310,7 +330,7 @@ export function ProfilePage() {
               />
             </label>
             <label>
-              <span className={labelClass}>Teléfono</span>
+              <span className={labelClass}>{t.profilePhone}</span>
               <div className="mt-1 flex gap-2">
                 <select
                   className="w-32 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
@@ -333,7 +353,7 @@ export function ProfilePage() {
               </div>
             </label>
             <label>
-              <span className={labelClass}>Idioma preferido</span>
+              <span className={labelClass}>{t.profilePreferredLanguage}</span>
               <select
                 className={inputClass}
                 value={form.preferredLanguage}
@@ -347,13 +367,13 @@ export function ProfilePage() {
               </select>
             </label>
             <label>
-              <span className={labelClass}>País</span>
+              <span className={labelClass}>{t.profileCountry}</span>
               <select
                 className={inputClass}
                 value={form.countryCode}
                 onChange={(e) => handleChange('countryCode', e.target.value)}
               >
-                <option value="">Selecciona un país...</option>
+                <option value="">{t.profileSelectCountry}</option>
                 {/* Si el valor guardado no está en la lista (un registro
                     previo fuera del continente americano), lo mantenemos
                     seleccionable en vez de descartarlo silenciosamente. */}
@@ -368,13 +388,13 @@ export function ProfilePage() {
               </select>
             </label>
             <label>
-              <span className={labelClass}>Zona horaria</span>
+              <span className={labelClass}>{t.profileTimeZone}</span>
               <select
                 className={inputClass}
                 value={form.timeZone}
                 onChange={(e) => handleChange('timeZone', e.target.value)}
               >
-                <option value="">Selecciona una zona horaria...</option>
+                <option value="">{t.profileSelectTimeZone}</option>
                 {/* If the stored value doesn't match any option below (an
                     older/custom entry), keep it selectable instead of
                     silently discarding it on next save. */}
@@ -389,7 +409,7 @@ export function ProfilePage() {
               </select>
             </label>
             <label>
-              <span className={labelClass}>Fecha de nacimiento</span>
+              <span className={labelClass}>{t.profileDateOfBirth}</span>
               <input
                 type="date"
                 className={inputClass}
@@ -398,29 +418,49 @@ export function ProfilePage() {
               />
             </label>
             <label>
-              <span className={labelClass}>Ocupación</span>
+              <span className={labelClass}>{t.profileOccupation}</span>
               <input
                 className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-white/[0.02] dark:text-white/40`}
-                value={user?.jobRoleTitle ?? 'Sin puesto asignado'}
+                value={user?.jobRoleTitle ?? t.profileUnassignedJob}
                 readOnly
                 disabled
-                title="Tu ocupación se toma de tu Puesto asignado por RRHH — ver 'Mi Puesto y Desarrollo' abajo."
+                title={t.profileOccupationTitle}
               />
             </label>
             <label>
-              <span className={labelClass}>Empresa</span>
+              <span className={labelClass}>{t.profileCompany}</span>
               <input
                 className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-white/[0.02] dark:text-white/40`}
-                value={user?.tenantName ?? 'Sin empresa asignada'}
+                value={user?.tenantName ?? t.profileUnassignedCompany}
                 readOnly
                 disabled
-                title="La empresa se toma de tu cuenta de acceso y no se puede editar aquí."
+                title={t.profileCompanyTitle}
+              />
+            </label>
+            <label>
+              <span className={labelClass}>{t.profileDepartment}</span>
+              <input
+                className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-white/[0.02] dark:text-white/40`}
+                value={user?.departmentName ?? t.profileUnassignedDepartment}
+                readOnly
+                disabled
+                title={t.profileDepartmentTitle}
+              />
+            </label>
+            <label>
+              <span className={labelClass}>{t.profileManager}</span>
+              <input
+                className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-white/[0.02] dark:text-white/40`}
+                value={user?.managerDisplayName ?? t.profileUnassignedManager}
+                readOnly
+                disabled
+                title={t.profileManagerTitle}
               />
             </label>
           </div>
 
           <label className="block">
-            <span className={labelClass}>Biografía</span>
+            <span className={labelClass}>{t.profileBiography}</span>
             <textarea
               className={`${inputClass} min-h-[100px] resize-y`}
               value={form.biography}
@@ -430,7 +470,7 @@ export function ProfilePage() {
 
           {saveMutation.isError && (
             <p className="text-sm text-red-600 dark:text-red-400">
-              No se pudo guardar tu perfil. Intenta de nuevo.
+              {t.profileSaveError}
             </p>
           )}
 
@@ -440,7 +480,7 @@ export function ProfilePage() {
               disabled={saveMutation.isPending}
               className="rounded-full bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
             >
-              {saveMutation.isPending ? 'Guardando...' : 'Guardar cambios'}
+              {saveMutation.isPending ? t.profileSaving : t.profileSaveChanges}
             </button>
           </div>
         </form>
@@ -458,16 +498,16 @@ export function ProfilePage() {
         <Card className="p-6 sm:p-8">
           <div className="mb-6 flex items-center gap-2">
             <Briefcase className="h-5 w-5 text-brand-600 dark:text-brand-400" />
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Mi Puesto y Desarrollo</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t.profileRoleDevTitle}</h2>
           </div>
 
           {jobRoleQuery.isLoading && (
-            <p className="text-sm text-slate-500 dark:text-white/50">Cargando la descripción de tu puesto...</p>
+            <p className="text-sm text-slate-500 dark:text-white/50">{t.profileJobRoleLoading}</p>
           )}
 
           {jobRoleQuery.isError && (
             <p className="text-sm text-red-600 dark:text-red-400">
-              No se pudo cargar la descripción de tu puesto.
+              {t.profileJobRoleError}
             </p>
           )}
 
@@ -486,35 +526,35 @@ export function ProfilePage() {
               </div>
 
               {jobRoleQuery.data.purpose && (
-                <JobRoleField label="Propósito del puesto" value={jobRoleQuery.data.purpose} />
+                <JobRoleField label={t.profileJobPurpose} value={jobRoleQuery.data.purpose} />
               )}
-              {jobRoleQuery.data.summary && <JobRoleField label="Resumen" value={jobRoleQuery.data.summary} />}
-              <JobRoleListField label="Responsabilidades" items={jobRoleQuery.data.responsibilities} />
+              {jobRoleQuery.data.summary && <JobRoleField label={t.profileJobSummary} value={jobRoleQuery.data.summary} />}
+              <JobRoleListField label={t.profileJobResponsibilities} items={jobRoleQuery.data.responsibilities} />
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <JobRoleListField
-                  label="Habilidades técnicas requeridas"
+                  label={t.profileJobTechnicalSkills}
                   items={jobRoleQuery.data.technicalSkills}
                   pills
                 />
-                <JobRoleListField label="Habilidades blandas requeridas" items={jobRoleQuery.data.softSkills} pills />
+                <JobRoleListField label={t.profileJobSoftSkills} items={jobRoleQuery.data.softSkills} pills />
               </div>
 
               {jobRoleQuery.data.requiredExperience && (
-                <JobRoleField label="Experiencia requerida" value={jobRoleQuery.data.requiredExperience} />
+                <JobRoleField label={t.profileJobExperience} value={jobRoleQuery.data.requiredExperience} />
               )}
               {jobRoleQuery.data.requiredEducation && (
-                <JobRoleField label="Educación requerida" value={jobRoleQuery.data.requiredEducation} />
+                <JobRoleField label={t.profileJobEducation} value={jobRoleQuery.data.requiredEducation} />
               )}
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <JobRoleListField
-                  label="Certificaciones requeridas"
+                  label={t.profileJobCertifications}
                   items={jobRoleQuery.data.requiredCertifications}
                   pills
                 />
-                <JobRoleListField label="Idiomas requeridos" items={jobRoleQuery.data.requiredLanguages} pills />
+                <JobRoleListField label={t.profileJobLanguages} items={jobRoleQuery.data.requiredLanguages} pills />
               </div>
-              <JobRoleListField label="Herramientas que utilizas" items={jobRoleQuery.data.tools} pills />
+              <JobRoleListField label={t.profileJobTools} items={jobRoleQuery.data.tools} pills />
             </div>
           )}
         </Card>

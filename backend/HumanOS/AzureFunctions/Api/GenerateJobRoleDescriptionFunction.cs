@@ -75,14 +75,16 @@ public sealed class GenerateJobRoleDescriptionFunction
                 request, HttpStatusCode.NotFound, "TenantNotFound", "No organization was found with that id.", cancellationToken);
         }
 
-        var department = await _dbContext.Departments
-            .AsNoTracking()
-            .SingleOrDefaultAsync(d => d.DepartmentId == body.DepartmentId && d.TenantId == tenantId, cancellationToken);
-
-        if (department is null)
+        string departmentName = "General / Multi-Department";
+        if (body.DepartmentId.HasValue && body.DepartmentId.Value != Guid.Empty)
         {
-            return await FunctionResponseFactory.ErrorResponseAsync(
-                request, HttpStatusCode.BadRequest, "InvalidDepartment", "departmentId does not belong to this tenant.", cancellationToken);
+            var dept = await _dbContext.Departments
+                .AsNoTracking()
+                .SingleOrDefaultAsync(d => d.DepartmentId == body.DepartmentId.Value && d.TenantId == tenantId, cancellationToken);
+            if (dept != null)
+            {
+                departmentName = dept.Name;
+            }
         }
 
         var hasAnyExistingContent =
@@ -100,7 +102,7 @@ public sealed class GenerateJobRoleDescriptionFunction
             ExcludeJobRoleId = body.JobRoleId,
             CompanyName = tenant.Name,
             CompanyDescription = tenant.Description,
-            DepartmentName = department.Name,
+            DepartmentName = departmentName,
             Title = body.Title.Trim(),
             LevelLabel = body.LevelLabel,
             Purpose = body.Purpose,

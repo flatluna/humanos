@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { GraduationCap, Layers, Star, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router';
 import { Card } from '@/components/ui/Card';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
 
 interface ProgressOverviewProps {
   /** Enrolled/assigned capabilities (courses your company gave you). */
@@ -17,6 +18,7 @@ interface ProgressOverviewProps {
  *  shown on /capabilities), nothing invented. Shows a real empty state
  *  (no stats, just a CTA) when the employee isn't enrolled in anything yet. */
 export function ProgressOverview({ capabilityCount, masteredNodes, totalNodes, averageScore }: ProgressOverviewProps) {
+  const { t, language } = useI18n();
   const overallProgress = totalNodes > 0 ? Math.round((masteredNodes / totalNodes) * 100) : 0;
 
   if (capabilityCount === 0) {
@@ -27,13 +29,15 @@ export function ProgressOverview({ capabilityCount, masteredNodes, totalNodes, a
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
               <GraduationCap className="h-5 w-5" />
             </div>
-            <p className="font-medium text-slate-900 dark:text-white">Aún no tienes cursos asignados.</p>
+            <p className="font-medium text-slate-900 dark:text-white">
+              {language === 'en' ? 'You do not have any assigned courses yet.' : 'Aún no tienes cursos asignados.'}
+            </p>
           </div>
           <Link
             to="/capabilities"
             className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
           >
-            Ver mis cursos
+            {language === 'en' ? 'View my courses' : 'Ver mis cursos'}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Card>
@@ -42,13 +46,13 @@ export function ProgressOverview({ capabilityCount, masteredNodes, totalNodes, a
   }
 
   const stats = [
-    { key: 'capabilities', icon: GraduationCap, value: capabilityCount, label: 'Cursos asignados' },
-    { key: 'progress', icon: Layers, value: `${overallProgress}%`, label: 'Progreso general' },
+    { key: 'capabilities', icon: GraduationCap, value: capabilityCount, label: t.todayAssignedCourses },
+    { key: 'progress', icon: Layers, value: `${overallProgress}%`, label: t.careerOverallProgress },
     ...(totalNodes > 0
-      ? [{ key: 'nodesMastered', icon: CheckCircle2, value: `${masteredNodes}/${totalNodes}`, label: 'Temas completados' }]
+      ? [{ key: 'nodesMastered', icon: CheckCircle2, value: `${masteredNodes}/${totalNodes}`, label: language === 'en' ? 'Completed topics' : 'Temas completados' }]
       : []),
     ...(averageScore !== undefined
-      ? [{ key: 'score', icon: Star, value: `${averageScore}/100`, label: 'Puntaje promedio' }]
+      ? [{ key: 'score', icon: Star, value: `${averageScore}/100`, label: t.todayAverageScore }]
       : []),
   ];
 
@@ -58,7 +62,7 @@ export function ProgressOverview({ capabilityCount, masteredNodes, totalNodes, a
         id="progress-overview-heading"
         className="text-sm font-medium uppercase tracking-widest text-slate-400 dark:text-white/40"
       >
-        Tu progreso
+        {language === 'en' ? 'Your Progress' : 'Tu progreso'}
       </h2>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
