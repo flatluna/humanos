@@ -8,7 +8,7 @@ namespace HumanOS.Services;
 /// </summary>
 public static class MemoryScienceEngine
 {
-    private static readonly double[] StabilityDaysByReview = [1.0, 1.0, 3.0, 7.0, 15.0, 30.0];
+    private static readonly double[] StabilityDaysByReview = [8.0, 8.0, 18.0, 40.0, 80.0, 150.0];
     private const int AutomaticityReviewThreshold = 5;
     private const double AutomaticStabilityDays = 3650.0; // ~10 years (procedural memory)
 

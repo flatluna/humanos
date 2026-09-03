@@ -19,17 +19,20 @@ public sealed class GamificationFunction
     private readonly HumanOsDbContext _dbContext;
     private readonly PersonService _personService;
     private readonly BadgeService _badgeService;
+    private readonly ReviewQueueService _reviewQueueService;
     private readonly ILogger<GamificationFunction> _logger;
 
     public GamificationFunction(
         HumanOsDbContext dbContext,
         PersonService personService,
         BadgeService badgeService,
+        ReviewQueueService reviewQueueService,
         ILogger<GamificationFunction> logger)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _personService = personService ?? throw new ArgumentNullException(nameof(personService));
         _badgeService = badgeService ?? throw new ArgumentNullException(nameof(badgeService));
+        _reviewQueueService = reviewQueueService ?? throw new ArgumentNullException(nameof(reviewQueueService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -245,6 +248,36 @@ public sealed class GamificationFunction
             _logger.LogError(ex, "Error getting recent rewards for person {PersonId}", personId);
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.InternalServerError, "GamificationRecentRewardsError", ex.Message, ct);
+        }
+    }
+
+    /// <summary>
+    /// GET api/gamification/review-queue
+    /// Retrieves the personalized spaced review queue with phase detection, priority scoring, and interleaving across courses.
+    /// </summary>
+    [Function("GetGamificationReviewQueue")]
+    public async Task<HttpResponseData> GetReviewQueueAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "gamification/review-queue")]
+        HttpRequestData request,
+        CancellationToken ct)
+    {
+        var personId = await ResolveAuthenticatedPersonIdAsync(request, ct);
+        if (personId is null)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.Unauthorized, "Unauthorized", "Authenticated person identity is required.", ct);
+        }
+
+        try
+        {
+            var queue = await _reviewQueueService.GetReviewQueueAsync(personId.Value, ct);
+            return await FunctionResponseFactory.SuccessResponseAsync(request, queue, cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting review queue for person {PersonId}", personId);
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.InternalServerError, "GamificationReviewQueueError", ex.Message, ct);
         }
     }
 

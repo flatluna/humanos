@@ -48,6 +48,7 @@ import { apiImageUrl } from '../api/httpClient';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { RewardCelebration } from '@/features/gamification/components/RewardCelebration';
+import { ReflectionPause } from '@/features/gamification/components/ReflectionPause';
 import type { GamificationRewardBundleDto } from '@/features/gamification/types';
 
 const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Recall', 'Production', 'Assessment'];
@@ -797,6 +798,7 @@ export default function StructuredLearningSectionPage() {
             <KnowledgeGraphSection
               documentId={documentId}
               sectionId={sectionId}
+              personId={user?.personId}
               initialView={knowledgeGraphInitialView}
             />
           </div>
@@ -821,6 +823,8 @@ export default function StructuredLearningSectionPage() {
             step={currentStep}
             sectionId={currentSection.StructuredLearningDocumentSectionId}
             personId={personId}
+            engramTitle={currentSection.SubchapterTitle || currentSection.ChapterTitle}
+            tier={currentEngramScore?.tier}
             questionType={document.AssessmentQuestionType}
             onComplete={handleStepComplete}
             isEn={isEn}
@@ -917,6 +921,8 @@ function StepContent({
   step,
   sectionId,
   personId,
+  engramTitle,
+  tier,
   questionType,
   onComplete,
   isEn,
@@ -924,6 +930,8 @@ function StepContent({
   step: StructuredLearningStepDetail;
   sectionId: string;
   personId: string;
+  engramTitle?: string;
+  tier?: string;
   questionType: string;
   onComplete: () => void;
   isEn: boolean;
@@ -980,7 +988,15 @@ function StepContent({
           )}
 
           {step.StepType === 'Assessment' && (
-            <AssessmentPractice sectionId={sectionId} personId={personId} questionType={questionType} onComplete={onComplete} isEn={isEn} />
+            <AssessmentPractice
+              sectionId={sectionId}
+              personId={personId}
+              engramTitle={engramTitle}
+              tier={tier}
+              questionType={questionType}
+              onComplete={onComplete}
+              isEn={isEn}
+            />
           )}
         </div>
       </div>
@@ -1533,12 +1549,16 @@ function RecallPractice({
 function AssessmentPractice({
   sectionId,
   personId,
+  engramTitle,
+  tier,
   questionType,
   onComplete,
   isEn,
 }: {
   sectionId: string;
   personId: string;
+  engramTitle?: string;
+  tier?: string;
   questionType: string;
   onComplete: () => void;
   isEn: boolean;
@@ -1551,6 +1571,7 @@ function AssessmentPractice({
   const [lastGrade, setLastGrade] = useState<{ Correctness: string; Feedback: string } | null>(null);
   const [roundResult, setRoundResult] = useState<{ Passed: boolean; FinalScore: number } | null>(null);
   const [gamificationBundle, setGamificationBundle] = useState<GamificationRewardBundleDto | null>(null);
+  const [showReflection, setShowReflection] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const passed =
@@ -1605,6 +1626,11 @@ function AssessmentPractice({
 
       const gami = result.Gamification ?? result.gamification;
       if (result.Passed && gami && !(gami.alreadyEarned || gami.AlreadyEarned)) {
+        const effectiveTier = gami.reward?.tier ?? gami.Reward?.Tier ?? gami.tier ?? gami.Tier ?? tier;
+        const isCriticalOrImportant = effectiveTier === 'Critical' || effectiveTier === 'Important';
+        if (isCriticalOrImportant) {
+          setShowReflection(true);
+        }
         setGamificationBundle(gami);
       }
 
@@ -1684,7 +1710,15 @@ function AssessmentPractice({
           </button>
         )}
 
-        {gamificationBundle && (
+        {showReflection && gamificationBundle && (
+          <ReflectionPause
+            engramTitle={engramTitle}
+            onComplete={() => setShowReflection(false)}
+            onSkip={() => setShowReflection(false)}
+          />
+        )}
+
+        {!showReflection && gamificationBundle && (
           <RewardCelebration
             bundle={gamificationBundle}
             onClose={() => setGamificationBundle(null)}

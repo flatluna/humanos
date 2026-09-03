@@ -9,6 +9,7 @@ import {
   Award,
   Sparkle,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useGamificationStore } from '../store/useGamificationStore';
 import { BadgeGalleryModal } from './BadgeGalleryModal';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
@@ -16,6 +17,7 @@ import { useI18n } from '@/features/capabilities/i18n/useI18n';
 export const GamificationProfilePanel: React.FC = () => {
   const { language } = useI18n();
   const isEn = language === 'en';
+  const { t } = useTranslation();
   const { profile, loading, fetchProfile } = useGamificationStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,12 +58,13 @@ export const GamificationProfilePanel: React.FC = () => {
   }
 
   const currentLevel = profile?.currentLevel ?? 1;
-  const currentLevelName = profile?.currentLevelName ?? 'Neuron';
+  const currentLevelName = t(`gamification.levels.${currentLevel}`, { defaultValue: isEn ? 'Neuron' : 'Neurona' });
   const totalPoints = profile?.totalPoints ?? 0;
   const currentStreak = profile?.currentStreakDays ?? 0;
   const streakFreezes = profile?.streakFreezesAvailable ?? 1;
   const pointsToNext = profile?.pointsToNextLevel ?? 0;
-  const nextLevelName = profile?.nextLevelName;
+  const nextLevel = currentLevel + 1;
+  const nextLevelName = nextLevel <= 7 ? t(`gamification.levels.${nextLevel}`) : null;
 
   // Career metrics
   const totalEngramsMastered = profile?.totalEngramsMastered ?? 0;

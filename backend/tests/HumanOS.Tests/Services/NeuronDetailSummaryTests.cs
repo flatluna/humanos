@@ -22,11 +22,11 @@ public sealed class NeuronDetailSummaryTests
     }
 
     [Theory]
-    [InlineData(0, 1.0)]
-    [InlineData(1, 1.0)]
-    [InlineData(2, 3.0)]
-    [InlineData(3, 7.0)]
-    [InlineData(4, 15.0)]
+    [InlineData(0, 8.0)]
+    [InlineData(1, 8.0)]
+    [InlineData(2, 18.0)]
+    [InlineData(3, 40.0)]
+    [InlineData(4, 80.0)]
     [InlineData(5, 3650.0)]
     [InlineData(10, 3650.0)]
     public void MemoryScienceEngine_GetStabilityDays_MatchesCanonicalSchedule(int reviewCount, double expectedStability)
@@ -50,10 +50,10 @@ public sealed class NeuronDetailSummaryTests
     public void MemoryScienceEngine_CalculateNextReviewDate_ProjectsDateCorrectly()
     {
         var baseDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
-        // Review count 3 -> S = 7 days. Next review at (27 / 7) * 7 = 27 days after baseDate.
+        // Review count 3 -> S = 40 days. Next review at (27 / 7) * 40 = 154.2857 days after baseDate.
         var nextDate = MemoryScienceEngine.CalculateNextReviewDate(baseDate, 3);
         nextDate.Should().NotBeNull();
-        nextDate!.Value.Should().Be(baseDate.AddDays(27));
+        nextDate!.Value.Should().BeCloseTo(baseDate.AddDays((27.0 / 7.0) * 40.0), TimeSpan.FromSeconds(1));
     }
 
     [Fact]

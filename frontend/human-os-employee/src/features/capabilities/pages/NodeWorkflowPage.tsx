@@ -10,6 +10,7 @@ import { getCapabilityGraph } from '../api/capabilityGraphApi';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import EngramReviewAgent from '../components/EngramReviewAgent';
 import { RewardCelebration } from '@/features/gamification/components/RewardCelebration';
+import { ReflectionPause } from '@/features/gamification/components/ReflectionPause';
 import type { GamificationRewardBundleDto } from '@/features/gamification/types';
 import {
   getActiveSession,
@@ -195,6 +196,7 @@ export default function NodeWorkflowPage() {
   const [assessmentSubmitting, setAssessmentSubmitting] = useState(false);
   const [assessmentLastResult, setAssessmentLastResult] = useState<SubmitAssessmentAnswerResponse | null>(null);
   const [gamificationBundle, setGamificationBundle] = useState<GamificationRewardBundleDto | null>(null);
+  const [showReflection, setShowReflection] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<GraphNodeInfoDto[] | null>(null);
   // "Aprobar (demo HR)" (ported from human-os-employee) — HRAdmin-only,
@@ -619,6 +621,10 @@ export default function NodeWorkflowPage() {
 
       const gami = result.Gamification ?? result.gamification;
       if (result.Passed && gami && !(gami.alreadyEarned || gami.AlreadyEarned)) {
+        const effectiveTier = gami.reward?.tier ?? gami.Reward?.Tier ?? gami.tier ?? gami.Tier;
+        if (effectiveTier === 'Critical' || effectiveTier === 'Important') {
+          setShowReflection(true);
+        }
         setGamificationBundle(gami);
       }
     } catch {
@@ -1284,7 +1290,15 @@ export default function NodeWorkflowPage() {
         )}
       </div>
 
-      {gamificationBundle && (
+      {showReflection && gamificationBundle && (
+        <ReflectionPause
+          engramTitle={nodeInfo?.name}
+          onComplete={() => setShowReflection(false)}
+          onSkip={() => setShowReflection(false)}
+        />
+      )}
+
+      {!showReflection && gamificationBundle && (
         <RewardCelebration
           bundle={gamificationBundle}
           onClose={() => setGamificationBundle(null)}

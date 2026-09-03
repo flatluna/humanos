@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
+import { useTranslation } from 'react-i18next';
 import {
   Brain,
   Search,
@@ -41,6 +42,7 @@ import { BrainGraph } from './BrainGraph';
 import { BrainRecallGrid } from './BrainRecallGrid';
 import { MemoryScoreGauge } from './MemoryScoreGauge';
 import { MemoryScienceExplainer } from './MemoryScienceExplainer';
+import { ReviewQueueSection } from './ReviewQueueSection';
 import { getSubjectColor } from './subjectColor';
 import { computeGlobalMemoryScore, getRetrievability, isAutomatic } from './memoryScience';
 import { useBrainGraph } from './useBrainGraph';
@@ -265,7 +267,8 @@ function DeepDiveCardModal({
  * grouping (this portal has no Programs concept — every root is one
  * assigned capability). */
 export function BrainPage() {
-  const { t, language } = useI18n();
+  const { language } = useI18n();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const personId = user?.personId ?? '';
 
@@ -517,12 +520,12 @@ export function BrainPage() {
       const target = new Date(targetDateStr).getTime();
       const diffDays = Math.max(0, Math.round((target - Date.now()) / (24 * 60 * 60 * 1000)));
       if (diffDays === 0) {
-        return language === 'en' ? 'today' : 'hoy';
+        return t('brain.today');
       }
       if (diffDays === 1) {
-        return language === 'en' ? 'in 1 day' : 'en 1 día';
+        return t('brain.inOneDay');
       }
-      return language === 'en' ? `in ${diffDays} days` : `en ${diffDays} días`;
+      return t('brain.inDays', { count: diffDays });
     } catch {
       return '';
     }
@@ -564,9 +567,9 @@ export function BrainPage() {
           <Brain className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{t.brainTitle}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{t('brain.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {t.brainSubtitle}
+            {t('brain.subtitle')}
           </p>
         </div>
       </div>
@@ -577,54 +580,56 @@ export function BrainPage() {
         <div className="mt-6 flex flex-wrap items-stretch gap-3">
           <div className="grid grid-cols-3 gap-3 sm:max-w-lg">
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.brainActiveNeurons}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('brain.activeNeurons')}</p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalNeurons}</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.brainKnowledgeAreas}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('brain.knowledgeAreas')}</p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalAreas}</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.brainNeedsReview}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('brain.dueForReview')}</p>
               <p className="mt-1 text-2xl font-bold text-amber-500 dark:text-amber-400">{totalNeedsReview}</p>
             </Card>
           </div>
           <MemoryScoreGauge
             score={memoryScore}
-            label={t.brainMemoryStrength}
-            caption={t.brainMemoryStrengthCaption}
+            label={t('brain.memoryStrength')}
+            caption={t('brain.memoryStrengthCaption')}
           />
         </div>
       )}
+
+      {!isEmpty && <ReviewQueueSection personId={personId} />}
 
       {!isEmpty && (
         <Card className="mt-4 flex items-start gap-3 border-dashed p-4">
           <Bot className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {t.brainAskComingSoon}
+            {t('brain.askComingSoon')}
           </p>
         </Card>
       )}
 
       {loading && (
         <LoadingBackdrop
-          title={t.brainLoadingTitle}
-          description={t.brainLoadingDescription}
+          title={t('brain.loadingTitle')}
+          description={t('brain.loadingDescription')}
         />
       )}
 
       {isEmpty && (
         <Card className="mt-8 flex flex-col items-center gap-3 p-10 text-center">
           <Brain className="h-10 w-10 text-slate-300 dark:text-slate-600" />
-          <p className="text-base font-semibold text-slate-900 dark:text-white">{t.brainEmptyTitle}</p>
+          <p className="text-base font-semibold text-slate-900 dark:text-white">{t('brain.emptyTitle')}</p>
           <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
-            {t.brainEmptyDescription}
+            {t('brain.emptyDescription')}
           </p>
           <Link
             to="/capabilities"
             className="mt-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
           >
-            {t.brainExploreButton}
+            {t('brain.exploreButton')}
           </Link>
         </Card>
       )}
@@ -637,7 +642,7 @@ export function BrainPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={t.brainSearchPlaceholder}
+                placeholder={t('brain.searchPlaceholder')}
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
               />
             </div>
@@ -652,7 +657,7 @@ export function BrainPage() {
                 }`}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
-                {t.brainGrid}
+                {t('brain.grid')}
               </button>
               <button
                 type="button"
@@ -664,29 +669,25 @@ export function BrainPage() {
                 }`}
               >
                 <Share2 className="h-3.5 w-3.5" />
-                {t.brainGraph}
+                {t('brain.graph')}
               </button>
             </div>
           </div>
 
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            {t.brainSelectHint}
-          </p>
-
           {subjectOptions.length > 1 && (
             <FilterChipRow
-              label={`${t.brainSubject}:`}
-              allLabel={t.allSubjectsFilter}
+              label={`${t('brain.subject')}:`}
+              allLabel={t('brain.allSubjects')}
               value={subjectFilter}
               onChange={setSubjectFilter}
               options={subjectOptions.map((s) => ({ value: s.code, label: s.name, color: getSubjectColor(s.code) }))}
             />
           )}
 
-          {courseOptions.length > 1 && (
+          {courseOptions.length > 0 && (
             <FilterChipRow
-              label={`${t.brainCourse}:`}
-              allLabel={t.brainAll}
+              label={`${t('brain.course')}:`}
+              allLabel={t('brain.all')}
               value={courseFilter}
               onChange={setCourseFilter}
               options={courseOptions.map((c) => ({ value: c.id, label: c.name }))}
@@ -695,8 +696,8 @@ export function BrainPage() {
 
           {categoryOptions.length > 0 && (
             <FilterChipRow
-              label={`${t.brainCourseType}:`}
-              allLabel={t.brainAll}
+              label={`${t('brain.courseType')}:`}
+              allLabel={t('brain.all')}
               value={categoryFilter}
               onChange={setCategoryFilter}
               options={categoryOptions.map((c) => ({ value: c.code, label: c.name }))}
@@ -704,22 +705,22 @@ export function BrainPage() {
           )}
 
           <FilterChipRow
-            label={language === 'en' ? 'Status:' : 'Estado:'}
-            allLabel={t.brainAll}
+            label={`${t('brain.status')}:`}
+            allLabel={t('brain.all')}
             value={statusFilter === 'all' ? null : statusFilter}
             onChange={(v) => setStatusFilter((v as StatusFilter) ?? 'all')}
             options={[
-              { value: 'mastered', label: language === 'en' ? 'Mastered' : 'Dominado' },
-              { value: 'needs-review', label: language === 'en' ? 'Needs review' : 'Necesita repaso' },
+              { value: 'mastered', label: t('brain.mastered') },
+              { value: 'needs-review', label: t('brain.needsReview') },
             ]}
           />
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-              {language === 'en' ? 'Last review:' : 'Último repaso:'}
+              {t('brain.lastReview')}:
             </span>
             <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-              {language === 'en' ? 'From' : 'Desde'}
+              {t('brain.from')}
               <input
                 type="date"
                 value={dateFrom}
@@ -729,7 +730,7 @@ export function BrainPage() {
               />
             </label>
             <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-              {language === 'en' ? 'To' : 'Hasta'}
+              {t('brain.to')}
               <input
                 type="date"
                 value={dateTo}
@@ -747,7 +748,7 @@ export function BrainPage() {
                 }}
                 className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/[0.12]"
               >
-                {language === 'en' ? 'Clear dates' : 'Limpiar fechas'}
+                {t('brain.clearDates')}
               </button>
             )}
           </div>
@@ -756,7 +757,13 @@ export function BrainPage() {
             {view === 'grid' ? (
               <BrainRecallGrid rootGroups={filteredRootGroups} query={query} onSelectNeuron={handleSelectNode} />
             ) : (
-              <BrainGraph rootGroups={filteredRootGroups} query={query} onSelectNeuron={handleSelectNode} />
+              <BrainGraph
+                personId={personId}
+                courseId={courseFilter}
+                query={query}
+                onSelectNeuron={handleSelectNode}
+                onSelectCourse={setCourseFilter}
+              />
             )}
           </div>
         </>
@@ -803,9 +810,7 @@ export function BrainPage() {
                 <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                   <p className="text-xs text-amber-200">
-                    {language === 'en'
-                      ? 'This memory is fading. Talking with the agent helps you review it, but redoing the full 5-step cycle rebuilds it much stronger.'
-                      : 'Este recuerdo se está desvaneciendo. Platicar con el agente te ayuda a repasarlo, pero rehacer el ciclo completo de 5 pasos lo reconstruye mucho más fuerte.'}
+                    {t('brain.fadingWarning')}
                   </p>
                 </div>
               )}
@@ -818,7 +823,7 @@ export function BrainPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-400">
                         <Brain className="h-4 w-4 text-emerald-400" />
-                        <span>{language === 'en' ? 'Memory' : 'Memoria'}</span>
+                        <span>{t('brain.blocks.memory')}</span>
                       </div>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${getMemoryStateBadgeStyle(
@@ -834,7 +839,7 @@ export function BrainPage() {
                       <div className="flex items-baseline gap-1.5">
                         <span className="text-2xl font-black text-white">{activeMemory.RecallPercent}%</span>
                         <span className="text-[11px] text-white/50">
-                          {language === 'en' ? 'retention' : 'retención'}
+                          {t('brain.retention')}
                         </span>
                       </div>
 
@@ -842,12 +847,12 @@ export function BrainPage() {
                         {activeMemory.IsAutomatic ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-extrabold text-amber-300">
                             <Zap className="h-3 w-3 fill-amber-300" />
-                            {language === 'en' ? 'Automatic' : 'Automático'}
+                            {t('brain.automatic')}
                           </span>
                         ) : (
                           <span className="text-[11px] font-medium text-white/70">
                             {activeMemory.ReviewsUntilAutomatic}{' '}
-                            {language === 'en' ? 'reviews to Auto' : 'repasos para Automático'}
+                            {t('brain.reviewsToAuto')}
                           </span>
                         )}
                       </div>
@@ -855,19 +860,12 @@ export function BrainPage() {
 
                     <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-2 text-[11px] text-white/60">
                       <span>
-                        {activeMemory.ReviewCount}{' '}
-                        {activeMemory.ReviewCount === 1
-                          ? language === 'en'
-                            ? 'review'
-                            : 'repaso'
-                          : language === 'en'
-                          ? 'reviews'
-                          : 'repasos'}
+                        {t('brain.reviewCount', { count: activeMemory.ReviewCount })}
                       </span>
                       {activeMemory.NextReviewDate && (
                         <span className="flex items-center gap-1 font-medium text-emerald-300/90">
                           <Calendar className="h-3 w-3" />
-                          {language === 'en' ? 'Next review' : 'Próximo repaso'}:{' '}
+                          {t('brain.nextReview')}:{' '}
                           {formatFriendlyDate(activeMemory.NextReviewDate)} ({formatDaysUntil(activeMemory.NextReviewDate)})
                         </span>
                       )}
@@ -881,7 +879,7 @@ export function BrainPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-400">
                         <Trophy className="h-4 w-4 text-amber-400" />
-                        <span>{language === 'en' ? 'Reward' : 'Recompensa'}</span>
+                        <span>{t('brain.reward')}</span>
                       </div>
 
                       {activeReward.WasSurprise && activeReward.SurpriseType !== 'NONE' ? (
@@ -910,7 +908,7 @@ export function BrainPage() {
                         onClick={() => setRewardBreakdownOpen((prev) => !prev)}
                         className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 hover:text-amber-200"
                       >
-                        <span>{language === 'en' ? 'View breakdown' : 'Ver desglose'}</span>
+                        <span>{t('brain.viewBreakdown')}</span>
                         {rewardBreakdownOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </button>
                     </div>
@@ -923,23 +921,23 @@ export function BrainPage() {
                         className="mt-3 rounded-xl bg-black/30 p-2.5 text-[11px] font-mono text-white/80 border border-white/5 space-y-1"
                       >
                         <div className="flex justify-between text-white/60">
-                          <span>{language === 'en' ? 'Base points' : 'Puntos base'}:</span>
+                          <span>{t('brain.basePoints')}:</span>
                           <span className="font-bold text-white">{activeReward.PointsBase}</span>
                         </div>
                         <div className="flex justify-between text-white/60">
-                          <span>{language === 'en' ? 'Difficulty' : 'Dificultad'}:</span>
+                          <span>{t('brain.difficulty')}:</span>
                           <span className="font-bold text-white">×{activeReward.DifficultyMultiplier}</span>
                         </div>
                         <div className="flex justify-between text-white/60">
-                          <span>{language === 'en' ? 'Memory effort' : 'Esfuerzo memoria'}:</span>
+                          <span>{t('brain.memoryEffort')}:</span>
                           <span className="font-bold text-white">×{activeReward.MemoryEffortMultiplier}</span>
                         </div>
                         <div className="flex justify-between text-white/60">
-                          <span>{language === 'en' ? 'Surprise bonus' : 'Bono sorpresa'}:</span>
+                          <span>{t('brain.surpriseBonus')}:</span>
                           <span className="font-bold text-white">×{activeReward.SurpriseMultiplier}</span>
                         </div>
                         <div className="mt-1 flex justify-between border-t border-white/10 pt-1 font-bold text-amber-300">
-                          <span>{language === 'en' ? 'Total' : 'Total'}:</span>
+                          <span>{t('brain.total')}:</span>
                           <span>{activeReward.PointsAwarded} pts</span>
                         </div>
                       </motion.div>
@@ -953,7 +951,7 @@ export function BrainPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-indigo-400">
                         <Target className="h-4 w-4 text-indigo-400" />
-                        <span>{language === 'en' ? 'Role Impact' : 'Impacto en tu Puesto'}</span>
+                        <span>{t('brain.roleImpact')}</span>
                       </div>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${getTierBadgeStyle(
@@ -978,17 +976,17 @@ export function BrainPage() {
                 )}
               </div>
 
-              {summaryLoading && !selectedNode.isStructuredLearning && <p className="mt-6 text-sm text-white/50">{language === 'en' ? 'Loading...' : 'Cargando...'}</p>}
+              {summaryLoading && !selectedNode.isStructuredLearning && <p className="mt-6 text-sm text-white/50">{t('common.loading')}</p>}
 
               {!summaryLoading && summary && !selectedNode.isStructuredLearning && (
                 <div className="mt-6 grid grid-cols-2 gap-3">
-                  <SummaryStat label={language === 'en' ? 'Attempts' : 'Intentos'} value={String(summary.AttemptCount)} />
+                  <SummaryStat label={t('brain.attempts')} value={String(summary.AttemptCount)} />
                   <SummaryStat
-                    label={language === 'en' ? 'Score' : 'Puntaje'}
+                    label={t('brain.score')}
                     value={typeof summary.FinalScore === 'number' ? `${summary.FinalScore}/100` : '—'}
                   />
                   <SummaryStat
-                    label={language === 'en' ? 'Mastered since' : 'Dominado desde'}
+                    label={t('brain.masteredSince')}
                     value={
                       summary.FirstCompletedDate
                         ? new Date(summary.FirstCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
@@ -996,7 +994,7 @@ export function BrainPage() {
                     }
                   />
                   <SummaryStat
-                    label={language === 'en' ? 'Last review' : 'Último repaso'}
+                    label={t('brain.lastReview')}
                     value={
                       summary.LastCompletedDate
                         ? new Date(summary.LastCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
@@ -1009,7 +1007,7 @@ export function BrainPage() {
               {selectedNode.isStructuredLearning && (
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   <SummaryStat
-                    label={language === 'en' ? 'Score' : 'Puntaje'}
+                    label={t('brain.score')}
                     value={
                       typeof slSummary?.FinalScore === 'number'
                         ? `${slSummary.FinalScore}/100`
@@ -1019,7 +1017,7 @@ export function BrainPage() {
                     }
                   />
                   <SummaryStat
-                    label={language === 'en' ? 'Mastered on' : 'Dominado el'}
+                    label={t('brain.masteredOn')}
                     value={
                       slSummary?.LastCompletedDate
                         ? new Date(slSummary.LastCompletedDate).toLocaleDateString(language === 'en' ? 'en-US' : 'es', { dateStyle: 'medium' })
@@ -1037,14 +1035,14 @@ export function BrainPage() {
                 className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Sparkles className="h-4 w-4" />
-                {language === 'en' ? 'Talk with your Agent about this' : 'Habla con tu Agente sobre esto'}
+                {t('brain.talkWithAgent')}
               </button>
 
               {slVideos.length > 0 && (
                 <div className="mt-6 space-y-3">
                   <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-300">
                     <Video className="h-4 w-4" />
-                    <span>{language === 'en' ? 'Video Lessons' : 'Lecciones en Video'} ({slVideos.length})</span>
+                    <span>{t('brain.videoLessons')} ({slVideos.length})</span>
                   </div>
                   <div className="space-y-2">
                     {slVideos.map((v) => (
@@ -1063,7 +1061,7 @@ export function BrainPage() {
                 <div className="mt-6">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-wide text-white/50">
-                      {language === 'en' ? 'Review cards' : 'Tarjetas de repaso'} ({deepDiveCards.length})
+                      {t('brain.reviewCards')} ({deepDiveCards.length})
                     </p>
                     <button
                       type="button"
@@ -1071,7 +1069,7 @@ export function BrainPage() {
                       className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/80 hover:bg-white/20"
                     >
                       <Shuffle className="h-3 w-3" />
-                      {language === 'en' ? 'Random' : 'Aleatoria'}
+                      {t('brain.random')}
                     </button>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
@@ -1099,7 +1097,7 @@ export function BrainPage() {
                   className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  {language === 'en' ? 'Redo the 5 steps' : 'Rehacer los 5 pasos (sube el score)'}
+                  {t('brain.openFullLesson')}
                 </Link>
               ) : (
                 <Link
@@ -1107,7 +1105,7 @@ export function BrainPage() {
                   className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  {language === 'en' ? 'Redo the 5 steps' : 'Rehacer los 5 pasos (sube el score)'}
+                  {t('brain.openFullLesson')}
                 </Link>
               )}
             </motion.div>

@@ -205,6 +205,7 @@ var host = new HostBuilder()
         services.AddScoped<RewardEngineService>();
         services.AddScoped<StreakService>();
         services.AddScoped<BadgeService>();
+        services.AddScoped<ReviewQueueService>();
         services.AddScoped<GamificationOrchestrator>();
 
         // Growth Plan Step 3 ("Planeemos Juntos tu Desarrollo", merged

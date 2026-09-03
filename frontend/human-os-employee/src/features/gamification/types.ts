@@ -1,6 +1,8 @@
 export interface RewardResultDto {
   alreadyEarned?: boolean;
   AlreadyEarned?: boolean;
+  tier?: string;
+  Tier?: string;
   pointsBase?: number;
   PointsBase?: number;
   difficultyMultiplier?: number;
@@ -52,6 +54,8 @@ export interface AwardedBadgeDto {
 }
 
 export interface GamificationRewardBundleDto {
+  tier?: string;
+  Tier?: string;
   reward?: RewardResultDto | null;
   Reward?: RewardResultDto | null;
   streak?: StreakResultDto | null;

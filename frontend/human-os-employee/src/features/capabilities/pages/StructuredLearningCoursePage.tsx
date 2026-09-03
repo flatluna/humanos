@@ -743,7 +743,17 @@ export default function StructuredLearningCoursePage() {
               </div>
               <KnowledgeGraphSection
                 documentId={documentId}
+                personId={personId}
                 onClose={() => setShowKnowledgeGraphPanel(false)}
+                onSelectEngram={(sec) => {
+                  const scoreInfo = impactScoresByEngramId.get(sec.StructuredLearningDocumentSectionId.toLowerCase());
+                  if (scoreInfo) {
+                    setSelectedEngramForReason(scoreInfo);
+                  } else {
+                    const idx = sections.findIndex((s) => s.StructuredLearningDocumentSectionId === sec.StructuredLearningDocumentSectionId);
+                    goToSection(sec, idx >= 0 ? idx : 0);
+                  }
+                }}
               />
             </div>
           ) : (

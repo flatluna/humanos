@@ -8,7 +8,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * interval after each successful recall: the more times you've truly
  * recalled something, the more stable it becomes and the slower it fades.
  * Index 0 = never reviewed (fallback), 1st mastery, 2nd, 3rd, 4th, 5th+. */
-const STABILITY_DAYS_BY_REVIEW = [1, 1, 3, 7, 15, 30];
+const STABILITY_DAYS_BY_REVIEW = [8, 8, 18, 40, 80, 150];
 
 /** Reviews needed to cross from DECLARATIVE memory (explicit facts/concepts,
  * fades per the power-law curve above) into PROCEDURAL/AUTOMATIC memory

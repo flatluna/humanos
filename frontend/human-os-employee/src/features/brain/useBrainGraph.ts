@@ -44,7 +44,7 @@ async function fetchStructuredLearningRootGroups(personId: string): Promise<Root
         name: section.SubchapterTitle,
         state: 'Mastered',
         lastCompletedDate: round?.CompletedDate ?? undefined,
-        reviewCount: 1,
+        reviewCount: round?.RoundNumber ?? 1,
         finalScore: round?.FinalScore ?? undefined,
         isStructuredLearning: true,
         structuredLearningDocumentId: doc.structuredLearningDocumentId,

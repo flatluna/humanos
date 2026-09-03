@@ -51,6 +51,28 @@ export interface RewardHistoryDto {
   earnedAt: string;
 }
 
+export interface ReviewQueueItemDto {
+  engramId: string;
+  courseId: string;
+  courseName: string;
+  title: string;
+  recallPercent: number;
+  tier: string;
+  impactScore: number;
+  priorityScore: number;
+  reviewCount: number;
+  lastCompletedDate?: string;
+  isStructuredLearning: boolean;
+}
+
+export interface ReviewQueueResponseDto {
+  phase: string;
+  phaseName: string;
+  readyCoursesCompletionPct: number;
+  totalPending: number;
+  items: ReviewQueueItemDto[];
+}
+
 /**
  * Retrieves the current gamification status of the authenticated student.
  */
@@ -78,4 +100,11 @@ export async function getBadgeProgress(): Promise<BadgeProgressDto[]> {
  */
 export async function getGamificationRecentRewards(limit: number = 20): Promise<RewardHistoryDto[]> {
   return apiGet<RewardHistoryDto[]>(`/gamification/rewards/recent?limit=${encodeURIComponent(limit)}`);
+}
+
+/**
+ * Retrieves the personalized spaced review queue with phase detection, priority scoring, and interleaving across courses.
+ */
+export async function getReviewQueue(): Promise<ReviewQueueResponseDto> {
+  return apiGet<ReviewQueueResponseDto>('/gamification/review-queue');
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, Layers, Sparkles, Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { RootGroup, SelectedNeuron } from './types';
 import { getSubjectColor } from './subjectColor';
 import { getMemoryColor, getMemoryTextColor, getRetrievability, isAutomatic } from './memoryScience';
@@ -39,6 +40,7 @@ export interface BrainRecallGridProps {
  *  from human-os-web's /brain (2026-08-01). */
 export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainRecallGridProps) {
   const { language } = useI18n();
+  const { t } = useTranslation();
   const normalizedQuery = query.trim().toLowerCase();
 
   // Forces a re-render every minute so the memory-strength rings keep
@@ -76,7 +78,7 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
     return (
       <div className="flex h-full w-full items-center justify-center p-10 text-center">
         <p className="text-sm text-white/50">
-          {language === 'en' ? 'No neuron matches your search.' : 'Ninguna neurona coincide con tu búsqueda.'}
+          {t('brain.noMatches')}
         </p>
       </div>
     );
@@ -170,7 +172,7 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
                                 }
                               >
                                 {automatic && <Zap className="h-3 w-3" />}
-                                {automatic ? (language === 'en' ? 'Automatic' : 'Automático') : `${percent}%`}
+                                {automatic ? t('brain.automatic') : `${percent}%`}
                               </span>
                             )}
                           </div>
@@ -188,7 +190,7 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
       </div>
       <div className="mt-2 flex items-center gap-1.5 pb-2 text-[11px] text-white/30">
         <Sparkles className="h-3 w-3" />
-        <span>Selecciona una neurona para ver qué aprendiste y hablar con tu Agente sobre ese tema.</span>
+        <span>{t('brain.selectNeuronHint')}</span>
       </div>
     </div>
   );

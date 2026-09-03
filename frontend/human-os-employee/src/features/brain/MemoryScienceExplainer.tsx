@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp, Circle, Percent, Zap, FlaskConical } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { COLOR_STOPS } from './memoryScience';
-import { useI18n } from '@/features/capabilities/i18n/useI18n';
 
 const STORAGE_KEY = 'humanos-employee-brain-explainer-collapsed';
 
 export function MemoryScienceExplainer() {
-  const { language } = useI18n();
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === '1';
@@ -29,8 +29,6 @@ export function MemoryScienceExplainer() {
     });
   }
 
-  const isEn = language === 'en';
-
   return (
     <Card className="mt-6 overflow-hidden border-accent-500/20 bg-gradient-to-br from-accent-500/5 via-transparent to-brand-500/5 p-0">
       <button type="button" onClick={toggle} className="flex w-full items-center justify-between gap-3 p-4 text-left">
@@ -40,11 +38,11 @@ export function MemoryScienceExplainer() {
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-900 dark:text-white">
-              {isEn ? 'How does your Digital Brain work?' : '¿Cómo funciona tu Cerebro Digital?'}
+              {t('brain.explainer.title')}
             </p>
             {collapsed && (
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isEn ? 'Tap to view explanation' : 'Toca para ver la explicación'}
+                {t('brain.explainer.tapToView')}
               </p>
             )}
           </div>
@@ -68,23 +66,21 @@ export function MemoryScienceExplainer() {
             <div className="space-y-5 px-4 pb-5 pt-1 sm:px-6">
               <div>
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-accent-500 dark:text-accent-400">
-                  {isEn ? 'What each symbol means' : 'Qué significa cada símbolo'}
+                  {t('brain.explainer.symbolsTitle')}
                 </p>
                 <ul className="space-y-2.5">
                   <li className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <div className="flex items-start gap-2.5">
                       <Circle className="mt-0.5 h-4 w-4 shrink-0 fill-current text-emerald-400" />
                       <span>
-                        {isEn
-                          ? 'The colored ring on each topic shows how fresh that memory is right now:'
-                          : 'El círculo de color de cada tema muestra qué tan fresco está ese recuerdo ahora mismo:'}
+                        {t('brain.explainer.coloredRingText')}
                       </span>
                     </div>
                     <div className="ml-6 flex flex-wrap items-center gap-3">
                       {[
-                        { stop: COLOR_STOPS[0], label: isEn ? 'Strong' : 'Fuerte' },
-                        { stop: COLOR_STOPS[2], label: isEn ? 'Fading' : 'Debilitándose' },
-                        { stop: COLOR_STOPS[4], label: isEn ? 'Almost forgotten' : 'Casi olvidado' },
+                        { stop: COLOR_STOPS[0], label: t('brain.explainer.strong') },
+                        { stop: COLOR_STOPS[2], label: t('brain.explainer.fading') },
+                        { stop: COLOR_STOPS[4], label: t('brain.explainer.almostForgotten') },
                       ].map(({ stop, label }) => (
                         <span key={stop[1]} className="flex items-center gap-1.5">
                           <span
@@ -99,17 +95,13 @@ export function MemoryScienceExplainer() {
                   <li className="flex items-start gap-2.5 text-sm text-slate-600 dark:text-slate-300">
                     <Percent className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                     <span>
-                      {isEn
-                        ? 'The percentage (%) is the estimated probability you would recall it if asked right now, calculated using the scientific forgetting curve.'
-                        : 'El número (%) es la probabilidad real de que lo recuerdes bien si te preguntara justo ahora, calculada con la curva científica del olvido.'}
+                      {t('brain.explainer.percentText')}
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5 text-sm text-slate-600 dark:text-slate-300">
                     <Zap className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
                     <span>
-                      {isEn
-                        ? 'The ⚡ Automatic badge appears when you have mastered a topic enough times (5 full passed reviews) that it became second nature, like riding a bike.'
-                        : 'La insignia ⚡ Automático aparece cuando ya dominaste un tema tantas veces (5 repasos completos y aprobados) que se volvió un reflejo, como andar en bicicleta. Prácticamente nunca se olvida.'}
+                      {t('brain.explainer.automaticText')}
                     </span>
                   </li>
                 </ul>
@@ -117,12 +109,10 @@ export function MemoryScienceExplainer() {
 
               <div>
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-brand-500 dark:text-brand-400">
-                  {isEn ? 'The algorithm behind this' : 'El algoritmo detrás de esto'}
+                  {t('brain.explainer.algorithmTitle')}
                 </p>
                 <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                  {isEn
-                    ? 'We use a mathematical model based on human memory research (Wixted & Ebbesen, 1991; similar to formulas used in spaced repetition tools like Anki). It combines how many days have passed since your last review and how many times you reviewed it to estimate memory strength in your brain.'
-                    : 'Usamos un modelo matemático basado en investigación real sobre la memoria humana (Wixted & Ebbesen, 1991; el mismo tipo de fórmula que usa Anki, la app de repaso espaciado más usada en medicina). Combina cuántos días han pasado desde tu último repaso y cuántas veces lo repasaste de verdad para estimar qué tan fuerte está ese recuerdo en tu cerebro — no es una simulación bonita, es ciencia cognitiva aplicada a tu progreso real.'}
+                  {t('brain.explainer.algorithmDescription')}
                 </p>
               </div>
             </div>

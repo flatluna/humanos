@@ -7,6 +7,8 @@ public class RewardResult
 {
     public bool AlreadyEarned { get; set; }
 
+    public string? Tier { get; set; }
+
     public int PointsBase { get; set; }
 
     public decimal DifficultyMultiplier { get; set; }

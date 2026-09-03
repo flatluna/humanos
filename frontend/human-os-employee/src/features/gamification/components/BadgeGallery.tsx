@@ -11,6 +11,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { getBadgeProgress, type BadgeProgressDto } from '../api/gamificationApi';
 import { useGamificationStore } from '../store/useGamificationStore';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
@@ -23,58 +24,59 @@ interface BadgeGalleryProps {
 
 interface CategoryMeta {
   key: string;
-  name: string;
+  nameKey: string;
   iconEmoji: string;
-  description: string;
+  descriptionKey: string;
 }
 
 const CATEGORY_ORDER: CategoryMeta[] = [
   {
     key: 'Effort',
-    name: 'Effort Milestones',
+    nameKey: 'badges.categories.Effort',
     iconEmoji: '🌱',
-    description: 'Cumulative engrams mastered across all courses',
+    descriptionKey: 'badges.categoryDescriptions.Effort',
   },
   {
     key: 'Progress',
-    name: 'Course Progress',
+    nameKey: 'badges.categories.Progress',
     iconEmoji: '📈',
-    description: 'Deep progress and completion within individual courses',
+    descriptionKey: 'badges.categoryDescriptions.Progress',
   },
   {
     key: 'Skills',
-    name: 'Skills Completed',
+    nameKey: 'badges.categories.Skills',
     iconEmoji: '🏆',
-    description: 'Entire courses and career training roadmaps fully completed',
+    descriptionKey: 'badges.categoryDescriptions.Skills',
   },
   {
     key: 'Quality',
-    name: 'Mastery & Quality',
+    nameKey: 'badges.categories.Quality',
     iconEmoji: '⭐',
-    description: 'Flawless streaks, first-try masteries, and perfect scores',
+    descriptionKey: 'badges.categoryDescriptions.Quality',
   },
   {
     key: 'Challenge',
-    name: 'Role Challenges',
+    nameKey: 'badges.categories.Challenge',
     iconEmoji: '🛡️',
-    description: 'Critical and high-impact skills required for your job role',
+    descriptionKey: 'badges.categoryDescriptions.Challenge',
   },
   {
     key: 'Habit',
-    name: 'Habit & Consistency',
+    nameKey: 'badges.categories.Habit',
     iconEmoji: '🔥',
-    description: 'Daily streaks, memory rescues, and consolidated habits',
+    descriptionKey: 'badges.categoryDescriptions.Habit',
   },
   {
     key: 'Luck',
-    name: 'Luck & Surprises',
+    nameKey: 'badges.categories.Luck',
     iconEmoji: '🎲',
-    description: 'Rare jackpot bonus multipliers and unexpected surprises',
+    descriptionKey: 'badges.categoryDescriptions.Luck',
   },
 ];
 
 export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className = '' }) => {
   const { language } = useI18n();
+  const { t } = useTranslation();
   const isEn = language === 'en';
   const { fetchProfile } = useGamificationStore();
 
@@ -136,9 +138,9 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
       result.push({
         meta: {
           key,
-          name: key,
+          nameKey: `badges.categories.${key}`,
           iconEmoji: '🎖️',
-          description: 'Special achievement category',
+          descriptionKey: `badges.categoryDescriptions.${key}`,
         },
         badges: list,
       });
@@ -167,7 +169,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
       return `${badge.currentValue}% / ${badge.targetValue}%`;
     }
     if (rule === 'streak_days') {
-      return `${badge.currentValue} / ${badge.targetValue} ${isEn ? 'days' : 'días'}`;
+      return `${badge.currentValue} / ${badge.targetValue} ${t('badges.days')}`;
     }
     if (rule === 'automatic_engrams') {
       return `${badge.currentValue} / ${badge.targetValue}`;
@@ -186,17 +188,15 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
           <div>
             <div className="flex items-center gap-2.5">
               <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white sm:text-xl">
-                🏆 {isEn ? 'My Achievements' : 'Mis Logros'}
+                🏆 {t('badges.myAchievements')}
               </h2>
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-400/20 dark:text-amber-300">
                 <Sparkles className="h-3 w-3" />
-                {earnedBadges.length} {isEn ? 'of' : 'de'} {badges.length}
+                {t('badges.progressCounter', { earned: earnedBadges.length, total: badges.length })}
               </span>
             </div>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-white/60">
-              {isEn
-                ? 'Track your milestones, course completions, streaks, and learning habits.'
-                : 'Sigue tus hitos, cursos completados, rachas y hábitos de aprendizaje.'}
+              {t('badges.subtitle')}
             </p>
           </div>
         </div>
@@ -206,7 +206,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t('common.close')}
               className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-white"
             >
               <X className="h-5 w-5" />
@@ -241,7 +241,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
       {error && !loading && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-xs text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
           <p className="font-semibold text-sm">
-            {isEn ? 'Failed to load badges' : 'No se pudieron cargar las medallas'}
+            {t('common.error')}
           </p>
           <p className="mt-1 opacity-80">{error}</p>
           <button
@@ -250,7 +250,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
             className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            {isEn ? 'Retry' : 'Reintentar'}
+            {t('common.retry')}
           </button>
         </div>
       )}
@@ -263,13 +263,13 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
                   <Flame className="h-4 w-4 fill-amber-500 text-amber-500 animate-pulse" />
-                  <span>{isEn ? 'Close to Unlocking' : 'A punto de desbloquear'}</span>
+                  <span>{t('badges.closeToUnlocking')}</span>
                   <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
-                    {closeToUnlockingBadges.length} {isEn ? 'within reach' : 'al alcance'}
+                    {t('badges.withinReach', { count: closeToUnlockingBadges.length })}
                   </span>
                 </div>
                 <span className="text-[11px] font-medium text-amber-700/80 dark:text-amber-300/80">
-                  {isEn ? 'Keep up the momentum!' : '¡Mantén el impulso!'}
+                  {t('badges.keepMomentum')}
                 </span>
               </div>
 
@@ -293,7 +293,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                       <div className="mt-3">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
-                            {badge.category}
+                            {t(`badges.categories.${badge.category}`, { defaultValue: badge.category })}
                           </span>
                         </div>
                         <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">
@@ -307,7 +307,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
 
                     <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3 dark:border-white/5">
                       <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                        <span className="text-slate-400 dark:text-white/40">{isEn ? 'Progress' : 'Progreso'}</span>
+                        <span className="text-slate-400 dark:text-white/40">{t('badges.progress')}</span>
                         <span className="font-bold text-amber-600 dark:text-amber-400">
                           {formatProgressLabel(badge)}
                         </span>
@@ -330,7 +330,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-4 w-4" />
-                <span>{isEn ? 'Earned Badges' : 'Medallas Desbloqueadas'}</span>
+                <span>{t('badges.earnedBadges')}</span>
                 <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300">
                   {earnedBadges.length}
                 </span>
@@ -341,12 +341,10 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-8 text-center text-xs text-slate-500 dark:border-white/10 dark:bg-white/[0.02] dark:text-white/40">
                 <Award className="mx-auto mb-2 h-8 w-8 opacity-30 text-emerald-500" />
                 <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">
-                  {isEn ? 'No badges unlocked yet' : 'Aún no has desbloqueado medallas'}
+                  {t('badges.noBadgesTitle')}
                 </p>
                 <p className="mt-1">
-                  {isEn
-                    ? 'Complete your first learning assessment or review to earn "First Neuron"!'
-                    : '¡Completa tu primera evaluación o repaso para desbloquear "Primera Neurona"!'}
+                  {t('badges.noBadgesSubtitle')}
                 </p>
               </div>
             ) : (
@@ -363,13 +361,13 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                         </div>
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                           <Sparkles className="h-2.5 w-2.5" />
-                          {isEn ? 'Earned' : 'Ganada'}
+                          {t('badges.earned')}
                         </span>
                       </div>
 
                       <div className="mt-3">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600/80 dark:text-emerald-400/80">
-                          {badge.category}
+                          {t(`badges.categories.${badge.category}`, { defaultValue: badge.category })}
                         </span>
                         <h4 className="font-bold text-slate-900 dark:text-white text-sm">
                           {badge.name}
@@ -381,7 +379,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                     </div>
 
                     <div className="mt-4 flex items-center justify-between border-t border-emerald-500/15 pt-2.5 text-[10px] font-medium text-slate-400 dark:text-white/40">
-                      <span>{isEn ? 'Unlocked on' : 'Desbloqueada el'}</span>
+                      <span>{t('badges.unlockedOn')}</span>
                       <span className="font-semibold text-emerald-700 dark:text-emerald-300">
                         {formatDate(badge.earnedAt)}
                       </span>
@@ -397,7 +395,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
             <div className="border-b border-slate-100 pb-2 dark:border-white/10">
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
                 <Target className="h-4 w-4 text-indigo-500" />
-                {isEn ? 'All Badges by Category' : 'Todas las Medallas por Categoría'}
+                {t('badges.allBadgesByCategory')}
               </h3>
             </div>
 
@@ -412,15 +410,15 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                         <span className="text-lg">{meta.iconEmoji}</span>
                         <div>
                           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                            {meta.name}
+                            {t(meta.nameKey, { defaultValue: meta.key })}
                           </h4>
                           <p className="text-[11px] text-slate-500 dark:text-white/40">
-                            {meta.description}
+                            {t(meta.descriptionKey, { defaultValue: '' })}
                           </p>
                         </div>
                       </div>
                       <span className="self-start sm:self-auto rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-slate-600 shadow-xs dark:bg-white/10 dark:text-white/80">
-                        {catEarned} / {catBadges.length} {isEn ? 'unlocked' : 'desbloqueadas'}
+                        {t('badges.unlockedCount', { earned: catEarned, total: catBadges.length })}
                       </span>
                     </div>
 
@@ -442,7 +440,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                                   </div>
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                                     <CheckCircle2 className="h-2.5 w-2.5" />
-                                    {isEn ? 'Earned' : 'Ganada'}
+                                    {t('badges.earned')}
                                   </span>
                                 </div>
 
@@ -459,10 +457,10 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                               <div className="mt-3 border-t border-emerald-500/10 pt-2 text-[10px] font-medium text-emerald-700/80 dark:text-emerald-300/80">
                                 {formatDate(badge.earnedAt) ? (
                                   <>
-                                    {isEn ? 'Earned on' : 'Ganada el'} {formatDate(badge.earnedAt)}
+                                    {t('badges.earnedOn')} {formatDate(badge.earnedAt)}
                                   </>
                                 ) : (
-                                  <>{isEn ? '100% Completed' : '100% Completada'}</>
+                                  <>{t('badges.completed100')}</>
                                 )}
                               </div>
                             </div>
@@ -483,8 +481,8 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-white/60">
                                   <Lock className="h-2.5 w-2.5" />
                                   {isAutomaticEngrams
-                                    ? isEn ? 'Coming Soon' : 'Próximamente'
-                                    : isEn ? 'Locked' : 'Bloqueada'}
+                                    ? t('badges.comingSoon')
+                                    : t('badges.locked')}
                                 </span>
                               </div>
 
@@ -502,8 +500,8 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                               <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-white/60">
                                 <span className="text-[10px]">
                                   {isAutomaticEngrams
-                                    ? isEn ? 'My Brain Auto' : 'Memoria Automática'
-                                    : isEn ? 'Progress' : 'Progreso'}
+                                    ? t('badges.myBrainAuto')
+                                    : t('badges.progress')}
                                 </span>
                                 <span className="font-semibold text-slate-700 dark:text-slate-300">
                                   {isAutomaticEngrams ? '0 / 5' : formatProgressLabel(badge)}

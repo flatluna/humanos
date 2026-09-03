@@ -55,9 +55,14 @@ public class RewardEngineService
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.PersonId == personId, ct);
 
+            var existingImpactScore = await _dbContext.EngramImpactScores
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.EmployeeId == personId && x.CourseId == courseId && x.EngramId == engramId, ct);
+
             return new RewardResult
             {
                 AlreadyEarned = true,
+                Tier = existingImpactScore?.Tier ?? "Foundational",
                 PointsBase = existingEntry.PointsBase,
                 DifficultyMultiplier = existingEntry.DifficultyMultiplier,
                 MemoryEffortMultiplier = existingEntry.MemoryEffortMultiplier,
@@ -216,6 +221,7 @@ public class RewardEngineService
         return new RewardResult
         {
             AlreadyEarned = false,
+            Tier = impactScore?.Tier ?? "Foundational",
             PointsBase = pointsBase,
             DifficultyMultiplier = difficultyMultiplier,
             MemoryEffortMultiplier = memoryEffortMultiplier,
