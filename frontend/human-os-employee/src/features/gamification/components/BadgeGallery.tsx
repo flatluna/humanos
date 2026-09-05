@@ -296,10 +296,10 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                             {t(`badges.categories.${badge.category}`, { defaultValue: badge.category })}
                           </span>
                         </div>
-                        <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1" title={badge.name}>
                           {badge.name}
                         </h4>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2" title={badge.description}>
                           {badge.description}
                         </p>
                       </div>
@@ -369,10 +369,10 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600/80 dark:text-emerald-400/80">
                           {t(`badges.categories.${badge.category}`, { defaultValue: badge.category })}
                         </span>
-                        <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm" title={badge.name}>
                           {badge.name}
                         </h4>
-                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 line-clamp-2" title={badge.description}>
                           {badge.description}
                         </p>
                       </div>
@@ -445,10 +445,10 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                                 </div>
 
                                 <div className="mt-3">
-                                  <h5 className="font-bold text-slate-900 dark:text-white text-sm">
+                                  <h5 className="font-bold text-slate-900 dark:text-white text-sm" title={badge.name}>
                                     {badge.name}
                                   </h5>
-                                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 line-clamp-2" title={badge.description}>
                                     {badge.description}
                                   </p>
                                 </div>
@@ -487,10 +487,10 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                               </div>
 
                               <div className="mt-3">
-                                <h5 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+                                <h5 className="font-semibold text-slate-700 dark:text-slate-200 text-sm" title={badge.name}>
                                   {badge.name}
                                 </h5>
-                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2" title={badge.description}>
                                   {badge.description}
                                 </p>
                               </div>

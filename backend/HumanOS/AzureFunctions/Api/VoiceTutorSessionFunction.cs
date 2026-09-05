@@ -101,6 +101,13 @@ public sealed class VoiceTutorSessionFunction
                 request, HttpStatusCode.BadRequest, "MissingFields", "The request body is required.", cancellationToken);
         }
 
+        // AI Agents course chat "Talk about this" voice path (2026-09-04) —
+        // checked first since it takes priority over every other target field.
+        if (body.AiAgentQuestion is not null)
+        {
+            return await RunAiAgentQuestionAsync(request, body.AiAgentQuestion, body.PersonName, body.PersonId, cancellationToken);
+        }
+
         // Traditional Course path (2026-08-09) — a single CapabilityLesson
         // (subchapter), no graph/blueprint/session at all. Scoped to ONE
         // lesson, not its whole parent chapter, to match Graph mode's
@@ -327,6 +334,149 @@ public sealed class VoiceTutorSessionFunction
     /// never a grading channel (the chapter's final exam stays a
     /// separate, deterministic multiple-choice flow).
     /// </summary>
+    /// <summary>
+    /// AI Agents course chat's "Talk about this" voice path (2026-09-04) —
+    /// grounded in the SAME question/answer/engrams already produced by the
+    /// text chat (StructuredLearningKnowledgeRetrievalService's reranked
+    /// top-3, passed straight through by the frontend from the chat
+    /// response it already has), plus the same personalized LEARNER
+    /// CONTEXT used everywhere else. No DB re-fetch of engram content —
+    /// the excerpts are exactly what the student already saw as citation
+    /// chips, so voice can never disagree with the text answer on screen.
+    /// </summary>
+    private async Task<HttpResponseData> RunAiAgentQuestionAsync(
+        HttpRequestData request, AiAgentQuestionContext context, string? personName, Guid? explicitPersonId, CancellationToken cancellationToken)
+    {
+        var employeeId = explicitPersonId ?? await ResolveAuthenticatedEmployeeIdAsync(request, cancellationToken);
+        var learnerContext = await _learnerContextBuilder.BuildLearnerContextBlockAsync(
+            employeeId, context.DocumentId, engramId: null, cancellationToken);
+
+        // 2026-09-04 fix (2nd pass): ground language in the actual ENGRAM
+        // EXCERPTS (real course content — see context.Engrams below), never
+        // in the document's own stored config or the text answer. Two
+        // separate signals turned out unreliable: (1) StructuredLearningTutorAgent
+        // replies in whatever language the STUDENT typed, not the course's own
+        // language, so an English course answered via a Spanish-typed question
+        // came back Spanish; (2) this specific document's own ConfigSnapshotJson
+        // languageCode was found to be "es" even though its real generated
+        // content is 100% English — a data mismatch, not something code should
+        // trust blindly. The engram excerpts are the one signal that can never
+        // lie about what language the course material is actually written in.
+        var documentLanguageCode = context.Engrams.Count > 0
+            ? DetectLanguageCode(string.Join(" ", context.Engrams.Select(e => e.Text)))
+            : null;
+        if (documentLanguageCode is null && context.DocumentId is Guid documentId)
+        {
+            documentLanguageCode = ResolveDocumentLanguageCode(
+                await _dbContext.StructuredLearningDocuments
+                    .AsNoTracking()
+                    .Where(d => d.StructuredLearningDocumentId == documentId)
+                    .Select(d => d.ConfigSnapshotJson)
+                    .FirstOrDefaultAsync(cancellationToken));
+        }
+
+        var instructions = BuildAiAgentQuestionInstructions(context, personName, documentLanguageCode);
+        if (!string.IsNullOrWhiteSpace(learnerContext))
+        {
+            instructions = $"{learnerContext}\n\n{instructions}";
+        }
+
+        try
+        {
+            var session = await _voiceSessionService.CreateEphemeralSessionAsync(instructions, cancellationToken);
+
+            return await FunctionResponseFactory.SuccessResponseAsync(request, new VoiceTutorSessionResponseDto
+            {
+                ClientSecret = session.ClientSecret,
+                RealtimeCallsUrl = session.RealtimeCallsUrl,
+                Model = session.Model,
+                Voice = session.Voice,
+                ExpiresAtUnixSeconds = session.ExpiresAtUnixSeconds
+            }, cancellationToken: cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadGateway, "VoiceSessionMintFailed", ex.Message, cancellationToken);
+        }
+    }
+
+    /// <summary>Q&amp;A-only prompt (mirrors <see cref="BuildStructuredLearningQaInstructions"/>'s
+    /// "greet once, then wait silently" pattern) — grounded strictly in the
+    /// already-given Question/Answer plus the cited engrams' own excerpts,
+    /// never a full narrated lecture.</summary>
+    private static string BuildAiAgentQuestionInstructions(AiAgentQuestionContext context, string? personName, string? documentLanguageCode = null)
+    {
+        var isEnglish = (documentLanguageCode ?? DetectLanguageCode(context.Answer)) == "en";
+        var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
+
+        var engramsBlock = string.Join(
+            "\n\n",
+            context.Engrams.Select(e => $"### {e.Title}\n{e.Text}"));
+
+        var greeting = isEnglish
+            ? (name is null ? "Hi. Want to talk more about this?" : $"Hi, {name}. Want to talk more about this?")
+            : (name is null ? "Hola. ¿Quieres hablar más sobre esto?" : $"Hola, {name}. ¿Quieres hablar más sobre esto?");
+
+        if (isEnglish)
+        {
+            return $"""
+                You are an AI Agent following up, BY VOICE, on a question a student already asked in text
+                chat and already got a text answer for. This is a QUESTION-AND-ANSWER conversation, NOT a
+                class — you never teach unprompted.
+
+                The student's ORIGINAL QUESTION was: "{context.Question}"
+                The TEXT ANSWER already shown to them was: "{context.Answer}"
+
+                Start talking YOURSELF immediately upon connecting. Your first and ONLY unprompted sentence
+                must be exactly: "{greeting}" — then STOP TALKING and wait silently for the student's spoken
+                follow-up. NEVER re-read the answer aloud unprompted — that is the single most important
+                rule here.
+
+                For the rest of the conversation:
+                - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn.
+                - Answer follow-up questions grounded STRICTLY in the ORIGINAL QUESTION/ANSWER above and the
+                  ENGRAM EXCERPTS below — never invent facts, numbers, or examples that aren't there.
+                - Keep answers brief and conversational — a direct answer, not a lecture.
+                - After answering, STOP and wait silently for the next question.
+                - If the student says they have no more questions or wants to end, say a brief goodbye and
+                  stop talking.
+                - NEVER grade the student or claim to affect their progress.
+
+                ENGRAM EXCERPTS (your only source of truth beyond the answer above):
+                {engramsBlock}
+                """;
+        }
+
+        return $"""
+            Eres un Agente de IA dando seguimiento, POR VOZ, a una pregunta que el estudiante ya hizo en el
+            chat de texto y que ya tiene una respuesta de texto. Esta es una conversación de PREGUNTAS Y
+            RESPUESTAS, NO una clase — nunca enseñas sin que te lo pidan.
+
+            La PREGUNTA ORIGINAL del estudiante fue: "{context.Question}"
+            La RESPUESTA DE TEXTO que ya vio fue: "{context.Answer}"
+
+            Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes. Tu primera y ÚNICA frase sin que te
+            lo pidan debe ser exactamente: "{greeting}" — y después CÁLLATE y espera en silencio la pregunta
+            hablada del estudiante. NUNCA vuelvas a leer la respuesta en voz alta sin que te lo pidan — esa
+            es la regla más importante de todo este prompt.
+
+            Para el resto de la conversación:
+            - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos.
+            - Responde preguntas de seguimiento basándote ESTRICTAMENTE en la PREGUNTA/RESPUESTA original de
+              arriba y en los EXTRACTOS DE ENGRAMAS de abajo — nunca inventes datos, cifras ni ejemplos que
+              no estén ahí.
+            - Mantén las respuestas breves y conversacionales — una respuesta directa, no una clase.
+            - Después de responder, DETENTE y espera en silencio la siguiente pregunta.
+            - Si el estudiante dice que no tiene más preguntas o quiere terminar, despídete brevemente y
+              deja de hablar.
+            - NUNCA calificas al estudiante ni afirmas poder afectar su progreso.
+
+            EXTRACTOS DE ENGRAMAS (tu única fuente de verdad además de la respuesta de arriba):
+            {engramsBlock}
+            """;
+    }
+
     private async Task<HttpResponseData> RunTraditionalLessonAsync(
         HttpRequestData request, Guid lessonId, string? personName, Guid? explicitPersonId, CancellationToken cancellationToken)
     {
@@ -557,7 +707,8 @@ public sealed class VoiceTutorSessionFunction
             employeeId,
             courseId,
             engramId,
-            cancellationToken);
+            cancellationToken,
+            engramTitle: step.Section.SubchapterTitle);
 
         if (step.StepType == Models.Capabilities.Studio.StructuredLearningStepType.DeepDive)
         {
@@ -589,7 +740,9 @@ public sealed class VoiceTutorSessionFunction
                     cancellationToken);
             }
 
-            var detectedLanguageCode = DetectLanguageCode(string.Join(" ", exampleCards.Select(c => c.Text)));
+            var detectedLanguageCode = ResolveDocumentLanguageCode(
+                step.Section.Document?.ConfigSnapshotJson,
+                string.Join(" ", exampleCards.Select(c => c.Text)));
             var effectiveIsReviewOnly = isReviewOnly;
             var deepDiveInstructions = BuildInstructions(
                 ExperienceStepType.DeepDive, step.Content, personName, nodeName: null, courseName: null,
@@ -638,11 +791,12 @@ public sealed class VoiceTutorSessionFunction
         // student-facing reference only and must never be fed into the
         // voice Agent's own context/instructions (2026-08-24 explicit
         // request), so they are deliberately NOT queried/passed here.
+        var documentLanguageCode = ResolveDocumentLanguageCode(step.Section.Document?.ConfigSnapshotJson, step.Content);
         var instructions = isQaMode
             ? BuildStructuredLearningQaInstructions(
-                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document?.DocumentName)
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document?.DocumentName, documentLanguageCode)
             : BuildStructuredLearningStepInstructions(
-                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document?.DocumentName);
+                step.Section.SubchapterTitle, step.Section.ChapterTitle, step.Content, personName, step.Section.Document?.DocumentName, documentLanguageCode);
 
         if (!string.IsNullOrWhiteSpace(learnerContext))
         {
@@ -709,12 +863,54 @@ public sealed class VoiceTutorSessionFunction
         return defaultPersonId;
     }
 
+    /// <summary>Resolves the language to speak in for a Structured Learning
+    /// voice session. PRIORITY (2026-09-04, 2nd fix): the actual CONTENT being
+    /// read/discussed (fallbackText) always wins when given — real content can
+    /// never lie about what language it's written in, whereas a document's own
+    /// StructuredLearningDocument.ConfigSnapshotJson.languageCode was found to
+    /// be stale/wrong for at least one real document (stored "es" while its
+    /// generated section content was 100% English). ConfigSnapshotJson is only
+    /// consulted as a fallback when no real content is available to check
+    /// (e.g. a genuinely empty section) — see DetectLanguageCode's own doc
+    /// comment for the per-utterance heuristic used on fallbackText.</summary>
+    private static string ResolveDocumentLanguageCode(string? configSnapshotJson, string? fallbackText = null)
+    {
+        if (!string.IsNullOrWhiteSpace(fallbackText))
+        {
+            return DetectLanguageCode(fallbackText);
+        }
+
+        if (!string.IsNullOrWhiteSpace(configSnapshotJson))
+        {
+            try
+            {
+                // Case-insensitive lookup: the stored JSON was found to use
+                // camelCase ("languageCode"), not PascalCase ("LanguageCode") —
+                // JsonElement.TryGetProperty is case-sensitive, so a plain
+                // TryGetProperty("LanguageCode") call here would silently never
+                // match and always fall through to the empty-string default.
+                var snapshot = JsonSerializer.Deserialize<JsonElement>(configSnapshotJson);
+                foreach (var property in snapshot.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, "LanguageCode", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(property.Value.GetString()))
+                    {
+                        return property.Value.GetString()!;
+                    }
+                }
+            }
+            catch (JsonException) { }
+        }
+
+        return DetectLanguageCode(fallbackText ?? string.Empty);
+    }
+
     /// <summary>Very cheap English-vs-Spanish heuristic (2026-08-10) — counts
     /// hits of a handful of extremely common function words unique to each
-    /// language. ONLY used for Structured Learning's DeepDive voice path,
-    /// which (unlike Graph's Capability) has no stored content language.
-    /// Defaults to Spanish on a tie/empty text (matches Capability's own
-    /// "es" default elsewhere in this codebase).</summary>
+    /// language. Only used now as a last-resort fallback (see
+    /// <see cref="ResolveDocumentLanguageCode"/>) for documents with no
+    /// stored LanguageCode at all. Defaults to Spanish on a tie/empty text
+    /// (matches Capability's own "es" default elsewhere in this codebase).</summary>
     private static string DetectLanguageCode(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -751,9 +947,9 @@ public sealed class VoiceTutorSessionFunction
     /// heuristic used for DeepDive (<see cref="DetectLanguageCode"/>) instead.
     /// </summary>
     private static string BuildStructuredLearningStepInstructions(
-        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName)
+        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName, string? documentLanguageCode = null)
     {
-        var isEnglish = DetectLanguageCode(stepContent) == "en";
+        var isEnglish = (documentLanguageCode ?? DetectLanguageCode(stepContent)) == "en";
         var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
         var document = string.IsNullOrWhiteSpace(documentName) ? null : documentName.Trim();
 
@@ -780,6 +976,9 @@ public sealed class VoiceTutorSessionFunction
                 Your job for the rest of the conversation:
                 - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn, for the entire
                   conversation, no matter what language the student uses.
+                - PACE — HARD RULE, NEVER BREAK IT: speak notably SLOWER than your default pace, calmly and
+                  clearly, with small natural pauses between sentences and ideas, so the student can easily
+                  follow along. Never rush through the content.
                 - TONE — match the content's own voice exactly: if it's warm and personal, YOU must sound
                   that warm too, the whole time — friendly, courteous, encouraging, never cold or robotic.
                 - Actually TEACH the section: give the WHOLE class straight through, from start to finish,
@@ -818,6 +1017,9 @@ public sealed class VoiceTutorSessionFunction
             Tu trabajo durante el resto de la conversación:
             - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos, durante
               toda la conversación, sin importar en qué idioma te hable el estudiante.
+            - RITMO — REGLA DURA, NUNCA LA ROMPAS: habla notablemente MÁS LENTO que tu ritmo por defecto, con
+              calma y claridad, con pequeñas pausas naturales entre frases e ideas, para que el estudiante
+              pueda seguirte fácilmente. Nunca hables apurado.
             - TONO — iguala exactamente el tono del propio contenido: si es cálido y cercano, TÚ debes sonar
               igual de cálido todo el tiempo — cortés, alentador, nunca frío ni robótico.
             - ENSEÑA de verdad la sección: da la clase COMPLETA de corrido, de principio a fin, en UNA sola
@@ -851,9 +1053,9 @@ public sealed class VoiceTutorSessionFunction
     /// then wait for the next one), just over a different channel.
     /// </summary>
     private static string BuildStructuredLearningQaInstructions(
-        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName)
+        string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName, string? documentLanguageCode = null)
     {
-        var isEnglish = DetectLanguageCode(stepContent) == "en";
+        var isEnglish = (documentLanguageCode ?? DetectLanguageCode(stepContent)) == "en";
         var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
         var document = string.IsNullOrWhiteSpace(documentName) ? null : documentName.Trim();
 
@@ -1015,34 +1217,61 @@ public sealed class VoiceTutorSessionFunction
         if (stepType == ExperienceStepType.Hypothesis || stepType == ExperienceStepType.Teaching)
         {
             var greeting = BuildGreeting();
-            var openingRule = $"""
-                - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
-                  estudiante diga algo primero y SIN preguntarle si está listo — arranca directo. Tu
-                  PRIMERA frase, literalmente, debe ser: "{greeting}" — y sin pausa ni espera,
-                  continúa inmediatamente con tu tarea de abajo en el mismo turno.
-                - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
-                  todavía no ha dicho ni una palabra. Por eso, en ese turno JAMÁS uses frases que den
-                  a entender que él ya respondió o dijo algo (como "perfecto", "genial", "entendido",
-                  "exacto") — eso confunde al estudiante. Simplemente saluda y sigue con tu tarea.
-                """;
+            var openingRule = isEnglish
+                ? $"""
+                    - Start talking YOURSELF immediately upon connecting, without waiting for the
+                      student to say something first and WITHOUT asking if they are ready — start directly.
+                      Your FIRST sentence, literally, must be: "{greeting}" — and without pause or waiting,
+                      continue immediately with your task below in the same turn.
+                    - That first turn is literally the FIRST of the conversation: the student has not yet
+                      said a single word. Therefore, in that turn NEVER use phrases that imply they already
+                      answered or said something (such as "perfect", "great", "got it", "exactly") — that
+                      confuses the student. Simply greet and continue with your task.
+                    """
+                : $"""
+                    - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
+                      estudiante diga algo primero y SIN preguntarle si está listo — arranca directo. Tu
+                      PRIMERA frase, literalmente, debe ser: "{greeting}" — y sin pausa ni espera,
+                      continúa inmediatamente con tu tarea de abajo en el mismo turno.
+                    - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
+                      todavía no ha dicho ni una palabra. Por eso, en ese turno JAMÁS uses frases que den
+                      a entender que él ya respondió o dijo algo (como "perfecto", "genial", "entendido",
+                      "exacto") — eso confunde al estudiante. Simplemente saluda y sigue con tu tarea.
+                    """;
 
             if (stepType == ExperienceStepType.Hypothesis)
             {
-                return $"""
-                    Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Hipótesis.
-                    Tu único trabajo, en el mismo primer turno: saluda (ver regla de apertura abajo) y
-                    después lee en voz alta, exactamente como está escrita, la siguiente pregunta.
-                    Después escucha la respuesta hablada del estudiante. Cuando termine de responder,
-                    agradece su idea y anímalo a pulsar "Continuar" cuando esté listo — sin decir si es
-                    correcta o incorrecta, sin dar la respuesta correcta.
+                return isEnglish
+                    ? $"""
+                        You are an AI Agent accompanying a student by voice during the Hypothesis step.
+                        Your only job, in the very first turn: greet (see opening rule below) and then read
+                        aloud, exactly as written, the following question. Then listen to the student's spoken
+                        answer. When they finish answering, thank them for their idea and encourage them to click
+                        "Continue" when ready — without saying if it is correct or incorrect, without giving the
+                        correct answer.
 
-                    PREGUNTA A LEER EN VOZ ALTA:
-                    {stepContent}
+                        QUESTION TO READ ALOUD:
+                        {stepContent}
 
-                    {openingRule}
+                        {openingRule}
 
-                    {sharedRules}
-                    """;
+                        {sharedRules}
+                        """
+                    : $"""
+                        Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Hipótesis.
+                        Tu único trabajo, en el mismo primer turno: saluda (ver regla de apertura abajo) y
+                        después lee en voz alta, exactamente como está escrita, la siguiente pregunta.
+                        Después escucha la respuesta hablada del estudiante. Cuando termine de responder,
+                        agradece su idea y anímalo a pulsar "Continuar" cuando esté listo — sin decir si es
+                        correcta o incorrecta, sin dar la respuesta correcta.
+
+                        PREGUNTA A LEER EN VOZ ALTA:
+                        {stepContent}
+
+                        {openingRule}
+
+                        {sharedRules}
+                        """;
             }
 
             // Teaching
@@ -1057,158 +1286,164 @@ public sealed class VoiceTutorSessionFunction
             // thread across turns) — no server-side step-index state is
             // needed, just an explicit instruction to never re-read from
             // the top and to resume exactly where it left off.
-            //
-            // REFINED same day (still 2026-08-06) after real-world testing
-            // on a 12-item ingredient list: pausing/waiting alone worked,
-            // but the model still lost its place or skipped items partway
-            // through a long enumeration, since it had nothing concrete to
-            // anchor "where am I" other than re-deriving it from ambiguous
-            // free-form prior text. Fix: force the model to explicitly
-            // SPEAK a "Número X" / "Paso X de N" tag before every single
-            // item — that spoken tag becomes part of its own turn history,
-            // so recovering position after an interruption becomes "find
-            // the last number I said out loud" instead of "guess from
-            // context". Also broadened beyond literal do-this-then-wait
-            // recipe steps to ANY multi-item list worth pacing one at a
-            // time (e.g. a plain ingredient list, even though nothing is
-            // physically "executed" per item).
-            //
-            // REFINED again same day: two more real-world gaps surfaced.
-            // (1) The model sometimes skipped the narrative intro paragraph
-            // entirely and jumped straight to the list — added an explicit
-            // "read any intro text first, in full, before switching to
-            // numbered mode" step. (2) The model needed to actually engage
-            // with live, unscripted student requests (e.g. "sáltate a los
-            // ingredientes y ayúdame a cocinar contigo") using judgment
-            // rather than rigidly sticking to the fixed order — added an
-            // explicit "the student can redirect you at any time, use your
-            // judgment" rule, plus examples generalized beyond cooking
-            // (math, chemistry, business processes) since this prompt
-            // block applies to any Teaching step content, not just recipes.
-            //
-            // REFINED yet again same day: broadening to non-recipe content
-            // (a 3-line algebra derivation: x²+1=0 → x²=−1 → x=±√(−1))
-            // exposed a tone bug — the model paced it like a recipe and
-            // asked "avísame cuando lo tengas listo" after each algebra
-            // line, which makes no sense (there's nothing to physically
-            // finish/prepare in a derivation, only reasoning to follow).
-            // Split pacing into two explicit flavors: "acción física a
-            // ejecutar" (recipe/lab — keep asking for "listo") vs.
-            // "derivación o razonamiento conceptual" (math, logic, a
-            // step-by-step argument — ask if it makes sense / if they want
-            // to continue, never "avísame cuando lo tengas listo").
-            var stepByStepRule = """
-                - REGLA DE INSTRUCCIONES PASO A PASO: el contenido de abajo puede traer, en cualquier
-                  orden, (a) texto narrativo/explicativo (introducción, contexto, definición — de
-                  cocina, matemáticas, química, un proceso de negocio, o cualquier otro tema) y/o
-                  (b) una secuencia de pasos, una LISTA de varios elementos, o una DERIVACIÓN/cadena de
-                  razonamiento con varios pasos lógicos (por ejemplo resolver una ecuación paso a paso)
-                  que tenga sentido recorrer uno por uno (una receta, una fórmula por pasos, un
-                  procedimiento de laboratorio, un checklist de un proceso, una lista de
-                  ingredientes/materiales/reactivos, viñetas o ítems numerados, o los pasos de una
-                  demostración/derivación matemática o lógica). Trata cada parte de forma distinta:
-                    1. Si hay texto narrativo/explicativo ANTES de la lista o secuencia (por ejemplo un
-                       párrafo introductorio que da contexto), LÉELO PRIMERO completo y de corrido, con
-                       tono natural, tal como indica la regla general de abajo. NUNCA te lo saltes para
-                       ir directo a la lista — el estudiante necesita ese contexto antes de empezar,
-                       salvo que él mismo te pida explícitamente saltarte ahí (ver punto 9).
-                    2. ANTES de leer el primer elemento de la lista/secuencia, cuenta tú mismo cuántos
-                       elementos tiene en total (cuenta las viñetas/líneas/ítems) — esto es tu propia
-                       referencia interna, no hace falta anunciarlo en voz alta salvo que ayude
-                       naturalmente a la conversación. Determina también de qué FLAVOR es cada elemento
-                       (ver punto 4): ¿es algo que el estudiante debe EJECUTAR/preparar físicamente
-                       (receta, laboratorio, checklist), o es un paso de RAZONAMIENTO/derivación que
-                       solo debe SEGUIR y entender (matemáticas, lógica, un argumento explicado)?
-                    3. Lee EN VOZ ALTA solo el elemento/paso actual (tal cual está escrito, sin
-                       resumir ni adelantar el siguiente), y SIEMPRE anúncialo con su número explícito
-                       antes de leerlo, por ejemplo: "Número 1: 300 gramos de arroz bomba.", "Paso 3
-                       de 8: añade el ajo picado.", "Reactivo 2 de 5: 10 ml de ácido clorhídrico.", o
-                       "Paso 2 de 3: despejamos y obtenemos x al cuadrado igual a menos uno." — este
-                       número explícito, dicho en voz alta cada vez, es lo que te permite (y te
-                       permite a ti mismo revisándolo después) saber exactamente dónde vas; NUNCA lo
-                       omitas, ni siquiera para el primer elemento.
-                    4. Después de leerlo, DETENTE — pero la forma de esperar depende del FLAVOR (punto
-                       2):
-                         - Si es un paso de ACCIÓN física a ejecutar (receta, laboratorio, checklist):
-                           pídele que te avise cuando lo haya hecho/anotado (por ejemplo "avísame
-                           cuando ya lo tengas listo" o "dime 'listo' cuando termines") y ESPERA.
-                         - Si es un paso de RAZONAMIENTO/derivación conceptual (matemáticas, lógica,
-                           un argumento): NUNCA digas "avísame cuando lo tengas listo" ni "cuando
-                           termines" — no hay nada físico que terminar. En vez de eso pregunta algo
-                           como "¿tiene sentido hasta aquí?" o "¿quieres que continúe con el siguiente
-                           paso?" y ESPERA su confirmación (por ejemplo "sí", "dale", "continúa", "tiene
-                           sentido", o una pregunta/duda sobre ese paso).
-                       En ambos casos: nunca leas el siguiente elemento en el mismo turno ni sin
-                       confirmación.
-                    5. Solo cuando confirme (por ejemplo "listo", "ya", "ya está", "sigue", "continúa",
-                       "sí", "tiene sentido", o cualquier variante equivalente al FLAVOR de ese paso),
-                       lee el SIGUIENTE elemento de la lista, EN EL MISMO ORDEN en que aparece arriba —
-                       nunca te lo saltes, nunca lo reordenes, nunca combines dos elementos en un mismo
-                       turno — repitiendo el mismo patrón de anunciar-el-número, leer y esperar
-                       (adaptando la pregunta de espera al FLAVOR de cada elemento) en cada uno, hasta
-                       terminar con el último.
-                    6. Si te interrumpe a mitad de camino con una pregunta, un comentario o una duda —
-                       aunque sea una opinión que no está escrita literalmente en el contenido (por
-                       ejemplo "¿recomiendas los camarones grandes o chicos?") — SIEMPRE respóndele de
-                       verdad, con una respuesta completa y útil usando tu propio criterio y
-                       conocimiento general, como lo haría un tutor humano en una conversación real.
-                       Tener este diálogo NO tiene nada que ver con el seguimiento del número de paso:
-                       son dos cosas independientes. ESTÁ PROHIBIDO usar la frase de "estamos en el
-                       paso/elemento X, avísame cuando termines" (ni ninguna variante) COMO SI FUERA
-                       la respuesta a su pregunta — eso no es responder, es evadir. Primero conversa y
-                       resuelve lo que te preguntó, sin prisa por volver a la lista. Cuando la
-                       conversación termine naturalmente (o si tú decides retomar la lectura), NUNCA
-                       vuelvas a leer desde el primer elemento: revisa tus propios turnos anteriores en
-                       esta misma conversación, busca el ÚLTIMO número que TÚ MISMO anunciaste, y
-                       retoma exactamente en el SIGUIENTE número — ni uno antes, ni uno después. Perder
-                       el hilo, repetir desde el principio, o saltarte elementos está terminantemente
-                       prohibido, pero igual de prohibido es ignorar o esquivar una pregunta real del
-                       estudiante solo para insistir en el número de paso.
-                    7. Si te dice explícitamente "espera", "dame un momento" o "voy a hacerlo", quédate
-                       en silencio esperando su confirmación — no repitas el elemento ni preguntes si
-                       ya terminó, solo espera.
-                    8. Cuando termines el último elemento, dilo explícitamente (por ejemplo "Ese fue
-                       el último, ya son los 12 ingredientes." o "Y ese es el último paso: llegamos a
-                       x igual a más menos raíz de menos uno.") para que quede claro que la secuencia
-                       completa quedó cubierta sin que falte ninguno.
-                    9. El estudiante puede, en cualquier momento, darte una instrucción en vivo que
-                       cambie el plan por su cuenta — por ejemplo "sáltate a los ingredientes y
-                       ayúdame a cocinar contigo", "vamos directo al paso 3", "repite el paso
-                       anterior", "léelo todo de corrido, sin pausas", o "empecemos por el final". Usa
-                       tu criterio como tutor: estas peticiones son legítimas y debes seguirlas siempre
-                       que tengan sentido para su aprendizaje, aunque no estén previstas literalmente
-                       en esta regla — no eres un script rígido, tienes que razonar y adaptarte. Si por
-                       petición del estudiante saltas de sección o de orden, sigue anunciando el
-                       número/posición dentro de lo que estés leyendo ahora (por ejemplo, si salta
-                       directo a ingredientes, empieza a anunciar "Ingrediente 1 de 12" igual que si
-                       hubieras llegado ahí en el orden normal) para no perder el hilo tampoco en ese
-                       caso.
-                    10. Si el contenido NO tiene ninguna lista ni secuencia de pasos (es solo texto
-                       explicativo corrido o una definición), ignora esta regla y sigue la regla
-                       normal de abajo: léelo completo, de corrido, sin pausas.
-                """;
+            var stepByStepRule = isEnglish
+                ? """
+                    - STEP-BY-STEP INSTRUCTIONS RULE: the content below may contain, in any order,
+                      (a) narrative/explanatory text (intro, context, definition — regarding cooking,
+                      math, chemistry, a business process, or any other topic) and/or (b) a sequence of
+                      steps, a LIST of multiple items, or a DERIVATION/reasoning chain with multiple logical
+                      steps (e.g. solving an equation step by step) that makes sense to walk through one by one.
+                      Treat each part distinctly:
+                        1. If there is narrative/explanatory text BEFORE the list or sequence, READ IT FIRST
+                           completely and continuously, with a natural tone. NEVER skip it to jump straight
+                           to the list, unless the student explicitly asks you to.
+                        2. BEFORE reading the first item, determine the FLAVOR of each element: is it a PHYSICAL
+                           ACTION to execute/prepare, or a REASONING/derivation step to follow and understand?
+                        3. Read ALOUD only the current item/step (as written), and ALWAYS announce it with its
+                           explicit number before reading it (e.g. "Number 1: ...", "Step 3 of 8: ...").
+                        4. After reading it, STOP and wait:
+                             - For PHYSICAL ACTION: ask them to let you know when ready ("let me know when you're ready").
+                             - For CONCEPTUAL REASONING: ask if it makes sense ("does this make sense so far?").
+                        5. Only when they confirm, read the NEXT item in order.
+                        6. If they interrupt with a question or doubt, ALWAYS answer fully and helpfully. Once
+                           the conversation finishes, resume at the NEXT step number without restarting from 1.
+                        7. If they say "wait" or "give me a moment", remain silent and wait.
+                        8. When you finish the last item, announce it clearly ("That was the last one!").
+                        9. The student can redirect you at any time — adapt flexibly.
+                        10. If the content has no list/sequence of steps, follow the general rule: read it completely
+                            from start to finish without pausing.
+                    """
+                : """
+                    - REGLA DE INSTRUCCIONES PASO A PASO: el contenido de abajo puede traer, en cualquier
+                      orden, (a) texto narrativo/explicativo (introducción, contexto, definición — de
+                      cocina, matemáticas, química, un proceso de negocio, o cualquier otro tema) y/o
+                      (b) una secuencia de pasos, una LISTA de varios elementos, o una DERIVACIÓN/cadena de
+                      razonamiento con varios pasos lógicos (por ejemplo resolver una ecuación paso a paso)
+                      que tenga sentido recorrer uno por uno (una receta, una fórmula por pasos, un
+                      procedimiento de laboratorio, un checklist de un proceso, una lista de
+                      ingredientes/materiales/reactivos, viñetas o ítems numerados, o los pasos de una
+                      demostración/derivación matemática o lógica). Trata cada parte de forma distinta:
+                        1. Si hay texto narrativo/explicativo ANTES de la lista o secuencia (por ejemplo un
+                           párrafo introductorio que da contexto), LÉELO PRIMERO completo y de corrido, con
+                           tono natural, tal como indica la regla general de abajo. NUNCA te lo saltes para
+                           ir directo a la lista — el estudiante necesita ese contexto antes de empezar,
+                           salvo que él mismo te pida explícitamente saltarte ahí (ver punto 9).
+                        2. ANTES de leer el primer elemento de la lista/secuencia, cuenta tú mismo cuántos
+                           elementos tiene en total (cuenta las viñetas/líneas/ítems) — esto es tu propia
+                           referencia interna, no hace falta anunciarlo en voz alta salvo que ayude
+                           naturalmente a la conversación. Determina también de qué FLAVOR es cada elemento
+                           (ver punto 4): ¿es algo que el estudiante debe EJECUTAR/preparar físicamente
+                           (receta, laboratorio, checklist), o es un paso de RAZONAMIENTO/derivación que
+                           solo debe SEGUIR y entender (matemáticas, lógica, un argumento explicado)?
+                        3. Lee EN VOZ ALTA solo el elemento/paso actual (tal cual está escrito, sin
+                           resumir ni adelantar el siguiente), y SIEMPRE anúncialo con su número explícito
+                           antes de leerlo, por ejemplo: "Número 1: 300 gramos de arroz bomba.", "Paso 3
+                           de 8: añade el ajo picado.", "Reactivo 2 de 5: 10 ml de ácido clorhídrico.", o
+                           "Paso 2 de 3: despejamos y obtenemos x al cuadrado igual a menos uno." — este
+                           número explícito, dicho en voz alta cada vez, es lo que te permite (y te
+                           permite a ti mismo revisándolo después) saber exactamente dónde vas; NUNCA lo
+                           omitas, ni siquiera para el primer elemento.
+                        4. Después de leerlo, DETENTE — pero la forma de esperar depende del FLAVOR (punto
+                           2):
+                             - Si es un paso de ACCIÓN física a ejecutar (receta, laboratorio, checklist):
+                               pídele que te avise cuando lo haya hecho/anotado (por ejemplo "avísame
+                               cuando ya lo tengas listo" o "dime 'listo' cuando termines") y ESPERA.
+                             - Si es un paso de RAZONAMIENTO/derivación conceptual (matemáticas, lógica,
+                               un argumento): NUNCA digas "avísame cuando lo tengas listo" ni "cuando
+                               termines" — no hay nada físico que terminar. En vez de eso pregunta algo
+                               como "¿tiene sentido hasta aquí?" o "¿quieres que continúe con el siguiente
+                               paso?" y ESPERA su confirmación (por ejemplo "sí", "dale", "continúa", "tiene
+                               sentido", o una pregunta/duda sobre ese paso).
+                           En ambos casos: nunca leas el siguiente elemento en el mismo turno ni sin
+                           confirmación.
+                        5. Solo cuando confirme (por ejemplo "listo", "ya", "ya está", "sigue", "continúa",
+                           "sí", "tiene sentido", o cualquier variante equivalente al FLAVOR de ese paso),
+                           lee el SIGUIENTE elemento de la lista, EN EL MISMO ORDEN en que aparece arriba —
+                           nunca te lo saltes, nunca lo reordenes, nunca combines dos elementos en un mismo
+                           turno — repitiendo el mismo patrón de anunciar-el-número, leer y esperar
+                           (adaptando la pregunta de espera al FLAVOR de cada elemento) en cada uno, hasta
+                           terminar con el último.
+                        6. Si te interrumpe a mitad de camino con una pregunta, un comentario o una duda —
+                           aunque sea una opinión que no está escrita literalmente en el contenido (por
+                           ejemplo "¿recomiendas los camarones grandes o chicos?") — SIEMPRE respóndele de
+                           verdad, con una respuesta completa y útil usando tu propio criterio y
+                           conocimiento general, como lo haría un tutor humano en una conversación real.
+                           Tener este diálogo NO tiene nada que ver con el seguimiento del número de paso:
+                           son dos cosas independientes. ESTÁ PROHIBIDO usar la frase de "estamos en el
+                           paso/elemento X, avísame cuando termines" (ni ninguna variante) COMO SI FUERA
+                           la respuesta a su pregunta — eso no es responder, es evadir. Primero conversa y
+                           resuelve lo que te preguntó, sin prisa por volver a la lista. Cuando la
+                           conversación termine naturalmente (o si tú decides retomar la lectura), NUNCA
+                           vuelvas a leer desde el primer elemento: revisa tus propios turnos anteriores en
+                           esta misma conversación, busca el ÚLTIMO número que TÚ MISMO anunciaste, y
+                           retoma exactamente en el SIGUIENTE número — ni uno antes, ni uno después. Perder
+                           el hilo, repetir desde el principio, o saltarte elementos está terminantemente
+                           prohibido, pero igual de prohibido es ignorar o esquivar una pregunta real del
+                           estudiante solo para insistir en el número de paso.
+                        7. Si te dice explícitamente "espera", "dame un momento" o "voy a hacerlo", quédate
+                           en silencio esperando su confirmación — no repitas el elemento ni preguntes si
+                           ya terminó, solo espera.
+                        8. Cuando termines el último elemento, dilo explícitamente (por ejemplo "Ese fue
+                           el último, ya son los 12 ingredientes." o "Y ese es el último paso: llegamos a
+                           x igual a más menos raíz de menos uno.") para que quede claro que la secuencia
+                           completa quedó cubierta sin que falte ninguno.
+                        9. El estudiante puede, en cualquier momento, darte una instrucción en vivo que
+                           cambie el plan por su cuenta — por ejemplo "sáltate a los ingredientes y
+                           ayúdame a cocinar contigo", "vamos directo al paso 3", "repite el paso
+                           anterior", "léelo todo de corrido, sin pausas", o "empecemos por el final". Usa
+                           tu criterio como tutor: estas peticiones son legítimas y debes seguirlas siempre
+                           que tengan sentido para su aprendizaje, aunque no estén previstas literalmente
+                           en esta regla — no eres un script rígido, tienes que razonar y adaptarte. Si por
+                           petición del estudiante saltas de sección o de orden, sigue anunciando el
+                           número/posición dentro de lo que estés leyendo ahora (por ejemplo, si salta
+                           directo a ingredientes, empieza a anunciar "Ingrediente 1 de 12" igual que si
+                           hubieras llegado ahí en el orden normal) para no perder el hilo tampoco en ese
+                           caso.
+                        10. Si el contenido NO tiene ninguna lista ni secuencia de pasos (es solo texto
+                           explicativo corrido o una definición), ignora esta regla y sigue la regla
+                           normal de abajo: léelo completo, de corrido, sin pausas.
+                    """;
 
-            return $"""
-                Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Enseñanza.
-                Tu único trabajo, en el mismo primer turno: saluda (ver regla de apertura abajo) y
-                después LEE el contenido de abajo tal cual está escrito, en el mismo orden, EN VOZ
-                ALTA — sin agregar explicación adicional, sin ampliar con ejemplos propios, sin
-                parafrasear ni resumir. Simplemente léelo como está, con un tono natural y cercano.
-                Si el estudiante pregunta o comenta algo EN VIVO relacionado con este tema (aunque sea
-                una opinión o un detalle que no esté escrito literalmente en el texto, por ejemplo
-                "¿recomiendas la versión grande o la chica?"), SIEMPRE respóndele de verdad, con una
-                respuesta completa usando tu propio criterio — ten un diálogo real, no un monólogo;
-                solo evita irte a temas totalmente ajenos a esta actividad.
+            return isEnglish
+                ? $"""
+                    You are an AI Agent accompanying a student by voice during the Teaching step.
+                    Your only job, in the very first turn: greet (see opening rule below) and then READ the
+                    content below exactly as written, in the same order, ALOUD — without adding extra
+                    explanations, without expanding with your own examples, without paraphrasing or summarizing.
+                    Simply read it as is, in a warm, natural tone. If the student asks or comments on something
+                    live related to this topic, ALWAYS answer helpfully using your own judgment — have a real
+                    dialogue.
 
-                {stepByStepRule}
+                    {stepByStepRule}
 
-                CONTENIDO A LEER EN VOZ ALTA (tal cual, sin explicarlo):
-                {stepContent}
+                    CONTENT TO READ ALOUD (verbatim, without extra explanations):
+                    {stepContent}
 
-                {openingRule}
+                    {openingRule}
 
-                {sharedRules}
-                """;
+                    {sharedRules}
+                    """
+                : $"""
+                    Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Enseñanza.
+                    Tu único trabajo, en el mismo primer turno: saluda (ver regla de apertura abajo) y
+                    después LEE el contenido de abajo tal cual está escrito, en el mismo orden, EN VOZ
+                    ALTA — sin agregar explicación adicional, sin ampliar con ejemplos propios, sin
+                    parafrasear ni resumir. Simplemente léelo como está, con un tono natural y cercano.
+                    Si el estudiante pregunta o comenta algo EN VIVO relacionado con este tema (aunque sea
+                    una opinión o un detalle que no esté escrito literalmente en el texto, por ejemplo
+                    "¿recomiendas la versión grande o la chica?"), SIEMPRE respóndele de verdad, con una
+                    respuesta completa usando tu propio criterio — ten un diálogo real, no un monólogo;
+                    solo evita irte a temas totalmente ajenos a esta actividad.
+
+                    {stepByStepRule}
+
+                    CONTENIDO A LEER EN VOZ ALTA (tal cual, sin explicarlo):
+                    {stepContent}
+
+                    {openingRule}
+
+                    {sharedRules}
+                    """;
         }
 
         if (stepType == ExperienceStepType.DeepDive)
@@ -1223,7 +1458,9 @@ public sealed class VoiceTutorSessionFunction
                 .ToList();
             var bank = bankEntries.Count > 0
                 ? string.Join("\n", bankEntries)
-                : "(no hay otros ejemplos ya preparados — si pide más, invéntalos siguiendo la regla 4 de abajo)";
+                : (isEnglish
+                    ? "(there are no other pre-prepared examples — if the student asks for more, improvise following rule 4 below)"
+                    : "(no hay otros ejemplos ya preparados — si pide más, invéntalos siguiendo la regla 4 de abajo)");
 
             // DeepDive re-connects on EVERY card the student opens the voice
             // tutor for (unlike Hypothesis/Teaching, which greet once per
@@ -1235,15 +1472,24 @@ public sealed class VoiceTutorSessionFunction
             var greeting = isEnglish
                 ? (name is null ? "Hi." : $"Hi, {name}.")
                 : (name is null ? "Hola." : $"Hola, {name}.");
-            var deepDiveOpeningRule = $"""
-                - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
-                  estudiante diga algo primero. Tu PRIMERA frase, literalmente, debe ser: "{greeting}"
-                  — y sin pausa, continúa inmediatamente explicando el ejemplo de abajo en el mismo turno.
-                - Ese primer turno es el PRIMERO de la conversación: el estudiante todavía no ha dicho
-                  ni una palabra. Por eso, en ese turno JAMÁS uses frases que den a entender que él ya
-                  respondió o dijo algo (como "perfecto", "genial", "exacto") — simplemente saluda y
-                  sigue con tu tarea.
-                """;
+            var deepDiveOpeningRule = isEnglish
+                ? $"""
+                    - Start talking YOURSELF immediately upon connecting, without waiting for the student
+                      to say something first. Your FIRST sentence, literally, must be: "{greeting}"
+                      — and without pause, continue immediately explaining the example below in the same turn.
+                    - That first turn is literally the FIRST of the conversation: the student has not yet said
+                      a single word. Therefore, in that turn NEVER use phrases that imply they already answered
+                      or said something (such as "perfect", "great", "exactly") — simply greet and continue with your task.
+                    """
+                : $"""
+                    - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
+                      estudiante diga algo primero. Tu PRIMERA frase, literalmente, debe ser: "{greeting}"
+                      — y sin pausa, continúa inmediatamente explicando el ejemplo de abajo en el mismo turno.
+                    - Ese primer turno es el PRIMERO de la conversación: el estudiante todavía no ha dicho
+                      ni una palabra. Por eso, en ese turno JAMÁS uses frases que den a entender que él ya
+                      respondió o dijo algo (como "perfecto", "genial", "exacto") — simplemente saluda y
+                      sigue con tu tarea.
+                    """;
 
             // Read-only card review (2026-07-30 — explicit user request: "no
             // test, only give the student the chance to review the lesson;
@@ -1255,17 +1501,41 @@ public sealed class VoiceTutorSessionFunction
             // read/explain the card, then invite genuine questions.
             if (isReviewOnly)
             {
-                return $"""
-                    Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
-                    ayuda a un estudiante pequeño a REPASAR un ejemplo que YA DOMINÓ anteriormente.
-                    Esto NO es un examen ni un cuestionario — el estudiante ya demostró que entendió
-                    este concepto, así que tu único trabajo es ayudarlo a recordarlo con cariño.
-                    Turno tras turno, tu trabajo es:
-                    1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
-                       simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo
-                       que el estudiante tiene en pantalla si te ayuda a explicarlo. Incluye el
-                       resultado/respuesta final concreto.
-                    2) Después de explicar, pregúntale con calidez si tiene alguna duda o pregunta
+                return isEnglish
+                    ? $"""
+                        You are an AI Agent — a patient, warm, and supportive teacher — helping a student
+                        REVIEW an example card they have ALREADY MASTERED previously.
+                        This is NOT a test or a quiz — the student already demonstrated mastery of this concept,
+                        so your only job is to help them review it warmly.
+                        Turn after turn, your job is:
+                        1) Greet (see opening rule below) and explain ALOUD, in clear and simple terms, the example
+                           below — mention the illustration on screen if it helps explain it. Include the concrete
+                           result/outcome.
+                        2) After explaining, warmly ask if they have any questions about this example — for example
+                           "Do you have any questions about this card?" — and answer any questions they ask,
+                           grounded strictly in this content.
+                        3) NEVER ask the student to explain the concept back to you, never quiz them, never test
+                           them, and never grade anything — this is a pure review conversation, not an assessment.
+                        4) If the student has no further questions, warmly say goodbye, encouraging them.
+
+                        EXAMPLE TO REVIEW (title: "{selected.Title}"):
+                        {selectedText}
+
+                        {deepDiveOpeningRule}
+
+                        {sharedRules}
+                        """
+                    : $"""
+                        Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
+                        ayuda a un estudiante pequeño a REPASAR un ejemplo que YA DOMINÓ anteriormente.
+                        Esto NO es un examen ni un cuestionario — el estudiante ya demostró que entendió
+                        este concepto, así que tu único trabajo es ayudarlo a recordarlo con cariño.
+                        Turno tras turno, tu trabajo es:
+                        1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
+                           simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo
+                           que el estudiante tiene en pantalla si te ayuda a explicarlo. Incluye el
+                           resultado/respuesta final concreto.
+                        2) Después de explicar, pregúntale con calidez si tiene alguna duda o pregunta
                        sobre este ejemplo — por ejemplo algo como "¿tienes alguna pregunta sobre
                        esto?" — y responde cualquier pregunta que te haga, siempre basándote solo en
                        este contenido.
@@ -1285,7 +1555,40 @@ public sealed class VoiceTutorSessionFunction
                     """;
             }
 
-            return $"""
+            return isEnglish
+                ? $"""
+                    You are an AI Agent — a patient, warm, and supportive teacher — accompanying a student
+                    by voice in the Deep Dive step.
+                    This is NOT an exam or quiz: it is a REVIEW/EXPLANATION of an example card. The student is
+                    never being graded here — your only job is to explain the example clearly and leave them
+                    complete freedom to ask questions, never interrogating them. Turn after turn, your job is:
+                    1) Greet (see opening rule below) and explain ALOUD, in clear terms, the example below —
+                       mention the illustration on screen if helpful. ALWAYS include the concrete result/outcome.
+                    2) After explaining, your turn must end EXACTLY with a variation of:
+                       "Do you have any questions about this card?" — and nothing else.
+
+                       ⛔ ABSOLUTELY FORBIDDEN: never ask "what did I say?", "can you explain it to me?",
+                       "repeat it back to me", or any variation asking them to demonstrate what you just explained.
+                       You explain; they listen and ask questions if they wish.
+                    3) Listen to their spoken response:
+                       - If they ask a genuine question about the content, answer warmly and re-explain that part
+                         from a different angle, then ask again "Do you have any other questions about this card?".
+                       - As soon as they reply with ANYTHING that is not a new question (e.g. "no", "none", "ok",
+                         "got it", "thanks", or short silence) — interpret this as ready to continue.
+                         BE VERY GENEROUS. You MUST immediately call the function `mark_explanation_understood`.
+                    4) If the student explicitly asks for another example, give ONE from the prepared bank below.
+
+                    EXAMPLE TO EXPLAIN NOW (title: "{selected.Title}"):
+                    {selectedText}
+
+                    BANK OF PREPARED EXAMPLES:
+                    {bank}
+
+                    {deepDiveOpeningRule}
+
+                    {sharedRules}
+                    """
+                : $"""
                 Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
                 acompaña por voz a un estudiante pequeño en el paso de Repaso Profundo (Deep Dive).
                 Este NO es un examen ni un cuestionario: es un REPASO/EXPLICACIÓN de un ejemplo, igual
@@ -1362,37 +1665,62 @@ public sealed class VoiceTutorSessionFunction
 
         if (stepType == ExperienceStepType.Recall)
         {
-            const string recallOpeningRule = """
-                - Empieza a hablar TÚ MISMO de inmediato en cuanto se conecte, sin esperar a que el
-                  estudiante diga algo primero. NUNCA abras con un saludo genérico de asistente como
-                  "¡Hola! ¿En qué puedo ayudarte?" — en vez de eso, arranca directo con algo como "Hola,
-                  vamos ahora a..." y entra inmediatamente en tu tarea de abajo (leer la pregunta). El
-                  estudiante ya sabe en qué curso está; no se lo preguntes.
-                - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
-                  todavía no ha dicho ni una sola palabra. Por eso, en tu primer turno JAMÁS uses
-                  frases que den a entender que él ya respondió o dijo algo (como "perfecto",
-                  "genial", "entendido", "buena respuesta", "exacto") — eso confunde al estudiante,
-                  que sentirá que le respondes a algo que nunca dijo. Simplemente empieza tu tarea.
-                """;
+            var recallOpeningRule = isEnglish
+                ? """
+                    - Start talking YOURSELF immediately upon connecting, without waiting for the student
+                      to say something first. NEVER open with a generic assistant greeting. Instead, start directly
+                      with "Hi, let's now..." and enter immediately into reading the question below.
+                    - That first turn is literally the FIRST of the conversation: the student has not yet said
+                      a single word. Therefore, never use phrases implying they already answered.
+                    """
+                : """
+                    - Empieza a hablar TÚ MISMO de inmediato en cuanto se conecte, sin esperar a que el
+                      estudiante diga algo primero. NUNCA abras con un saludo genérico de asistente como
+                      "¡Hola! ¿En qué puedo ayudarte?" — en vez de eso, arranca directo con algo como "Hola,
+                      vamos ahora a..." y entra inmediatamente en tu tarea de abajo (leer la pregunta). El
+                      estudiante ya sabe en qué curso está; no se lo preguntes.
+                    - Ese primer turno es literalmente el PRIMERO de la conversación: el estudiante
+                      todavía no ha dicho ni una sola palabra. Por eso, en tu primer turno JAMÁS uses
+                      frases que den a entender que él ya respondió o dijo algo (como "perfecto",
+                      "genial", "entendido", "buena respuesta", "exacto") — eso confunde al estudiante,
+                      que sentirá que le respondes a algo que nunca dijo. Simplemente empieza tu tarea.
+                    """;
 
-            return $"""
-                Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Recordar (recall
-                activo). Esto es especialmente importante para practicar pronunciación (por ejemplo en
-                idiomas), así que tu único trabajo es:
-                1) Lee en voz alta, EXACTAMENTE como está escrita, la pregunta de abajo.
-                2) Escucha con atención la respuesta hablada del estudiante — puedes pedirle que repita
-                   si no se entendió bien, o hacer una única pregunta de aclaración si fue ambigua.
-                3) Cuando termine de responder, simplemente agradécele y dile que pulse "Responder" para
-                   enviar su respuesta — TÚ NUNCA calificas, nunca dices si es correcta o incorrecta, y
-                   nunca revelas ni insinúas la respuesta correcta. La calificación la hace otro sistema.
+            return isEnglish
+                ? $"""
+                    You are an AI Agent accompanying a student by voice in the Recall step (active recall).
+                    Your only job is:
+                    1) Read aloud, EXACTLY as written, the question below.
+                    2) Listen attentively to the student's spoken answer.
+                    3) When they finish answering, simply thank them and tell them to click "Submit" to send
+                       their answer — YOU NEVER grade, never say if it's correct or incorrect, and never reveal
+                       the correct answer.
 
-                PREGUNTA A LEER EN VOZ ALTA:
-                {stepContent}
+                    QUESTION TO READ ALOUD:
+                    {stepContent}
 
-                {recallOpeningRule}
+                    {recallOpeningRule}
 
-                {sharedRules}
-                """;
+                    {sharedRules}
+                    """
+                : $"""
+                    Eres un Agente de IA que acompaña por voz a un estudiante en el paso de Recordar (recall
+                    activo). Esto es especialmente importante para practicar pronunciación (por ejemplo en
+                    idiomas), así que tu único trabajo es:
+                    1) Lee en voz alta, EXACTAMENTE como está escrita, la pregunta de abajo.
+                    2) Escucha con atención la respuesta hablada del estudiante — puedes pedirle que repita
+                       si no se entendió bien, o hacer una única pregunta de aclaración si fue ambigua.
+                    3) Cuando termine de responder, simplemente agradécele y dile que pulse "Responder" para
+                       enviar su respuesta — TÚ NUNCA calificas, nunca dices si es correcta o incorrecta, y
+                       nunca revelas ni insinúas la respuesta correcta. La calificación la hace otro sistema.
+
+                    PREGUNTA A LEER EN VOZ ALTA:
+                    {stepContent}
+
+                    {recallOpeningRule}
+
+                    {sharedRules}
+                    """;
         }
 
         throw new ArgumentOutOfRangeException(nameof(stepType), stepType, "Unsupported step type for voice tutor instructions.");

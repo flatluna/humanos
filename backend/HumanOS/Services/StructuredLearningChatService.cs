@@ -219,7 +219,7 @@ public sealed class StructuredLearningChatService
         var currentCompleted = documentId is null ? 0 : passedRounds.Count(r => currentSectionIds.Contains(r.SectionId));
         var currentTotal = documentId is null ? 0 : await db.StructuredLearningDocumentSections.CountAsync(s => s.StructuredLearningDocumentId == documentId, cancellationToken);
         var scores = passedRounds.Where(r => r.Score.HasValue).Select(r => r.Score!.Value).ToList();
-        var scoreText = scores.Count == 0 ? "sin score todavía" : $"score promedio {Math.Round(scores.Average())}/100";
+        var scoreText = scores.Count == 0 ? "no score yet" : $"average score {Math.Round(scores.Average())}/100";
 
         return $"Student name: {personName}. Current course progress: {currentCompleted}/{currentTotal} engrams completed, {scoreText}. Domain/subdomain scope progress: {passedRounds.Count}/{sectionIds.Count} engrams completed.";
     }

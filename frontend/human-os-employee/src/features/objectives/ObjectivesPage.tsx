@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import {
   Activity,
+  Bot,
   Briefcase,
   Building2,
   Calculator,
@@ -42,6 +43,7 @@ import {
   saveEmployeeObjectives,
   getEmployeeGrowthRecommendations,
   saveEmployeeGrowthRecommendations,
+  recommendSmartObjective,
   type EmployeeObjective,
   type EmployeeGrowthRecommendation,
   type GrowthActionItem,
@@ -264,6 +266,10 @@ export function ObjectivesPage() {
   const [formMeasurementMethod, setFormMeasurementMethod] = useState('');
   const [formActionPlan, setFormActionPlan] = useState('');
   const [formBusinessImpact, setFormBusinessImpact] = useState('');
+  const [formRecommendedTechSkills, setFormRecommendedTechSkills] = useState<string[]>([]);
+  const [formRecommendedSoftSkills, setFormRecommendedSoftSkills] = useState<string[]>([]);
+  const [formReasoning, setFormReasoning] = useState<string>('');
+  const [isAiRecommending, setIsAiRecommending] = useState(false);
 
   function openCreateModal() {
     setEditingObjective(null);
@@ -281,6 +287,9 @@ export function ObjectivesPage() {
     setFormMeasurementMethod('');
     setFormActionPlan('');
     setFormBusinessImpact('');
+    setFormRecommendedTechSkills([]);
+    setFormRecommendedSoftSkills([]);
+    setFormReasoning('');
     setModalOpen(true);
   }
 
@@ -300,6 +309,9 @@ export function ObjectivesPage() {
     setFormMeasurementMethod(obj.measurementMethod ?? '');
     setFormActionPlan(obj.actionPlan ?? '');
     setFormBusinessImpact(obj.businessImpact ?? '');
+    setFormRecommendedTechSkills(obj.recommendedTechnicalSkills ?? []);
+    setFormRecommendedSoftSkills(obj.recommendedSoftSkills ?? []);
+    setFormReasoning(obj.recommendationReasoning ?? '');
     setModalOpen(true);
   }
 
@@ -309,6 +321,55 @@ export function ObjectivesPage() {
     if (!isNaN(cur) && !isNaN(tgt) && tgt !== 0) {
       const pct = Math.min(100, Math.max(0, Math.round((cur / tgt) * 100)));
       setFormProgress(pct);
+    }
+  }
+
+  async function handleAiRecommend() {
+    const selectedDeptObj = departmentObjectives.find((d) => d.id === formDeptObjId) || departmentObjectives[0];
+    setIsAiRecommending(true);
+    try {
+      const rec = await recommendSmartObjective({
+        departmentObjectiveTitle: selectedDeptObj?.title,
+        departmentObjectiveDescription: selectedDeptObj?.description,
+        departmentObjectiveTargetQuarter: selectedDeptObj?.targetQuarter,
+        departmentObjectiveTargetDate: selectedDeptObj?.targetDate,
+        strategicGoalTitle: selectedDeptObj?.strategicGoalTitle ?? undefined,
+        pillarTitle: selectedDeptObj?.pillarTitle ?? undefined,
+        departmentMetricName: selectedDeptObj?.metricName ?? undefined,
+        departmentTargetValue: selectedDeptObj?.targetValue ?? undefined,
+        departmentUnit: selectedDeptObj?.unit ?? undefined,
+        employeeName: user?.name,
+        jobRoleTitle: jobRole?.title || user?.jobRoleTitle,
+        jobRoleLevel: jobRole?.levelLabel ?? undefined,
+        jobRolePurpose: jobRole?.purpose ?? undefined,
+        jobRoleSummary: jobRole?.summary ?? undefined,
+        jobRoleTechnicalSkills: jobRole?.technicalSkills || roleTechnicalSkills || [],
+        jobRoleSoftSkills: jobRole?.softSkills || roleSoftSkills || [],
+        language,
+      });
+
+      setFormTitle(rec.title);
+      setFormDesc(rec.description);
+      setFormMetricName(rec.metricName);
+      setFormCurrentVal(String(rec.currentValue ?? 0));
+      setFormTargetVal(String(rec.targetValue ?? 100));
+      setFormUnit(rec.unit || '%');
+      setFormMeasurementMethod(rec.measurementMethod);
+      setFormActionPlan(rec.actionPlan);
+      setFormBusinessImpact(rec.businessImpact);
+      if (rec.targetQuarter) setFormQuarter(rec.targetQuarter);
+      if (rec.targetDate) setFormDate(rec.targetDate);
+      setFormRecommendedTechSkills(rec.recommendedTechnicalSkills || []);
+      setFormRecommendedSoftSkills(rec.recommendedSoftSkills || []);
+      setFormReasoning(rec.recommendationReasoning || '');
+      if (rec.currentValue != null && rec.targetValue != null && rec.targetValue > 0) {
+        setFormProgress(Math.min(100, Math.max(0, Math.round((rec.currentValue / rec.targetValue) * 100))));
+      }
+    } catch (err) {
+      console.error('Error generating AI recommendation:', err);
+      alert(isEn ? 'Could not generate AI suggestion. Please check backend connection.' : 'No se pudo generar la sugerencia con IA. Verifica la conexión con el backend.');
+    } finally {
+      setIsAiRecommending(false);
     }
   }
 
@@ -342,6 +403,9 @@ export function ObjectivesPage() {
               measurementMethod: formMeasurementMethod.trim() || null,
               actionPlan: formActionPlan.trim() || null,
               businessImpact: formBusinessImpact.trim() || null,
+              recommendedTechnicalSkills: formRecommendedTechSkills.length > 0 ? formRecommendedTechSkills : null,
+              recommendedSoftSkills: formRecommendedSoftSkills.length > 0 ? formRecommendedSoftSkills : null,
+              recommendationReasoning: formReasoning || null,
             }
           : o,
       );
@@ -368,6 +432,9 @@ export function ObjectivesPage() {
         measurementMethod: formMeasurementMethod.trim() || null,
         actionPlan: formActionPlan.trim() || null,
         businessImpact: formBusinessImpact.trim() || null,
+        recommendedTechnicalSkills: formRecommendedTechSkills.length > 0 ? formRecommendedTechSkills : null,
+        recommendedSoftSkills: formRecommendedSoftSkills.length > 0 ? formRecommendedSoftSkills : null,
+        recommendationReasoning: formReasoning || null,
       };
       updateObjectives([newObj, ...objectives]);
     }
@@ -896,6 +963,35 @@ export function ObjectivesPage() {
                                 {obj.measurementMethod}
                               </p>
                             )}
+                          </div>
+                        )}
+
+                        {/* Recommended Skills (Technical & Soft) */}
+                        {((obj.recommendedTechnicalSkills && obj.recommendedTechnicalSkills.length > 0) ||
+                          (obj.recommendedSoftSkills && obj.recommendedSoftSkills.length > 0)) && (
+                          <div className="space-y-1.5 rounded-2xl border border-blue-100 bg-blue-50/40 p-3.5 text-xs dark:border-blue-500/20 dark:bg-blue-500/5">
+                            <div className="flex items-center gap-1.5 font-semibold text-blue-900 dark:text-blue-200">
+                              <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                              <span>{isEn ? 'Recommended Skills to Complete Objective:' : 'Skills Recomendados para este Objetivo:'}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                              {obj.recommendedTechnicalSkills?.map((sk, i) => (
+                                <span
+                                  key={i}
+                                  className="rounded-md bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800 border border-sky-200/60 dark:bg-sky-500/20 dark:border-sky-500/30 dark:text-sky-300"
+                                >
+                                  🛠️ {sk}
+                                </span>
+                              ))}
+                              {obj.recommendedSoftSkills?.map((sk, i) => (
+                                <span
+                                  key={i}
+                                  className="rounded-md bg-purple-100 px-2 py-0.5 text-[11px] font-medium text-purple-800 border border-purple-200/60 dark:bg-purple-500/20 dark:border-purple-500/30 dark:text-purple-300"
+                                >
+                                  🤝 {sk}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         )}
 
@@ -1814,6 +1910,36 @@ export function ObjectivesPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-5 space-y-6">
+              {/* AI SMART & Skills Recommendation Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200/60 p-4 dark:border-indigo-500/20 dark:bg-white/[0.03]">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm">
+                    <Bot className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                      {isEn ? 'AI SMART & Skills Recommendation' : 'Agente IA: Recomendar SMART y Skills del Puesto'}
+                    </p>
+                    <p className="text-[11px] text-slate-600 dark:text-white/60">
+                      {isEn
+                        ? 'Analyzes the selected department goal and your job role skills to formulate an individual SMART objective with technical & soft skill recommendations.'
+                        : 'Analiza el objetivo del departamento seleccionado y los skills de tu puesto para sugerir un objetivo SMART completo y los skills clave.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAiRecommend}
+                  disabled={isAiRecommending}
+                  className="inline-flex items-center justify-center gap-1.5 self-start sm:self-auto rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:opacity-50 shrink-0"
+                >
+                  <Sparkles className={`h-4 w-4 ${isAiRecommending ? 'animate-spin' : ''}`} />
+                  {isAiRecommending
+                    ? (isEn ? 'Generating suggestion...' : 'Generando sugerencia...')
+                    : (isEn ? '✨ Suggest with AI' : '✨ Sugerir con IA')}
+                </button>
+              </div>
+
               {/* SMART Header Pills */}
               <div className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 text-center text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:bg-white/5 dark:text-white/70">
                 <span className="rounded-lg bg-white py-1 text-indigo-600 shadow-sm dark:bg-white/10 dark:text-indigo-300">
@@ -2031,7 +2157,107 @@ export function ObjectivesPage() {
                 </div>
               </div>
 
-              {/* 5. T - Time-Bound */}
+              {/* 5. Recommended Skills for this Objective (Job Role Competencies) */}
+              <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/20 p-4 dark:border-blue-500/20 dark:bg-blue-500/5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                    <GraduationCap className="h-4 w-4" />
+                    <span>{isEn ? 'Recommended Skills for this Objective' : 'Skills Recomendados para Completar este Objetivo'}</span>
+                  </div>
+                  {jobRole?.title && (
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-white/50">
+                      {isEn ? 'From Job Role:' : 'Del Puesto:'} <strong className="text-blue-600 dark:text-blue-400">{jobRole.title}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {formReasoning && (
+                  <div className="rounded-xl bg-white/80 p-3 text-xs text-slate-700 border border-blue-100/80 shadow-xs dark:bg-slate-900/60 dark:border-white/10 dark:text-white/80">
+                    <p className="font-semibold text-blue-900 dark:text-blue-200 mb-0.5">
+                      💡 {isEn ? 'AI Agent Recommendation Rationale:' : 'Justificación del Agente de IA:'}
+                    </p>
+                    <p className="italic text-slate-600 dark:text-white/70">{formReasoning}</p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {/* Technical Skills */}
+                  <div className="rounded-xl bg-white p-3.5 border border-slate-200/80 shadow-xs dark:border-white/10 dark:bg-slate-900/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        🛠️ {isEn ? 'Technical Skills' : 'Skills Técnicos'}
+                      </span>
+                      <span className="text-[10px] rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-800 dark:bg-sky-500/20 dark:text-sky-300">
+                        {formRecommendedTechSkills.length}
+                      </span>
+                    </div>
+
+                    {formRecommendedTechSkills.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-1">
+                        {isEn ? 'No technical skills assigned yet. Click "Suggest with AI" above.' : 'Aún no se han asignado skills. Haz clic en "Sugerir con IA" arriba.'}
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {formRecommendedTechSkills.map((sk, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800 border border-sky-200 dark:bg-sky-500/15 dark:border-sky-500/30 dark:text-sky-300"
+                          >
+                            <span>{sk}</span>
+                            <button
+                              type="button"
+                              onClick={() => setFormRecommendedTechSkills(formRecommendedTechSkills.filter((_, i) => i !== idx))}
+                              className="text-sky-400 hover:text-sky-700 font-bold dark:hover:text-sky-200"
+                              title={isEn ? 'Remove skill' : 'Quitar skill'}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Soft Skills */}
+                  <div className="rounded-xl bg-white p-3.5 border border-slate-200/80 shadow-xs dark:border-white/10 dark:bg-slate-900/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        🤝 {isEn ? 'Soft Skills / Competencies' : 'Skills Blandos y Competencias'}
+                      </span>
+                      <span className="text-[10px] rounded-full bg-purple-100 px-2 py-0.5 font-semibold text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
+                        {formRecommendedSoftSkills.length}
+                      </span>
+                    </div>
+
+                    {formRecommendedSoftSkills.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-1">
+                        {isEn ? 'No soft skills assigned yet. Click "Suggest with AI" above.' : 'Aún no se han asignado skills. Haz clic en "Sugerir con IA" arriba.'}
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {formRecommendedSoftSkills.map((sk, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-800 border border-purple-200 dark:bg-purple-500/15 dark:border-purple-500/30 dark:text-purple-300"
+                          >
+                            <span>{sk}</span>
+                            <button
+                              type="button"
+                              onClick={() => setFormRecommendedSoftSkills(formRecommendedSoftSkills.filter((_, i) => i !== idx))}
+                              className="text-purple-400 hover:text-purple-700 font-bold dark:hover:text-purple-200"
+                              title={isEn ? 'Remove skill' : 'Quitar skill'}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. T - Time-Bound */}
               <div className="space-y-4 rounded-2xl border border-sky-100 bg-sky-50/20 p-4 dark:border-sky-500/20 dark:bg-sky-500/5">
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
                   <Clock className="h-4 w-4" />

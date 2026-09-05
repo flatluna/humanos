@@ -61,6 +61,7 @@ export interface StructuredLearningSectionDetail {
   SortOrder: number;
   ChapterTitle: string;
   SubchapterTitle: string;
+  Text?: string;
   KnowledgeGraphRootEntityName?: string | null;
   Steps: StructuredLearningStepDetail[];
 }

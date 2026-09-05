@@ -200,6 +200,15 @@ export function requestVoiceTutorSession(
     | { learningSessionStepId: string; promptText?: string; personName?: string; exampleCardIndex?: number }
     | { capabilityGraphNodeId: string; stepType: ExperienceStepType; personName?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
     | { structuredLearningSectionStepId: string; personName?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
+    | {
+        aiAgentQuestion: {
+          documentId?: string;
+          question: string;
+          answer: string;
+          engrams: { title: string; text: string }[];
+        };
+        personName?: string;
+      }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>(
     '/instructor-runtime/tutor/voice-session',
@@ -209,6 +218,15 @@ export function requestVoiceTutorSession(
       CapabilityGraphNodeId: 'capabilityGraphNodeId' in target ? target.capabilityGraphNodeId : undefined,
       StepType: 'capabilityGraphNodeId' in target ? target.stepType : undefined,
       StructuredLearningSectionStepId: 'structuredLearningSectionStepId' in target ? target.structuredLearningSectionStepId : undefined,
+      AiAgentQuestion:
+        'aiAgentQuestion' in target
+          ? {
+              DocumentId: target.aiAgentQuestion.documentId,
+              Question: target.aiAgentQuestion.question,
+              Answer: target.aiAgentQuestion.answer,
+              Engrams: target.aiAgentQuestion.engrams.map((e) => ({ Title: e.title, Text: e.text })),
+            }
+          : undefined,
       PersonName: target.personName,
       ExampleCardIndex: 'exampleCardIndex' in target ? target.exampleCardIndex : undefined,
       IsReviewOnly:

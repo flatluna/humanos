@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from 'react-force-graph-2d';
 import { forceCollide } from 'd3-force';
-import { LocateFixed, Sparkles, X, Network, ArrowRight } from 'lucide-react';
+import { LocateFixed, Sparkles, X, Network, ArrowRight, Bot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SelectedNeuron } from './types';
 import { getMemoryColor, getRetrievability } from './memoryScience';
 import { useKnowledgeNetwork, type BridgeConceptItem, type MasteredEngramItem } from './useKnowledgeNetwork';
+import { ConceptAgentModal } from './ConceptAgentModal';
 
 export interface BrainGraphProps {
   personId: string;
@@ -52,6 +53,7 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
   const fgRef = useRef<ForceGraphMethods<NetworkNode, NetworkLink> | undefined>(undefined);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [selectedConcept, setSelectedConcept] = useState<BridgeConceptItem | null>(null);
+  const [agentConcept, setAgentConcept] = useState<BridgeConceptItem | null>(null);
 
   const { data: networkData } = useKnowledgeNetwork(personId, courseId);
 
@@ -74,6 +76,8 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
   );
 
   // Build the 2D Force Graph structure (Only Mastered Engrams + Bridge Concepts)
+  // When a concept is selected (e.g. HTTP), isolate the graph to ONLY show that
+  // concept and its connected engrams, closing/hiding all other unrelated nodes.
   const graphData = useMemo(() => {
     if (!networkData) return { nodes: [], links: [] };
 
@@ -81,8 +85,20 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
     const links: NetworkLink[] = [];
     const { masteredEngrams, bridgeConcepts } = networkData;
 
+    // Filter concepts and engrams if a concept is selected
+    const filteredConcepts = selectedConcept
+      ? bridgeConcepts.filter((c) => c.id === selectedConcept.id)
+      : bridgeConcepts;
+
+    const visibleEngramIds = new Set<string>();
+    if (selectedConcept) {
+      for (const engram of selectedConcept.connectedEngrams) {
+        visibleEngramIds.add(engram.sectionId);
+      }
+    }
+
     // 1. Add Bridge Concepts (Large central spheres, blue/violet tone by type)
-    for (const concept of bridgeConcepts) {
+    for (const concept of filteredConcepts) {
       const baseColor = ENTITY_TYPE_COLORS[concept.entityType] || '#38bdf8';
       const connectsCount = concept.connectedEngrams.length;
 
@@ -92,7 +108,7 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
         label: concept.name,
         sublabel: concept.entityType,
         color: baseColor,
-        radius: Math.min(26, 14 + connectsCount * 4),
+        radius: selectedConcept ? Math.min(32, 18 + connectsCount * 4) : Math.min(26, 14 + connectsCount * 4),
         concept,
       });
 
@@ -112,7 +128,11 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
     }
 
     // 2. Add Mastered Engrams (Medium spheres, color = FSRS memory retrievability)
-    for (const engram of masteredEngrams) {
+    const filteredEngrams = selectedConcept
+      ? masteredEngrams.filter((e) => visibleEngramIds.has(e.sectionId))
+      : masteredEngrams;
+
+    for (const engram of filteredEngrams) {
       const retrievability = getRetrievability(engram.completedDate, engram.reviewCount);
       const recallPercent = retrievability !== null ? Math.round(retrievability * 100) : null;
       const memColor = getMemoryColor(retrievability);
@@ -123,31 +143,50 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
         label: engram.title,
         sublabel: `${recallPercent ?? 100}% ${t('brainNetwork.retention')}`,
         color: memColor,
-        radius: 12,
+        radius: selectedConcept ? 15 : 12,
         recallPercent,
         engram,
       });
     }
 
     return { nodes, links };
-  }, [networkData, t]);
+  }, [networkData, selectedConcept, t]);
 
   // Configure physics for clean radial layout (Concepts pull toward center, engrams distribute around)
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
-    fg.d3Force('charge')?.strength(-320);
+    fg.d3Force('charge')?.strength(selectedConcept ? -480 : -320);
     fg.d3Force(
       'collide',
-      forceCollide<NetworkNode>((n) => n.radius + 24) as never
+      forceCollide<NetworkNode>((n) => n.radius + (selectedConcept ? 36 : 24)) as never
     );
     const linkForce = fg.d3Force('link') as unknown as { distance?: (fn: (l: NetworkLink) => number) => void } | undefined;
-    linkForce?.distance?.(() => 90);
+    linkForce?.distance?.(() => (selectedConcept ? 120 : 90));
     fg.d3ReheatSimulation();
-  }, [graphData]);
+
+    // Smoothly center and fit the view when focus changes
+    const timer = setTimeout(() => {
+      fg.zoomToFit(400, selectedConcept ? 140 : 80);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [graphData, selectedConcept]);
 
   const handleCenterView = useCallback(() => {
-    fgRef.current?.zoomToFit(400, 80);
+    fgRef.current?.zoomToFit(400, selectedConcept ? 140 : 80);
+  }, [selectedConcept]);
+
+  // Left "Concepts" list (2026-09-03, explicit user request) — same bridge
+  // concepts rendered as graph nodes, but as a scannable sorted list (most-
+  // connected first) so the user can find e.g. "HTTP — 4 engrams" without
+  // having to hunt for the right node in the force-directed canvas.
+  const sortedConcepts = useMemo(() => {
+    if (!networkData) return [];
+    return [...networkData.bridgeConcepts].sort((a, b) => b.connectedEngrams.length - a.connectedEngrams.length);
+  }, [networkData]);
+
+  const handleSelectConceptFromList = useCallback((concept: BridgeConceptItem) => {
+    setSelectedConcept((prev) => (prev?.id === concept.id ? null : concept));
   }, []);
 
   const handleNodeClick = useCallback(
@@ -155,7 +194,7 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
       if (node.kind === 'engram' && node.engram) {
         onSelectNeuron(node.engram.neuron);
       } else if (node.kind === 'concept' && node.concept) {
-        setSelectedConcept(node.concept);
+        setSelectedConcept((prev) => (prev?.id === node.concept?.id ? null : node.concept ?? null));
       }
     },
     [onSelectNeuron]
@@ -173,44 +212,65 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
             </span>
           </div>
 
-          {networkData?.availableCourses && networkData.availableCourses.length > 0 && onSelectCourse && (
-            <div className="flex items-center gap-1 rounded-xl bg-slate-800/80 p-0.5 border border-white/10 text-[11px]">
+          {selectedConcept ? (
+            <div className="flex items-center gap-2 rounded-xl bg-indigo-500/20 border border-indigo-400/40 px-2.5 py-1 text-xs text-white">
+              <span className="h-2 w-2 rounded-full" style={{ background: ENTITY_TYPE_COLORS[selectedConcept.entityType] || '#38bdf8' }} />
+              <span className="font-semibold">{t('brainNetwork.focusOn', { concept: selectedConcept.name })}</span>
+              <span className="text-[11px] text-indigo-200">
+                ({selectedConcept.connectedEngrams.length} {t('brainNetwork.engramNode').toLowerCase()})
+              </span>
               <button
                 type="button"
-                onClick={() => onSelectCourse(null)}
-                className={`px-2 py-0.5 rounded-lg font-medium transition ${
-                  !courseId
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={() => setSelectedConcept(null)}
+                className="ml-1.5 flex items-center gap-1 rounded-lg bg-white/10 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-white/20 transition"
+                title={t('brainNetwork.showFullGraph')}
               >
-                🌐 {t('brain.all')}
+                <X className="h-3 w-3" />
+                <span>{t('brainNetwork.showFullGraph')}</span>
               </button>
-              {networkData.availableCourses.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => onSelectCourse(c.id)}
-                  className={`px-2 py-0.5 rounded-lg font-medium transition max-w-[140px] truncate ${
-                    courseId === c.id
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                  title={c.name}
-                >
-                  📘 {c.name}
-                </button>
-              ))}
             </div>
-          )}
+          ) : (
+            <>
+              {networkData?.availableCourses && networkData.availableCourses.length > 0 && onSelectCourse && (
+                <div className="flex items-center gap-1 rounded-xl bg-slate-800/80 p-0.5 border border-white/10 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => onSelectCourse(null)}
+                    className={`px-2 py-0.5 rounded-lg font-medium transition ${
+                      !courseId
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    🌐 {t('brain.all')}
+                  </button>
+                  {networkData.availableCourses.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => onSelectCourse(c.id)}
+                      className={`px-2 py-0.5 rounded-lg font-medium transition max-w-[140px] truncate ${
+                        courseId === c.id
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title={c.name}
+                    >
+                      📘 {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-          {networkData && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-200">
-              {t('brainNetwork.statsCount', {
-                engrams: networkData.masteredEngrams.length,
-                bridges: networkData.bridgeConcepts.length,
-              })}
-            </span>
+              {networkData && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-200">
+                  {t('brainNetwork.statsCount', {
+                    engrams: networkData.masteredEngrams.length,
+                    bridges: networkData.bridgeConcepts.length,
+                  })}
+                </span>
+              )}
+            </>
           )}
         </div>
 
@@ -241,6 +301,7 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
           return `${n.label} (${n.concept?.connectedEngrams.length} ${t('brainNetwork.engramNode').toLowerCase()}s) — ${t('brainNetwork.clickConceptHint')}`;
         }}
         onNodeClick={handleNodeClick as any}
+        onBackgroundClick={() => setSelectedConcept(null)}
         linkCanvasObjectMode={() => 'after'}
         linkCanvasObject={(link, ctx, globalScale) => {
           if (globalScale < 0.8) return; // Keep clean when zoomed far out
@@ -338,18 +399,69 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
         onEngineStop={() => fgRef.current?.zoomToFit(400, 80)}
       />
 
+      {/* Left "Concepts" list — sorted by how many mastered engrams share the
+          concept, so the most cross-cutting ideas surface first. */}
+      {sortedConcepts.length > 0 && (
+        <div className="absolute left-4 top-16 bottom-4 z-10 flex w-56 flex-col rounded-3xl border border-white/10 bg-slate-900/85 p-3 shadow-lg backdrop-blur-md">
+          <div className="flex items-center gap-1.5 px-1 pb-2 text-[11px] font-bold uppercase tracking-wide text-slate-300">
+            <Network className="h-3.5 w-3.5 text-sky-400" />
+            {t('brainNetwork.conceptsListTitle')}
+          </div>
+          <div className="flex-1 space-y-1 overflow-y-auto pr-1">
+            {sortedConcepts.map((concept) => {
+              const count = concept.connectedEngrams.length;
+              const color = ENTITY_TYPE_COLORS[concept.entityType] || '#38bdf8';
+              const isActive = selectedConcept?.id === concept.id;
+              return (
+                <button
+                  key={concept.id}
+                  type="button"
+                  onClick={() => handleSelectConceptFromList(concept)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs transition ${
+                    isActive
+                      ? 'border-indigo-400/50 bg-indigo-500/15 text-white'
+                      : 'border-transparent bg-white/[0.03] text-slate-300 hover:bg-white/[0.08] hover:text-white'
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+                    <span className="truncate font-medium">{concept.name}</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-slate-200">
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Concept Inspector Sidebar Panel when clicking a Bridge Concept */}
       {selectedConcept && (
         <div className="absolute right-4 top-16 bottom-4 w-80 max-w-[90%] z-20 flex flex-col rounded-3xl border border-indigo-500/30 bg-slate-900/95 p-5 shadow-2xl backdrop-blur-md overflow-hidden animate-fade-in text-white">
+          {/* Agent Trigger Button Above Title */}
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={() => setAgentConcept(selectedConcept)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-500 via-indigo-500 to-accent-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Bot className="h-4 w-4" />
+              <span>{t('brainNetwork.talkWithAgent')}</span>
+              <Sparkles className="h-3.5 w-3.5 opacity-80" />
+            </button>
+          </div>
+
           <div className="flex items-center justify-between pb-3 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <Network className="h-4 w-4 text-sky-400" />
-              <h3 className="text-sm font-bold text-white">{selectedConcept.name}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <Network className="h-4 w-4 text-sky-400 shrink-0" />
+              <h3 className="text-sm font-bold text-white truncate">{selectedConcept.name}</h3>
             </div>
             <button
               type="button"
               onClick={() => setSelectedConcept(null)}
-              className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white transition"
+              className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white transition shrink-0 ml-2"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -360,6 +472,12 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
             <span className="font-semibold text-sky-300">{selectedConcept.entityType}</span>
             {selectedConcept.ontologicalClass && ` · Class: ${selectedConcept.ontologicalClass}`}
           </div>
+
+          {selectedConcept.description && (
+            <p className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5 text-xs leading-5 text-slate-200">
+              {selectedConcept.description}
+            </p>
+          )}
 
           <p className="mt-3 text-xs text-indigo-200">
             {t('brainNetwork.connectedEngramsTitle', {
@@ -399,9 +517,14 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
                   </div>
 
                   {rel && (
-                    <div className="mt-2 flex items-center gap-1.5 text-[10px] text-sky-300 italic bg-sky-500/10 rounded-lg px-2 py-1">
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{rel.relationshipLabel}</span>
+                    <div className="mt-2 rounded-lg bg-sky-500/10 px-2 py-1">
+                      <div className="flex items-center gap-1.5 text-[10px] text-sky-300 italic">
+                        <ArrowRight className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{rel.relationshipLabel}</span>
+                      </div>
+                      {rel.evidence && (
+                        <p className="mt-1 text-[10px] italic text-slate-400 line-clamp-2">“{rel.evidence}”</p>
+                      )}
                     </div>
                   )}
                 </button>
@@ -409,6 +532,18 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
             })}
           </div>
         </div>
+      )}
+
+      {/* Full AI Concept Agent Modal */}
+      {agentConcept && (
+        <ConceptAgentModal
+          concept={agentConcept}
+          onClose={() => setAgentConcept(null)}
+          onSelectNeuron={(neuron) => {
+            setAgentConcept(null);
+            onSelectNeuron(neuron);
+          }}
+        />
       )}
     </div>
   );

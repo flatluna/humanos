@@ -97,6 +97,36 @@ public sealed class VoiceTutorSessionRequest
     /// picks either voice OR text to ask a question about the course —
     /// never a full narrated lecture. Ignored for every other path.</summary>
     public bool IsQaMode { get; set; }
+
+    /// <summary>AI Agents course chat's "Talk about this" voice path
+    /// (2026-09-04) — provide this ALONE, instead of every other target
+    /// field, takes priority over all of them. Grounds the voice Agent in
+    /// the SAME question/answer/engrams the text chat already produced
+    /// (StructuredLearningKnowledgeRetrievalService's own reranked
+    /// top-3), so voice never re-runs retrieval or risks disagreeing with
+    /// the text answer already on screen.</summary>
+    public AiAgentQuestionContext? AiAgentQuestion { get; set; }
+}
+
+/// <summary>See <see cref="VoiceTutorSessionRequest.AiAgentQuestion"/>.</summary>
+public sealed class AiAgentQuestionContext
+{
+    public Guid? DocumentId { get; set; }
+
+    public string Question { get; set; } = string.Empty;
+
+    public string Answer { get; set; } = string.Empty;
+
+    public List<AiAgentQuestionEngramDto> Engrams { get; set; } = [];
+}
+
+/// <summary>A single cited engram's excerpt, exactly as already shown to
+/// the student as a citation chip in the text chat — no re-fetch.</summary>
+public sealed class AiAgentQuestionEngramDto
+{
+    public string Title { get; set; } = string.Empty;
+
+    public string Text { get; set; } = string.Empty;
 }
 
 public sealed class VoiceTutorSessionResponseDto

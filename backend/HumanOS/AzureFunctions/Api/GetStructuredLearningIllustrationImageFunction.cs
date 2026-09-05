@@ -72,6 +72,7 @@ public sealed class GetStructuredLearningIllustrationImageFunction
                 var partial = request.CreateResponse(HttpStatusCode.PartialContent);
                 partial.Headers.Add("Content-Type", contentType);
                 partial.Headers.Add("Cache-Control", "public, max-age=31536000, immutable");
+                partial.Headers.Add("Access-Control-Allow-Origin", "*");
                 partial.Headers.Add("Accept-Ranges", "bytes");
                 partial.Headers.Add("Content-Range", $"bytes {start}-{end}/{bytes.Length}");
                 partial.Headers.Add("Content-Length", slice.Length.ToString());
@@ -82,6 +83,7 @@ public sealed class GetStructuredLearningIllustrationImageFunction
             var response = request.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", contentType);
             response.Headers.Add("Cache-Control", "public, max-age=31536000, immutable");
+            response.Headers.Add("Access-Control-Allow-Origin", "*");
             response.Headers.Add("Accept-Ranges", "bytes");
             response.Headers.Add("Content-Length", bytes.Length.ToString());
             await response.Body.WriteAsync(bytes, cancellationToken);

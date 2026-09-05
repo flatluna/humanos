@@ -77,6 +77,25 @@ export const router = createBrowserRouter([
         loader: () => redirect('/objectives'),
       },
       {
+        // "Cursos Disponibles" — Only courses and engrams that are ready & available in the catalog
+        path: 'available-courses',
+        lazy: () => import('@/features/available-courses').then((m) => ({ Component: m.AvailableCoursesPage })),
+      },
+      {
+        path: 'cursos-disponibles',
+        loader: () => redirect('/available-courses'),
+      },
+      {
+        // "AI Agents" (2026-09-04) — one specialized chat agent per
+        // enrolled course, grounded only in that course's own engrams.
+        path: 'ai-agents',
+        lazy: () => import('@/features/ai-agents').then((m) => ({ Component: m.AiAgentsPage })),
+      },
+      {
+        path: 'ai-agents/:documentId',
+        lazy: () => import('@/features/ai-agents').then((m) => ({ Component: m.AiAgentCoursePage })),
+      },
+      {
         path: 'capabilities',
         loader: () => redirect('/capabilities/job-skills'),
       },

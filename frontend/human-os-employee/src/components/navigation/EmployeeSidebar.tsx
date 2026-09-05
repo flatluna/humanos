@@ -1,4 +1,4 @@
-import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Menu, Target } from 'lucide-react';
+import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
@@ -11,6 +11,8 @@ export function EmployeeSidebar() {
   const labels = {
     today: t('nav.today'),
     objectives: t('nav.objectives'),
+    availableCourses: t('nav.availableCourses', { defaultValue: 'Cursos Disponibles' }),
+    aiAgents: t('nav.aiAgents', { defaultValue: 'AI Agents' }),
     brain: t('nav.brain'),
     evolution: t('nav.evolution'),
     profile: t('nav.profile'),
@@ -28,21 +30,22 @@ export function EmployeeSidebar() {
     { to: '/capabilities/hr-processes', label: labels.hr },
   ];
   const navLinks = [
-    { to: '/', end: true, icon: Home, label: labels.today },
-    { to: '/objectives', end: false, icon: Target, label: labels.objectives },
-    { to: '/brain', end: false, icon: Brain, label: labels.brain },
-    { to: '/my-evolution', end: false, icon: TrendingUp, label: labels.evolution },
-    { to: '/profile', end: false, icon: UserCircle, label: labels.profile },
+    { to: '/', end: true, icon: Home, label: labels.today, iconColor: 'text-blue-500 dark:text-blue-400' },
+    { to: '/available-courses', end: false, icon: BookCheck, label: labels.availableCourses, iconColor: 'text-emerald-500 dark:text-emerald-400' },
+    { to: '/ai-agents', end: false, icon: Bot, label: labels.aiAgents, iconColor: 'text-cyan-500 dark:text-cyan-400' },
+    { to: '/objectives', end: false, icon: Target, label: labels.objectives, iconColor: 'text-rose-500 dark:text-rose-400' },
+    { to: '/brain', end: false, icon: Brain, label: labels.brain, iconColor: 'text-fuchsia-500 dark:text-fuchsia-400' },
+    { to: '/my-evolution', end: false, icon: TrendingUp, label: labels.evolution, iconColor: 'text-amber-500 dark:text-amber-400' },
+    { to: '/profile', end: false, icon: UserCircle, label: labels.profile, iconColor: 'text-sky-500 dark:text-sky-400' },
   ];
   const collapsed = useSidebarStore((state) => state.collapsed);
-  const toggleSidebar = useSidebarStore((state) => state.toggle);
 
   const navItemClass = ({ isActive }: { isActive: boolean }) =>
     clsx(
-      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition',
+      'group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all',
       collapsed && 'justify-center px-2',
       isActive
-        ? 'bg-brand-500/10 text-brand-700 dark:text-brand-300'
+        ? 'bg-brand-500/10 text-brand-700 dark:text-brand-300 shadow-xs'
         : 'text-slate-600 hover:bg-slate-100 dark:text-white/60 dark:hover:bg-white/5',
     );
 
@@ -57,30 +60,17 @@ export function EmployeeSidebar() {
   return (
     <aside
       className={clsx(
-        'hidden flex-none border-r border-slate-200 px-4 py-6 transition-[width] dark:border-white/10 md:block',
+        'flex-none border-r border-slate-200 px-4 py-6 transition-[width] dark:border-white/10',
         collapsed ? 'w-16' : 'w-60',
       )}
     >
-      <button
-        type="button"
-        onClick={toggleSidebar}
-        aria-label={collapsed ? labels.expand : labels.collapse}
-        title={collapsed ? labels.expand : labels.collapse}
-        className={clsx(
-          'mb-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 dark:text-white/40 dark:hover:bg-white/5 dark:hover:text-white',
-          collapsed && 'mx-auto',
-        )}
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-
       <nav>
         <ul className="space-y-1">
           {navLinks.slice(0, 1).map((link) => (
             <li key={link.to}>
               <NavLink to={link.to} end={link.end} className={navItemClass} title={collapsed ? link.label : undefined}>
-                <link.icon className="h-4 w-4 shrink-0" />
-                {!collapsed && link.label}
+                <link.icon className={clsx('h-4 w-4 shrink-0 transition-transform group-hover:scale-110', link.iconColor)} />
+                {!collapsed && <span>{link.label}</span>}
               </NavLink>
             </li>
           ))}
@@ -90,8 +80,8 @@ export function EmployeeSidebar() {
               className={navItemClass}
               title={collapsed ? labels.courses : undefined}
             >
-              <GraduationCap className="h-4 w-4 shrink-0" />
-              {!collapsed && labels.courses}
+              <GraduationCap className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-400 transition-transform group-hover:scale-110" />
+              {!collapsed && <span>{labels.courses}</span>}
             </NavLink>
             {!collapsed && (
               <ul className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-3 dark:border-white/10">
@@ -108,8 +98,8 @@ export function EmployeeSidebar() {
           {navLinks.slice(1).map((link) => (
             <li key={link.to}>
               <NavLink to={link.to} end={link.end} className={navItemClass} title={collapsed ? link.label : undefined}>
-                <link.icon className="h-4 w-4 shrink-0" />
-                {!collapsed && link.label}
+                <link.icon className={clsx('h-4 w-4 shrink-0 transition-transform group-hover:scale-110', link.iconColor)} />
+                {!collapsed && <span>{link.label}</span>}
               </NavLink>
             </li>
           ))}

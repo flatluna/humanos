@@ -8,11 +8,27 @@ import {
   BookOpen,
   Award,
   Sparkle,
+  Info,
+  X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGamificationStore } from '../store/useGamificationStore';
 import { BadgeGalleryModal } from './BadgeGalleryModal';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
+
+/** Compact legend for the "what is this / how do I earn it" info popover —
+ * mirrors BadgeGallery.tsx's own CATEGORY_ORDER (emoji + i18n keys), kept
+ * as a small local copy here since this panel only needs the category-level
+ * summary, not the full per-badge gallery. */
+const BADGE_CATEGORY_LEGEND: Array<{ key: string; iconEmoji: string }> = [
+  { key: 'Effort', iconEmoji: '🌱' },
+  { key: 'Progress', iconEmoji: '📈' },
+  { key: 'Skills', iconEmoji: '🏆' },
+  { key: 'Quality', iconEmoji: '⭐' },
+  { key: 'Challenge', iconEmoji: '🛡️' },
+  { key: 'Habit', iconEmoji: '🔥' },
+  { key: 'Luck', iconEmoji: '🎲' },
+];
 
 export const GamificationProfilePanel: React.FC = () => {
   const { language } = useI18n();
@@ -21,6 +37,7 @@ export const GamificationProfilePanel: React.FC = () => {
   const { profile, loading, fetchProfile } = useGamificationStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [badgeInfoOpen, setBadgeInfoOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -107,7 +124,7 @@ export const GamificationProfilePanel: React.FC = () => {
       : 0;
 
   return (
-    <div ref={dropdownRef} className="relative">
+    <div ref={dropdownRef} className="relative flex items-center gap-1.5">
       {/* COMPACT HEADER PILL (Click opens dropdown) */}
       <button
         type="button"
@@ -149,6 +166,51 @@ export const GamificationProfilePanel: React.FC = () => {
           }`}
         />
       </button>
+
+      {/* BADGE INFO BUTTON — always visible next to the pill, independent of the dropdown */}
+      <button
+        type="button"
+        onClick={() => setBadgeInfoOpen((prev) => !prev)}
+        aria-label={isEn ? 'What are badges and how do I earn them?' : '¿Qué son las medallas y cómo se ganan?'}
+        aria-expanded={badgeInfoOpen}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200/80 bg-slate-50/90 text-indigo-500 shadow-xs transition-all hover:border-indigo-300 hover:bg-indigo-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-indigo-300 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-400/10"
+      >
+        <Info className="h-4 w-4" />
+      </button>
+
+      {/* BADGE INFO POPOVER — "what is it / how do I earn it" legend */}
+      {badgeInfoOpen && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-72 max-h-72 space-y-2.5 overflow-y-auto rounded-xl border border-indigo-200/60 bg-white p-3 shadow-2xl dark:border-indigo-400/20 dark:bg-[#0c0f1d] animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between border-b border-indigo-100 pb-2 dark:border-indigo-400/10">
+            <span className="text-[11px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+              {isEn ? 'Badge Categories' : 'Categorías de Medallas'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setBadgeInfoOpen(false)}
+              aria-label={t('common.close')}
+              className="rounded-full p-0.5 text-indigo-400 transition hover:bg-indigo-500/10 hover:text-indigo-600"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {BADGE_CATEGORY_LEGEND.map((cat) => (
+              <div key={cat.key} className="flex items-start gap-2">
+                <span className="text-sm leading-none">{cat.iconEmoji}</span>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
+                    {t(`badges.categories.${cat.key}`, { defaultValue: cat.key })}
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-white/60">
+                    {t(`badges.categoryDescriptions.${cat.key}`, { defaultValue: '' })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* DROPDOWN MENU — CAREER PROGRESS ON DEMAND */}
       {dropdownOpen && (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import DOMPurify from 'dompurify';
-import { ArrowLeft, Check, Lightbulb, BookOpenText, Layers, Brain, PenLine, ClipboardCheck, CheckCircle2, Loader2, Send, X } from 'lucide-react';
+import { ArrowLeft, Check, Lightbulb, BookOpenText, Layers, Brain, PenLine, ClipboardCheck, CheckCircle2, Loader2, Send } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { API_BASE_URL } from '../api/httpClient';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';

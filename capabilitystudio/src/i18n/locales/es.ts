@@ -52,7 +52,7 @@ const es = {
     structuredLearningTopics: 'Dominios y tipos',
     backToHumanOS: 'Volver a Engrams',
     backToApp: 'Volver a {{appName}}',
-    footer: 'Engrams.one · Human OS · Runtime v2 (Curador → GraphArchitect)',
+    footer: 'HUMAN OS STUDIO · Runtime v2 (Curador → GraphArchitect)',
   },
   home: {
     badge: 'Un solo método. Configurado a tu medida.',

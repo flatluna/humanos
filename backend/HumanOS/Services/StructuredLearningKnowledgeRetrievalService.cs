@@ -90,17 +90,41 @@ public sealed class StructuredLearningKnowledgeRetrievalService
     /// <summary>Hard cap on how many Engram sections one retrieval call
     /// (retrieved OR related) can return — without this, a query matching a
     /// broad/common entity (linked to many sections) flooded the chat agent
-    /// with far more citations than any answer needs.</summary>
-    private const int MaxEngramsPerRetrieval = 6;
+    /// with far more citations than any answer needs. Kept small (2026-09-04
+    /// tightened from 6) — a single question should be answerable from a
+    /// handful of engrams, not nearly a whole course.</summary>
+    private const int MaxEngramsPerRetrieval = 3;
+
+    /// <summary>Below this cosine similarity (question vs. the engram
+    /// section's own text), a candidate section is dropped entirely —
+    /// being merely LINKED to a matched entity (e.g. a keyword/exact-name
+    /// hit) is not enough; the section's actual content must be reasonably
+    /// close to what was asked, or it gets excluded instead of padding the
+    /// result up to <see cref="MaxEngramsPerRetrieval"/> with irrelevant
+    /// engrams that just happen to mention the same entity. Raised
+    /// (2026-09-04) from 0.6 — too permissive for a small, single-topic
+    /// course where almost every section scored above it for a broad
+    /// question (e.g. "What is X?" against a whole "X" course).</summary>
+    private const double MinEngramSimilarity = 0.72;
+
+    /// <summary>How many top-heuristic-scored candidates to offer the LLM
+    /// reranker (2026-09-04) — wider than <see cref="MaxEngramsPerRetrieval"/>
+    /// so the reranker has real alternatives to choose from, but still small
+    /// enough to keep the reranking call cheap.</summary>
+    private const int MaxCandidatesForReranking = 8;
 
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly CapabilityEmbeddingService _embeddingService;
+    private readonly EngramRelevanceRerankerAgent _rerankerAgent;
 
     public StructuredLearningKnowledgeRetrievalService(
-        IDbContextFactory<HumanOsDbContext> dbContextFactory, CapabilityEmbeddingService embeddingService)
+        IDbContextFactory<HumanOsDbContext> dbContextFactory,
+        CapabilityEmbeddingService embeddingService,
+        EngramRelevanceRerankerAgent rerankerAgent)
     {
         _dbContextFactory = dbContextFactory;
         _embeddingService = embeddingService;
+        _rerankerAgent = rerankerAgent;
     }
 
     public async Task<StructuredLearningRetrievalPackage> BuildRetrievalPackageAsync(
@@ -189,34 +213,42 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             })
             .ToList();
 
-        var (retrievedEngrams, retrievedSchemas) = await RetrieveEngramsAndSchemasAsync(dbContext, matchedEntityIds, cancellationToken, queryEmbedding, documentId: documentId);
+        var (retrievedEngrams, retrievedSchemas) = await RetrieveEngramsAndSchemasAsync(dbContext, matchedEntityIds, cancellationToken, queryEmbedding, userQuery, _rerankerAgent, documentId: documentId);
 
-        // Hop 1: entities co-mentioned in the retrieved engrams' own
-        // sections, excluding the ones already directly matched. Restricted
-        // to the same allEntities scope (Subject/Topic/document) so a
-        // Course-level agent never wanders into another course's entities.
-        var inScopeEntityIds = allEntities.Select(e => e.StructuredLearningEntityId).ToHashSet();
-        var retrievedSectionIds = retrievedEngrams.Select(e => e.EngramId).ToHashSet();
-        var relatedEntityLinks = await dbContext.StructuredLearningEntitySections
-            .Where(l => retrievedSectionIds.Contains(l.StructuredLearningDocumentSectionId) && !matchedEntityIds.Contains(l.StructuredLearningEntityId))
-            .Select(l => l.StructuredLearningEntityId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-        relatedEntityLinks = relatedEntityLinks.Where(id => inScopeEntityIds.Contains(id)).Take(MaxRelatedEntities).ToList();
+        // Hop 1 (2026-09-04 / 2026-09-05): entities co-mentioned in the retrieved
+        // engrams' own sections. Only runs for Topic-level agents (no documentId)
+        // to discover related courses in the domain. For Course-level agents,
+        // all course sections are already in the direct candidate pool.
+        List<RetrievedEntityDto> relatedEntities = [];
+        List<RetrievedEngramDto> relatedEngrams = [];
+        List<RetrievedSchemaDto> relatedSchemas = [];
+        if (!documentId.HasValue && retrievedEngrams.Count > 0)
+        {
+            var inScopeEntityIds = allEntities.Select(e => e.StructuredLearningEntityId).ToHashSet();
+            var retrievedSectionIds = retrievedEngrams.Select(e => e.EngramId).ToHashSet();
+            var relatedEntityLinks = await dbContext.StructuredLearningEntitySections
+                .Where(l => retrievedSectionIds.Contains(l.StructuredLearningDocumentSectionId) && !matchedEntityIds.Contains(l.StructuredLearningEntityId))
+                .Select(l => l.StructuredLearningEntityId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            relatedEntityLinks = relatedEntityLinks.Where(id => inScopeEntityIds.Contains(id)).Take(MaxRelatedEntities).ToList();
 
-        var relatedEntities = await dbContext.StructuredLearningEntities
-            .Where(e => relatedEntityLinks.Contains(e.StructuredLearningEntityId))
-            .Select(e => new RetrievedEntityDto
-            {
-                EntityId = e.StructuredLearningEntityId,
-                CanonicalName = e.Name,
-                EntityType = e.EntityType,
-                MatchType = "Related"
-            })
-            .ToListAsync(cancellationToken);
+            relatedEntities = await dbContext.StructuredLearningEntities
+                .Where(e => relatedEntityLinks.Contains(e.StructuredLearningEntityId))
+                .Select(e => new RetrievedEntityDto
+                {
+                    EntityId = e.StructuredLearningEntityId,
+                    CanonicalName = e.Name,
+                    EntityType = e.EntityType,
+                    MatchType = "Related"
+                })
+                .ToListAsync(cancellationToken);
 
-        var (relatedEngrams, relatedSchemas) = await RetrieveEngramsAndSchemasAsync(
-            dbContext, relatedEntityLinks.ToHashSet(), cancellationToken, queryEmbedding, excludeSectionIds: retrievedSectionIds, documentId: documentId);
+            var (hopEngrams, hopSchemas) = await RetrieveEngramsAndSchemasAsync(
+                dbContext, relatedEntityLinks.ToHashSet(), cancellationToken, queryEmbedding, userQuery, _rerankerAgent, excludeSectionIds: retrievedSectionIds, documentId: documentId);
+            relatedEngrams = hopEngrams;
+            relatedSchemas = hopSchemas;
+        }
 
         var schemas = retrievedSchemas.Concat(relatedSchemas)
             .GroupBy(s => s.SchemaId)
@@ -239,32 +271,67 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         IReadOnlySet<Guid> entityIds,
         CancellationToken cancellationToken,
         float[]? queryEmbedding,
+        string userQuery,
+        EngramRelevanceRerankerAgent rerankerAgent,
         IReadOnlySet<Guid>? excludeSectionIds = null,
         Guid? documentId = null)
     {
-        if (entityIds.Count == 0)
-        {
-            return ([], []);
-        }
+        List<StructuredLearningEntitySection> links;
+        var candidateSectionsQuery = dbContext.StructuredLearningDocumentSections.AsQueryable();
 
-        var links = await dbContext.StructuredLearningEntitySections
-            .Where(l => entityIds.Contains(l.StructuredLearningEntityId))
-            .Select(l => new { l.StructuredLearningDocumentSectionId, l.SourceText })
-            .ToListAsync(cancellationToken);
-
-        var candidateSectionIds = links.Select(l => l.StructuredLearningDocumentSectionId).Distinct()
-            .Where(id => excludeSectionIds is null || !excludeSectionIds.Contains(id))
-            .ToList();
-        if (candidateSectionIds.Count == 0)
-        {
-            return ([], []);
-        }
-
-        var candidateSectionsQuery = dbContext.StructuredLearningDocumentSections
-            .Where(s => candidateSectionIds.Contains(s.StructuredLearningDocumentSectionId));
         if (documentId.HasValue)
         {
-            candidateSectionsQuery = candidateSectionsQuery.Where(s => s.StructuredLearningDocumentId == documentId.Value);
+            // Course-level agent (2026-09-05 fix): the candidate pool is ALL
+            // sections of this document (~20-30 sections). This prevents
+            // relevant sections from being dropped if entity extraction or
+            // user typos (e.g. "ehtical ocnsideraitons") failed to match an
+            // exact entity node.
+            candidateSectionsQuery = candidateSectionsQuery
+                .Where(s => s.StructuredLearningDocumentId == documentId.Value);
+
+            if (excludeSectionIds is not null && excludeSectionIds.Count > 0)
+            {
+                candidateSectionsQuery = candidateSectionsQuery
+                    .Where(s => !excludeSectionIds.Contains(s.StructuredLearningDocumentSectionId));
+            }
+
+            links = await dbContext.StructuredLearningEntitySections
+                .Where(l => l.Section.StructuredLearningDocumentId == documentId.Value)
+                .Select(l => new StructuredLearningEntitySection
+                {
+                    StructuredLearningEntityId = l.StructuredLearningEntityId,
+                    StructuredLearningDocumentSectionId = l.StructuredLearningDocumentSectionId,
+                    SourceText = l.SourceText
+                })
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            if (entityIds.Count == 0)
+            {
+                return ([], []);
+            }
+
+            links = await dbContext.StructuredLearningEntitySections
+                .Where(l => entityIds.Contains(l.StructuredLearningEntityId))
+                .Select(l => new StructuredLearningEntitySection
+                {
+                    StructuredLearningEntityId = l.StructuredLearningEntityId,
+                    StructuredLearningDocumentSectionId = l.StructuredLearningDocumentSectionId,
+                    SourceText = l.SourceText
+                })
+                .ToListAsync(cancellationToken);
+
+            var candidateSectionIds = links.Select(l => l.StructuredLearningDocumentSectionId).Distinct()
+                .Where(id => excludeSectionIds is null || !excludeSectionIds.Contains(id))
+                .ToList();
+            if (candidateSectionIds.Count == 0)
+            {
+                return ([], []);
+            }
+
+            candidateSectionsQuery = candidateSectionsQuery
+                .Where(s => candidateSectionIds.Contains(s.StructuredLearningDocumentSectionId));
         }
 
         var candidateSections = await candidateSectionsQuery
@@ -279,15 +346,85 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             })
             .ToListAsync(cancellationToken);
 
+        if (candidateSections.Count == 0)
+        {
+            return ([], []);
+        }
+
         // Rank by closeness to the actual question when a query embedding is
         // available — without this, every section merely LINKED to a matched
         // entity was returned in arbitrary order, flooding the agent with
         // far more (and less relevant) citations than the question needed.
-        var sections = (queryEmbedding is not null
-                ? candidateSections.OrderByDescending(s => CosineSimilarity(queryEmbedding, s.Embedding.Memory.ToArray()))
-                : candidateSections.AsEnumerable())
-            .Take(MaxEngramsPerRetrieval)
-            .ToList();
+        // ALSO drop anything below MinEngramSimilarity (2026-09-04 fix) —
+        // previously the top N were kept regardless of how weak the match
+        // was, so a keyword/exact-entity hit still dragged in every section
+        // that merely mentions it, even ones that don't actually answer the
+        // question.
+        //
+        // TITLE BOOST (2026-09-04, second fix): pure whole-section-text
+        // embedding similarity is too FLAT to discriminate well inside a
+        // small, single-topic course — every section talks about the same
+        // subject in similar vocabulary, so e.g. "Conclusion" or "Responsible
+        // Use" scored competitively against "Introduction" for a basic "What
+        // is X?" question that the Introduction section actually answers.
+        // Add a lexical bonus for sections whose OWN TITLE shares meaningful
+        // words with the question — titles are short and specific, so this
+        // reliably favors the section that is literally ABOUT what was asked
+        // (e.g. "1. Introduction: Why X Matters", "2. What Is an X?") over
+        // ones that merely happen to embed similarly.
+        var directMatchedSectionIds = links
+            .Where(l => entityIds.Contains(l.StructuredLearningEntityId))
+            .Select(l => l.StructuredLearningDocumentSectionId)
+            .ToHashSet();
+
+        var rankedSections = queryEmbedding is not null
+            ? candidateSections
+                .Select(s => (
+                    Section: s,
+                    Similarity: CosineSimilarity(queryEmbedding, s.Embedding.Memory.ToArray()),
+                    TitleBoost: TitleRelevanceBoost(userQuery, s.SubchapterTitle),
+                    IsDirectEntityMatch: directMatchedSectionIds.Contains(s.StructuredLearningDocumentSectionId)))
+                .Where(x => x.IsDirectEntityMatch || (x.Similarity + x.TitleBoost) >= MinEngramSimilarity)
+                .OrderByDescending(x => x.Similarity + x.TitleBoost + (x.IsDirectEntityMatch ? 0.2 : 0))
+                .Select(x => x.Section)
+            : candidateSections.AsEnumerable();
+        var candidatePool = rankedSections.Take(MaxCandidatesForReranking).ToList();
+
+        // LLM RERANK (2026-09-04 / 2026-09-05): the heuristic above is fast
+        // to build a candidate pool, but may still include topically adjacent
+        // sections that don't directly answer what was asked. The reranker agent
+        // evaluates the candidate excerpts with a strict >=80% confidence threshold,
+        // returning ONLY the high-confidence direct answers.
+        List<int>? rerankedOrder = null;
+        var rerankAttempted = false;
+        if (rerankerAgent.IsConfigured && !string.IsNullOrWhiteSpace(userQuery) && candidatePool.Count > 0)
+        {
+            try
+            {
+                var rerankRequest = new EngramRerankRequest
+                {
+                    Question = userQuery,
+                    MaxResults = MaxEngramsPerRetrieval,
+                    Candidates = candidatePool.Select((s, i) => new EngramRerankCandidate
+                    {
+                        Index = i,
+                        Title = s.SubchapterTitle,
+                        Excerpt = s.Text.Length > 700 ? s.Text[..700] : s.Text
+                    }).ToList()
+                };
+                var rerankResponse = await rerankerAgent.RerankAsync(rerankRequest, cancellationToken);
+                rerankedOrder = rerankResponse.RelevantIndices;
+                rerankAttempted = true;
+            }
+            catch
+            {
+                // Fall through to the heuristic-only result below on API failure
+            }
+        }
+
+        var sections = rerankAttempted && rerankedOrder is not null
+            ? rerankedOrder.Where(i => i >= 0 && i < candidatePool.Count).Select(i => candidatePool[i]).ToList()
+            : candidatePool.Take(MaxEngramsPerRetrieval).ToList();
 
         var engrams = sections.Select(s => new RetrievedEngramDto
         {
@@ -333,5 +470,97 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         }
 
         return dot / (Math.Sqrt(normA) * Math.Sqrt(normB));
+    }
+
+    /// <summary>Common short function words excluded from the title-overlap
+    /// check below — matching on "the"/"is"/"a" would boost almost every
+    /// section indiscriminately and defeat the purpose of the boost.</summary>
+    private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "is", "are", "was", "were", "what", "why", "how", "who", "when", "where",
+        "of", "to", "in", "on", "for", "and", "or", "with", "this", "that", "it", "its", "your", "you",
+        "el", "la", "los", "las", "un", "una", "es", "son", "qu\u00e9", "por", "de", "en", "y", "o", "con",
+        "esta", "esto", "para", "tu", "su"
+    };
+
+    /// <summary>Lexical relevance bonus (0 to ~0.3) added on top of embedding
+    /// cosine similarity when ranking candidate engrams — see the ranking
+    /// comment above for why pure whole-section embeddings are too flat to
+    /// tell "Introduction" from "Conclusion" inside a single-topic course.
+    /// Counts how many of the question's own meaningful words (4+ letters,
+    /// not a stop word) literally or fuzzily appear in the section's own short title —
+    /// titles are specific enough that this reliably favors the section
+    /// that is actually ABOUT what was asked.</summary>
+    private static double TitleRelevanceBoost(string userQuery, string title)
+    {
+        if (string.IsNullOrWhiteSpace(userQuery) || string.IsNullOrWhiteSpace(title))
+        {
+            return 0;
+        }
+
+        var queryWords = userQuery
+            .Split([' ', '\t', '\n', '\r', ',', '.', '?', '!', ':', ';', '"', '\''], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 4 && !StopWords.Contains(w))
+            .Select(w => w.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        if (queryWords.Count == 0)
+        {
+            return 0;
+        }
+
+        var titleWords = title
+            .Split([' ', '\t', '\n', '\r', ',', '.', '?', '!', ':', ';', '"', '\'', '-', '/', '(', ')', '[', ']'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 4 && !StopWords.Contains(w))
+            .Select(w => w.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+
+        var matches = queryWords.Count(qw => titleWords.Any(tw => IsFuzzyWordMatch(qw, tw)));
+
+        // Capped so a handful of shared words gives a meaningful nudge
+        // without letting the lexical signal completely override semantics.
+        return Math.Min(0.3, matches * 0.12);
+    }
+
+    private static int LevenshteinDistance(string s, string t)
+    {
+        if (string.IsNullOrEmpty(s)) return string.IsNullOrEmpty(t) ? 0 : t.Length;
+        if (string.IsNullOrEmpty(t)) return s.Length;
+
+        int n = s.Length;
+        int m = t.Length;
+        int[,] d = new int[n + 1, m + 1];
+
+        for (int i = 0; i <= n; d[i, 0] = i++) ;
+        for (int j = 0; j <= m; d[0, j] = j++) ;
+
+        for (int i = 1; i <= n; i++)
+        {
+            for (int j = 1; j <= m; j++)
+            {
+                int cost = (t[j - 1] == s[i - 1]) ? 0 : 1;
+                d[i, j] = Math.Min(
+                    Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                    d[i - 1, j - 1] + cost);
+            }
+        }
+        return d[n, m];
+    }
+
+    private static bool IsFuzzyWordMatch(string queryWord, string titleWord)
+    {
+        if (queryWord.Equals(titleWord, StringComparison.OrdinalIgnoreCase)) return true;
+        if (titleWord.Contains(queryWord, StringComparison.OrdinalIgnoreCase) || queryWord.Contains(titleWord, StringComparison.OrdinalIgnoreCase)) return true;
+
+        var minLen = Math.Min(queryWord.Length, titleWord.Length);
+        var maxLen = Math.Max(queryWord.Length, titleWord.Length);
+        if (maxLen - minLen > 2) return false;
+
+        var dist = LevenshteinDistance(queryWord.ToLowerInvariant(), titleWord.ToLowerInvariant());
+        if (minLen >= 7 && dist <= 2) return true;
+        if (minLen >= 4 && dist <= 1) return true;
+        return false;
     }
 }

@@ -27,12 +27,19 @@ export interface BridgeConceptItem {
   canonicalName: string;
   entityType: string;
   ontologicalClass?: string | null;
+  /** Already-precomputed, extraction-time canonical definition (e.g. "what
+   * is HTTP") — from StructuredLearningEntity.Description, never generated
+   * live. Null if the extraction agent didn't produce one for this entity. */
+  description?: string | null;
   connectedEngrams: MasteredEngramItem[];
   connections: {
     relationshipLabel: string;
     targetEngramId: string;
     targetEngramTitle: string;
     sourceSectionId?: string | null;
+    /** Verbatim quoted source text this specific connection was extracted
+     * from — also already precomputed, no agent call needed to show it. */
+    evidence?: string | null;
   }[];
 }
 
@@ -191,8 +198,14 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
               targetEngramId: c.SourceSectionId!,
               targetEngramTitle: engram?.title ?? 'Engram',
               sourceSectionId: c.SourceSectionId,
+              evidence: c.Evidence,
             };
           });
+
+          // Already-precomputed canonical definition (extraction-time, never
+          // generated live) — first non-empty Description among the matched
+          // entity rows sharing this normalized name.
+          const description = group.matchingEntities.find((e) => e.Description)?.Description ?? null;
 
           bridgeConcepts.push({
             id: `concept-${norm}`,
@@ -200,6 +213,7 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
             canonicalName: group.canonicalName,
             entityType: group.entityType,
             ontologicalClass: group.ontologicalClass,
+            description,
             connectedEngrams: connectedEngramList,
             connections: connectionInfoList,
           });

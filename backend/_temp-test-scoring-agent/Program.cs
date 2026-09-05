@@ -85,17 +85,75 @@ foreach (var cp in allCareerPlans)
     Console.WriteLine($"Plan Id={cp.PersonCareerPlanId} | PersonId={cp.PersonId} | TotalSteps={totalSteps} | MatchedSteps={matchedSteps}");
 }
 
-// Seed badges now
-Console.WriteLine("--- SEEDING BADGES ---");
-await CatalogSeeder.SeedBadgesAsync(db);
+// Check Knowledge Graph entities, connections, and facts for course 75a4d98f-0dcb-499e-a5d4-09faba01a885 (API + MICROSERVICES)
+var apiCourseId = Guid.Parse("75a4d98f-0dcb-499e-a5d4-09faba01a885");
 
-// Print all badges in DB
-var badgesInDb = await db.BadgeCatalogs.AsNoTracking().ToListAsync();
-Console.WriteLine($"=== BADGES IN DB COUNT: {badgesInDb.Count} ===");
-foreach (var b in badgesInDb.Where(x => x.IsActive).OrderBy(x => x.Category).ThenBy(x => x.RuleThreshold))
+var entityCount = await db.StructuredLearningEntities.AsNoTracking().CountAsync();
+var docEntityCount = await db.StructuredLearningEntitySections.AsNoTracking()
+    .Where(se => se.Section.StructuredLearningDocumentId == apiCourseId)
+    .CountAsync();
+
+var connectionCount = await db.StructuredLearningConnections.AsNoTracking()
+    .Where(c => c.StructuredLearningDocumentId == apiCourseId)
+    .CountAsync();
+
+var factCount = await db.StructuredLearningKnowledgeFacts.AsNoTracking()
+    .Where(f => f.Engram.StructuredLearningDocumentId == apiCourseId)
+    .CountAsync();
+
+Console.WriteLine($"=== KNOWLEDGE GRAPH AUDIT FOR API + MICROSERVICES ({apiCourseId}) ===");
+Console.WriteLine($"Total Master Entities in DB: {entityCount}");
+Console.WriteLine($"Section Entity links for this course: {docEntityCount}");
+Console.WriteLine($"StructuredLearningConnections for this course: {connectionCount}");
+Console.WriteLine($"StructuredLearningKnowledgeFacts for this course: {factCount}");
+
+// Sample entities if any
+var sampleEntities = await db.StructuredLearningEntitySections.AsNoTracking()
+    .Where(se => se.Section.StructuredLearningDocumentId == apiCourseId)
+    .Include(se => se.Entity)
+    .Include(se => se.Section)
+    .Take(10)
+    .Select(se => new { se.Entity.Name, se.Entity.EntityType, se.Section.SubchapterTitle, se.SourceText })
+    .ToListAsync();
+
+Console.WriteLine($"Sample Section Entities ({sampleEntities.Count}):");
+foreach (var se in sampleEntities)
 {
-    Console.WriteLine($"Category='{b.Category}' | Code='{b.Code}' | Name='{b.Name}' | Threshold={b.RuleThreshold} | IsActive={b.IsActive}");
+    Console.WriteLine($"  Entity='{se.Name}' ({se.EntityType}) | Section='{se.SubchapterTitle}' | Quote='{se.SourceText}'");
 }
+
+// Sample connections if any
+var sampleConnections = await db.StructuredLearningConnections.AsNoTracking()
+    .Where(c => c.StructuredLearningDocumentId == apiCourseId)
+    .Include(c => c.SourceEntity)
+    .Include(c => c.TargetEntity)
+    .Take(10)
+    .Select(c => new { Source = c.SourceEntity.Name, Target = c.TargetEntity.Name, c.RelationshipLabel, c.RelationshipCategory })
+    .ToListAsync();
+
+Console.WriteLine($"Sample Connections ({sampleConnections.Count}):");
+foreach (var c in sampleConnections)
+{
+    Console.WriteLine($"  [{c.Source}] --({c.RelationshipLabel} / {c.RelationshipCategory})--> [{c.Target}]");
+}
+
+// Sample facts if any
+var sampleFacts = await db.StructuredLearningKnowledgeFacts.AsNoTracking()
+    .Where(f => f.Engram.StructuredLearningDocumentId == apiCourseId)
+    .Take(5)
+    .Select(f => new { f.Statement, f.EpistemicStatus, f.Confidence })
+    .ToListAsync();
+
+Console.WriteLine($"Sample Facts ({sampleFacts.Count}):");
+foreach (var f in sampleFacts)
+{
+    Console.WriteLine($"  Statement='{f.Statement}' | Status='{f.EpistemicStatus}' | Conf={f.Confidence}");
+}
+
+// Check other courses in DB to see if entities/connections exist across DB
+var allDocConnections = await db.StructuredLearningConnections.AsNoTracking().CountAsync();
+var allDocFacts = await db.StructuredLearningKnowledgeFacts.AsNoTracking().CountAsync();
+Console.WriteLine($"DB-Wide: Total Connections={allDocConnections}, Total Facts={allDocFacts}");
 
 // Inspect if there are other courses with active sessions/rounds/rewards for this person
 var activeCourseIdsFromRounds = await db.StructuredLearningAssessmentRounds

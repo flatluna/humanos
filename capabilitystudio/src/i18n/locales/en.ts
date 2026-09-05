@@ -54,7 +54,7 @@ const en: StudioTranslations = {
     structuredLearningTopics: 'Domains and types',
     backToHumanOS: 'Back to Engrams',
     backToApp: 'Back to {{appName}}',
-    footer: 'Engrams.one · Human OS · Runtime v2 (Curator → GraphArchitect)',
+    footer: 'HUMAN OS STUDIO · Runtime v2 (Curator → GraphArchitect)',
   },
   home: {
     badge: 'One method. Configured your way.',

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, LogOut, Moon, Sun } from 'lucide-react';
+import { ChevronDown, LogOut, Moon, Sun, Menu } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useThemeStore } from '@/store/useThemeStore';
+import { useSidebarStore } from '@/store/useSidebarStore';
 import { setLanguage, useI18n } from '@/features/capabilities/i18n/useI18n';
 import { GamificationProfilePanel } from '@/features/gamification/components/GamificationProfilePanel';
 
@@ -14,6 +15,8 @@ export function EmployeeHeader() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useThemeStore();
   const { language, t } = useI18n();
+  const collapsed = useSidebarStore((state) => state.collapsed);
+  const toggleSidebar = useSidebarStore((state) => state.toggle);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -46,8 +49,18 @@ export function EmployeeHeader() {
   }, []);
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3 dark:border-white/10 dark:bg-[#05060a]">
+    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-white/10 dark:bg-[#05060a]">
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+          title={collapsed ? 'Expand menu' : 'Collapse menu'}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/5 dark:hover:text-white"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
         <img src="/engramslogo.png?v=2" alt="Engram" className="h-11 w-11 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/15" />
         <div>
           <p className="text-sm font-semibold text-slate-900 dark:text-white">Engram</p>

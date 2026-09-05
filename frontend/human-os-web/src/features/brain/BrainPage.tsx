@@ -739,20 +739,38 @@ export function BrainPage() {
                     </button>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    {deepDiveCards.map((card) => (
-                      <button
-                        key={card.index}
-                        type="button"
-                        onClick={() => {
-                          setCardAgentActive(false);
-                          setCardModalIndex(card.index);
-                        }}
-                        className="flex flex-col items-start gap-1 rounded-xl border border-white/10 bg-white/5 p-2.5 text-left hover:bg-white/10"
-                      >
-                        <span className="text-lg leading-none">{card.emoji ?? '🧠'}</span>
-                        <span className="line-clamp-2 text-xs font-medium text-white/85">{card.title}</span>
-                      </button>
-                    ))}
+                    {deepDiveCards.map((card) => {
+                      const cardImg = card.illustrationId
+                        ? `${API_BASE_URL}/illustrations/${selectedNode?.isStructuredLearning ? 'structured-learning/' : ''}${card.illustrationId}/image`
+                        : card.illustrationIds && card.illustrationIds.length > 0
+                        ? `${API_BASE_URL}/illustrations/${selectedNode?.isStructuredLearning ? 'structured-learning/' : ''}${card.illustrationIds[0]}/image`
+                        : null;
+
+                      return (
+                        <button
+                          key={card.index}
+                          type="button"
+                          onClick={() => {
+                            setCardAgentActive(false);
+                            setCardModalIndex(card.index);
+                          }}
+                          className="group flex flex-col items-start gap-2 overflow-hidden rounded-xl border border-white/10 bg-white/5 p-2.5 text-left transition hover:border-white/20 hover:bg-white/10"
+                        >
+                          {cardImg ? (
+                            <div className="h-28 w-full overflow-hidden rounded-lg bg-black/40">
+                              <img
+                                src={cardImg}
+                                alt={card.title}
+                                className="h-full w-full object-contain object-center transition group-hover:scale-105"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-2xl leading-none">{card.emoji ?? '🧠'}</span>
+                          )}
+                          <span className="line-clamp-2 text-xs font-semibold text-white/90 group-hover:text-white">{card.title}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

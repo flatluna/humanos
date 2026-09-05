@@ -29,18 +29,38 @@ export default function Layout() {
 
   return (
     <div className="min-h-full flex flex-col bg-slate-950">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl lg:pl-64">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[120rem] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <button type="button" onClick={() => setSidebarOpen((open) => !open)} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden" aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}>
-            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain object-center shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
-            <div className="leading-tight">
-              <div className="font-semibold tracking-tight text-white">Engrams.one</div>
-              <div className="text-[11px] text-slate-400">Engram</div>
-            </div>
-          </Link>
+          <div className="flex items-center gap-3">
+            {/* Mobile hamburger (opens drawer) */}
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((open) => !open)}
+              className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden"
+              aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+            >
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+
+            {/* Desktop collapse toggle */}
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              className="hidden rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:block"
+              aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+              title={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            <Link to="/" className="flex items-center gap-2.5 group">
+              <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain object-center shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
+              <div className="leading-tight">
+                <div className="font-semibold tracking-tight text-white">HUMAN OS STUDIO</div>
+                <div className="text-[11px] text-slate-400">Knowledge Studio</div>
+              </div>
+            </Link>
+          </div>
 
           <nav className="hidden">
             <NavLink
@@ -126,16 +146,19 @@ export default function Layout() {
         </div>
       </header>
 
-      <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className={`mb-8 flex items-center gap-2.5 px-2 ${sidebarCollapsed ? 'justify-center' : ''}`}>
-          <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain shadow-lg shadow-brand-500/30" />
-          {!sidebarCollapsed && <div className="leading-tight"><div className="font-semibold tracking-tight text-white">Engrams.one</div><div className="text-[11px] text-slate-400">Knowledge Studio</div></div>}
-          <button type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} className={`hidden rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:block ${sidebarCollapsed ? 'absolute left-5 top-5' : 'ml-auto'}`} aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}>
-            <Menu className="h-5 w-5" />
+      <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:top-[57px] lg:h-[calc(100vh-57px)] lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between pb-3 lg:hidden">
+          <div className="flex items-center gap-2">
+            <img src="/engramslogo.png" alt="Engram" className="h-8 w-8 rounded-xl object-contain" />
+            <div className="font-semibold text-sm text-white">HUMAN OS STUDIO</div>
+          </div>
+          <button type="button" onClick={() => setSidebarOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white">
+            <X className="h-5 w-5" />
           </button>
         </div>
+
         <nav className="space-y-1">
-              <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-sky-400" activeColor="bg-sky-500/15" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-sky-400" activeColor="bg-sky-500/15" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/programs" label={t('nav.programs')} color="text-violet-400" activeColor="bg-violet-500/15" onNavigate={() => setSidebarOpen(false)}><GraduationCap className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-emerald-400" activeColor="bg-emerald-500/15" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>

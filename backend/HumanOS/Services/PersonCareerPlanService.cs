@@ -320,6 +320,20 @@ public sealed class PersonCareerPlanService
                         && (string.Equals(Normalize(d.Name), stepSkillNorm, StringComparison.OrdinalIgnoreCase)
                             || string.Equals(Normalize(d.Name), stepTitleNorm, StringComparison.OrdinalIgnoreCase)));
 
+                docMatch ??= structuredDocuments.FirstOrDefault(
+                    d => (d.Category is null || d.Category == category)
+                        && !string.IsNullOrEmpty(Normalize(d.TargetSkill))
+                        && (Normalize(d.TargetSkill).Contains(stepSkillNorm, StringComparison.OrdinalIgnoreCase)
+                            || stepSkillNorm.Contains(Normalize(d.TargetSkill), StringComparison.OrdinalIgnoreCase)));
+
+                docMatch ??= structuredDocuments.FirstOrDefault(
+                    d => (d.Category is null || d.Category == category)
+                        && !string.IsNullOrEmpty(Normalize(d.Name))
+                        && (Normalize(d.Name).Contains(stepSkillNorm, StringComparison.OrdinalIgnoreCase)
+                            || stepSkillNorm.Contains(Normalize(d.Name), StringComparison.OrdinalIgnoreCase)
+                            || Normalize(d.Name).Contains(stepTitleNorm, StringComparison.OrdinalIgnoreCase)
+                            || stepTitleNorm.Contains(Normalize(d.Name), StringComparison.OrdinalIgnoreCase)));
+
                 if (docMatch is not null)
                 {
                     step.MatchedCapabilityId = docMatch.StructuredLearningDocumentId;

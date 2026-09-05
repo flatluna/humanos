@@ -203,20 +203,40 @@ public sealed class EmployeeScoringProfileService
         }
         else
         {
-            // Fallback to active departmental / role SMART objectives
+            // Fallback to active departmental / role SMART objectives — kept
+            // in sync with human-os-employee's DEFAULT_EMPLOYEE_OBJECTIVES_*
+            // mock data (frontend/human-os-employee/src/features/objectives/
+            // api/employeeObjectivesApi.ts), since this employee has no real
+            // PersonGoal rows yet. 2026-09-04 fix: this used to be a plain
+            // "Optimize P95 Latency..." microservices objective with NO
+            // mention of AI Agents at all — every voice/text agent that
+            // reads ActiveObjectives (e.g. the Structured Learning Teaching
+            // step's "why this concept matters" personalization) then had no
+            // real objective to correctly connect an AI-Agents/prompt-
+            // engineering Engram to, and either stayed silent or wrongly
+            // attached it to the unrelated microservices objective instead.
+            // 2026-09-04 (2nd fix): title/description replaced again with
+            // the employee's ACTUAL real objective (as typed by the user),
+            // since "Build the Autonomous Code Verification..." still wasn't
+            // specific enough and kept getting summarized by the model as a
+            // plain "API" objective. The agent's own build step (microservice
+            // + API + orchestration) is only the DELIVERY MECHANISM — the
+            // objective is explicit that the actual capability gap is
+            // designing the prompts that drive the agent's reasoning, so a
+            // Prompt Engineering Engram must connect here, never to "APIs".
             profile.ActiveObjectives =
             [
                 new ObjectiveInfo
                 {
-                    Title = "Optimize P95 Latency & Reliability on Core Microservices",
-                    Metric = "P95 response latency < 150ms under peak load",
+                    Title = "Design, Build, and Deploy One Production Autonomous AI Agent to Automate Functional Divisions' Service-Request Triage",
+                    Metric = "Percentage of Functional Divisions service requests triaged autonomously",
                     Quarter = "Q4 2026",
                     Status = "Active",
-                    AlignedDeptObjective = "Platform Scalability and Resilience",
-                    CorporateGoal = "Operational Excellence & Infrastructure Modernization",
-                    ValueImpact = "Maintains sub-second transaction throughput and prevents SLA breaches",
-                    ActionPlan = "Audit and refactor asynchronous query pipelines, connection pooling, and distributed Redis caching.",
-                    MeasurementMethod = "Continuous APM telemetry dashboards and load test benchmarks"
+                    AlignedDeptObjective = "Deploy AI Agents Across Key Operational Workflows",
+                    CorporateGoal = "Deploy AI Agents Across Key Operational Workflows",
+                    ValueImpact = "Deliver a production-grade autonomous AI agent (microservice + API + orchestration) that automatically triages incoming Functional Divisions service requests. The microservice/API/orchestration layer is only the delivery mechanism — the actual capability gap this objective depends on is PROMPT ENGINEERING: designing the structured prompts and reasoning strategy that let the agent correctly interpret, classify, and route each request.",
+                    ActionPlan = "1. Design structured prompts using Microsoft Agents SDK. 2. Implement the triage/classification logic driven by those prompts. 3. Wire the agent into the Functional Divisions service-request microservice/API/orchestration layer.",
+                    MeasurementMethod = "Automated triage accuracy telemetry against a labeled backlog of past service requests"
                 },
                 new ObjectiveInfo
                 {
@@ -269,7 +289,7 @@ public sealed class EmployeeScoringProfileService
                     ManagerName = string.IsNullOrWhiteSpace(managerName) ? "Carlos Morales" : managerName,
                     ManagerTitle = string.IsNullOrWhiteSpace(managerTitle) ? "Director of Software Engineering" : managerTitle,
                     Date = planDate != default ? planDate : DateTime.UtcNow.AddDays(-20),
-                    ImpactsSmartObjective = isObservability ? "Optimize P95 Latency & Reliability on Core Microservices" : "Complete Cloud Security & OWASP Top 10 Hardening",
+                    ImpactsSmartObjective = isObservability ? "Design, Build, and Deploy One Production Autonomous AI Agent to Automate Functional Divisions' Service-Request Triage" : "Complete Cloud Security & OWASP Top 10 Hardening",
                     RecommendedLearningTrack = step.MatchedProgramName
                         ?? step.MatchedCapabilityName
                         ?? step.Title,
@@ -297,7 +317,7 @@ public sealed class EmployeeScoringProfileService
                     ManagerName = string.IsNullOrWhiteSpace(managerName) ? "Carlos Morales" : managerName,
                     ManagerTitle = string.IsNullOrWhiteSpace(managerTitle) ? "Director of Software Engineering" : managerTitle,
                     Date = planDate != default ? planDate : DateTime.UtcNow.AddDays(-15),
-                    ImpactsSmartObjective = "Optimize P95 Latency & Reliability on Core Microservices",
+                    ImpactsSmartObjective = "Design, Build, and Deploy One Production Autonomous AI Agent to Automate Functional Divisions' Service-Request Triage",
                     RecommendedLearningTrack = step.MatchedProgramName
                         ?? step.MatchedCapabilityName
                         ?? step.Title,
@@ -323,8 +343,8 @@ public sealed class EmployeeScoringProfileService
                 ManagerName = string.IsNullOrWhiteSpace(managerName) ? "Carlos Morales" : managerName,
                 ManagerTitle = string.IsNullOrWhiteSpace(managerTitle) ? "Director of Software Engineering" : managerTitle,
                 Date = DateTime.UtcNow.AddDays(-20),
-                ImpactsSmartObjective = "Optimize P95 Latency & Reliability on Core Microservices",
-                RecommendedLearningTrack = "API +MICROSERVICES",
+                ImpactsSmartObjective = "Design, Build, and Deploy One Production Autonomous AI Agent to Automate Functional Divisions' Service-Request Triage",
+                RecommendedLearningTrack = "AI AGENTS + PROMPT ENGINEERING",
                 GrowthMasteryProgress = 65,
                 Milestones =
                 [

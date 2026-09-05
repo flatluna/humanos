@@ -33,6 +33,7 @@ export default function VoiceTutorAgent({
   isReviewOnly,
   reviewOnly,
   structuredLearningSectionStepId,
+  aiAgentQuestion,
   personName,
   startLabel,
   promptText,
@@ -54,6 +55,10 @@ export default function VoiceTutorAgent({
   reviewOnly?: boolean;
   /** Structured Learning path — a single StructuredLearningSectionStep id */
   structuredLearningSectionStepId?: string;
+  /** AI Agents course chat's "Talk about this" path — grounds the voice session
+   * in the SAME question/answer/engrams the text chat already produced, no
+   * separate retrieval call. Provide this ALONE, instead of every other target. */
+  aiAgentQuestion?: { documentId?: string; question: string; answer: string; engrams: { title: string; text: string }[] };
   personName?: string;
   startLabel?: string;
   promptText?: string;
@@ -74,7 +79,7 @@ export default function VoiceTutorAgent({
     error: t.voiceError,
   };
   const targetKey =
-    (structuredLearningSectionStepId ?? learningSessionStepId ?? `${capabilityGraphNodeId}:${stepType}`) +
+    (structuredLearningSectionStepId ?? learningSessionStepId ?? (aiAgentQuestion ? `aiAgentQuestion:${aiAgentQuestion.question}` : `${capabilityGraphNodeId}:${stepType}`)) +
     (exampleCardIndex !== undefined ? ':' + exampleCardIndex : '');
 
   const [state, setState] = useState<VoiceState>('idle');
@@ -189,6 +194,8 @@ export default function VoiceTutorAgent({
             exampleCardIndex,
             isReviewOnly: isReviewOnly || reviewOnly,
           })
+        : aiAgentQuestion
+        ? await requestVoiceTutorSession({ aiAgentQuestion, personName })
         : learningSessionStepId
         ? await requestVoiceTutorSession({
             learningSessionStepId,
@@ -375,6 +382,7 @@ export default function VoiceTutorAgent({
     isReviewOnly,
     reviewOnly,
     structuredLearningSectionStepId,
+    aiAgentQuestion,
     personName,
     promptText,
     onTranscript,
@@ -443,7 +451,7 @@ export default function VoiceTutorAgent({
           ) : (
             <Bot className="h-3.5 w-3.5" />
           )}
-          {isActive ? stateLabels[state] : (language === 'en' ? 'Speak with your agent about this example' : 'Habla con tu maestro sobre este ejemplo')}
+          {isActive ? stateLabels[state] : startLabel ?? (language === 'en' ? 'Speak with your agent about this example' : 'Habla con tu maestro sobre este ejemplo')}
         </button>
         {errorMessage && <p className="text-[11px] text-red-600 dark:text-red-400">{errorMessage}</p>}
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

@@ -176,7 +176,11 @@ function TreeNode({
   );
 }
 
-function KnowledgeFactsPanel({
+/** Exported (2026-09-03) so other pages (e.g. Brain's mastered-engram
+ * detail panel) can show "things to know about this engram" using the
+ * exact same already-generated, already-persisted Knowledge Facts —
+ * no new agent call, just reusing this rendering. */
+export function KnowledgeFactsPanel({
   data,
   expandedEvidence,
   onToggleEvidence,

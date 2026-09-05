@@ -110,6 +110,9 @@ public class StructuredLearningKnowledgeRetrievalServiceTests
         return section1.StructuredLearningDocumentSectionId;
     }
 
+    private static readonly EngramRelevanceRerankerAgent EmptyReranker =
+        new(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+
     [Fact]
     public async Task BuildRetrievalPackageAsync_ExactCanonicalMatch_RetrievesEngramAndSchema()
     {
@@ -118,7 +121,7 @@ public class StructuredLearningKnowledgeRetrievalServiceTests
         await SeedGraphAsync(options, tenantId);
 
         var service = new StructuredLearningKnowledgeRetrievalService(
-            new FixedDbContextFactory(options), new FakeEmbeddingService([0f, 0f, 1f]));
+            new FixedDbContextFactory(options), new FakeEmbeddingService([0f, 0f, 1f]), EmptyReranker);
 
         var package = await service.BuildRetrievalPackageAsync(tenantId, "Unidad imaginaria", CancellationToken.None);
 
@@ -135,7 +138,7 @@ public class StructuredLearningKnowledgeRetrievalServiceTests
         await SeedGraphAsync(options, tenantId);
 
         var service = new StructuredLearningKnowledgeRetrievalService(
-            new FixedDbContextFactory(options), new FakeEmbeddingService([0f, 0f, 1f]));
+            new FixedDbContextFactory(options), new FakeEmbeddingService([0f, 0f, 1f]), EmptyReranker);
 
         var package = await service.BuildRetrievalPackageAsync(tenantId, "i", CancellationToken.None);
 
@@ -151,7 +154,7 @@ public class StructuredLearningKnowledgeRetrievalServiceTests
 
         // Query vector nearly identical to entityUnidad's [1,0,0] — no exact/alias match exists for this text.
         var service = new StructuredLearningKnowledgeRetrievalService(
-            new FixedDbContextFactory(options), new FakeEmbeddingService([0.99f, 0.01f, 0f]));
+            new FixedDbContextFactory(options), new FakeEmbeddingService([0.99f, 0.01f, 0f]), EmptyReranker);
 
         var package = await service.BuildRetrievalPackageAsync(tenantId, "número imaginario que es raíz de negativo", CancellationToken.None);
 
@@ -166,7 +169,7 @@ public class StructuredLearningKnowledgeRetrievalServiceTests
         await SeedGraphAsync(options, tenantId);
 
         var service = new StructuredLearningKnowledgeRetrievalService(
-            new FixedDbContextFactory(options), new FakeEmbeddingService([0f, 0f, 1f]));
+            new FixedDbContextFactory(options), new FakeEmbeddingService([0f, 0f, 1f]), EmptyReranker);
 
         var package = await service.BuildRetrievalPackageAsync(tenantId, "Unidad imaginaria", CancellationToken.None);
 

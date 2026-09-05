@@ -45,6 +45,17 @@ export function MessageBody({ text }: { text: string }) {
   );
 }
 
+function cleanEngramContent(raw?: string): string {
+  if (!raw) return 'Contenido del Engram no disponible.';
+  return raw
+    .replace(/^ContractVersion:\s*[^\n]+\s*/i, '')
+    .replace(/\[(?:Descripci[óo]n\s+de\s+imagen|Image\s+description)[^\]]*\]/gi, '')
+    .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?[\s\S]*?(?=(?:\n#{1,6}\s+[^\n]+|\n\[(?:Descripci|Image)|$))/gi, '')
+    .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?VERBATIM\s+TRANSCRIPTION:?\s*/gi, '\n')
+    .replace(/#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?\s*/gi, '')
+    .trim() || 'Contenido del Engram no disponible.';
+}
+
 /** Cited-Engram modal — shows the Engram's own text, its Teaching step's
  * diagram/illustration, and a REAL real-time voice agent grounded on it
  * (resolves the Engram's own Teaching step and hands it to VoiceTutorAgent,
@@ -101,7 +112,7 @@ export function EngramModal({ engram, onClose }: { engram: UsedEngram; onClose: 
             <img src={`${API_BASE_URL}/illustrations/structured-learning/${illustrationId}/image`} alt={engram.title} className="h-64 w-full rounded-xl bg-slate-950/50 object-contain object-center" />
           </button>
         )}
-        <p className="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-300">{engram.text ?? 'Contenido del Engram no disponible.'}</p>
+        <p className="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-300">{cleanEngramContent(engram.text)}</p>
       </div>
       {zoomedImage && illustrationId && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4 cursor-zoom-out" onClick={(event) => { event.stopPropagation(); setZoomedImage(false); }}>

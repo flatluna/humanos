@@ -22,6 +22,8 @@ import {
   Sparkles,
   Activity,
   Calculator,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import {
@@ -327,6 +329,7 @@ export function DepartmentDetailPage() {
   const [objMeasurementMethod, setObjMeasurementMethod] = useState('');
   const [objActionPlan, setObjActionPlan] = useState('');
   const [objBusinessImpact, setObjBusinessImpact] = useState('');
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   function openCreateObjModal() {
     setEditingObj(null);
@@ -344,6 +347,7 @@ export function DepartmentDetailPage() {
     setObjMeasurementMethod('');
     setObjActionPlan('');
     setObjBusinessImpact('');
+    setShowAdvancedDetails(false);
     setObjModalOpen(true);
   }
 
@@ -363,6 +367,7 @@ export function DepartmentDetailPage() {
     setObjMeasurementMethod(o.measurementMethod ?? '');
     setObjActionPlan(o.actionPlan ?? '');
     setObjBusinessImpact(o.businessImpact ?? '');
+    setShowAdvancedDetails(Boolean(o.actionPlan || o.businessImpact || o.measurementMethod));
     setObjModalOpen(true);
   }
 
@@ -1308,7 +1313,7 @@ export function DepartmentDetailPage() {
         </div>
       )}
 
-      {/* Objective Modal */}
+      {/* Objective Modal (Streamlined for Departments) */}
       {objModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
           <div className="my-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900">
@@ -1337,31 +1342,12 @@ export function DepartmentDetailPage() {
               </button>
             </div>
 
-            <form onSubmit={handleObjSubmit} className="mt-5 space-y-6">
-              {/* SMART Pillars Header Pills */}
-              <div className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 text-center text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:bg-white/5 dark:text-white/70">
-                <span className="rounded-lg bg-white py-1 text-indigo-600 shadow-sm dark:bg-white/10 dark:text-indigo-300">
-                  {t('departmentDetail.smartSpecificTab')}
-                </span>
-                <span className="rounded-lg bg-white py-1 text-emerald-600 shadow-sm dark:bg-white/10 dark:text-emerald-300">
-                  {t('departmentDetail.smartMeasurableTab')}
-                </span>
-                <span className="rounded-lg bg-white py-1 text-amber-600 shadow-sm dark:bg-white/10 dark:text-amber-300">
-                  {t('departmentDetail.smartAchievableTab')}
-                </span>
-                <span className="rounded-lg bg-white py-1 text-purple-600 shadow-sm dark:bg-white/10 dark:text-purple-300">
-                  {t('departmentDetail.smartRelevantTab')}
-                </span>
-                <span className="rounded-lg bg-white py-1 text-sky-600 shadow-sm dark:bg-white/10 dark:text-sky-300">
-                  {t('departmentDetail.smartTimeBoundTab')}
-                </span>
-              </div>
-
-              {/* 1. S - Specific */}
-              <div className="space-y-4 rounded-xl border border-indigo-100 bg-indigo-50/20 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/5">
+            <form onSubmit={handleObjSubmit} className="mt-5 space-y-5">
+              {/* 1. Core Objective & Description */}
+              <div className="space-y-3.5 rounded-xl border border-indigo-100 bg-indigo-50/20 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/5">
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
                   <Target className="h-4 w-4" />
-                  <span>{t('departmentDetail.smartSpecificTab')}</span>
+                  <span>{t('departmentDetail.generalInfoSectionTitle')}</span>
                 </div>
 
                 <div>
@@ -1391,12 +1377,151 @@ export function DepartmentDetailPage() {
                 </div>
               </div>
 
-              {/* 2. M - Measurable (How to Measure) */}
-              <div className="space-y-4 rounded-xl border border-emerald-100 bg-emerald-50/20 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/5">
+              {/* 2. Timeline, Status & Progress */}
+              <div className="space-y-3.5 rounded-xl border border-sky-100 bg-sky-50/20 p-4 dark:border-sky-500/20 dark:bg-sky-500/5">
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                  <Clock className="h-4 w-4" />
+                  <span>{t('departmentDetail.timelineSectionTitle')}</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>
+                      {t('departmentDetail.objQuarterLabel')}
+                    </label>
+                    <input
+                      value={objQuarter}
+                      onChange={(e) => setObjQuarter(e.target.value)}
+                      placeholder="Q4 2026"
+                      className={inputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>
+                      {t('departmentDetail.objDateLabel')}
+                    </label>
+                    <input
+                      type="date"
+                      value={objDate}
+                      onChange={(e) => setObjDate(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>{t('departmentDetail.statusLabel')}</label>
+                    <select
+                      value={objStatus}
+                      onChange={(e) =>
+                        setObjStatus(e.target.value as DepartmentObjective['status'])
+                      }
+                      className={inputClass}
+                    >
+                      <option value="Active">{t('businessGoals.statusActive')}</option>
+                      <option value="InProgress">{t('businessGoals.statusInProgress')}</option>
+                      <option value="Completed">{t('businessGoals.statusCompleted')}</option>
+                      <option value="Paused">{t('businessGoals.statusPaused')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>
+                      {t('departmentDetail.objProgressLabel', {
+                        percentage: objProgress,
+                      })}
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={objProgress}
+                      onChange={(e) => setObjProgress(Number(e.target.value))}
+                      className="mt-3 w-full accent-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Corporate Strategic Alignment (Optional) */}
+              <div className="space-y-3.5 rounded-xl border border-purple-100 bg-purple-50/20 p-4 dark:border-purple-500/20 dark:bg-purple-500/5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">
+                    <Compass className="h-4 w-4" />
+                    <span>{t('departmentDetail.strategicGoalSelectLabel')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/objetivos')}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-600 hover:underline dark:text-purple-400"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {t('departmentDetail.viewCorporateGoals')}
+                  </button>
+                </div>
+
+                <div>
+                  <select
+                    value={objStrategicGoalId}
+                    onChange={(e) => setObjStrategicGoalId(e.target.value)}
+                    className="w-full rounded-xl border border-purple-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500 dark:border-purple-500/30 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">{t('departmentDetail.strategicGoalNoneOption')}</option>
+                    {companyGoals.map((cg) => {
+                      const p = companyDirection.pillars.find((pillar) => pillar.id === cg.pillarId);
+                      return (
+                        <option key={cg.id} value={cg.id}>
+                          {p ? `[${p.title}] ` : ''}{cg.title} ({cg.targetQuarter})
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {/* Selected Goal Preview */}
+                  {(() => {
+                    const previewGoal = companyGoals.find((g) => g.id === objStrategicGoalId);
+                    if (!previewGoal) return null;
+                    const previewPillar = companyDirection.pillars.find((p) => p.id === previewGoal.pillarId);
+                    return (
+                      <div className="mt-3 rounded-xl border border-purple-200/80 bg-white p-3.5 text-xs shadow-sm dark:border-purple-500/30 dark:bg-slate-900/90">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                              {previewPillar ? previewPillar.title : 'Objetivo Corporativo'}
+                            </span>
+                            <h4 className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-white">
+                              {previewGoal.title}
+                            </h4>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                            {previewGoal.targetQuarter}
+                          </span>
+                        </div>
+                        {previewGoal.description && (
+                          <p className="mt-1.5 text-[11px] text-slate-600 dark:text-white/70">
+                            {previewGoal.description}
+                          </p>
+                        )}
+                        <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400 dark:border-white/5">
+                          <span>Meta corporativa: {previewGoal.targetDate}</span>
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            Progreso Empresa: {previewGoal.progressPercentage}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* 4. Quantifiable Metric / Target (Optional) */}
+              <div className="space-y-3.5 rounded-xl border border-emerald-100 bg-emerald-50/20 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                     <Activity className="h-4 w-4" />
-                    <span>{t('departmentDetail.smartMeasurableTab')}</span>
+                    <span>{t('departmentDetail.metricsSectionTitle')}</span>
                   </div>
                   {objCurrentValue && objTargetValue && (
                     <button
@@ -1446,7 +1571,7 @@ export function DepartmentDetailPage() {
                       step="any"
                       value={objTargetValue}
                       onChange={(e) => setObjTargetValue(e.target.value)}
-                      placeholder="100"
+                      placeholder="3"
                       className={inputClass}
                     />
                   </div>
@@ -1463,199 +1588,68 @@ export function DepartmentDetailPage() {
                     />
                   </div>
                 </div>
-
-                <div>
-                  <label className={labelClass}>
-                    {t('departmentDetail.measurementMethodLabel')}
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={objMeasurementMethod}
-                    onChange={(e) => setObjMeasurementMethod(e.target.value)}
-                    placeholder={t('departmentDetail.measurementMethodPlaceholder')}
-                    className={inputClass}
-                  />
-                </div>
               </div>
 
-              {/* 3. A - Achievable (Action Plan & Viability) */}
-              <div className="space-y-4 rounded-xl border border-amber-100 bg-amber-50/20 p-4 dark:border-amber-500/20 dark:bg-amber-500/5">
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                  <Sparkles className="h-4 w-4" />
-                  <span>{t('departmentDetail.smartAchievableTab')}</span>
-                </div>
+              {/* 5. Additional Details (Collapsible) */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 dark:border-white/10 dark:bg-white/[0.02]">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-100/60 dark:text-slate-300 dark:hover:bg-white/5 rounded-xl transition"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+                    {t('departmentDetail.advancedDetailsToggle')}
+                  </span>
+                  {showAdvancedDetails ? (
+                    <ChevronUp className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  )}
+                </button>
 
-                <div>
-                  <label className={labelClass}>
-                    {t('departmentDetail.actionPlanLabel')}
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={objActionPlan}
-                    onChange={(e) => setObjActionPlan(e.target.value)}
-                    placeholder={t('departmentDetail.actionPlanPlaceholder')}
-                    className={inputClass}
-                  />
-                </div>
-              </div>
+                {showAdvancedDetails && (
+                  <div className="space-y-3.5 border-t border-slate-200 p-4 dark:border-white/10">
+                    <div>
+                      <label className={labelClass}>
+                        {t('departmentDetail.measurementMethodLabel')}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={objMeasurementMethod}
+                        onChange={(e) => setObjMeasurementMethod(e.target.value)}
+                        placeholder={t('departmentDetail.measurementMethodPlaceholder')}
+                        className={inputClass}
+                      />
+                    </div>
 
-              {/* 4. R - Relevant (Strategic Goal Alignment & Business Impact) */}
-              <div className="space-y-4 rounded-xl border border-purple-100 bg-purple-50/20 p-4 dark:border-purple-500/20 dark:bg-purple-500/5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">
-                    <Compass className="h-4 w-4" />
-                    <span>{t('departmentDetail.smartRelevantTab')}</span>
+                    <div>
+                      <label className={labelClass}>
+                        {t('departmentDetail.actionPlanLabel')}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={objActionPlan}
+                        onChange={(e) => setObjActionPlan(e.target.value)}
+                        placeholder={t('departmentDetail.actionPlanPlaceholder')}
+                        className={inputClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>
+                        {t('departmentDetail.businessImpactLabel')}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={objBusinessImpact}
+                        onChange={(e) => setObjBusinessImpact(e.target.value)}
+                        placeholder={t('departmentDetail.businessImpactPlaceholder')}
+                        className={inputClass}
+                      />
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/objetivos')}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-600 hover:underline dark:text-purple-400"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    {t('departmentDetail.viewCorporateGoals')}
-                  </button>
-                </div>
-
-                <div>
-                  <label className={labelClass}>
-                    {t('departmentDetail.strategicGoalSelectLabel')}
-                  </label>
-                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-white/50">
-                    {t('departmentDetail.strategicGoalHelpText')}
-                  </p>
-
-                  <select
-                    value={objStrategicGoalId}
-                    onChange={(e) => setObjStrategicGoalId(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-purple-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500 dark:border-purple-500/30 dark:bg-slate-900 dark:text-white"
-                  >
-                    <option value="">{t('departmentDetail.strategicGoalNoneOption')}</option>
-                    {companyGoals.map((cg) => {
-                      const p = companyDirection.pillars.find((pillar) => pillar.id === cg.pillarId);
-                      return (
-                        <option key={cg.id} value={cg.id}>
-                          {p ? `[${p.title}] ` : ''}{cg.title} ({cg.targetQuarter})
-                        </option>
-                      );
-                    })}
-                  </select>
-
-                  {/* Selected Goal Preview */}
-                  {(() => {
-                    const previewGoal = companyGoals.find((g) => g.id === objStrategicGoalId);
-                    if (!previewGoal) return null;
-                    const previewPillar = companyDirection.pillars.find((p) => p.id === previewGoal.pillarId);
-                    return (
-                      <div className="mt-3 rounded-xl border border-purple-200/80 bg-white p-3.5 text-xs shadow-sm dark:border-purple-500/30 dark:bg-slate-900/90">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                              {previewPillar ? previewPillar.title : 'Objetivo Corporativo'}
-                            </span>
-                            <h4 className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-white">
-                              {previewGoal.title}
-                            </h4>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
-                            {previewGoal.targetQuarter}
-                          </span>
-                        </div>
-                        {previewGoal.description && (
-                          <p className="mt-1.5 text-[11px] text-slate-600 dark:text-white/70">
-                            {previewGoal.description}
-                          </p>
-                        )}
-                        <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400 dark:border-white/5">
-                          <span>Meta corporativa: {previewGoal.targetDate}</span>
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            Progreso Empresa: {previewGoal.progressPercentage}%
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div>
-                  <label className={labelClass}>
-                    {t('departmentDetail.businessImpactLabel')}
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={objBusinessImpact}
-                    onChange={(e) => setObjBusinessImpact(e.target.value)}
-                    placeholder={t('departmentDetail.businessImpactPlaceholder')}
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-
-              {/* 5. T - Time-Bound & Progress */}
-              <div className="space-y-4 rounded-xl border border-sky-100 bg-sky-50/20 p-4 dark:border-sky-500/20 dark:bg-sky-500/5">
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
-                  <Clock className="h-4 w-4" />
-                  <span>{t('departmentDetail.smartTimeBoundTab')}</span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={labelClass}>
-                      {t('departmentDetail.objQuarterLabel')}
-                    </label>
-                    <input
-                      value={objQuarter}
-                      onChange={(e) => setObjQuarter(e.target.value)}
-                      placeholder="Q4 2026"
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>
-                      {t('departmentDetail.objDateLabel')}
-                    </label>
-                    <input
-                      type="date"
-                      value={objDate}
-                      onChange={(e) => setObjDate(e.target.value)}
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={labelClass}>{t('departmentDetail.statusLabel')}</label>
-                    <select
-                      value={objStatus}
-                      onChange={(e) =>
-                        setObjStatus(e.target.value as DepartmentObjective['status'])
-                      }
-                      className={inputClass}
-                    >
-                      <option value="Active">{t('businessGoals.statusActive')}</option>
-                      <option value="InProgress">{t('businessGoals.statusInProgress')}</option>
-                      <option value="Completed">{t('businessGoals.statusCompleted')}</option>
-                      <option value="Paused">{t('businessGoals.statusPaused')}</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>
-                      {t('departmentDetail.objProgressLabel', {
-                        percentage: objProgress,
-                      })}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={objProgress}
-                      onChange={(e) => setObjProgress(Number(e.target.value))}
-                      className="mt-3 w-full accent-indigo-600"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-white/10">

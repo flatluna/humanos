@@ -20,6 +20,7 @@ import {
   Target,
   Info,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
@@ -194,24 +195,24 @@ function HypothesisQuestionCard({
   }
 
   return (
-    <div className="mt-4 space-y-4 rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-indigo-300">
+    <div className="mt-4 space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 dark:border-indigo-500/20 dark:bg-indigo-500/[0.04] p-4">
+      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-300">
         {isEn ? 'Before we start' : 'Antes de comenzar'}
       </p>
 
       {submitted ? (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100">
           {isEn ? 'Thank you for your responses. We now will start learning.' : 'Gracias por tus respuestas. Ahora comenzaremos a aprender.'}
         </div>
       ) : (
         <div className="space-y-4">
-          {error && <p className="text-sm text-red-300">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
           {questions.map((question, index) => {
             const selectedIndex = selectedAnswers[index];
 
             return (
-              <div key={`${question.question}-${index}`} className="rounded-xl border border-white/10 bg-slate-950/20 p-3">
-                <p className="text-sm font-medium text-white">
+              <div key={`${question.question}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-slate-950/20">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
                   {index + 1}. {question.question}
                 </p>
                 <div className="mt-3 space-y-2">
@@ -223,15 +224,15 @@ function HypothesisQuestionCard({
                         key={`${question.question}-${optionIndex}`}
                         type="button"
                         onClick={() => setSelectedAnswers((previous) => ({ ...previous, [index]: optionIndex }))}
-                        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                        className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition ${
                           isSelected
-                            ? 'border-indigo-500/50 bg-indigo-500/10 text-white'
-                            : 'border-white/10 bg-white/[0.02] text-slate-200 hover:border-white/20 hover:bg-white/[0.04]'
+                            ? 'border-indigo-500 bg-indigo-50 font-semibold text-indigo-950 dark:border-indigo-500/50 dark:bg-indigo-500/10 dark:text-white'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-200 dark:hover:border-white/20 dark:hover:bg-white/[0.04]'
                         }`}
                       >
                         <span
-                          className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
-                            isSelected ? 'bg-indigo-500/20 text-indigo-100' : 'bg-white/5 text-slate-300'
+                          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                            isSelected ? 'bg-indigo-600 text-white dark:bg-indigo-500/20 dark:text-indigo-100' : 'bg-slate-100 text-slate-700 dark:bg-white/5 dark:text-slate-300'
                           }`}
                         >
                           {String.fromCharCode(65 + optionIndex)}
@@ -245,15 +246,15 @@ function HypothesisQuestionCard({
             );
           })}
 
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-            <p className="text-xs text-slate-300">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/[0.02]">
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
               {answeredCount}/{questions.length} {isEn ? 'answered' : 'respondidas'}
             </p>
             <button
               type="button"
               disabled={!isComplete || saving}
               onClick={handleSave}
-              className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {saving ? (isEn ? 'Saving…' : 'Guardando…') : (isEn ? 'Save responses' : 'Guardar respuestas')}
             </button>
@@ -391,14 +392,14 @@ export default function StructuredLearningSectionPage() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       <Link
         to={`/structured-learning/${documentId}`}
-        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition"
       >
         <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back to course map' : 'Volver al mapa del curso'}
       </Link>
 
       <div className="mt-4 text-center">
-        <p className="text-xs font-medium uppercase tracking-wide text-indigo-400">{currentSection?.ChapterTitle}</p>
-        <h1 className="mt-1 text-2xl font-bold text-white">{currentSection?.SubchapterTitle}</h1>
+        <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">{currentSection?.ChapterTitle}</p>
+        <h1 className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{currentSection?.SubchapterTitle}</h1>
 
         {/* Personalized Engram Impact Score & Details Button */}
         {currentEngramScore && (
@@ -406,19 +407,19 @@ export default function StructuredLearningSectionPage() {
             <button
               type="button"
               onClick={() => setShowScoreModal(true)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-bold transition hover:scale-105 shadow-sm ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-bold transition hover:scale-105 shadow-xs ${
                 currentEngramScore.tier === 'Critical'
-                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                  ? 'bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40'
                   : currentEngramScore.tier === 'Important'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                  ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40'
                   : currentEngramScore.tier === 'Refresher'
-                  ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30'
-                  : 'bg-slate-500/20 text-slate-300 border border-slate-500/40 hover:bg-slate-500/30'
+                  ? 'bg-sky-100 text-sky-800 border border-sky-300 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/40'
+                  : 'bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/40'
               }`}
             >
-              {currentEngramScore.tier === 'Critical' && <Flame className="h-3.5 w-3.5 text-rose-400 animate-pulse" />}
-              {currentEngramScore.tier === 'Important' && <Zap className="h-3.5 w-3.5 text-amber-400" />}
-              {currentEngramScore.tier === 'Refresher' && <RefreshCw className="h-3.5 w-3.5 text-sky-400" />}
+              {currentEngramScore.tier === 'Critical' && <Flame className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400 animate-pulse" />}
+              {currentEngramScore.tier === 'Important' && <Zap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
+              {currentEngramScore.tier === 'Refresher' && <RefreshCw className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />}
               <span>{currentEngramScore.score}/100 — {currentEngramScore.tier} {isEn ? 'Impact' : 'Impacto'}</span>
               <span className="text-[10px] opacity-75 font-normal">({currentEngramScore.primarySignal})</span>
             </button>
@@ -426,9 +427,9 @@ export default function StructuredLearningSectionPage() {
             <button
               type="button"
               onClick={() => setShowScoreModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3.5 py-1 text-xs font-semibold text-indigo-200 transition hover:border-indigo-300/60 hover:bg-indigo-500/20"
+              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
             >
-              <Info className="h-3.5 w-3.5 text-indigo-400" />
+              <Info className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>{isEn ? 'Score Details' : 'Detalles del Score'}</span>
             </button>
           </div>
@@ -442,9 +443,9 @@ export default function StructuredLearningSectionPage() {
                 setKnowledgeGraphInitialView('graph');
                 setShowKnowledgeGraph(true);
               }}
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20"
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20 shadow-xs"
             >
-              <Network className="h-4 w-4" /> {isEn ? 'View Knowledge Graph' : 'Ver Knowledge Graph'}
+              <Network className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {isEn ? 'View Knowledge Graph' : 'Ver Knowledge Graph'}
             </button>
             <button
               type="button"
@@ -452,9 +453,9 @@ export default function StructuredLearningSectionPage() {
                 setKnowledgeGraphInitialView('facts');
                 setShowKnowledgeGraph(true);
               }}
-              className="inline-flex items-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-200 transition hover:border-indigo-300/60 hover:bg-indigo-500/20"
+              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-indigo-800 transition hover:bg-indigo-100 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20 shadow-xs"
             >
-              {isEn ? 'View Knowledge Facts' : 'Ver Knowledge Facts'}
+              <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" /> {isEn ? 'View Knowledge Facts' : 'Ver Knowledge Facts'}
             </button>
           </div>
         )}
@@ -462,14 +463,14 @@ export default function StructuredLearningSectionPage() {
 
       {/* 1:1 Personalization Banner for the Learner */}
       {currentEngramScore && (
-        <div className="mt-5 overflow-hidden rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/80 to-purple-950/30 p-4 shadow-lg backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="mt-5 overflow-hidden rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/50 p-4 shadow-sm dark:border-indigo-500/30 dark:bg-gradient-to-br dark:from-indigo-950/40 dark:via-slate-900/80 dark:to-purple-950/30 animate-in fade-in duration-200">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex-none">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 flex-none dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30">
                 <Target className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <span>
                     {isEn
                       ? `🎯 Personalized for you${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`
@@ -477,7 +478,7 @@ export default function StructuredLearningSectionPage() {
                   </span>
                 </h3>
                 {learnerProfile?.roleTitle && (
-                  <p className="text-[11px] text-indigo-300/80">
+                  <p className="text-[11px] text-indigo-700 dark:text-indigo-300/80 font-medium">
                     {learnerProfile.roleTitle}
                     {learnerProfile.yearsOfExperience ? ` · ${learnerProfile.yearsOfExperience}+ ${isEn ? 'years exp' : 'años exp'}` : ''}
                   </p>
@@ -489,15 +490,15 @@ export default function StructuredLearningSectionPage() {
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs font-bold border ${
                   currentEngramScore.tier === 'Critical'
-                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40'
                     : currentEngramScore.tier === 'Important'
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                    ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40'
+                    : 'bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/40'
                 }`}
               >
-                {currentEngramScore.tier === 'Critical' && <Flame className="h-3 w-3 text-rose-400" />}
-                {currentEngramScore.tier === 'Important' && <Zap className="h-3 w-3 text-amber-400" />}
-                {currentEngramScore.tier !== 'Critical' && currentEngramScore.tier !== 'Important' && <RefreshCw className="h-3 w-3 text-sky-400" />}
+                {currentEngramScore.tier === 'Critical' && <Flame className="h-3 w-3 text-rose-600 dark:text-rose-400" />}
+                {currentEngramScore.tier === 'Important' && <Zap className="h-3 w-3 text-amber-600 dark:text-amber-400" />}
+                {currentEngramScore.tier !== 'Critical' && currentEngramScore.tier !== 'Important' && <RefreshCw className="h-3 w-3 text-sky-600 dark:text-sky-400" />}
                 <span>
                   {currentEngramScore.tier === 'Critical'
                     ? (isEn ? 'High Strategic Impact' : 'Alto Impacto')
@@ -511,12 +512,12 @@ export default function StructuredLearningSectionPage() {
 
           {/* Reason quote */}
           {currentEngramScore.reason && (
-            <div className="mt-3 rounded-xl border border-indigo-500/20 bg-indigo-950/20 px-3.5 py-2.5 text-xs text-slate-200">
+            <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/50 px-3.5 py-2.5 text-xs text-slate-700 dark:border-indigo-500/20 dark:bg-indigo-950/20 dark:text-slate-200">
               <p className="italic leading-relaxed">
                 "{currentEngramScore.reason}"
               </p>
               {currentEngramScore.tier === 'Refresher' || currentEngramScore.score < 55 ? (
-                <p className="mt-1 text-[11px] font-medium text-sky-300/90">
+                <p className="mt-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300/90">
                   {isEn
                     ? '💡 You already demonstrated foundation in this area — the tutor will move fast and focus on team alignment.'
                     : '💡 Ya dominas la base de este tema según tu perfil — el tutor avanzará con agilidad para alinear con los estándares del equipo.'}
@@ -527,8 +528,8 @@ export default function StructuredLearningSectionPage() {
 
           {/* Tutor Adaptation Line */}
           {learnerProfile && (
-            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-indigo-200/90 pt-2 border-t border-white/5">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-400 flex-none" />
+            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-indigo-800 dark:text-indigo-200/90 pt-2 border-t border-indigo-100/80 dark:border-white/5">
+              <Sparkles className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 flex-none" />
               <span>
                 {isEn
                   ? `AI Tutor is personalized for your ${learnerProfile.roleTitle ? `${learnerProfile.roleTitle} ` : ''}role and experience level.`
@@ -542,26 +543,26 @@ export default function StructuredLearningSectionPage() {
       {/* Engram Impact Score Details Modal */}
       {showScoreModal && currentEngramScore && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in duration-150"
           role="dialog"
           aria-modal="true"
         >
-          <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/15 bg-slate-900 p-6 shadow-2xl text-left">
+          <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl text-left dark:border-white/15 dark:bg-slate-900">
             <button
               type="button"
               onClick={() => setShowScoreModal(false)}
-              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white transition"
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white transition"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
             </button>
 
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-400">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
               <Sparkles className="h-3.5 w-3.5" />
               <span>{isEn ? 'AI Personalization Rationale & Score Composition' : 'Justificación y Composición del Score con IA'}</span>
             </div>
 
-            <h3 className="mt-2 text-lg font-bold text-white">
+            <h3 className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
               {currentSection?.SubchapterTitle ?? currentEngramScore.engramId}
             </h3>
 
@@ -569,22 +570,22 @@ export default function StructuredLearningSectionPage() {
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${
                   currentEngramScore.tier === 'Critical'
-                    ? 'bg-rose-900/40 text-rose-200 border border-rose-500/40'
+                    ? 'bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-900/40 dark:text-rose-200 dark:border-rose-500/40'
                     : currentEngramScore.tier === 'Important'
-                    ? 'bg-amber-900/40 text-amber-200 border border-amber-500/40'
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-500/40'
                     : currentEngramScore.tier === 'Refresher'
-                    ? 'bg-sky-900/40 text-sky-200 border border-sky-500/40'
-                    : 'bg-slate-800 text-slate-300 border border-slate-700'
+                    ? 'bg-sky-100 text-sky-800 border border-sky-300 dark:bg-sky-900/40 dark:text-sky-200 dark:border-sky-500/40'
+                    : 'bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                 }`}
               >
-                {currentEngramScore.tier === 'Critical' && <Flame className="h-3.5 w-3.5 text-rose-400" />}
-                {currentEngramScore.tier === 'Important' && <Zap className="h-3.5 w-3.5 text-amber-400" />}
-                {currentEngramScore.tier === 'Refresher' && <RefreshCw className="h-3.5 w-3.5 text-sky-400" />}
+                {currentEngramScore.tier === 'Critical' && <Flame className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />}
+                {currentEngramScore.tier === 'Important' && <Zap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
+                {currentEngramScore.tier === 'Refresher' && <RefreshCw className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />}
                 {currentEngramScore.score}/100 — {currentEngramScore.tier} {isEn ? 'Impact' : 'Impacto'}
               </span>
 
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-950/40 border border-indigo-500/30 px-3 py-1 text-xs font-semibold text-indigo-300">
-                <Target className="h-3.5 w-3.5" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500/30 dark:text-indigo-300">
+                <Target className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span>
                   {isEn ? 'Primary Driver:' : 'Impulsor Principal:'} <strong>{currentEngramScore.primarySignal}</strong>
                 </span>
@@ -592,39 +593,39 @@ export default function StructuredLearningSectionPage() {
             </div>
 
             {/* AI Personalization Reason Narrative */}
-            <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-950/30 p-4 text-sm text-slate-200 leading-relaxed">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-300 mb-1">
+            <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm text-slate-800 dark:border-indigo-500/20 dark:bg-indigo-950/30 dark:text-slate-200 leading-relaxed">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1">
                 {isEn ? 'Why this score was assigned to you:' : 'Por qué se te asignó este puntaje:'}
               </div>
               <p className="italic">"{currentEngramScore.reason}"</p>
             </div>
 
             {/* Why this Score vs Higher Scores Comparison Box */}
-            <div className="mt-4 rounded-xl border border-slate-700/60 bg-slate-950/40 p-4 text-xs space-y-2.5">
-              <div className="font-bold text-white flex items-center gap-1.5">
-                <Target className="h-3.5 w-3.5 text-indigo-400" />
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs space-y-2.5 dark:border-slate-700/60 dark:bg-slate-950/40">
+              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span>{isEn ? `Why ${currentEngramScore.score}/100 vs higher scores?` : `¿Por qué ${currentEngramScore.score}/100 vs puntajes más altos?`}</span>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-300">
-                <div className="rounded-lg bg-sky-950/30 border border-sky-500/20 p-2.5 space-y-1">
-                  <div className="font-bold text-sky-300 flex items-center gap-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+                <div className="rounded-lg bg-sky-50 border border-sky-200 p-2.5 space-y-1 dark:bg-sky-950/30 dark:border-sky-500/20">
+                  <div className="font-bold text-sky-800 dark:text-sky-300 flex items-center gap-1">
                     <RefreshCw className="h-3 w-3" />
                     <span>{isEn ? `This Engram (${currentEngramScore.score}/100):` : `Este Engrama (${currentEngramScore.score}/100):`}</span>
                   </div>
-                  <p className="text-slate-300 leading-snug">
+                  <p className="text-slate-600 dark:text-slate-300 leading-snug">
                     {isEn
                       ? 'Required for your role, but your resume already demonstrates foundational knowledge in this area. It serves as a quick alignment refresher.'
                       : 'Exigido para tu rol, pero tu CV ya demuestra conocimientos en esta área. Sirve como repaso de alineación.'}
                   </p>
                 </div>
 
-                <div className="rounded-lg bg-rose-950/30 border border-rose-500/20 p-2.5 space-y-1">
-                  <div className="font-bold text-rose-300 flex items-center gap-1">
+                <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 space-y-1 dark:bg-rose-950/30 dark:border-rose-500/20">
+                  <div className="font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1">
                     <Flame className="h-3 w-3" />
                     <span>{isEn ? 'Higher Scores (80–100 Critical):' : 'Puntajes Más Altos (80–100 Crítico):'}</span>
                   </div>
-                  <p className="text-slate-300 leading-snug">
+                  <p className="text-slate-600 dark:text-slate-300 leading-snug">
                     {isEn
                       ? 'Target unverified skill gaps directly tied to your active Q4 SMART objectives and promotion milestones that you have not yet proven.'
                       : 'Apuntan a brechas no verificadas directamente ligadas a tus objetivos SMART Q4 y metas de ascenso aún no demostradas.'}
@@ -634,8 +635,8 @@ export default function StructuredLearningSectionPage() {
             </div>
 
             {/* Score Composition & Signal Breakdown */}
-            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-white/[0.02]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">
                 {isEn ? 'Scoring Signals & Weighting Framework' : 'Ponderación y Señales del Score'}
               </div>
 
@@ -644,8 +645,8 @@ export default function StructuredLearningSectionPage() {
                 <div
                   className={`flex items-center justify-between p-2 rounded-lg text-xs transition ${
                     currentEngramScore.primarySignal === 'Role'
-                      ? 'bg-indigo-900/40 font-bold text-indigo-200 border border-indigo-500/40'
-                      : 'text-slate-400'
+                      ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-200 dark:border-indigo-500/40'
+                      : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -665,8 +666,8 @@ export default function StructuredLearningSectionPage() {
                 <div
                   className={`flex items-center justify-between p-2 rounded-lg text-xs transition ${
                     currentEngramScore.primarySignal === 'KPI'
-                      ? 'bg-indigo-900/40 font-bold text-indigo-200 border border-indigo-500/40'
-                      : 'text-slate-400'
+                      ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-200 dark:border-indigo-500/40'
+                      : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -686,8 +687,8 @@ export default function StructuredLearningSectionPage() {
                 <div
                   className={`flex items-center justify-between p-2 rounded-lg text-xs transition ${
                     currentEngramScore.primarySignal === 'Coaching'
-                      ? 'bg-indigo-900/40 font-bold text-indigo-200 border border-indigo-500/40'
-                      : 'text-slate-400'
+                      ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-200 dark:border-indigo-500/40'
+                      : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -707,8 +708,8 @@ export default function StructuredLearningSectionPage() {
                 <div
                   className={`flex items-center justify-between p-2 rounded-lg text-xs transition ${
                     currentEngramScore.primarySignal === 'CareerGrowth'
-                      ? 'bg-indigo-900/40 font-bold text-indigo-200 border border-indigo-500/40'
-                      : 'text-slate-400'
+                      ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-200 dark:border-indigo-500/40'
+                      : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -728,8 +729,8 @@ export default function StructuredLearningSectionPage() {
                 <div
                   className={`flex items-center justify-between p-2 rounded-lg text-xs transition ${
                     currentEngramScore.primarySignal === 'Skill'
-                      ? 'bg-indigo-900/40 font-bold text-indigo-200 border border-indigo-500/40'
-                      : 'text-slate-400'
+                      ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-200 dark:border-indigo-500/40'
+                      : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -748,8 +749,8 @@ export default function StructuredLearningSectionPage() {
             </div>
 
             {/* Core Purpose Rule */}
-            <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-950/20 p-3.5 text-xs text-indigo-300">
-              <span className="font-semibold text-indigo-200">
+            <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs text-indigo-900 dark:border-indigo-500/20 dark:bg-indigo-950/20 dark:text-indigo-300">
+              <span className="font-bold text-indigo-950 dark:text-indigo-200">
                 {isEn ? '📌 Progression Note: ' : '📌 Nota de Progreso: '}
               </span>
               {isEn
@@ -839,7 +840,7 @@ export default function StructuredLearningSectionPage() {
           type="button"
           disabled={isFirstStep && !previousSection}
           onClick={goPrevious}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:bg-white/[0.06]"
         >
           <ArrowLeft className="h-4 w-4" /> {isEn ? 'Previous' : 'Anterior'}
         </button>
@@ -847,7 +848,7 @@ export default function StructuredLearningSectionPage() {
           type="button"
           onClick={goNext}
           disabled={!canAdvancePastCurrentStep}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-30"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isLastStep && !nextSection
             ? (isEn ? 'Finish Lesson' : 'Finalizar Lección')
@@ -895,20 +896,20 @@ function StepProgress({
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
                   isDone
-                    ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                    ? 'border-transparent bg-gradient-to-br from-indigo-600 to-purple-600 text-white'
                     : isActive
-                      ? 'border-indigo-400 bg-indigo-500/10 text-indigo-300'
-                      : 'border-white/10 bg-white/[0.03] text-slate-500'
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-300'
+                      : 'border-slate-200 bg-white text-slate-400 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-500'
                 }`}
               >
                 {isDone ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
               </div>
-              <span className={`text-[11px] font-medium ${isActive ? 'text-white' : isDone ? 'text-indigo-300' : 'text-slate-500'}`}>
+              <span className={`text-[11px] font-semibold ${isActive ? 'text-slate-900 dark:text-white font-bold' : isDone ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'}`}>
                 {isEn ? meta.labelEn : meta.labelEs}
               </span>
             </button>
             {index < orderedSteps.length - 1 && (
-              <div className={`mx-1 h-0.5 flex-1 ${index < currentIndex ? 'bg-indigo-500' : 'bg-white/10'}`} />
+              <div className={`mx-1 h-0.5 flex-1 ${index < currentIndex ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-slate-200 dark:bg-white/10'}`} />
             )}
           </div>
         );
@@ -950,12 +951,12 @@ function StepContent({
         />
       )}
 
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 dark:bg-slate-950/30 shadow-2xl shadow-black/10">
+      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900/80">
         {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && (
           <StepIllustration stepDataJson={step.StepDataJson} />
         )}
         <div className="px-5 py-6 sm:px-8 sm:py-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-400">
+          <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
             {isEn ? meta.labelEn : meta.labelEs}
           </p>
 
@@ -1008,7 +1009,7 @@ function RichStepContent({ content }: { content: string }) {
   const blocks = normalizeRichBlocks(content);
 
   return (
-    <div className="mt-6 max-w-4xl space-y-6 text-[16px] leading-8 text-slate-200 sm:text-[17px]">
+    <div className="mt-6 max-w-4xl space-y-6 text-[16px] leading-8 text-slate-800 dark:text-slate-200 sm:text-[17px]">
       {blocks.map((block, index) => {
         const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
         const isList = lines.length > 0 && lines.every((line) => /^([-*]|\d+[.)])\s+/.test(line));
@@ -1016,7 +1017,7 @@ function RichStepContent({ content }: { content: string }) {
 
         if (heading) {
           const text = lines[0].replace(/^#{1,3}\s+/, '');
-          return <h3 key={index} className="pt-1 text-base font-semibold leading-6 text-white">{text}</h3>;
+          return <h3 key={index} className="pt-2 text-lg font-bold leading-7 text-slate-900 dark:text-white">{text}</h3>;
         }
 
         if (isList) {
@@ -1025,7 +1026,7 @@ function RichStepContent({ content }: { content: string }) {
           return (
             <List key={index} className={`space-y-2 pl-6 ${ordered ? 'list-decimal' : 'list-disc'}`}>
               {lines.map((line, lineIndex) => (
-                <li key={lineIndex} className="pl-1">
+                <li key={lineIndex} className="pl-1 text-slate-700 dark:text-slate-300">
                   {formatInlineText(line.replace(/^([-*]|\d+[.)])\s+/, ''))}
                 </li>
               ))}
@@ -1034,7 +1035,7 @@ function RichStepContent({ content }: { content: string }) {
         }
 
         return (
-          <p key={index}>
+          <p key={index} className="text-slate-700 dark:text-slate-300">
             {lines.map((line, lineIndex) => (
               <span key={lineIndex}>
                 {lineIndex > 0 && <br />}
@@ -1059,8 +1060,20 @@ function splitLongBlock(block: string): string[] {
   return groups;
 }
 
+function cleanEngramContent(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/^ContractVersion:\s*[^\n]+\s*/i, '')
+    .replace(/\[(?:Descripci[óo]n\s+de\s+imagen|Image\s+description)[^\]]*\]/gi, '')
+    .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?[\s\S]*?(?=(?:\n#{1,6}\s+[^\n]+|\n\[(?:Descripci|Image)|$))/gi, '')
+    .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?VERBATIM\s+TRANSCRIPTION:?\s*/gi, '\n')
+    .replace(/#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?\s*/gi, '')
+    .trim();
+}
+
 function normalizeRichBlocks(content: string): string[] {
-  const normalized = content
+  const cleaned = cleanEngramContent(content);
+  const normalized = cleaned
     .replace(/\r\n/g, '\n')
     .replace(/\s+•\s+/g, '\n• ')
     .replace(/\s+(Why this matters)\s+/gi, '\n\n$1\n')
@@ -1079,7 +1092,7 @@ function formatInlineText(value: string): ReactNode {
   return parts.map((part, index) => {
     const bold = /^\*\*[^*]+\*\*$/.test(part) || /^__[^_]+__$/.test(part);
     return bold ? (
-      <strong key={index} className="font-semibold text-white">
+      <strong key={index} className="font-bold text-slate-900 dark:text-white">
         {part.slice(2, -2)}
       </strong>
     ) : (
@@ -1174,10 +1187,10 @@ function TeachingTimelineWizard({
               key={item.Type === 'Text' ? 'text' : `video-${item.IllustrationId}`}
               type="button"
               onClick={() => setIndex(i)}
-              className={`flex h-10 min-w-[2.5rem] items-center justify-center rounded-full border px-2.5 text-sm font-semibold transition ${
+              className={`flex h-10 min-w-[2.5rem] items-center justify-center rounded-full border px-2.5 text-sm font-bold transition ${
                 i === index
-                  ? 'border-indigo-400 bg-indigo-500/20 text-indigo-200'
-                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20'
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200 shadow-xs'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400 dark:hover:border-white/20'
               }`}
             >
               {item.Type === 'Video' ? <Video className="h-5 w-5" /> : i + 1}
@@ -1188,13 +1201,13 @@ function TeachingTimelineWizard({
 
       {current.Type === 'Video' ? (
         <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-indigo-300">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
             <Video className="h-4 w-4" /> {isEn ? 'Watch the video lesson below' : 'Mira la lección en video a continuación'}
           </p>
           <video
             src={apiImageUrl(`/illustrations/structured-learning/${current.IllustrationId}/image`)}
             controls
-            className="w-full rounded-xl bg-black"
+            className="w-full rounded-2xl bg-black shadow-md"
           />
         </div>
       ) : (
@@ -1202,23 +1215,23 @@ function TeachingTimelineWizard({
       )}
 
       {items.length > 1 && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 pt-2">
           <button
             type="button"
             disabled={isFirst}
             onClick={() => setIndex((i) => Math.max(0, i - 1))}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:bg-white/[0.06]"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> {isEn ? 'Previous' : 'Anterior'}
           </button>
-          <span className="text-[11px] text-slate-500">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
             {index + 1} / {items.length}
           </span>
           <button
             type="button"
             disabled={isLast}
             onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isEn ? 'Next' : 'Siguiente'} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
           </button>
@@ -1249,6 +1262,30 @@ function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
   return <ZoomableIllustration illustrationId={illustrationId} alt="" className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center" />;
 }
 
+async function downloadImageFile(url: string, filename = 'lesson-illustration.png') {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Fetch failed');
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}
+
 function ZoomableIllustration({ illustrationId, alt, className }: { illustrationId: string; alt: string; className: string }) {
   const [open, setOpen] = useState(false);
 
@@ -1262,18 +1299,34 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
   }, [open]);
 
   const src = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
+  const filename = `${(alt ? alt.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50) : 'illustration') || 'illustration'}.png`;
+
   return (
-    <>
+    <div className="group relative block w-full">
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group relative block w-full cursor-zoom-in"
+        className="block w-full cursor-zoom-in"
         aria-label="Enlarge image"
       >
         <img src={src} alt={alt} className={className} />
         <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
           Enlarge
         </span>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          void downloadImageFile(src, filename);
+        }}
+        title="Download / Save image to local file"
+        className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg border border-white/20 bg-slate-900/85 px-2.5 py-1 text-[11px] font-medium text-slate-200 shadow-md backdrop-blur-xs opacity-0 transition hover:bg-slate-800 hover:text-white group-hover:opacity-100 cursor-pointer"
+        aria-label="Save image to local file"
+      >
+        <Download className="h-3.5 w-3.5" />
+        <span>Save image</span>
       </button>
       {open && (
         <div
@@ -1286,8 +1339,20 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
             <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
             <button
               type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void downloadImageFile(src, filename);
+              }}
+              className="absolute -top-2 right-12 flex items-center gap-1.5 rounded-full border border-white/20 bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-800 cursor-pointer"
+              aria-label="Download image"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Download</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setOpen(false)}
-              className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800"
+              className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800 cursor-pointer"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -1295,7 +1360,7 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -1341,10 +1406,10 @@ function DeepDiveQuiz({
               type="button"
               onClick={() => setCardIndex(index)}
               title={c.Title}
-              className={`flex h-7 min-w-[1.75rem] items-center justify-center rounded-full border px-2 text-[11px] font-semibold transition ${
+              className={`flex h-7 min-w-[1.75rem] items-center justify-center rounded-full border px-2 text-[11px] font-bold transition ${
                 index === cardIndex
-                  ? 'border-indigo-400 bg-indigo-500/20 text-indigo-200'
-                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.06]'
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200 shadow-xs'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400 dark:hover:bg-white/[0.06]'
               }`}
             >
               {index + 1}
@@ -1352,17 +1417,17 @@ function DeepDiveQuiz({
           ))}
         </div>
       )}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.03]">
         {freeCard.IllustrationIds && freeCard.IllustrationIds.length > 0 ? (
-          <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {freeCard.IllustrationIds.map((id, i) => (
               <div key={id} className="space-y-1">
                 <ZoomableIllustration
                   illustrationId={id}
                   alt={`${freeCard.Title} — step ${i + 1}`}
-                  className="h-auto max-h-48 w-full rounded-lg object-contain bg-black/20"
+                  className="h-auto max-h-48 w-full rounded-xl object-contain bg-slate-100 dark:bg-black/20"
                 />
-                <p className="text-center text-[11px] font-medium text-slate-400">Step {i + 1}</p>
+                <p className="text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">Step {i + 1}</p>
               </div>
             ))}
           </div>
@@ -1370,13 +1435,13 @@ function DeepDiveQuiz({
           <ZoomableIllustration
             illustrationId={freeCard.IllustrationId}
             alt={freeCard.Title}
-            className="mb-2 h-auto max-h-72 w-full rounded-lg object-contain bg-black/20"
+            className="mb-3 h-auto max-h-72 w-full rounded-xl object-contain bg-slate-100 dark:bg-black/20"
           />
         ) : (
-          freeCard.Emoji && <div className="mb-2 text-3xl leading-none">{freeCard.Emoji}</div>
+          freeCard.Emoji && <div className="mb-3 text-3xl leading-none">{freeCard.Emoji}</div>
         )}
-        <p className="text-sm font-semibold text-white">{freeCard.Title}</p>
-        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{freeCard.Text}</p>
+        <p className="text-base font-bold text-slate-900 dark:text-white">{freeCard.Title}</p>
+        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">{freeCard.Text}</p>
 
         <VoiceTutorAgent
           structuredLearningSectionStepId={stepId}
@@ -1386,35 +1451,33 @@ function DeepDiveQuiz({
           compact
         />
       </div>
-      {cards.length > 1 && (
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 pt-2">
+        <button
+          type="button"
+          disabled={cardIndex === 0}
+          onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
+          className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+        >
+          {isEn ? 'Previous' : 'Anterior'}
+        </button>
+        {cardIndex < cards.length - 1 ? (
           <button
             type="button"
-            disabled={cardIndex === 0}
-            onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
-            className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
+            onClick={() => setCardIndex((i) => Math.min(cards.length - 1, i + 1))}
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
           >
-            {isEn ? 'Previous' : 'Anterior'}
+            {isEn ? 'Next' : 'Siguiente'}
           </button>
-          {cardIndex < cards.length - 1 ? (
-            <button
-              type="button"
-              onClick={() => setCardIndex((i) => Math.min(cards.length - 1, i + 1))}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.06]"
-            >
-              {isEn ? 'Next' : 'Siguiente'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => markCompleteOnce()}
-              className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white"
-            >
-              {isEn ? 'Continue' : 'Continuar'}
-            </button>
-          )}
-        </div>
-      )}
+        ) : (
+          <button
+            type="button"
+            onClick={() => markCompleteOnce()}
+            className="rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110"
+          >
+            {isEn ? 'Continue' : 'Continuar'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1508,36 +1571,36 @@ function RecallPractice({
 
   return (
     <div className="mt-3 space-y-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {isEn ? `Attempt ${attemptsUsed + 1} of ${RECALL_MAX_ATTEMPTS}` : `Intento ${attemptsUsed + 1} de ${RECALL_MAX_ATTEMPTS}`}
       </p>
       <div className="flex items-center gap-2">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
           <div
-            className="h-full rounded-full bg-fuchsia-400 transition-all"
+            className="h-full rounded-full bg-fuchsia-500 transition-all"
             style={{ width: `${Math.min(100, (itemsMastered / itemsRequired) * 100)}%` }}
           />
         </div>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
           {itemsMastered} / {itemsRequired} {isEn ? 'mastered' : 'dominados'}
         </span>
       </div>
       {lastMastered === true && (
-        <p className="text-xs text-emerald-300">{isEn ? '✓ Great explanation!' : '✓ ¡Excelente explicación!'}</p>
+        <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{isEn ? '✓ Great explanation!' : '✓ ¡Excelente explicación!'}</p>
       )}
-      <p className="text-sm text-slate-200">{question}</p>
+      <p className="text-sm font-medium leading-relaxed text-slate-800 dark:text-slate-200">{question}</p>
       <textarea
         value={response}
         onChange={(e) => setResponse(e.target.value)}
         rows={3}
         placeholder={isEn ? 'Explain in your own words...' : 'Explica con tus propias palabras...'}
-        className="w-full rounded-xl border border-white/10 bg-slate-950/40 p-3 text-sm text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
+        className="w-full rounded-2xl border border-slate-200 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none dark:border-white/10 dark:bg-slate-950/40 dark:text-white dark:placeholder:text-slate-500"
       />
       <button
         type="button"
         onClick={handleSubmit}
         disabled={submitting || !response.trim()}
-        className="inline-flex items-center gap-2 rounded-xl bg-fuchsia-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-pink-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-fuchsia-500/20 transition hover:brightness-110 disabled:opacity-50"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         {isEn ? 'Submit Explanation' : 'Enviar Explicación'}
@@ -1738,20 +1801,22 @@ function AssessmentPractice({
 
   return (
     <div className="mt-3 space-y-3">
-      <p className="text-xs text-slate-400">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {isEn ? `Question ${q.QuestionIndex + 1} of ${round.TotalQuestions} (Round ${round.RoundNumber})` : `Pregunta ${q.QuestionIndex + 1} de ${round.TotalQuestions} (Ronda ${round.RoundNumber})`}
       </p>
-      <p className="text-sm text-slate-200">{q.QuestionText}</p>
+      <p className="text-sm font-semibold text-slate-900 dark:text-white leading-relaxed">{q.QuestionText}</p>
 
-      {lastGrade && <div className={`rounded-lg border p-2.5 text-xs ${gradeColor}`}>{lastGrade.Feedback}</div>}
+      {lastGrade && <div className={`rounded-xl border p-3 text-xs font-medium ${gradeColor}`}>{lastGrade.Feedback}</div>}
 
       {questionType === 'MultipleChoice' && q.Options ? (
         <div className="space-y-2">
           {q.Options.map((opt, index) => (
             <label
               key={index}
-              className={`flex cursor-pointer items-center gap-2 rounded-lg border p-2.5 text-sm ${
-                selectedOption === index ? 'border-emerald-400/60 bg-emerald-500/10 text-white' : 'border-white/10 bg-white/[0.02] text-slate-300'
+              className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3 text-sm transition ${
+                selectedOption === index
+                  ? 'border-emerald-500 bg-emerald-50 font-semibold text-emerald-950 dark:border-emerald-400/60 dark:bg-emerald-500/10 dark:text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300 dark:hover:bg-white/[0.04]'
               }`}
             >
               <input
@@ -1759,7 +1824,7 @@ function AssessmentPractice({
                 name={`sl-assessment-${q.StructuredLearningAssessmentQuestionAttemptId}`}
                 checked={selectedOption === index}
                 onChange={() => setSelectedOption(index)}
-                className="h-4 w-4"
+                className="h-4 w-4 accent-emerald-600"
               />
               {opt}
             </label>
@@ -1771,7 +1836,7 @@ function AssessmentPractice({
           onChange={(e) => setOpenAnswer(e.target.value)}
           rows={3}
           placeholder={isEn ? 'Enter your answer...' : 'Ingresa tu respuesta...'}
-          className="w-full rounded-xl border border-white/10 bg-slate-950/40 p-3 text-sm text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
+          className="w-full rounded-2xl border border-slate-200 bg-white p-3.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none dark:border-white/10 dark:bg-slate-950/40 dark:text-white dark:placeholder:text-slate-500"
         />
       )}
 
@@ -1779,7 +1844,7 @@ function AssessmentPractice({
         type="button"
         onClick={handleSubmitAnswer}
         disabled={submitting}
-        className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-50"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         {isEn ? 'Submit Answer' : 'Enviar Respuesta'}

@@ -36,6 +36,11 @@ export interface EmployeeObjective {
   actionPlan?: string | null;
   businessImpact?: string | null;
 
+  // Recommended Skills to complete this objective
+  recommendedTechnicalSkills?: string[] | null;
+  recommendedSoftSkills?: string[] | null;
+  recommendationReasoning?: string | null;
+
   // Department Alignment
   departmentObjectiveId?: string | null;
   departmentObjectiveTitle?: string | null;
@@ -86,6 +91,21 @@ export interface EmployeeGrowthRecommendation {
 
 export const DEFAULT_DEPT_OBJECTIVES_ES: DepartmentObjectiveRef[] = [
   {
+    id: 'd-obj-ai-org',
+    title: 'Implementar Agentes de IA para la Organización',
+    description: 'Diseñar, integrar y desplegar agentes inteligentes autónomos en procesos clave para automatizar flujos operativos y elevar la productividad del equipo.',
+    targetQuarter: 'Q4 2026',
+    targetDate: '2026-12-31',
+    progressPercentage: 33,
+    status: 'Active',
+    strategicGoalTitle: 'Implementar Agentes de IA en Procesos Clave de Operación',
+    pillarTitle: 'Innovación & Transformación Tecnológica',
+    metricName: 'Agentes de IA en Producción',
+    currentValue: 1,
+    targetValue: 3,
+    unit: 'Agentes',
+  },
+  {
     id: 'd-obj-se-1',
     title: 'Desplegar Agentes de IA en el Pipeline de CI/CD para Revisión Automatizada de Código',
     description: 'Implementar agentes autónomos basados en Inteligencia Artificial para análisis estático, generación automática de pruebas unitarias y detección de vulnerabilidades previas al merge.',
@@ -118,6 +138,21 @@ export const DEFAULT_DEPT_OBJECTIVES_ES: DepartmentObjectiveRef[] = [
 ];
 
 export const DEFAULT_DEPT_OBJECTIVES_EN: DepartmentObjectiveRef[] = [
+  {
+    id: 'd-obj-ai-org',
+    title: 'Deploy AI Agents Across the Organization',
+    description: 'Design, integrate, and deploy autonomous AI agents across core workflows to automate repetitive tasks and boost team productivity.',
+    targetQuarter: 'Q4 2026',
+    targetDate: '2026-12-31',
+    progressPercentage: 33,
+    status: 'Active',
+    strategicGoalTitle: 'Deploy AI Agents Across Key Operational Workflows',
+    pillarTitle: 'Innovation & Technological Transformation',
+    metricName: 'Production AI Agents Deployed',
+    currentValue: 1,
+    targetValue: 3,
+    unit: 'Agents',
+  },
   {
     id: 'd-obj-se-1',
     title: 'Deploy AI Agents Across the CI/CD Pipeline for Automated Code Review',
@@ -451,6 +486,68 @@ export function saveEmployeeObjectives(
 ): void {
   const key = getEmployeeObjectivesStorageKey(tenantId, personId);
   localStorage.setItem(key, JSON.stringify(objectives));
+}
+
+// ── Smart Objective Recommendation Agent Client ──────────────────────────
+
+export interface RecommendSmartObjectivePayload {
+  departmentObjectiveTitle?: string | null;
+  departmentObjectiveDescription?: string | null;
+  departmentObjectiveTargetQuarter?: string | null;
+  departmentObjectiveTargetDate?: string | null;
+  strategicGoalTitle?: string | null;
+  pillarTitle?: string | null;
+  departmentMetricName?: string | null;
+  departmentTargetValue?: number | null;
+  departmentUnit?: string | null;
+  employeeName?: string | null;
+  jobRoleTitle?: string | null;
+  jobRoleLevel?: string | null;
+  jobRolePurpose?: string | null;
+  jobRoleSummary?: string | null;
+  jobRoleTechnicalSkills?: string[];
+  jobRoleSoftSkills?: string[];
+  language?: string;
+}
+
+export interface SmartObjectiveRecommendationDto {
+  title: string;
+  description: string;
+  metricName: string;
+  currentValue: number;
+  targetValue: number;
+  unit: string;
+  measurementMethod: string;
+  actionPlan: string;
+  businessImpact: string;
+  targetQuarter: string;
+  targetDate: string;
+  recommendedTechnicalSkills: string[];
+  recommendedSoftSkills: string[];
+  recommendationReasoning: string;
+}
+
+export async function recommendSmartObjective(
+  payload: RecommendSmartObjectivePayload
+): Promise<SmartObjectiveRecommendationDto> {
+  const response = await fetch('/api/objectives/recommend-smart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let errorMsg = 'Failed to generate recommendation';
+    try {
+      const errBody = await response.json();
+      errorMsg = errBody.message || errBody.error || errorMsg;
+    } catch {
+      // fallback
+    }
+    throw new Error(errorMsg);
+  }
+
+  return response.json();
 }
 
 export function getAvailableDepartmentObjectives(

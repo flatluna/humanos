@@ -254,6 +254,25 @@ export const DEFAULT_GOALS_EN: StrategicGoal[] = [
 
 export const DEFAULT_SOFTWARE_ENG_OBJECTIVES_ES: DepartmentObjective[] = [
   {
+    id: 'd-obj-ai-org',
+    title: 'Implementar Agentes de IA para la Organización',
+    description: 'Diseñar, integrar y desplegar agentes inteligentes autónomos en procesos clave para automatizar flujos operativos y elevar la productividad del equipo.',
+    targetQuarter: 'Q4 2026',
+    targetDate: '2026-12-31',
+    progressPercentage: 33,
+    status: 'Active',
+    strategicGoalId: 'g-1',
+    strategicGoalTitle: 'Implementar Agentes de IA en Procesos Clave de Operación',
+    pillarTitle: 'Innovación & Transformación Tecnológica',
+    metricName: 'Agentes de IA en Producción',
+    currentValue: 1,
+    targetValue: 3,
+    unit: 'Agentes',
+    measurementMethod: 'Telemetría de ejecución de agentes y métricas de resolución en Azure Application Insights.',
+    actionPlan: '1. Seleccionar 3 flujos clave (HR, Soporte y Operaciones).\n2. Desarrollar MVPs con Microsoft Agent Framework.\n3. Piloto y pase a producción.',
+    businessImpact: 'Ahorro estimado de 150 horas mensuales y 40% de reducción en tiempos de ciclo.',
+  },
+  {
     id: 'd-obj-se-1',
     title: 'Desplegar Agentes de IA en el Pipeline de CI/CD para Revisión Automatizada de Código',
     description: 'Implementar agentes autónomos basados en Inteligencia Artificial para análisis estático, generación automática de pruebas unitarias y detección de vulnerabilidades previas al merge.',
@@ -294,6 +313,25 @@ export const DEFAULT_SOFTWARE_ENG_OBJECTIVES_ES: DepartmentObjective[] = [
 ];
 
 export const DEFAULT_SOFTWARE_ENG_OBJECTIVES_EN: DepartmentObjective[] = [
+  {
+    id: 'd-obj-ai-org',
+    title: 'Deploy AI Agents Across the Organization',
+    description: 'Design, integrate, and deploy autonomous AI agents across core workflows to automate repetitive tasks and boost team productivity.',
+    targetQuarter: 'Q4 2026',
+    targetDate: '2026-12-31',
+    progressPercentage: 33,
+    status: 'Active',
+    strategicGoalId: 'g-1',
+    strategicGoalTitle: 'Deploy AI Agents Across Key Operational Workflows',
+    pillarTitle: 'Innovation & Technological Transformation',
+    metricName: 'Production AI Agents Deployed',
+    currentValue: 1,
+    targetValue: 3,
+    unit: 'Agents',
+    measurementMethod: 'Agent execution telemetry and resolution metrics in Azure Application Insights.',
+    actionPlan: '1. Select 3 priority workflows (HR, Support, Operations).\n2. Build MVPs with Microsoft Agent Framework.\n3. Pilot and roll out to production.',
+    businessImpact: 'Estimated savings of 150 hours/month and 40% reduction in cycle times.',
+  },
   {
     id: 'd-obj-se-1',
     title: 'Deploy AI Agents Across the CI/CD Pipeline for Automated Code Review',

@@ -22,6 +22,8 @@ import {
   Video,
   ChevronUp,
   ChevronDown,
+  Image,
+  Download,
 } from 'lucide-react';
 import {
   getStructuredLearningDocument,
@@ -460,6 +462,7 @@ export default function StructuredLearningSectionPage() {
           <StepContent
             key={currentStep.StructuredLearningSectionStepId}
             step={currentStep}
+            allSteps={currentSection.Steps}
             sectionId={currentSection.StructuredLearningDocumentSectionId}
             questionType={document.AssessmentQuestionType}
             mode={mode}
@@ -565,6 +568,7 @@ function StepProgress({
 /** Renders ONE step's content — the current step in the wizard. */
 function StepContent({
   step,
+  allSteps,
   sectionId,
   questionType,
   mode,
@@ -572,6 +576,7 @@ function StepContent({
   onStepUpdated,
 }: {
   step: StructuredLearningStepDetail;
+  allSteps?: StructuredLearningStepDetail[];
   sectionId: string;
   questionType: string;
   mode: PreviewMode;
@@ -624,7 +629,7 @@ function StepContent({
             <>
               <StepEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
               <ManualEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
-              {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} onVideosChanged={() => setVideoRefreshKey((k) => k + 1)} />}
+              {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} allSteps={allSteps} onVideosChanged={() => setVideoRefreshKey((k) => k + 1)} />}
               {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} refreshKey={videoRefreshKey} />}
             </>
           )}
@@ -699,8 +704,20 @@ function splitLongBlock(block: string): string[] {
   return groups;
 }
 
+function cleanEngramContent(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/^ContractVersion:\s*[^\n]+\s*/i, '')
+    .replace(/\[(?:Descripci[óo]n\s+de\s+imagen|Image\s+description)[^\]]*\]/gi, '')
+    .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?[\s\S]*?(?=(?:\n#{1,6}\s+[^\n]+|\n\[(?:Descripci|Image)|$))/gi, '')
+    .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?VERBATIM\s+TRANSCRIPTION:?\s*/gi, '\n')
+    .replace(/#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?\s*/gi, '')
+    .trim();
+}
+
 function normalizeRichBlocks(content: string): string[] {
-  const normalized = content
+  const cleaned = cleanEngramContent(content);
+  const normalized = cleaned
     .replace(/\r\n/g, '\n')
     .replace(/\s+•\s+/g, '\n• ')
     .replace(/\s+(Why this matters)\s+/gi, '\n\n$1\n')
@@ -1351,6 +1368,59 @@ function TeachingTimelineWizard({
   );
 }
 
+async function fetchIllustrationAsBase64(illustrationId: string): Promise<{ base64: string; contentType: string; previewUrl: string }> {
+  const url = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
+  try {
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const blob = await resp.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.split(',')[1] ?? '';
+          resolve({
+            base64,
+            contentType: blob.type || 'image/png',
+            previewUrl: dataUrl,
+          });
+        };
+        reader.onerror = () => reject(new Error('Failed to read image data'));
+        reader.readAsDataURL(blob);
+      });
+    }
+  } catch {
+    // Fallback to canvas
+  }
+
+  // Fallback via Image element + canvas
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not create canvas context');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1] ?? '';
+        resolve({
+          base64,
+          contentType: 'image/png',
+          previewUrl: dataUrl,
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error('Failed to load engram illustration'));
+    img.src = url;
+  });
+}
+
 /** "Add video" box (2026-08-21, Google Veo) — Teaching step only, hard
  * cap of 2 videos per section enforced server-side (real billed cost per
  * call). Same async start/poll shape as pedagogy generation: kick off a
@@ -1359,10 +1429,12 @@ function TeachingTimelineWizard({
 function VideoGenerationBox({
   sectionId,
   step,
+  allSteps,
   onVideosChanged,
 }: {
   sectionId: string;
   step: StructuredLearningStepDetail;
+  allSteps?: StructuredLearningStepDetail[];
   onVideosChanged: () => void;
 }) {
   const { t } = useTranslation();
@@ -1385,6 +1457,32 @@ function VideoGenerationBox({
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regenerateMenuId, setRegenerateMenuId] = useState<string | null>(null);
 
+  // Lesson illustration detection for use as starting point
+  const lessonIllustrationId = (() => {
+    if (step.StepDataJson) {
+      try {
+        const parsed = JSON.parse(step.StepDataJson) as { IllustrationId?: string | null };
+        if (parsed.IllustrationId) return parsed.IllustrationId;
+      } catch {
+        // ignore
+      }
+    }
+    if (allSteps) {
+      for (const s of allSteps) {
+        if (s.StepDataJson) {
+          try {
+            const parsed = JSON.parse(s.StepDataJson) as { IllustrationId?: string | null };
+            if (parsed.IllustrationId) return parsed.IllustrationId;
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+    return null;
+  })();
+  const [loadingLessonImage, setLoadingLessonImage] = useState(false);
+
   // === Video prompt wizard (2026-08-26 rebuild) ===
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardTab, setWizardTab] = useState(0);
@@ -1392,7 +1490,7 @@ function VideoGenerationBox({
   const [wizardVideoDescription, setWizardVideoDescription] = useState('');
   const [wizardEnvironment, setWizardEnvironment] = useState('');
   const [wizardImageDescription, setWizardImageDescription] = useState('');
-  const [wizardImageMode, setWizardImageMode] = useState<'upload' | 'ai' | 'edit' | 'none'>('none');
+  const [wizardImageMode, setWizardImageMode] = useState<'engram' | 'upload' | 'ai' | 'edit' | 'none'>('none');
   const [wizardImage, setWizardImage] = useState<{ base64: string; contentType: string; previewUrl: string } | null>(null);
   const [wizardGeneratingImage, setWizardGeneratingImage] = useState(false);
   const [wizardGeneratingPrompts, setWizardGeneratingPrompts] = useState(false);
@@ -1480,9 +1578,48 @@ function VideoGenerationBox({
     }
   }
 
+  async function handleSelectWizardImageMode(mode: 'engram' | 'upload' | 'ai' | 'edit' | 'none') {
+    setWizardImageMode(mode);
+    setWizardError(null);
+    if (mode === 'engram') {
+      if (lessonIllustrationId) {
+        setLoadingLessonImage(true);
+        try {
+          const img = await fetchIllustrationAsBase64(lessonIllustrationId);
+          setWizardImage(img);
+          if (!wizardImageDescription.trim()) {
+            setWizardImageDescription('Starting frame based on the engram lesson illustration.');
+          }
+        } catch (err) {
+          setWizardError(err instanceof Error ? err.message : 'Failed to load the engram image.');
+        } finally {
+          setLoadingLessonImage(false);
+        }
+      } else {
+        setWizardImage(null);
+      }
+    } else if (mode === 'none') {
+      setWizardImage(null);
+    }
+  }
+
+  async function handleUseLessonImageAsReference() {
+    if (!lessonIllustrationId) return;
+    setLoadingLessonImage(true);
+    setError(null);
+    try {
+      const img = await fetchIllustrationAsBase64(lessonIllustrationId);
+      setReferenceImage(img);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load the engram image.');
+    } finally {
+      setLoadingLessonImage(false);
+    }
+  }
+
   async function handleWizardGeneratePrompts() {
     if (!wizardObjective.trim() || !wizardVideoDescription.trim() || !wizardEnvironment.trim()) return;
-    // Guard (2026-08-30 fix): if the reviewer picked upload/ai/edit but the
+    // Guard (2026-08-30 fix): if the reviewer picked upload/ai/edit/engram but the
     // image hasn't actually arrived yet (still generating, or they forgot
     // to click "Generate image"/"Edit image with AI" first), silently
     // proceeding here would capture wizardChainImage as null below —
@@ -1490,17 +1627,21 @@ function VideoGenerationBox({
     // so every clip falls back to pure text-to-video instead of using the
     // requested image.
     if (wizardImageMode !== 'none' && !wizardImage) {
-      setWizardError('Please generate/upload the starting image first (or switch to "No image") before generating the prompt sequence.');
+      setWizardError('Please generate/upload/select the starting image first (or switch to "No image") before generating the prompt sequence.');
       return;
     }
     setWizardGeneratingPrompts(true);
     setWizardError(null);
     try {
+      const imageDesc = wizardImageMode === 'engram' && !wizardImageDescription.trim()
+        ? 'Starting frame based on the engram lesson illustration.'
+        : wizardImageDescription.trim() || 'No specific starting image provided.';
+
       const result = await generateStructuredLearningVideoPrompt(
         wizardObjective.trim(),
         wizardVideoDescription.trim(),
         wizardEnvironment.trim(),
-        wizardImageDescription.trim() || 'No specific starting image provided.'
+        imageDesc
       );
       setWizardPrompts(result.RecommendedPrompts);
       setWizardActiveClip(0);
@@ -1521,12 +1662,11 @@ function VideoGenerationBox({
     if (!clipPrompt?.trim()) return;
     setWizardGeneratingClip(index);
     setWizardError(null);
-    // Prefer the previous clip's last frame (continuity between clips);
-    // otherwise strictly respect tab 3's explicit choice — "No image" means
-    // no anchor at all (Veo invents the scene from the text prompt), even
-    // if an image was uploaded/generated earlier and then the mode was
-    // switched away from it.
-    const anchorImage = wizardChainImage ?? (wizardImageMode === 'none' ? null : wizardImage);
+    // For the first clip (index 0), always use the starting image from tab 3 (wizardImage).
+    // For subsequent clips (index > 0), use the chained previous clip's last frame if available, otherwise fallback to wizardImage.
+    const anchorImage = wizardImageMode === 'none'
+      ? null
+      : (index === 0 ? wizardImage : (wizardChainImage ?? wizardImage));
     try {
       const status = await startStructuredLearningVideo(
         sectionId, clipPrompt.trim(), step.StepType, videoModel,
@@ -2040,20 +2180,64 @@ function VideoGenerationBox({
           )}
           {wizardTab === 3 && (
             <div className="space-y-2">
-              <div className="flex gap-2">
-                {(['upload', 'ai', 'edit', 'none'] as const).map((mode) => (
+              <div className="flex flex-wrap gap-2">
+                {(['engram', 'upload', 'ai', 'edit', 'none'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
-                    onClick={() => setWizardImageMode(mode)}
-                    className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] ${
-                      wizardImageMode === mode ? 'border-violet-400 bg-violet-500/15 text-violet-100' : 'border-white/10 text-slate-400 hover:bg-white/[0.05]'
+                    onClick={() => handleSelectWizardImageMode(mode)}
+                    className={`flex-1 min-w-[90px] rounded-lg border px-2 py-1.5 text-[11px] font-medium transition ${
+                      wizardImageMode === mode ? 'border-violet-400 bg-violet-500/15 text-violet-100 font-semibold shadow-xs' : 'border-white/10 text-slate-400 hover:bg-white/[0.05]'
                     }`}
                   >
-                    {mode === 'upload' ? 'Upload image' : mode === 'ai' ? 'Generate with AI' : mode === 'edit' ? 'Upload + edit with AI' : 'No image'}
+                    {mode === 'engram'
+                      ? 'Engram image'
+                      : mode === 'upload'
+                      ? 'Upload image'
+                      : mode === 'ai'
+                      ? 'Generate with AI'
+                      : mode === 'edit'
+                      ? 'Upload + edit with AI'
+                      : 'No image'}
                   </button>
                 ))}
               </div>
+
+              {wizardImageMode === 'engram' && (
+                <div className="space-y-2 rounded-lg border border-violet-400/30 bg-violet-500/[0.04] p-3">
+                  {lessonIllustrationId ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                          <Check className="h-3.5 w-3.5" /> Engram lesson illustration detected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectWizardImageMode('engram')}
+                          disabled={loadingLessonImage}
+                          className="text-[11px] text-violet-300 hover:underline"
+                        >
+                          {loadingLessonImage ? 'Loading...' : 'Reload image'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        The illustration shown in this engram's lesson will be used as the starting anchor image for the video.
+                      </p>
+                      {loadingLessonImage && (
+                        <div className="flex items-center gap-2 text-xs text-violet-300 py-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Loading engram image data...</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+                      No illustration was found in this engram's lesson. Please choose <strong>Upload image</strong> or <strong>Generate with AI</strong>.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {wizardImageMode === 'upload' && (
                 <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10">
                   <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleWizardImageUpload} />
@@ -2102,24 +2286,31 @@ function VideoGenerationBox({
                     {wizardGeneratingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     Edit image with AI
                   </button>
-                  {!wizardImage && <p className="text-[11px] text-amber-400">Upload an image first.</p>}
+                  {!wizardImage && <p className="text-[11px] text-amber-400">Upload an image or select Engram image first.</p>}
                 </div>
               )}
               {wizardImage && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pt-1">
                   <img
                     src={wizardImage.previewUrl}
                     alt="Starting image"
                     onClick={() => setLightboxSrc(wizardImage.previewUrl)}
                     className="h-24 w-24 cursor-zoom-in rounded-lg object-cover hover:ring-2 hover:ring-violet-400"
                   />
-                  <a
-                    href={wizardImage.previewUrl}
-                    download={`starting-image.${wizardImage.contentType.split('/')[1] || 'png'}`}
-                    className="rounded-full border border-white/20 bg-slate-900/80 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-800"
-                  >
-                    Download
-                  </a>
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-200">
+                      {wizardImageMode === 'engram' ? 'Engram lesson illustration' : 'Starting image'}
+                    </span>
+                    <div>
+                      <a
+                        href={wizardImage.previewUrl}
+                        download={`starting-image.${wizardImage.contentType.split('/')[1] || 'png'}`}
+                        className="inline-block rounded-full border border-white/20 bg-slate-900/80 px-2.5 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-800"
+                      >
+                        Download
+                      </a>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2224,16 +2415,29 @@ function VideoGenerationBox({
                 </button>
               </div>
             ) : (
-              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={handleReferenceImageChange}
-                  disabled={submitting || runStatus?.Stage === 'Running'}
-                />
-                {t('structuredLearningCourse.videoUploadImage')}
-              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {lessonIllustrationId && (
+                  <button
+                    type="button"
+                    onClick={handleUseLessonImageAsReference}
+                    disabled={submitting || runStatus?.Stage === 'Running' || loadingLessonImage}
+                    className="flex items-center gap-1.5 rounded-lg border border-violet-400/40 bg-violet-500/10 px-2.5 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20 disabled:opacity-50"
+                  >
+                    {loadingLessonImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Image className="h-3.5 w-3.5" />}
+                    Use engram image
+                  </button>
+                )}
+                <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-300 hover:bg-violet-500/10">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleReferenceImageChange}
+                    disabled={submitting || runStatus?.Stage === 'Running'}
+                  />
+                  {t('structuredLearningCourse.videoUploadImage')}
+                </label>
+              </div>
             )}
           </div>
           {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
@@ -2647,6 +2851,30 @@ function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
   return <ZoomableIllustration illustrationId={illustrationId} alt="" className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center" />;
 }
 
+async function downloadImageFile(url: string, filename = 'lesson-illustration.png') {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Fetch failed');
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}
+
 function ZoomableIllustration({ illustrationId, alt, className }: { illustrationId: string; alt: string; className: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -2661,23 +2889,51 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
   }, [open]);
 
   const src = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
+  const filename = `${(alt ? alt.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50) : 'illustration') || 'illustration'}.png`;
+
   return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} className="group relative block w-full cursor-zoom-in" aria-label={t('structuredLearningCourse.enlargeIllustration')}>
+    <div className="group relative block w-full">
+      <button type="button" onClick={() => setOpen(true)} className="block w-full cursor-zoom-in" aria-label={t('structuredLearningCourse.enlargeIllustration')}>
         <img src={src} alt={alt} className={className} />
         <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">{t('structuredLearningCourse.enlargeIllustrationTooltip')}</span>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          void downloadImageFile(src, filename);
+        }}
+        title="Download / Save image to local file"
+        className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg border border-white/20 bg-slate-900/85 px-2.5 py-1 text-[11px] font-medium text-slate-200 shadow-md backdrop-blur-xs opacity-0 transition hover:bg-slate-800 hover:text-white group-hover:opacity-100 cursor-pointer"
+        aria-label="Save image to local file"
+      >
+        <Download className="h-3.5 w-3.5" />
+        <span>Save image</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={t('structuredLearningCourse.enlargedIllustration')} onClick={() => setOpen(false)}>
           <div className="relative flex max-h-[95vh] max-w-[95vw] items-center justify-center" onClick={(event) => event.stopPropagation()}>
             <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
-            <button type="button" onClick={() => setOpen(false)} className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800" aria-label={t('structuredLearningCourse.closeIllustration')}>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void downloadImageFile(src, filename);
+              }}
+              className="absolute -top-2 right-12 flex items-center gap-1.5 rounded-full border border-white/20 bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-800 cursor-pointer"
+              aria-label="Download image"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Download</span>
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800 cursor-pointer" aria-label={t('structuredLearningCourse.closeIllustration')}>
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

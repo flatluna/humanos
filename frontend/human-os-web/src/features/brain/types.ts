@@ -12,6 +12,7 @@ import type { BackendCapabilityGraphNode, BackendCapabilityGraphEdge } from '@/f
 export interface StructuredLearningBrainNode {
   capabilityGraphNodeId: string;
   name: string;
+  description?: string;
   state: 'Mastered';
   lastCompletedDate?: string;
   reviewCount?: number;

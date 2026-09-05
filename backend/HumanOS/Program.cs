@@ -196,6 +196,11 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.CareerDevelopmentPlanAgent>();
         services.AddScoped<PersonCareerPlanService>();
 
+        // Employee SMART Objective Recommendation Agent (Microsoft Agent Framework) —
+        // Recommends individual SMART objectives and selects role skills based on aligned
+        // department objectives and job role competencies.
+        services.AddSingleton<HumanOS.Agents.SmartObjectiveRecommendationAgent>();
+
         // Employee professional profile consolidation service for AI scoring
         services.AddScoped<EmployeeScoringProfileService>();
         services.AddScoped<ILearnerContextBuilder, LearnerContextBuilder>();
@@ -224,6 +229,7 @@ var host = new HostBuilder()
         services.AddSingleton<CuradorAgent>();
         services.AddSingleton<TocExtractionAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.OutlineTitleRefinementAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.EngramRelevanceRerankerAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.SectionContentExpansionAgent>();
         services.AddSingleton<ArquitectoAgent>();
         services.AddSingleton<GraphArchitectAgent>();
