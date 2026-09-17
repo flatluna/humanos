@@ -386,3 +386,56 @@ export function generateStructuredLearningConnections(sectionId: string): Promis
   return rPost<GenerateStructuredLearningConnectionsResponse>(`/studio/structured-learning/sections/${sectionId}/knowledge-graph/generate`, {});
 }
 
+// ==================== Workplace Application (Production / "In your role") ====================
+
+export interface WorkplaceApplicationDto {
+  SectionId: string;
+  PersonId: string;
+  StudentName: string;
+  RoleTitle: string;
+  Tools: string[];
+  TargetObjective?: string | null;
+  ScenarioTitle: string;
+  ScenarioText: string;
+  PracticalActions: string[];
+  AudioUrl: string;
+  LanguageCode: string;
+}
+
+export function getStructuredLearningWorkplaceApplication(
+  sectionId: string,
+  personId?: string,
+  languageCode?: string,
+  force = false
+): Promise<WorkplaceApplicationDto> {
+  const query = new URLSearchParams();
+  if (personId) query.set('personId', personId);
+  if (languageCode) query.set('languageCode', languageCode);
+  if (force) query.set('force', 'true');
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return rGet<WorkplaceApplicationDto>(`/studio/structured-learning/sections/${sectionId}/workplace-application${qs}`);
+}
+
+export interface WorkplaceMentorChatResponse {
+  Reply: string;
+  SessionId: string;
+}
+
+export function postStructuredLearningWorkplaceChat(
+  sectionId: string,
+  message: string,
+  sessionId?: string,
+  personId?: string,
+  languageCode?: string
+): Promise<WorkplaceMentorChatResponse> {
+  return rPost<WorkplaceMentorChatResponse>(
+    `/studio/structured-learning/sections/${sectionId}/workplace-application/chat`,
+    {
+      personId: personId || null,
+      message,
+      sessionId: sessionId || null,
+      languageCode: languageCode || null,
+    }
+  );
+}
+

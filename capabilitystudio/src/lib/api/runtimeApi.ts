@@ -401,11 +401,12 @@ export interface VoiceTutorSessionDto {
 
 export function requestVoiceTutorSession(
   target:
-    | { learningSessionStepId: string; promptText?: string; personName?: string; exampleCardIndex?: number }
+    | { learningSessionStepId: string; promptText?: string; personName?: string; personId?: string; exampleCardIndex?: number }
     | {
         capabilityGraphNodeId: string;
         stepType: ExperienceStepType;
         personName?: string;
+        personId?: string;
         exampleCardIndex?: number;
         /** DeepDive only (2026-07-30) — revisiting an already-mastered card
          * via the read-only card index. Switches the voice Agent to a
@@ -419,6 +420,7 @@ export function requestVoiceTutorSession(
          * VoiceTutorSessionFunction.RunTraditionalLessonAsync. */
         traditionalCourseLessonId: string;
         personName?: string;
+        personId?: string;
       }
     | {
         /** Structured Learning path (2026-08-10) — a single
@@ -426,10 +428,13 @@ export function requestVoiceTutorSession(
          * See VoiceTutorSessionFunction.RunStructuredLearningStepAsync. */
         structuredLearningSectionStepId: string;
         personName?: string;
+        personId?: string;
         /** DeepDive only — which ExampleCard (see StepDataJson) to quiz on. */
         exampleCardIndex?: number;
         /** DeepDive only — read-only card review, no grading tool offered. */
         isReviewOnly?: boolean;
+        /** When true, configures the Voice Tutor in Q&A-only mode to answer questions about the lecture. */
+        isQaMode?: boolean;
       }
 ): Promise<VoiceTutorSessionDto> {
   return apiPost<VoiceTutorSessionDto>('/instructor-runtime/tutor/voice-session', {
@@ -439,6 +444,7 @@ export function requestVoiceTutorSession(
     StepType: 'capabilityGraphNodeId' in target ? target.stepType : undefined,
     TraditionalCourseLessonId: 'traditionalCourseLessonId' in target ? target.traditionalCourseLessonId : undefined,
     StructuredLearningSectionStepId: 'structuredLearningSectionStepId' in target ? target.structuredLearningSectionStepId : undefined,
+    PersonId: 'personId' in target ? target.personId : undefined,
     PersonName: target.personName,
     ExampleCardIndex: 'exampleCardIndex' in target ? target.exampleCardIndex : undefined,
     IsReviewOnly:
@@ -447,6 +453,7 @@ export function requestVoiceTutorSession(
         : 'structuredLearningSectionStepId' in target
         ? target.isReviewOnly ?? false
         : false,
+    IsQaMode: 'isQaMode' in target ? target.isQaMode ?? false : false,
   });
 }
 

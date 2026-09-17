@@ -26,6 +26,11 @@ import AiAgentsDomainPage from './pages/AiAgentsDomainPage';
 import AiAgentsTopicPage from './pages/AiAgentsTopicPage';
 import AiAgentsChatPage from './pages/AiAgentsChatPage';
 import FilmProductionsPage from './pages/FilmProductionsPage';
+import ProgramEntitiesPage from './pages/ProgramEntitiesPage';
+import ProgramEntitiesIndexPage from './pages/ProgramEntitiesIndexPage';
+import LabsPage from './pages/LabsPage';
+import LabDetailPage from './pages/LabDetailPage';
+import LabBuilderPage from './pages/LabBuilderPage';
 
 export default function App() {
   return (
@@ -58,8 +63,13 @@ export default function App() {
           <Route path="/programs" element={<ProgramsHomePage />} />
           <Route path="/programs/new" element={<NewProgramPage />} />
           <Route path="/programs/:programId" element={<ProgramDetailPage />} />
+          <Route path="/programs/:programId/entities" element={<ProgramEntitiesPage />} />
+          <Route path="/program-entities" element={<ProgramEntitiesIndexPage />} />
           <Route path="/costs" element={<CostDashboardPage />} />
           <Route path="/film-productions" element={<FilmProductionsPage />} />
+          <Route path="/labs" element={<LabsPage />} />
+          <Route path="/labs/:labId" element={<LabDetailPage />} />
+          <Route path="/labs/new-ai" element={<LabBuilderPage />} />
         </Route>
       </Route>
     </Routes>

@@ -16,6 +16,13 @@ public sealed class GenerateStructuredLearningVideoPromptRequest
     public string VideoDescription { get; set; } = string.Empty;
     public string Environment { get; set; } = string.Empty;
     public string ImageDescription { get; set; } = string.Empty;
+    public string? LanguageCode { get; set; }
+
+    /// <summary>Optional user-requested cap on the number of clips (2026-09-08)
+    /// — lets a reviewer ask for a shorter, summarized sequence (e.g. 6)
+    /// instead of the default <see cref="StructuredLearningVideoOrchestrator.MaxVideosPerSection"/>.
+    /// Clamped to [1, MaxVideosPerSection].</summary>
+    public int? MaxVideos { get; set; }
 }
 
 public sealed class GenerateStructuredLearningVideoPromptResponse
@@ -70,11 +77,15 @@ public sealed class GenerateStructuredLearningVideoPromptFunction
                 "Objective, VideoDescription, Environment, and ImageDescription are required.", cancellationToken);
         }
 
+        var maxVideos = body.MaxVideos is int requested
+            ? Math.Clamp(requested, 1, StructuredLearningVideoOrchestrator.MaxVideosPerSection)
+            : StructuredLearningVideoOrchestrator.MaxVideosPerSection;
+
         try
         {
             var prompts = await _agent.GenerateAsync(
                 body.Objective, body.VideoDescription, body.Environment, body.ImageDescription,
-                StructuredLearningVideoOrchestrator.MaxVideosPerSection, cancellationToken);
+                maxVideos, body.LanguageCode, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(
                 request, new GenerateStructuredLearningVideoPromptResponse { RecommendedPrompts = prompts },
                 cancellationToken: cancellationToken);

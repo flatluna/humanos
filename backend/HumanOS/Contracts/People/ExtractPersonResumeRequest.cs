@@ -14,6 +14,8 @@ public sealed class ExtractPersonResumeRequest
 /// ever saved automatically.</summary>
 public sealed class ExtractPersonResumeResponse
 {
+    public StudentAcademicProfile? StudentAcademicProfile { get; set; }
+
     public string? Address { get; set; }
 
     public string? LinkedInUrl { get; set; }

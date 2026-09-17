@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using HumanOS.Data;
+using HumanOS.Models.Capabilities.Studio;
 using Microsoft.EntityFrameworkCore;
 
 namespace HumanOS.Services;
@@ -86,14 +87,36 @@ public sealed class StructuredLearningPedagogyOrchestrator
         bool forceRegenerateAll = false,
         byte[]? uploadedImageBytes = null,
         string? uploadedImageContentType = null,
-        string? referenceImageUsageInstruction = null)
+        string? referenceImageUsageInstruction = null,
+        bool? usePerplexitySearch = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
 
+        string? initialDocName = null;
+        int? initialPendingCount = null;
+        try
+        {
+            using var dbContext = _dbContextFactory.CreateDbContext();
+            var docSummary = dbContext.StructuredLearningDocuments
+                .Where(d => d.StructuredLearningDocumentId == documentId)
+                .Select(d => new
+                {
+                    d.DocumentName,
+                    PendingCount = d.Sections.Count(s => forceRegenerateAll || s.PedagogyStatus != StructuredLearningPedagogyStatus.Completed)
+                })
+                .FirstOrDefault();
+            initialDocName = docSummary?.DocumentName;
+            initialPendingCount = docSummary?.PendingCount;
+        }
+        catch
+        {
+            // Best-effort only
+        }
+
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, null, "Starting", null, null, null));
+        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, initialDocName, "Starting", initialPendingCount, 0, null));
 
         session.BackgroundTask = Task.Run(async () =>
         {
@@ -122,7 +145,9 @@ public sealed class StructuredLearningPedagogyOrchestrator
                     forceRegenerateAll,
                     uploadedImageBytes,
                     uploadedImageContentType,
-                    referenceImageUsageInstruction);
+                    referenceImageUsageInstruction,
+                    illustrationOverride: null,
+                    usePerplexitySearch: usePerplexitySearch);
 
                 session.UpdateStatus(StructuredLearningPedagogyRunStatus.Completed(runId, documentId, result));
             }

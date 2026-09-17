@@ -23,10 +23,16 @@ public sealed class GetCapabilityCostsFunction
         HttpRequestData request,
         CancellationToken cancellationToken)
     {
+        Guid? callerTenantId = request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+            Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId)
+                ? studioTenantId
+                : null;
+
         var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        var tenantId = callerTenantId ?? (Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null);
         DateOnly? date = DateOnly.TryParse(query["date"], out var parsedDate) ? parsedDate : null;
 
-        var summaries = await _capabilityCostService.GetSummariesAsync(date, cancellationToken);
+        var summaries = await _capabilityCostService.GetSummariesAsync(date, tenantId, cancellationToken);
         return await FunctionResponseFactory.SuccessResponseAsync(request, summaries, cancellationToken: cancellationToken);
     }
 }

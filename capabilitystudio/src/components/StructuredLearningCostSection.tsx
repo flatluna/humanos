@@ -55,6 +55,7 @@ export default function StructuredLearningCostSection({ documentId }: { document
               <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnIn')}</th>
               <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnOut')}</th>
               <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnImages')}</th>
+              <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnVideos')}</th>
               <th className="pb-1.5 font-medium text-right">{t('structuredLearningRunProgress.costColumnCost')}</th>
             </tr>
           </thead>
@@ -67,6 +68,7 @@ export default function StructuredLearningCostSection({ documentId }: { document
                 <td className="py-1.5 pr-3 text-right tabular-nums">{step.InputTokens.toLocaleString()}</td>
                 <td className="py-1.5 pr-3 text-right tabular-nums">{step.OutputTokens.toLocaleString()}</td>
                 <td className="py-1.5 pr-3 text-right tabular-nums">{step.ImagesGeneratedCount > 0 ? step.ImagesGeneratedCount.toLocaleString() : '—'}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums">{(step.VideosGeneratedCount ?? 0) > 0 ? (step.VideosGeneratedCount ?? 0).toLocaleString() : '—'}</td>
                 <td className="py-1.5 text-right tabular-nums text-amber-300">${step.EstimatedCostUsd.toFixed(4)}</td>
               </tr>
             ))}

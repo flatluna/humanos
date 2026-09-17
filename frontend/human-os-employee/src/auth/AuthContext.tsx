@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // to a Tenant), so we must force a fresh request every time.
       const res = await fetch('/api/me', {
         cache: 'no-store',
-        headers: { 'X-Azure-OID': oid, 'X-Azure-TID': tid },
+        headers: { 'X-Azure-OID': oid, 'X-Azure-TID': tid, 'X-Azure-Email': email },
       });
 
       if (res.ok) {

@@ -65,7 +65,20 @@ public sealed class GoogleVeoVideoService
         // rendered a silent video. Always append the cue unconditionally;
         // it's harmless to layer on top of a prompt that already mentions
         // audio, and it's the only way to reliably force a real audio track.
-        var effectivePrompt = $"{prompt} Include clear, audible narration describing the action out loud, synchronized with the movement, plus natural ambient sound.";
+        var isSpanish = prompt.StartsWith("Objetivo:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains("Lección a enseñar", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains("Escena:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" Dice:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" Dice en español:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" el ", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" la ", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" de ", StringComparison.OrdinalIgnoreCase);
+
+        var audioCue = isSpanish
+            ? " Incluye narración audible y clara en español describiendo la acción en voz alta, sincronizada con el movimiento, más sonido ambiente natural."
+            : " Include clear, audible narration describing the action out loud, synchronized with the movement, plus natural ambient sound.";
+
+        var effectivePrompt = $"{prompt}{audioCue}";
 
         var hasImage = imageBytes is { Length: > 0 };
         var instance = hasImage

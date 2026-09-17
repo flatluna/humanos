@@ -133,39 +133,35 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         CancellationToken cancellationToken,
         Guid? subjectId = null,
         Guid? topicId = null,
-        Guid? documentId = null)
+        Guid? documentId = null,
+        IReadOnlyList<Guid>? documentIds = null)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         var normalizedQuery = StructuredLearningEntityExtractionService.Normalize(userQuery);
-        var entitiesQuery = dbContext.StructuredLearningEntities.Where(e => e.TenantId == tenantId);
 
-        // Topic-level agent (e.g. "Matemáticas/Álgebra") — every course under
-        // that Topic. Course-level agent (documentId set, e.g. one specific
-        // course) narrows further below, after Engrams are resolved, since
-        // entities themselves are scoped by Subject/Topic, not by document.
-        if (subjectId.HasValue)
+        var targetDocIds = documentIds is { Count: > 0 }
+            ? documentIds.ToHashSet()
+            : documentId.HasValue
+                ? new HashSet<Guid> { documentId.Value }
+                : null;
+
+        IQueryable<StructuredLearningEntity> entitiesQuery;
+        if (targetDocIds is not null)
         {
-            entitiesQuery = entitiesQuery.Where(e => e.SubjectId == subjectId.Value);
+            var documentEntityIds = dbContext.StructuredLearningEntitySections
+                .Where(l => targetDocIds.Contains(l.Section.StructuredLearningDocumentId))
+                .Select(l => l.StructuredLearningEntityId);
+            entitiesQuery = dbContext.StructuredLearningEntities.Where(e => documentEntityIds.Contains(e.StructuredLearningEntityId));
         }
-        if (topicId.HasValue)
+        else
         {
-            entitiesQuery = entitiesQuery.Where(e => e.TopicId == topicId.Value);
+            entitiesQuery = dbContext.StructuredLearningEntities.Where(e => e.TenantId == tenantId || e.TenantId == Guid.Empty);
+            if (subjectId.HasValue) entitiesQuery = entitiesQuery.Where(e => e.SubjectId == subjectId.Value);
+            if (topicId.HasValue) entitiesQuery = entitiesQuery.Where(e => e.TopicId == topicId.Value);
         }
 
         var allEntities = await entitiesQuery.ToListAsync(cancellationToken);
-
-        // Course-level agent: only entities actually mentioned in THIS
-        // document's own sections are eligible candidates.
-        if (documentId.HasValue)
-        {
-            var documentEntityIds = await dbContext.StructuredLearningEntitySections
-                .Where(l => l.Section.StructuredLearningDocumentId == documentId.Value)
-                .Select(l => l.StructuredLearningEntityId)
-                .Distinct()
-                .ToListAsync(cancellationToken);
-            allEntities = allEntities.Where(e => documentEntityIds.Contains(e.StructuredLearningEntityId)).ToList();
-        }
 
         var matched = new List<(StructuredLearningEntity Entity, string MatchType)>();
 
@@ -213,16 +209,17 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             })
             .ToList();
 
-        var (retrievedEngrams, retrievedSchemas) = await RetrieveEngramsAndSchemasAsync(dbContext, matchedEntityIds, cancellationToken, queryEmbedding, userQuery, _rerankerAgent, documentId: documentId);
+        var (retrievedEngrams, retrievedSchemas) = await RetrieveEngramsAndSchemasAsync(
+            dbContext, matchedEntityIds, cancellationToken, queryEmbedding, userQuery, _rerankerAgent, documentId: documentId, documentIds: targetDocIds);
 
         // Hop 1 (2026-09-04 / 2026-09-05): entities co-mentioned in the retrieved
-        // engrams' own sections. Only runs for Topic-level agents (no documentId)
-        // to discover related courses in the domain. For Course-level agents,
+        // engrams' own sections. Only runs for Topic-level agents (no documentId or documentIds)
+        // to discover related courses in the domain. For Course/Program-level agents,
         // all course sections are already in the direct candidate pool.
         List<RetrievedEntityDto> relatedEntities = [];
         List<RetrievedEngramDto> relatedEngrams = [];
         List<RetrievedSchemaDto> relatedSchemas = [];
-        if (!documentId.HasValue && retrievedEngrams.Count > 0)
+        if (targetDocIds is null && retrievedEngrams.Count > 0)
         {
             var inScopeEntityIds = allEntities.Select(e => e.StructuredLearningEntityId).ToHashSet();
             var retrievedSectionIds = retrievedEngrams.Select(e => e.EngramId).ToHashSet();
@@ -245,7 +242,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
                 .ToListAsync(cancellationToken);
 
             var (hopEngrams, hopSchemas) = await RetrieveEngramsAndSchemasAsync(
-                dbContext, relatedEntityLinks.ToHashSet(), cancellationToken, queryEmbedding, userQuery, _rerankerAgent, excludeSectionIds: retrievedSectionIds, documentId: documentId);
+                dbContext, relatedEntityLinks.ToHashSet(), cancellationToken, queryEmbedding, userQuery, _rerankerAgent, excludeSectionIds: retrievedSectionIds, documentId: documentId, documentIds: targetDocIds);
             relatedEngrams = hopEngrams;
             relatedSchemas = hopSchemas;
         }
@@ -274,20 +271,24 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         string userQuery,
         EngramRelevanceRerankerAgent rerankerAgent,
         IReadOnlySet<Guid>? excludeSectionIds = null,
-        Guid? documentId = null)
+        Guid? documentId = null,
+        IReadOnlySet<Guid>? documentIds = null)
     {
         List<StructuredLearningEntitySection> links;
         var candidateSectionsQuery = dbContext.StructuredLearningDocumentSections.AsQueryable();
 
-        if (documentId.HasValue)
+        var scopedDocIds = documentIds is { Count: > 0 }
+            ? documentIds
+            : documentId.HasValue
+                ? new HashSet<Guid> { documentId.Value }
+                : null;
+
+        if (scopedDocIds is not null)
         {
-            // Course-level agent (2026-09-05 fix): the candidate pool is ALL
-            // sections of this document (~20-30 sections). This prevents
-            // relevant sections from being dropped if entity extraction or
-            // user typos (e.g. "ehtical ocnsideraitons") failed to match an
-            // exact entity node.
+            // Course-level or Program-level agent: the candidate pool is ALL
+            // sections of the target document(s).
             candidateSectionsQuery = candidateSectionsQuery
-                .Where(s => s.StructuredLearningDocumentId == documentId.Value);
+                .Where(s => scopedDocIds.Contains(s.StructuredLearningDocumentId));
 
             if (excludeSectionIds is not null && excludeSectionIds.Count > 0)
             {
@@ -296,7 +297,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             }
 
             links = await dbContext.StructuredLearningEntitySections
-                .Where(l => l.Section.StructuredLearningDocumentId == documentId.Value)
+                .Where(l => scopedDocIds.Contains(l.Section.StructuredLearningDocumentId))
                 .Select(l => new StructuredLearningEntitySection
                 {
                     StructuredLearningEntityId = l.StructuredLearningEntityId,
@@ -377,18 +378,98 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             .Select(l => l.StructuredLearningDocumentSectionId)
             .ToHashSet();
 
+        var exactArticleMatchedSectionIds = new HashSet<Guid>();
+        var strongLexicalMatchedSectionIds = new HashSet<Guid>();
+
+        var normalizedUserQuery = RemoveDiacritics(userQuery.Trim().ToLowerInvariant());
+        if (!string.IsNullOrWhiteSpace(normalizedUserQuery))
+        {
+            // Exact article detection: e.g. "articulo 1", "articulo 1.-", "art. 1", "art 7 bis"
+            var articleRegex = new System.Text.RegularExpressions.Regex(
+                @"\b(?:articulo|art\.?)\s*([0-9]+(?:\s*(?:bis|ter|quater))?)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var articleMatch = articleRegex.Match(normalizedUserQuery);
+
+            foreach (var s in candidateSections)
+            {
+                var titleLower = RemoveDiacritics(s.SubchapterTitle.ToLowerInvariant());
+
+                if (articleMatch.Success)
+                {
+                    var targetNum = articleMatch.Groups[1].Value.Trim().ToLowerInvariant();
+                    var sectionArticleMatch = articleRegex.Match(titleLower);
+                    if (sectionArticleMatch.Success && sectionArticleMatch.Groups[1].Value.Trim().ToLowerInvariant() == targetNum)
+                    {
+                        exactArticleMatchedSectionIds.Add(s.StructuredLearningDocumentSectionId);
+                        directMatchedSectionIds.Add(s.StructuredLearningDocumentSectionId);
+                        continue;
+                    }
+                }
+
+                if (titleLower.Contains(normalizedUserQuery) || (normalizedUserQuery.Length >= 3 && titleLower.StartsWith(normalizedUserQuery)))
+                {
+                    directMatchedSectionIds.Add(s.StructuredLearningDocumentSectionId);
+                }
+            }
+
+            // Verbatim/near-verbatim body lexical overlap (2026-09-07) — a
+            // student who quotes or closely paraphrases actual document
+            // wording (e.g. "vigilar el cumplimiento de las obligaciones de
+            // la presentación de avisos...") should find that section even
+            // when embedding similarity or the LLM reranker's judgment
+            // happens to miss it; this is a deterministic safety net,
+            // independent of both. Only fires when the question itself
+            // contains enough distinctive words (>=4) to avoid false
+            // positives on short/generic questions.
+            var contentWords = normalizedUserQuery
+                .Split([' ', ',', '.', ';', ':', '\n', '\r', '\t', '?', '¿', '!', '¡'], StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 5)
+                .Distinct()
+                .ToList();
+
+            if (contentWords.Count >= 4)
+            {
+                var requiredMatches = Math.Max(4, (int)Math.Ceiling(contentWords.Count * 0.6));
+                foreach (var s in candidateSections)
+                {
+                    if (directMatchedSectionIds.Contains(s.StructuredLearningDocumentSectionId))
+                    {
+                        continue;
+                    }
+
+                    var bodyLower = RemoveDiacritics(s.Text.ToLowerInvariant());
+                    var matchedWords = contentWords.Count(w => bodyLower.Contains(w));
+                    if (matchedWords >= requiredMatches)
+                    {
+                        directMatchedSectionIds.Add(s.StructuredLearningDocumentSectionId);
+                        strongLexicalMatchedSectionIds.Add(s.StructuredLearningDocumentSectionId);
+                    }
+                }
+            }
+        }
+
         var rankedSections = queryEmbedding is not null
             ? candidateSections
                 .Select(s => (
                     Section: s,
-                    Similarity: CosineSimilarity(queryEmbedding, s.Embedding.Memory.ToArray()),
+                    Similarity: s.Embedding.Memory.IsEmpty ? 0.0 : CosineSimilarity(queryEmbedding, s.Embedding.Memory.ToArray()),
                     TitleBoost: TitleRelevanceBoost(userQuery, s.SubchapterTitle),
-                    IsDirectEntityMatch: directMatchedSectionIds.Contains(s.StructuredLearningDocumentSectionId)))
-                .Where(x => x.IsDirectEntityMatch || (x.Similarity + x.TitleBoost) >= MinEngramSimilarity)
-                .OrderByDescending(x => x.Similarity + x.TitleBoost + (x.IsDirectEntityMatch ? 0.2 : 0))
+                    IsDirectEntityMatch: directMatchedSectionIds.Contains(s.StructuredLearningDocumentSectionId),
+                    IsExactArticleMatch: exactArticleMatchedSectionIds.Contains(s.StructuredLearningDocumentSectionId)))
+                .Where(x => x.IsExactArticleMatch || x.IsDirectEntityMatch || (x.Similarity + x.TitleBoost) >= MinEngramSimilarity)
+                .OrderByDescending(x => (x.IsExactArticleMatch ? 10.0 : 0.0) + (x.IsDirectEntityMatch ? 1.0 : 0.0) + x.TitleBoost + x.Similarity)
                 .Select(x => x.Section)
             : candidateSections.AsEnumerable();
         var candidatePool = rankedSections.Take(MaxCandidatesForReranking).ToList();
+
+        // If candidate pool was too aggressively filtered, fall back to top candidates with title boost
+        if (candidatePool.Count == 0 && candidateSections.Count > 0)
+        {
+            candidatePool = candidateSections
+                .OrderByDescending(s => TitleRelevanceBoost(userQuery, s.SubchapterTitle))
+                .Take(MaxCandidatesForReranking)
+                .ToList();
+        }
 
         // LLM RERANK (2026-09-04 / 2026-09-05): the heuristic above is fast
         // to build a candidate pool, but may still include topically adjacent
@@ -422,9 +503,31 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             }
         }
 
-        var sections = rerankAttempted && rerankedOrder is not null
+        var sections = rerankAttempted && rerankedOrder is not null && rerankedOrder.Count > 0
             ? rerankedOrder.Where(i => i >= 0 && i < candidatePool.Count).Select(i => candidatePool[i]).ToList()
             : candidatePool.Take(MaxEngramsPerRetrieval).ToList();
+
+        // If the user specifically queried a numerical article/section, or quoted/closely
+        // paraphrased actual document wording, ALWAYS guarantee that match is present in
+        // the final retrieved sections — regardless of what the LLM reranker decided.
+        var guaranteedMatchedSectionIds = exactArticleMatchedSectionIds.Concat(strongLexicalMatchedSectionIds).ToHashSet();
+        if (guaranteedMatchedSectionIds.Count > 0)
+        {
+            var guaranteedSections = candidatePool
+                .Where(s => guaranteedMatchedSectionIds.Contains(s.StructuredLearningDocumentSectionId))
+                .ToList();
+
+            if (guaranteedSections.Count > 0)
+            {
+                var existingIds = sections.Select(s => s.StructuredLearningDocumentSectionId).ToHashSet();
+                var missing = guaranteedSections.Where(s => !existingIds.Contains(s.StructuredLearningDocumentSectionId)).ToList();
+                sections.InsertRange(0, missing);
+                if (sections.Count > 5)
+                {
+                    sections = sections.Take(5).ToList();
+                }
+            }
+        }
 
         var engrams = sections.Select(s => new RetrievedEngramDto
         {
@@ -498,9 +601,17 @@ public sealed class StructuredLearningKnowledgeRetrievalService
             return 0;
         }
 
+        var normalizedQuery = userQuery.Trim().ToLowerInvariant();
+        var normalizedTitle = title.Trim().ToLowerInvariant();
+
+        if (normalizedTitle.Contains(normalizedQuery) || normalizedQuery.Contains(normalizedTitle))
+        {
+            return 0.45;
+        }
+
         var queryWords = userQuery
             .Split([' ', '\t', '\n', '\r', ',', '.', '?', '!', ':', ';', '"', '\''], StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length >= 4 && !StopWords.Contains(w))
+            .Where(w => (w.Length >= 1 && w.All(char.IsDigit)) || (w.Length >= 3 && !StopWords.Contains(w)))
             .Select(w => w.ToLowerInvariant())
             .Distinct()
             .ToList();
@@ -512,7 +623,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
 
         var titleWords = title
             .Split([' ', '\t', '\n', '\r', ',', '.', '?', '!', ':', ';', '"', '\'', '-', '/', '(', ')', '[', ']'], StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length >= 4 && !StopWords.Contains(w))
+            .Where(w => (w.Length >= 1 && w.All(char.IsDigit)) || (w.Length >= 3 && !StopWords.Contains(w)))
             .Select(w => w.ToLowerInvariant())
             .Distinct()
             .ToList();
@@ -521,7 +632,7 @@ public sealed class StructuredLearningKnowledgeRetrievalService
 
         // Capped so a handful of shared words gives a meaningful nudge
         // without letting the lexical signal completely override semantics.
-        return Math.Min(0.3, matches * 0.12);
+        return Math.Min(0.4, matches * 0.15);
     }
 
     private static int LevenshteinDistance(string s, string t)
@@ -562,5 +673,20 @@ public sealed class StructuredLearningKnowledgeRetrievalService
         if (minLen >= 7 && dist <= 2) return true;
         if (minLen >= 4 && dist <= 1) return true;
         return false;
+    }
+
+    private static string RemoveDiacritics(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var normalized = text.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 }

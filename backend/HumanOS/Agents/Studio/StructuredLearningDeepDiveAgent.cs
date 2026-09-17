@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
 
@@ -71,12 +73,31 @@ public sealed class StructuredLearningDeepDiveAgent
         RULES:
         - Must be answerable from THIS card's own content alone — never invent
           facts beyond it.
+        - When the card has an accompanying illustration (image attached
+          and/or an IMAGE DESCRIPTION given in the prompt), your explanation
+          MUST actually describe and reference what's shown in it (e.g. its
+          labels, diagram parts, or depicted scene) — don't just restate the
+          card's text as if there were no picture.
         - LANGUAGE: match the language of the card content given to you.
         - Always address the student directly and keep a warm, supportive,
           encouraging tone — never cold or robotic.
         """;
 
     private readonly AIAgent? _agent;
+
+    /// <summary>One AgentSession per card conversation (2026-09-05), keyed
+    /// by "{sectionStepId}:{cardIndex}" — keeps the whole back-and-forth on
+    /// ONE card (initial explanation, follow-up questions, wrap-up) as a
+    /// single flowing multi-turn conversation the model actually remembers,
+    /// instead of a fresh stateless call every attempt. A new card always
+    /// gets a brand-new key, so moving on naturally starts a clean session
+    /// — no explicit reset needed. In-memory only (this agent is a
+    /// singleton): lost on a process restart, same as every other
+    /// in-memory-only piece of Deep Dive state before this change; the DB
+    /// still persists CurrentDeepDiveCardIndex/CurrentDeepDivePrompt so the
+    /// student's progress itself is never lost, only the model's own
+    /// verbatim memory of the chat.</summary>
+    private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
 
     public StructuredLearningDeepDiveAgent(IConfiguration configuration)
     {
@@ -101,14 +122,31 @@ public sealed class StructuredLearningDeepDiveAgent
 
     public bool IsConfigured => _agent is not null;
 
-    public async Task<StructuredLearningDeepDiveTurnResponse> RunTurnAsync(string prompt, CancellationToken cancellationToken)
+    /// <summary>True the first time this card's session is asked for — the
+    /// caller uses this to decide whether to attach the card's
+    /// illustration(s) (only needed once; the session remembers them for
+    /// every later turn on the same card).</summary>
+    public bool IsFirstTurnOnCard(string sessionKey) => !_sessions.ContainsKey(sessionKey);
+
+    /// <summary>Runs one turn of a flowing, multi-turn conversation about a
+    /// single Deep Dive card — <paramref name="message"/> may include the
+    /// card's own image(s) alongside its text (only needed on the first
+    /// turn; later turns just carry the student's new reply since the
+    /// session already remembers the card's content).</summary>
+    public async Task<StructuredLearningDeepDiveTurnResponse> RunTurnAsync(string sessionKey, Microsoft.Extensions.AI.ChatMessage message, CancellationToken cancellationToken)
     {
         if (_agent is null)
         {
             throw new InvalidOperationException("StructuredLearningDeepDiveAgent is not configured.");
         }
 
-        var response = await _agent.RunAsync<StructuredLearningDeepDiveTurnResponse>(prompt, cancellationToken: cancellationToken);
+        if (!_sessions.TryGetValue(sessionKey, out var session))
+        {
+            session = await _agent.CreateSessionAsync(cancellationToken);
+            _sessions[sessionKey] = session;
+        }
+
+        var response = await _agent.RunAsync<StructuredLearningDeepDiveTurnResponse>(message, session, cancellationToken: cancellationToken);
         return response.Result;
     }
 }

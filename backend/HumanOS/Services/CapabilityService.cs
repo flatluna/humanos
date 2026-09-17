@@ -41,6 +41,7 @@ public sealed class CapabilityService
             .Include(c => c.Translations)
             .Include(c => c.Levels)
                 .ThenInclude(l => l.Modules)
+            .Include(c => c.TraditionalChapters)
             .Include(c => c.CapabilityGraph)
                 .ThenInclude(g => g!.Nodes)
             .Include(c => c.CapabilityGraph)
@@ -140,9 +141,9 @@ public sealed class CapabilityService
             // prerequisite edges (same "climb levels" grouping
             // PreviewGraphPage.tsx shows) so the stat means something for
             // graph-based capabilities too.
-            LevelCount = c.Levels.Count > 0
-                ? c.Levels.Count
-                : ComputeGraphLevelCount(c.CapabilityGraph),
+            LevelCount = c.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters
+                ? c.TraditionalChapters.Count
+                : (c.Levels.Count > 0 ? c.Levels.Count : ComputeGraphLevelCount(c.CapabilityGraph)),
             ModuleCount = c.Levels.Sum(l => l.Modules.Count),
             NodeCount = c.CapabilityGraph?.Nodes.Count ?? 0,
             HasCoverImage = c.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters
@@ -639,6 +640,11 @@ public sealed class CapabilityService
                 // violation surfaced as a 500).
                 await _dbContext.CapabilityEnrollments
                     .Where(e => e.CapabilityId == capabilityId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                // 11c. Traditional-mode illustrations and chapters
+                await _dbContext.CapabilityTraditionalIllustrations
+                    .Where(i => i.CapabilityId == capabilityId)
                     .ExecuteDeleteAsync(cancellationToken);
 
                 // 12. The Capability itself — cascades to Translations, Levels

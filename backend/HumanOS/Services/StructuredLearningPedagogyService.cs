@@ -60,6 +60,9 @@ public sealed class StructuredLearningPedagogyService
     private readonly HumanOS.Agents.Studio.PdfImageDescriptionAgent _imageDescriptionAgent;
     private readonly StructuredLearningGenerationUsageService _usageService;
     private readonly StructuredLearningKnowledgeFactGenerationService _knowledgeFactGeneration;
+    private readonly StructuredLearningProfessorLectureAgent _professorLectureAgent;
+    private readonly AzureSpeechService _speechService;
+    private readonly PerplexitySearchService _perplexityService;
 
     public StructuredLearningPedagogyService(
         StructuredLearningSectionDesignerAgent designer,
@@ -68,7 +71,10 @@ public sealed class StructuredLearningPedagogyService
         GraphIllustrationImageService imageService,
         HumanOS.Agents.Studio.PdfImageDescriptionAgent imageDescriptionAgent,
         StructuredLearningGenerationUsageService usageService,
-        StructuredLearningKnowledgeFactGenerationService knowledgeFactGeneration)
+        StructuredLearningKnowledgeFactGenerationService knowledgeFactGeneration,
+        StructuredLearningProfessorLectureAgent professorLectureAgent,
+        AzureSpeechService speechService,
+        PerplexitySearchService perplexityService)
     {
         _designer = designer;
         _dbContextFactory = dbContextFactory;
@@ -77,6 +83,9 @@ public sealed class StructuredLearningPedagogyService
         _imageDescriptionAgent = imageDescriptionAgent;
         _usageService = usageService;
         _knowledgeFactGeneration = knowledgeFactGeneration;
+        _professorLectureAgent = professorLectureAgent;
+        _speechService = speechService;
+        _perplexityService = perplexityService;
         // Same rationale as TraditionalCoursePipelineService: this service
         // only needs IConfiguration, so it's constructed directly rather
         // than injected (it's registered Scoped in DI, incompatible with
@@ -110,7 +119,8 @@ public sealed class StructuredLearningPedagogyService
         byte[]? uploadedImageBytes = null,
         string? uploadedImageContentType = null,
         string? referenceImageUsageInstruction = null,
-        SectionIllustrationOverride? illustrationOverride = null)
+        SectionIllustrationOverride? illustrationOverride = null,
+        bool? usePerplexitySearch = null)
     {
         StructuredLearningDocument document;
         List<StructuredLearningDocumentSection> pendingSections;
@@ -132,6 +142,8 @@ public sealed class StructuredLearningPedagogyService
                 .ToListAsync(cancellationToken);
         }
 
+        var effectiveUsePerplexitySearch = usePerplexitySearch ?? ReadUsePerplexitySearch(document.ConfigSnapshotJson);
+
         var processVersion = "structured-learning-pedagogy-v1";
         var promptVersion = StructuredLearningSectionDesignerAgent.SourceFaithfulContractVersion;
         var configSnapshot = JsonSerializer.Serialize(new
@@ -142,6 +154,7 @@ public sealed class StructuredLearningPedagogyService
             forceRegenerateAll,
             documentId,
             languageCode,
+            usePerplexitySearch = effectiveUsePerplexitySearch,
             pedagogicalAudience = document.PedagogicalAudience,
             includeRecallStep = document.IncludeRecallStep,
             includeProductionStep = document.IncludeProductionStep,
@@ -199,7 +212,8 @@ public sealed class StructuredLearningPedagogyService
                     };
                 }
 
-                var (succeeded, inputTokens, outputTokens) = await ProcessSectionAsync(document, section, languageCode, perSectionOverride, cancellationToken);
+                var (succeeded, inputTokens, outputTokens) = await ProcessSectionAsync(
+                    document, section, languageCode, perSectionOverride, effectiveUsePerplexitySearch, cancellationToken);
                 lock (progressLock)
                 {
                     activeTitles.Remove(section.SubchapterTitle);
@@ -234,6 +248,7 @@ public sealed class StructuredLearningPedagogyService
         StructuredLearningDocumentSection section,
         string languageCode,
         SectionIllustrationOverride? illustrationOverride,
+        bool usePerplexitySearch,
         CancellationToken cancellationToken)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
@@ -252,6 +267,42 @@ public sealed class StructuredLearningPedagogyService
 
         var sectionOverride = illustrationOverride?.SectionId == section.StructuredLearningDocumentSectionId ? illustrationOverride : null;
         var illustrationGuidance = sectionOverride?.Mode == "AiGeneratedFromUpload" ? sectionOverride.ReferenceImageUsageInstruction : null;
+
+        string? perplexityFindings = null;
+        List<string> perplexityCitations = [];
+
+        if (usePerplexitySearch && _perplexityService.IsConfigured)
+        {
+            try
+            {
+                var queryParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(section.ChapterTitle)) queryParts.Add(section.ChapterTitle);
+                if (!string.IsNullOrWhiteSpace(section.SubchapterTitle) && !section.SubchapterTitle.Equals(section.ChapterTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    queryParts.Add(section.SubchapterTitle);
+                }
+                if (!string.IsNullOrWhiteSpace(section.Capability)) queryParts.Add(section.Capability);
+
+                var searchQuery = string.Join(" - ", queryParts);
+                if (string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    searchQuery = document.DocumentName;
+                }
+
+                Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: Searching Perplexity with query: \"{searchQuery}\"");
+                var searchResult = await _perplexityService.SearchAsync(searchQuery, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(searchResult.Answer))
+                {
+                    perplexityFindings = searchResult.Answer;
+                    perplexityCitations = searchResult.Citations ?? [];
+                    Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: Perplexity returned {perplexityCitations.Count} citations.");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: Perplexity search failed, continuing without web grounding: {ex.Message}");
+            }
+        }
 
         try
         {
@@ -338,7 +389,8 @@ public sealed class StructuredLearningPedagogyService
                         document.IncludeAssessmentStep,
                         cancellationToken,
                         illustrationGuidance,
-                        knowledgeFacts);
+                        knowledgeFacts,
+                        perplexityFindings);
                     return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, includeHypothesisStep, section.Text, attemptDesign.Response.Capability));
                 }
                 catch (JsonException ex)
@@ -410,6 +462,12 @@ public sealed class StructuredLearningPedagogyService
 
             await GenerateIllustrationsAsync(dbContext, section.TenantId, section.StructuredLearningDocumentSectionId, steps, sectionOverride, cancellationToken);
 
+            // Professor Lecture & Spoken Audio Generation (2026-09-06)
+            // Creates the oral class script directly from the engram and synthesizes
+            // the professor's speech to Azure Data Lake.
+            await GenerateProfessorLectureAndSpeechAsync(
+                dbContext, document, section, steps, languageCode, cancellationToken);
+
             // A "retry"/regenerate on a section that already has old steps
             // persisted (e.g. it succeeded once under an earlier prompt
             // version) must overwrite, not accumulate duplicates.
@@ -430,6 +488,11 @@ public sealed class StructuredLearningPedagogyService
                 includeRecallStep = document.IncludeRecallStep,
                 includeProductionStep = document.IncludeProductionStep,
                 includeAssessmentStep = document.IncludeAssessmentStep,
+                usePerplexitySearch,
+                hasApiData = perplexityCitations.Count > 0,
+                webSearchSources = perplexityCitations,
+                webSearchService = perplexityCitations.Count > 0 ? "Perplexity AI" : null,
+                webSearchSnippet = perplexityFindings != null && perplexityFindings.Length > 300 ? perplexityFindings[..300] + "..." : perplexityFindings,
                 languageCode,
                 pedagogicalAudience = document.PedagogicalAudience,
                 illustrationGuidanceProvided = !string.IsNullOrWhiteSpace(illustrationGuidance)
@@ -471,6 +534,11 @@ public sealed class StructuredLearningPedagogyService
             for (var i = 0; i < steps.Count; i++)
             {
                 var step = steps[i];
+                if (step.StepType == StructuredLearningStepType.Teaching && perplexityCitations.Count > 0)
+                {
+                    step.WebSearchCitations = perplexityCitations;
+                }
+
                 dbContext.StructuredLearningSectionSteps.Add(new StructuredLearningSectionStep
                 {
                     StructuredLearningSectionStepId = Guid.NewGuid(),
@@ -502,7 +570,8 @@ public sealed class StructuredLearningPedagogyService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await MarkFailedAsync(dbContext, section.StructuredLearningDocumentSectionId, ex.Message, cancellationToken);
+            var msg = ex.InnerException != null ? $"{ex.Message} --> {ex.InnerException.Message}" : ex.Message;
+            await MarkFailedAsync(dbContext, section.StructuredLearningDocumentSectionId, msg, cancellationToken);
             return (false, 0, 0);
         }
     }
@@ -521,6 +590,27 @@ public sealed class StructuredLearningPedagogyService
         {
             return true;
         }
+    }
+
+    private static bool ReadUsePerplexitySearch(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson)) return false;
+
+        try
+        {
+            using var json = JsonDocument.Parse(configSnapshotJson);
+            if (json.RootElement.TryGetProperty("UsePerplexitySearch", out var value)
+                || json.RootElement.TryGetProperty("usePerplexitySearch", out value))
+            {
+                return value.ValueKind == JsonValueKind.True;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return false;
     }
 
     private static async Task MarkFailedAsync(HumanOsDbContext dbContext, Guid sectionId, string errorMessage, CancellationToken cancellationToken)
@@ -595,6 +685,98 @@ public sealed class StructuredLearningPedagogyService
         using var sha = System.Security.Cryptography.SHA256.Create();
         var hash = sha.ComputeHash(bytes);
         return Convert.ToHexString(hash)[..32];
+    }
+
+    private async Task GenerateProfessorLectureAndSpeechAsync(
+        HumanOsDbContext dbContext,
+        StructuredLearningDocument document,
+        StructuredLearningDocumentSection section,
+        List<StructuredLearningSectionStepDto> steps,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        var teachingStep = steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching);
+        if (teachingStep is null)
+        {
+            return;
+        }
+
+        // 1. Generate generic professor spoken lecture for all students
+        HumanOS.Contracts.Studio.StructuredLearningProfessorLectureResult? lecture = null;
+        if (_professorLectureAgent.IsConfigured)
+        {
+            try
+            {
+                var context = new HumanOS.Contracts.Studio.StructuredLearningProfessorLectureContext
+                {
+                    CourseId = document.StructuredLearningDocumentId,
+                    CourseTitle = document.DocumentName,
+                    SectionId = section.StructuredLearningDocumentSectionId,
+                    ChapterTitle = section.ChapterTitle,
+                    SubchapterTitle = section.SubchapterTitle,
+                    Capability = section.Capability,
+                    TeachingContent = teachingStep.Content,
+                    IllustrationDescription = teachingStep.IllustrationPrompt,
+                    DomainOrTopic = document.Category ?? document.TargetSkill,
+                    TargetLanguage = languageCode
+                };
+
+                lecture = await _professorLectureAgent.GenerateLectureAsync(context, cancellationToken);
+                teachingStep.ProfessorLecture = lecture;
+
+                // Also update the teaching step's visible text to the professor's spoken lecture class
+                if (!string.IsNullOrWhiteSpace(lecture.SpokenLectureScript))
+                {
+                    teachingStep.Content = lecture.SpokenLectureScript;
+                }
+            }
+            catch
+            {
+                // Best-effort: lecture generation failure does not abort the entire section pipeline.
+            }
+        }
+
+        // 2. Synthesize audio via AzureSpeechService and upload to Data Lake
+        if (_speechService.IsConfigured && _illustrationStorage.IsConfigured)
+        {
+            try
+            {
+                var speechText = lecture?.SpokenLectureScript ?? teachingStep.Content;
+                if (!string.IsNullOrWhiteSpace(speechText))
+                {
+                    // Detect language from text to ensure an English course always uses an English male voice,
+                    // and a Spanish course uses a Spanish male voice, even if document metadata is inconsistent.
+                    var padded = $" {speechText.ToLowerInvariant()} ";
+                    string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this "];
+                    string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu "];
+                    var isEnglish = englishWords.Count(w => padded.Contains(w)) > spanishWords.Count(w => padded.Contains(w));
+                    var isSpanish = spanishWords.Count(w => padded.Contains(w)) > englishWords.Count(w => padded.Contains(w));
+
+                    var voiceName = isEnglish
+                        ? "en-US-AndrewNeural"
+                        : isSpanish
+                        ? "es-MX-CecilioNeural"
+                        : (languageCode.StartsWith("es", StringComparison.OrdinalIgnoreCase) ? "es-MX-CecilioNeural" : "en-US-AndrewNeural");
+
+                    var audioBytes = await _speechService.SynthesizeAsync(speechText, voiceName, cancellationToken);
+                    using var audioStream = new MemoryStream(audioBytes);
+
+                    var storagePath = await _illustrationStorage.UploadLectureAudioAsync(
+                        section.TenantId,
+                        document.StructuredLearningDocumentId,
+                        section.StructuredLearningDocumentSectionId,
+                        audioStream,
+                        contentType: "audio/mpeg",
+                        cancellationToken: cancellationToken);
+
+                    teachingStep.SpeechStoragePath = storagePath;
+                }
+            }
+            catch
+            {
+                // Best-effort: audio synthesis failure does not abort the section pipeline.
+            }
+        }
     }
 
     private async Task GenerateIllustrationsAsync(
@@ -870,7 +1052,15 @@ public sealed class StructuredLearningPedagogyService
                 options = q.Options,
                 correctIndex = q.CorrectIndex ?? 0
             })),
-        StructuredLearningStepType.Hypothesis or StructuredLearningStepType.Teaching when step.IllustrationId is not null =>
+        StructuredLearningStepType.Teaching when step.ProfessorLecture is not null || step.IllustrationId is not null || (step.WebSearchCitations is { Count: > 0 }) =>
+            JsonSerializer.Serialize(new
+            {
+                step.IllustrationId,
+                step.SpeechStoragePath,
+                ProfessorLecture = step.ProfessorLecture,
+                WebSearchCitations = step.WebSearchCitations ?? []
+            }),
+        StructuredLearningStepType.Hypothesis when step.IllustrationId is not null =>
             JsonSerializer.Serialize(new { step.IllustrationId }),
         _ => null
     };

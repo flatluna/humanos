@@ -321,6 +321,20 @@ var host = new HostBuilder()
         services.AddSingleton<StructuredLearningExtractionService>();
         services.AddSingleton<StructuredLearningExtractionOrchestrator>();
 
+        // Work Step Learning Assignment (Step 1-8: Ingestion, Step Requirements, Catalog Search, Engram Selection, Coverage, Content Gap Drafts, Step Assignment & Employee Personalization)
+        services.AddSingleton<IProcessDocumentStorageService, ProcessDocumentStorageService>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IProcessDocumentExtractionService, HumanOS.Services.ProcessDocuments.ProcessDocumentExtractionService>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.ProcessDocumentPipelineService>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.ProcessDocumentOrchestrator>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IWorkStepRequirementsAnalyzer, HumanOS.Services.ProcessDocuments.WorkStepRequirementsAnalyzer>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IEngramStudioCatalogService, HumanOS.Services.ProcessDocuments.EngramStudioCatalogService>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IEngramStudioClassCandidateFinder, HumanOS.Services.ProcessDocuments.EngramStudioClassCandidateFinder>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IEngramStudioEngramSelector, HumanOS.Services.ProcessDocuments.EngramStudioEngramSelector>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.ILearningContentCoverageAnalyzer, HumanOS.Services.ProcessDocuments.LearningContentCoverageAnalyzer>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.ILearningContentGapDraftGenerator, HumanOS.Services.ProcessDocuments.LearningContentGapDraftGenerator>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IStepLearningAssignmentGenerator, HumanOS.Services.ProcessDocuments.StepLearningAssignmentGenerator>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IEmployeeStepLearningAssignmentService, HumanOS.Services.ProcessDocuments.EmployeeStepLearningAssignmentService>();
+
         // Knowledge Graph (2026-08-14) — entity extraction + entity-to-
         // engram linking, chained automatically at the end of Step 2 (see
         // StructuredLearningExtractionService.GenerateKnowledgeGraphAsync).
@@ -438,7 +452,19 @@ var host = new HostBuilder()
         // BlueprintReviewService/BlueprintStepEditorAgent/ExampleCardEditorAgent.
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningStepEditorAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningExampleCardEditorAgent>();
+        services.AddSingleton<HumanOS.Services.PerplexitySearchService>();
         services.AddScoped<StructuredLearningReviewService>();
+
+        // Professor Lecture Agent (2026-09-06) — generates a personalized, spoken-word
+        // masterclass lecture delivered by a professor directly to the student for an Engram.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningProfessorLectureAgent>();
+        services.AddScoped<StructuredLearningProfessorLectureService>();
+
+        // Workplace Application Agent (2026-09-06) — generates a personalized real-world
+        // workplace case and pre-recorded neural audio tailored to the student's role and SMART objectives.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationAgent>();
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceMentorAgent>();
+        services.AddScoped<HumanOS.Services.StructuredLearningWorkplaceApplicationService>();
 
         // Traditional course edit tools (2026-08-12) — same review pattern as
         // the structured-learning tools: AI rewrite and direct manual save for

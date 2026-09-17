@@ -11,6 +11,11 @@ namespace HumanOS.AzureFunctions.Api;
 public sealed class EditStructuredLearningStepRequest
 {
     public string Instruction { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When true, enables real-time web grounding via Perplexity AI to supplement the edit.
+    /// </summary>
+    public bool UsePerplexitySearch { get; set; }
 }
 
 /// <summary>
@@ -76,7 +81,7 @@ public sealed class EditStructuredLearningStepFunction
 
         try
         {
-            var result = await _service.EditStepContentAsync(_dbContext, sectionId, parsedStepType, body.Instruction, cancellationToken);
+            var result = await _service.EditStepContentAsync(_dbContext, sectionId, parsedStepType, body.Instruction, body.UsePerplexitySearch, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(request, new StructuredLearningStepDetailDto
             {
                 StructuredLearningSectionStepId = result.StructuredLearningSectionStepId,
@@ -84,7 +89,8 @@ public sealed class EditStructuredLearningStepFunction
                 Content = result.Content,
                 StepDataJson = result.StepDataJson,
                 IsHumanApproved = result.IsHumanApproved,
-                HumanApprovedAtUtc = result.HumanApprovedAtUtc
+                HumanApprovedAtUtc = result.HumanApprovedAtUtc,
+                WebSearchCitations = result.WebSearchCitations
             }, cancellationToken: cancellationToken);
         }
         catch (InvalidOperationException ex)

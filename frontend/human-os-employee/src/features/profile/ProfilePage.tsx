@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Briefcase, CheckCircle2, User } from 'lucide-react';
+import { Award, Briefcase, CheckCircle2, GraduationCap, Languages, User } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
@@ -12,8 +12,8 @@ import {
   type UpsertPersonProfileRequest,
 } from './api/personProfileApi';
 import { getJobRole } from './api/jobRoleApi';
+import { extractMyResume, getMyResume, saveMyResume } from './api/resumeApi';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
-import { BadgeGallery } from '@/features/gamification/components/BadgeGallery';
 
 const ORG_ROLE_LABELS: Record<'en' | 'es', Record<string, string>> = {
   es: {
@@ -198,6 +198,20 @@ export function ProfilePage() {
     enabled: !!user?.jobRoleId,
   });
 
+  const resumeQuery = useQuery({
+    queryKey: ['my-resume', personId],
+    queryFn: () => getMyResume(personId),
+    enabled: !!personId,
+  });
+  const resumeSourceText = resumeQuery.data && (resumeQuery.data.rawResumeText?.trim() || [
+    resumeQuery.data.professionalObjective,
+    resumeQuery.data.professionalSummary,
+    ...resumeQuery.data.education,
+    ...resumeQuery.data.skills,
+    ...resumeQuery.data.workExperience,
+  ].filter(Boolean).join('\n'));
+  const isStudentResume = Boolean(resumeSourceText && /estudiante|student|semestre|graduaci[oó]n|expected|esperado|ingenier[ií]a/i.test(resumeSourceText));
+
   // Seed the form from the loaded profile exactly once per fetch — after
   // that the form is fully user-controlled so an in-flight edit never
   // gets clobbered by a background refetch.
@@ -214,6 +228,18 @@ export function ProfilePage() {
       queryClient.setQueryData(['my-profile', personId], profile);
       setSavedMessage(true);
       setTimeout(() => setSavedMessage(false), 3000);
+    },
+  });
+
+  const extractStudentMutation = useMutation({
+    mutationFn: async () => {
+      const resume = resumeQuery.data;
+      if (!resumeSourceText) throw new Error('Resume text is required');
+      const extracted = await extractMyResume(personId, resumeSourceText);
+      return saveMyResume(personId, { ...resume, ...extracted });
+    },
+    onSuccess: (resume) => {
+      queryClient.setQueryData(['my-resume', personId], resume);
     },
   });
 
@@ -286,11 +312,6 @@ export function ProfilePage() {
           </div>
         </div>
       </div>
-
-      {/* Gamification Badge Gallery Card */}
-      <Card className="p-6 sm:p-8">
-        <BadgeGallery />
-      </Card>
 
       <Card className="p-6 sm:p-8">
         <div className="mb-6 flex items-center justify-between">
@@ -559,6 +580,84 @@ export function ProfilePage() {
           )}
         </Card>
       )}
+
+      <Card className="p-6 sm:p-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+          <GraduationCap className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t.profileResumeTitle}</h2>
+          </div>
+          {isStudentResume && resumeSourceText && (
+            <button
+              type="button"
+              onClick={() => extractStudentMutation.mutate()}
+              disabled={extractStudentMutation.isPending}
+              className="rounded-full bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              {extractStudentMutation.isPending
+                ? (language === 'es' ? 'Extrayendo...' : 'Extracting...')
+                : (language === 'es' ? 'Extraer perfil académico' : 'Extract academic profile')}
+            </button>
+          )}
+        </div>
+        {extractStudentMutation.isError && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{language === 'es' ? 'No se pudo extraer la información académica.' : 'Academic information could not be extracted.'}</p>}
+
+        {resumeQuery.isLoading && <p className="text-sm text-slate-500 dark:text-white/50">{t.profileResumeLoading}</p>}
+        {resumeQuery.isError && <p className="text-sm text-red-600 dark:text-red-400">{t.profileResumeError}</p>}
+        {resumeQuery.data && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {resumeQuery.data.studentAcademicProfile?.semesters?.length ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 md:col-span-2 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Perfil académico</h3>
+                <p className="mt-1 text-xs text-emerald-800/70 dark:text-emerald-200/70">{resumeQuery.data.studentAcademicProfile.institution} · {resumeQuery.data.studentAcademicProfile.degree} · Promedio: {resumeQuery.data.studentAcademicProfile.cumulativeAverage ?? 'N/D'} / {resumeQuery.data.studentAcademicProfile.averageScale ?? '100'}</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {resumeQuery.data.studentAcademicProfile.semesters.map((semester) => (
+                    <div key={semester.name} className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-500/20 dark:bg-white/5">
+                      <div className="flex justify-between text-sm font-semibold text-slate-800 dark:text-white"><span>{semester.name}</span><span>{semester.average ?? 'NA'}</span></div>
+                      <div className="mt-2 space-y-1 text-xs text-slate-600 dark:text-white/70">{semester.subjects.map((subject) => <div key={subject.name} className="flex justify-between gap-2"><span>{subject.name}</span><span>{subject.grade ?? 'NA'}</span></div>)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {resumeQuery.data.professionalObjective && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 dark:border-blue-400/20 dark:bg-blue-400/[0.08]">
+                <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-200">{t.profileResumeObjective}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-white/75">{resumeQuery.data.professionalObjective}</p>
+              </div>
+            )}
+            {resumeQuery.data.professionalSummary && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-white/10 dark:bg-white/[0.04]">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t.profileResumeSummary}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-white/75">{resumeQuery.data.professionalSummary}</p>
+              </div>
+            )}
+            {([
+              ['profileResumeSkills', resumeQuery.data.skills, Briefcase, true],
+              ['profileResumeWorkExperience', resumeQuery.data.workExperience, Briefcase, false],
+              ['profileResumeEducation', resumeQuery.data.education, GraduationCap, false],
+              ['profileResumeCertifications', resumeQuery.data.certifications, Award, false],
+              ['profileResumeLanguages', resumeQuery.data.languages, Languages, true],
+            ] as const).map(([key, values, Icon]) => values.length > 0 && (
+              <div key={key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/40 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                  <Icon className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                  {t[key]}
+                </h3>
+                <ul className="mt-4 space-y-3 text-sm text-slate-700 dark:text-white/70">
+                  {values.map((value, index) => <li key={`${key}-${index}`} className={key === 'profileResumeSkills' || key === 'profileResumeLanguages' ? 'inline-flex mr-2 mb-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium dark:border-white/10 dark:bg-white/[0.06]' : 'border-l-2 border-brand-300 pl-3 leading-6 dark:border-brand-400/50'}>{value}</li>)}
+                </ul>
+              </div>
+            ))}
+            {!resumeQuery.data.professionalObjective && !resumeQuery.data.professionalSummary &&
+              !resumeQuery.data.skills.length && !resumeQuery.data.workExperience.length &&
+              !resumeQuery.data.education.length && !resumeQuery.data.certifications.length &&
+              !resumeQuery.data.languages.length && (
+                <p className="text-sm text-slate-500 dark:text-white/50">{t.profileResumeEmpty}</p>
+              )}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

@@ -79,6 +79,7 @@ public sealed class ExtractPersonResumeFunction
         var proposal = result.Proposal;
         var response = new ExtractPersonResumeResponse
         {
+            StudentAcademicProfile = proposal.StudentAcademicProfile,
             Address = proposal.Address,
             LinkedInUrl = proposal.LinkedInUrl,
             ProfessionalObjective = proposal.ProfessionalObjective,

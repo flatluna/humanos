@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   Lightbulb,
   BookOpenText,
@@ -24,6 +25,12 @@ import {
   ChevronDown,
   Image,
   Download,
+  Globe,
+  Headphones,
+  MessageSquareText,
+  Volume2,
+  Bot,
+  Lock,
 } from 'lucide-react';
 import {
   getStructuredLearningDocument,
@@ -55,6 +62,9 @@ import {
   generateStructuredLearningVideoStartImage,
   getStructuredLearningVideoLastFrame,
   regenerateStructuredLearningVideo,
+  getStructuredLearningWorkplaceApplication,
+  postStructuredLearningWorkplaceChat,
+  type WorkplaceApplicationDto,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
@@ -67,8 +77,9 @@ import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { usePreviewMode, withPreviewMode, type PreviewMode } from '../lib/previewMode';
+import { useAuth } from '../auth/AuthContext';
 
-const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Recall', 'Production', 'Assessment'];
+const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Production', 'Recall', 'Assessment'];
 
 /** Gated step types (2026-08-10) — mirrors Graph's PreviewNodePage
  * `isGatedStepType`: DeepDive/Recall/Assessment must actually be cleared
@@ -161,6 +172,7 @@ function parseHypothesisQuestions(step: StructuredLearningStepDetail): Hypothesi
 }
 
 function HypothesisQuestionCard({ sectionId, step }: { sectionId: string; step: StructuredLearningStepDetail }) {
+  const { t } = useTranslation();
   const questions = parseHypothesisQuestions(step);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
@@ -214,11 +226,13 @@ function HypothesisQuestionCard({ sectionId, step }: { sectionId: string; step: 
 
   return (
     <div className="mt-4 space-y-4 rounded-2xl border border-brand-500/20 bg-brand-500/[0.04] p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-300">Before we start</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-300">
+        {t('structuredLearningCourse.hypothesisBeforeWeStart')}
+      </p>
 
       {submitted ? (
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-100">
-          Thank you for your responses. We now will start learning.
+          {t('structuredLearningCourse.hypothesisThankYou')}
         </div>
       ) : (
         <div className="space-y-4">
@@ -259,14 +273,16 @@ function HypothesisQuestionCard({ sectionId, step }: { sectionId: string; step: 
           })}
 
           <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-            <p className="text-xs text-slate-300">{answeredCount}/{questions.length} answered</p>
+            <p className="text-xs text-slate-300">
+              {t('structuredLearningCourse.hypothesisAnsweredCount', { answered: answeredCount, total: questions.length })}
+            </p>
             <button
               type="button"
               disabled={!isComplete || saving}
               onClick={handleSave}
               className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-brand-500/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {saving ? 'Saving…' : 'Save responses'}
+              {saving ? t('structuredLearningCourse.hypothesisSaving') : t('structuredLearningCourse.hypothesisSaveResponses')}
             </button>
           </div>
         </div>
@@ -294,7 +310,7 @@ function HypothesisQuestionCard({ sectionId, step }: { sectionId: string; step: 
  * Assessment voice exclusion).
  */
 export default function StructuredLearningSectionPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { documentId, sectionId } = useParams<{ documentId: string; sectionId: string }>();
   const [mode, setMode] = usePreviewMode();
@@ -327,20 +343,65 @@ export default function StructuredLearningSectionPage() {
   const previousSection = currentIndex > 0 ? sections[currentIndex - 1] : null;
   const nextSection = currentIndex >= 0 && currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null;
 
-  // The Production ("Apply it") step is temporarily disabled (2026-08-23,
-  // explicit user request) — rather than showing it in the step network
-  // just to display a "coming soon" placeholder, exclude it entirely from
-  // navigation so students never see or click through a dead step.
-  const steps = (currentSection?.Steps ?? []).filter((s) => s.StepType !== 'Production');
+  const sectionWebSources = useMemo(() => {
+    if (currentSection?.WebSearchSources && currentSection.WebSearchSources.length > 0) {
+      return currentSection.WebSearchSources;
+    }
+    if (currentSection?.ConfigSnapshotJson) {
+      try {
+        const parsed = JSON.parse(currentSection.ConfigSnapshotJson);
+        if (Array.isArray(parsed.webSearchSources) && parsed.webSearchSources.length > 0) {
+          return parsed.webSearchSources as string[];
+        }
+        if (Array.isArray(parsed.WebSearchSources) && parsed.WebSearchSources.length > 0) {
+          return parsed.WebSearchSources as string[];
+        }
+      } catch { }
+    }
+    return [];
+  }, [currentSection]);
+
+  const courseLanguage: 'es' | 'en' = useMemo(() => {
+    const configs = [
+      currentSection?.Steps?.find((s) => s.StepType === 'Teaching')?.ConfigSnapshotJson,
+      currentSection?.ConfigSnapshotJson,
+      document?.ConfigSnapshotJson,
+    ];
+    for (const json of configs) {
+      if (json) {
+        try {
+          const parsed = JSON.parse(json);
+          const l = parsed.LanguageCode || parsed.languageCode;
+          if (l) return String(l).toLowerCase().startsWith('es') ? 'es' : 'en';
+        } catch { }
+      }
+    }
+    const sample = `${currentSection?.SubchapterTitle ?? ''} ${currentSection?.ChapterTitle ?? ''} ${currentSection?.Text ?? ''} ${document?.DocumentName ?? ''}`.toLowerCase();
+    const spanishWords = [' el ', ' la ', ' de ', ' que ', ' los ', ' las ', ' para ', ' con ', ' es ', ' en ', ' del ', ' por '];
+    const englishWords = [' the ', ' and ', ' you ', ' is ', ' to ', ' your ', ' with ', ' that ', ' this '];
+    const spHits = spanishWords.filter((w) => sample.includes(w)).length;
+    const enHits = englishWords.filter((w) => sample.includes(w)).length;
+    if (spHits > enHits) return 'es';
+    if (enHits > spHits) return 'en';
+    return i18n.language?.startsWith('es') ? 'es' : 'en';
+  }, [currentSection, document, i18n.language]);
+
+  // The steps are ordered according to STEP_ORDER.
+  const steps = useMemo(() => {
+    return [...(currentSection?.Steps ?? [])].sort(
+      (a, b) => STEP_ORDER.indexOf(a.StepType) - STEP_ORDER.indexOf(b.StepType)
+    );
+  }, [currentSection]);
   const currentStep = steps[stepIndex] ?? null;
   const isFirstStep = stepIndex === 0;
   const isLastStep = stepIndex === steps.length - 1;
 
   // Ungated steps unlock the NEXT index the instant they're visited — only
-  // DeepDive/Recall/Assessment wait for their own onComplete callback below.
+  // DeepDive/Recall/Assessment and Teaching (audio+video gate) wait for their own onComplete callback below.
   useEffect(() => {
     if (!currentStep) return;
-    if (!GATED_STEP_TYPES.has(currentStep.StepType)) {
+    const isGated = GATED_STEP_TYPES.has(currentStep.StepType) || currentStep.StepType === 'Teaching';
+    if (!isGated) {
       setMaxReachedIndex((m) => Math.max(m, stepIndex + 1));
     }
   }, [currentStep, stepIndex]);
@@ -349,9 +410,7 @@ export default function StructuredLearningSectionPage() {
     setMaxReachedIndex((m) => Math.max(m, stepIndex + 1));
   }, [stepIndex]);
 
-  // Review & acceptance / Edit modes are reviewer-facing (not a real
-  // student's progression) — every step is freely clickable in either,
-  // mirroring PreviewNodePage's own StepperBar `clickable = mode !== 'real'`.
+  // In real mode, a step is gated until completed.
   const canAdvancePastCurrentStep = mode !== 'real' || stepIndex < maxReachedIndex;
 
   function goToStep(index: number) {
@@ -369,8 +428,10 @@ export default function StructuredLearningSectionPage() {
     }
   }
 
-  function goNext() {
-    if (!canAdvancePastCurrentStep) return;
+  function goNext(force: boolean | unknown = false) {
+    const isForced = force === true;
+    if (!isForced && !canAdvancePastCurrentStep) return;
+    setMaxReachedIndex((m) => Math.max(m, stepIndex + 1));
     if (!isLastStep) {
       setStepIndex((i) => i + 1);
       return;
@@ -425,6 +486,15 @@ export default function StructuredLearningSectionPage() {
             {t('structuredLearningCourse.viewKnowledgeFacts')}
           </button>
         )}
+        {sectionWebSources.length > 0 && (
+          <span
+            className="ml-2 mt-4 inline-flex items-center gap-1.5 rounded-xl border border-teal-400/30 bg-teal-500/10 px-3 py-2 text-xs font-semibold text-teal-200"
+            title={sectionWebSources.join('\n')}
+          >
+            <Globe className="h-4 w-4 text-teal-400" />
+            <span>Perplexity AI ({sectionWebSources.length} fuentes)</span>
+          </span>
+        )}
         <div className="mt-4 flex justify-center">
           <PreviewModeSwitcher mode={mode} onChange={setMode} />
         </div>
@@ -464,9 +534,11 @@ export default function StructuredLearningSectionPage() {
             step={currentStep}
             allSteps={currentSection.Steps}
             sectionId={currentSection.StructuredLearningDocumentSectionId}
+            courseLanguage={courseLanguage}
             questionType={document.AssessmentQuestionType}
             mode={mode}
             onComplete={handleStepComplete}
+            onNext={() => goNext(true)}
             onStepUpdated={(updated) =>
               setDocument((prev) =>
                 prev
@@ -570,94 +642,1075 @@ function StepContent({
   step,
   allSteps,
   sectionId,
+  courseLanguage,
   questionType,
   mode,
   onComplete,
+  onNext,
   onStepUpdated,
 }: {
   step: StructuredLearningStepDetail;
   allSteps?: StructuredLearningStepDetail[];
   sectionId: string;
+  courseLanguage?: 'es' | 'en';
   questionType: string;
   mode: PreviewMode;
   onComplete: () => void;
+  onNext?: () => void;
   onStepUpdated: (updated: StructuredLearningStepDetail) => void;
 }) {
   const { t } = useTranslation();
-  // Which kind of item the Learn wizard is currently showing (2026-08-22) —
-  // while it's on a Video, the tutor orb/static illustration are hidden so
-  // only the video is on screen (mirrors the outer stepper's own "one thing
-  // at a time" rule).
-  const [teachingWizardItemType, setTeachingWizardItemType] = useState<'Text' | 'Video'>('Text');
+  const { user } = useAuth();
   // Bumped whenever a video is added/deleted/merged (VideoGenerationBox) so
   // TeachingTimelineEditor's own independent video list re-fetches instead
   // of going stale until a full page reload.
   const [videoRefreshKey, setVideoRefreshKey] = useState(0);
+
+  // Two-step/Three-step Learn wizard (2026-09-06):
+  // 1) Listen to recorded class & read whiteboard, 2) Watch videos (if any), 3) Q&A with professor
+  const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('listen');
+  const [isAudioFinished, setIsAudioFinished] = useState(false);
+  const [audioProgressPercent, setAudioProgressPercent] = useState(0);
+
+  const [publishedVideos, setPublishedVideos] = useState<StructuredLearningSectionVideo[]>([]);
+  const [watchedVideoIds, setWatchedVideoIds] = useState<Set<string>>(new Set());
+  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStructuredLearningSectionVideos(sectionId)
+      .then((list) => {
+        if (!cancelled) setPublishedVideos(list.filter((v) => v.IsPublished));
+      })
+      .catch(() => {
+        if (!cancelled) setPublishedVideos([]);
+      });
+    return () => { cancelled = true; };
+  }, [sectionId, videoRefreshKey]);
+
+  const hasVideos = publishedVideos.length > 0;
+  const areVideosFinished = !hasVideos || watchedVideoIds.size >= publishedVideos.length;
+
   const meta = STEP_META[step.StepType] ?? { labelKey: step.StepType, Icon: BookOpenText };
   const isEditing = mode === 'edit';
-  const isEditableStepType = step.StepType === 'Hypothesis' || step.StepType === 'Teaching' || step.StepType === 'Production';
+  const isEditableStepType = step.StepType === 'Hypothesis' || step.StepType === 'Teaching';
 
-  const teachingShowsVideo = step.StepType === 'Teaching' && !isEditing && teachingWizardItemType === 'Video';
+  const teachingShowsVideo = step.StepType === 'Teaching' && !isEditing && teachingSubStep === 'videos';
+
+  // Check if professor lecture audio or metadata exists
+  const hasAudio = step.StepType === 'Teaching' && Boolean(
+    step.StepDataJson && (step.StepDataJson.includes('SpeechStoragePath') || step.StepDataJson.includes('ProfessorLecture'))
+  );
+
+  const canGoToVideos = mode !== 'real' || !hasAudio || isAudioFinished;
+  const canGoToQa = mode !== 'real' || (canGoToVideos && areVideosFinished);
+
+  // Signal completion of the whole Teaching step (unlocks Deep Dive) when both audio and videos are done, or when in QA step
+  useEffect(() => {
+    if (step.StepType !== 'Teaching') return;
+    const audioDone = !hasAudio || isAudioFinished;
+    const videosDone = !hasVideos || areVideosFinished;
+    if ((audioDone && videosDone) || teachingSubStep === 'qa') {
+      onComplete();
+    }
+  }, [step.StepType, hasAudio, isAudioFinished, hasVideos, areVideosFinished, teachingSubStep, onComplete]);
+
+  const webCitations = useMemo(() => {
+    if (step.WebSearchCitations && step.WebSearchCitations.length > 0) return step.WebSearchCitations;
+    if (step.StepDataJson) {
+      try {
+        const parsed = JSON.parse(step.StepDataJson);
+        if (Array.isArray(parsed.WebSearchCitations) && parsed.WebSearchCitations.length > 0) {
+          return parsed.WebSearchCitations as string[];
+        }
+      } catch { }
+    }
+    return [];
+  }, [step.StepDataJson, step.WebSearchCitations]);
+
+  const audioCacheKey = `${step.HumanApprovedAtUtc || ''}_${step.Content.length}_${videoRefreshKey}`;
+  const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?v=${encodeURIComponent(audioCacheKey)}`;
 
   return (
     <div className="space-y-4">
-      {step.StepType === 'Teaching' && !teachingShowsVideo && (
-        <VoiceTutorAgent
-          structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
-          startLabel={t('structuredLearningCourse.talkToTutor')}
-          autoConnect={!isEditing}
-        />
+      {step.StepType === 'Teaching' && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/60 p-1.5 shadow-lg shadow-black/20">
+          <button
+            type="button"
+            onClick={() => setTeachingSubStep('listen')}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+              teachingSubStep === 'listen'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/25'
+                : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+            }`}
+          >
+            <Headphones className="h-4 w-4" />
+            <span>{t('structuredLearningCourse.teachingStepListen')}</span>
+            {hasAudio && isAudioFinished && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 ml-1" />}
+          </button>
+
+          {hasVideos && (
+            <button
+              type="button"
+              disabled={!canGoToVideos}
+              onClick={() => {
+                if (!canGoToVideos) return;
+                setTeachingSubStep('videos');
+              }}
+              title={!canGoToVideos ? (t('structuredLearningCourse.teachingListenAllToUnlockVideosTooltip') as string) : undefined}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+                teachingSubStep === 'videos'
+                  ? 'bg-gradient-to-r from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/25'
+                  : !canGoToVideos
+                  ? 'cursor-not-allowed opacity-40 text-slate-500 bg-white/[0.02]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+              }`}
+            >
+              {!canGoToVideos ? <Lock className="h-4 w-4 text-amber-400" /> : <Video className="h-4 w-4 text-sky-300" />}
+              <span>{t('structuredLearningCourse.teachingStepVideos', { watched: watchedVideoIds.size, total: publishedVideos.length })}</span>
+              {!canGoToVideos ? (
+                <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300">{t('structuredLearningCourse.teachingLockedBadge')}</span>
+              ) : areVideosFinished ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-sky-300 ml-1" />
+              ) : null}
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={!canGoToQa}
+            onClick={() => {
+              if (!canGoToQa) return;
+              setTeachingSubStep('qa');
+            }}
+            title={
+              !canGoToVideos
+                ? (t('structuredLearningCourse.teachingListenFirstTooltip') as string)
+                : !areVideosFinished
+                ? (t('structuredLearningCourse.teachingWatchVideosFirstTooltip') as string)
+                : undefined
+            }
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+              teachingSubStep === 'qa'
+                ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/25'
+                : !canGoToQa
+                ? 'cursor-not-allowed opacity-40 text-slate-500 bg-white/[0.02]'
+                : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+            }`}
+          >
+            {!canGoToQa ? (
+              <Lock className="h-4 w-4 text-amber-400" />
+            ) : (
+              <MessageSquareText className="h-4 w-4 text-indigo-300" />
+            )}
+            <span>{hasVideos ? t('structuredLearningCourse.teachingStepQa3') : t('structuredLearningCourse.teachingStepQa2')}</span>
+            {!canGoToQa && (
+              <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300">
+                {t('structuredLearningCourse.teachingLockedBadge')}
+              </span>
+            )}
+          </button>
+        </div>
       )}
 
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/30 shadow-2xl shadow-black/10">
-        {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && <StepIllustration stepDataJson={step.StepDataJson} />}
-        <div className="px-5 py-6 sm:px-8 sm:py-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-400">{t(`structuredLearningCourse.${meta.labelKey}`)}</p>
-          {step.StepType === 'Hypothesis' && step.Content && (
-            <RichStepContent content={step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content} />
-          )}
-          {step.StepType === 'Hypothesis' && !isEditing && (
-            <HypothesisQuestionCard sectionId={sectionId} step={step} />
-          )}
-          {step.StepType === 'Teaching' && !isEditing ? (
-            <TeachingTimelineWizard sectionId={sectionId} step={step} onItemTypeChange={setTeachingWizardItemType} />
-          ) : (
-            step.StepType !== 'Hypothesis' && !(step.StepType === 'Production' && !isEditing) && step.Content && <RichStepContent content={step.Content} />
-          )}
+      {step.StepType === 'Teaching' && teachingSubStep === 'qa' ? (
+        <div className="space-y-4 animate-fade-in">
+          <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-slate-950/40 to-violet-500/10 p-6 shadow-2xl shadow-indigo-500/10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
+                <Bot className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">{t('structuredLearningCourse.teachingQaTitle')}</h3>
+                <p className="text-xs text-slate-300">
+                  {t('structuredLearningCourse.teachingQaDescription')}
+                </p>
+              </div>
+            </div>
 
-          {isEditing && isEditableStepType && (
-            <>
-              <StepEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
-              <ManualEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
-              {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} allSteps={allSteps} onVideosChanged={() => setVideoRefreshKey((k) => k + 1)} />}
-              {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} refreshKey={videoRefreshKey} />}
-            </>
-          )}
+            <VoiceTutorAgent
+              structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
+              personId={user?.memberId || undefined}
+              personName={user?.email ? user.email.split('@')[0] : undefined}
+              startLabel={t('structuredLearningCourse.teachingQaStartButton')}
+              isQaMode={true}
+              autoConnect={!isEditing}
+            />
 
-          {step.StepType === 'DeepDive' && step.StepDataJson && (
-            isEditing ? (
-              <DeepDiveCardsEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
-            ) : (
-              <DeepDiveQuiz sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} stepDataJson={step.StepDataJson} mode={mode} onComplete={onComplete} />
-            )
-          )}
-          {step.StepType === 'Recall' &&
-            (isEditing ? (
-              <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.editModeGeneratedLive')}</p>
-            ) : (
-              <RecallPractice sectionId={sectionId} onComplete={onComplete} />
-            ))}
-          {step.StepType === 'Production' && !isEditing && (
-            <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.productionStepDisabledNotice')}</p>
-          )}
-          {step.StepType === 'Assessment' &&
-            (isEditing ? (
-              <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.editModeGeneratedLive')}</p>
-            ) : (
-              <AssessmentPractice sectionId={sectionId} questionType={questionType} onComplete={onComplete} />
-            ))}
+            <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.05] p-4">
+              <p className="text-xs text-slate-300">
+                {t('structuredLearningCourse.teachingQaNoQuestionsPrompt')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onComplete();
+                  onNext?.();
+                }}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                <span>{t('structuredLearningCourse.teachingQaContinueToNextStep')}</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={() => setTeachingSubStep(hasVideos ? 'videos' : 'listen')}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>{hasVideos ? t('structuredLearningCourse.teachingBackToVideos') : t('structuredLearningCourse.teachingBackToListen')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onComplete();
+                onNext?.();
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            >
+              <span>{t('structuredLearningCourse.teachingQaContinueToNextStep')}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
+      ) : step.StepType === 'Teaching' && teachingSubStep === 'videos' && hasVideos ? (
+        <div className="space-y-4 animate-fade-in">
+          <div className="overflow-hidden rounded-3xl border border-sky-500/30 bg-slate-950/40 p-6 shadow-2xl shadow-black/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-white/10 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500/20 text-sky-300">
+                  <Video className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">{t('structuredLearningCourse.teachingVideosTitle')}</h3>
+                  <p className="text-xs text-slate-400">
+                    {t('structuredLearningCourse.teachingVideosDescription')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-300">
+                  {t('structuredLearningCourse.teachingVideosWatchedCount', { watched: watchedVideoIds.size, total: publishedVideos.length })}
+                </span>
+                {areVideosFinished && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingVideosCompletedBadge')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Video Selector Tabs */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {publishedVideos.map((v, i) => {
+                const isWatched = watchedVideoIds.has(v.IllustrationId);
+                const isSelected = i === selectedVideoIndex;
+                return (
+                  <button
+                    key={v.IllustrationId}
+                    type="button"
+                    onClick={() => setSelectedVideoIndex(i)}
+                    className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold border transition-all ${
+                      isSelected
+                        ? 'border-sky-400 bg-sky-500/20 text-sky-200 shadow-md shadow-sky-500/20'
+                        : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:text-white'
+                    }`}
+                  >
+                    <Video className="h-3.5 w-3.5" />
+                    <span>{t('structuredLearningCourse.teachingVideoTab', { number: i + 1 })}</span>
+                    {isWatched && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 ml-1" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Current Video Player */}
+            {publishedVideos[selectedVideoIndex] && (
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
+                  <video
+                    key={publishedVideos[selectedVideoIndex].IllustrationId}
+                    src={apiImageUrl(`/illustrations/structured-learning/${publishedVideos[selectedVideoIndex].IllustrationId}/image`)}
+                    controls
+                    className="w-full max-h-[460px] object-contain bg-black"
+                    onEnded={() => {
+                      const curId = publishedVideos[selectedVideoIndex].IllustrationId;
+                      setWatchedVideoIds((prev) => new Set([...prev, curId]));
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <p className="line-clamp-2 max-w-xl text-slate-300">
+                    {publishedVideos[selectedVideoIndex].Prompt}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curId = publishedVideos[selectedVideoIndex].IllustrationId;
+                      setWatchedVideoIds((prev) => new Set([...prev, curId]));
+                    }}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
+                      watchedVideoIds.has(publishedVideos[selectedVideoIndex].IllustrationId)
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                        : 'border-white/20 bg-white/[0.05] text-slate-200 hover:bg-white/10'
+                    }`}
+                  >
+                    {watchedVideoIds.has(publishedVideos[selectedVideoIndex].IllustrationId) ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>{t('structuredLearningCourse.teachingVideoCompleted')}</span>
+                      </>
+                    ) : (
+                      <span>{t('structuredLearningCourse.teachingVideoMarkWatched')}</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Actions */}
+            <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <button
+                type="button"
+                onClick={() => setTeachingSubStep('listen')}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>{t('structuredLearningCourse.teachingBackToAudio')}</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWatchedVideoIds(new Set(publishedVideos.map((v) => v.IllustrationId)));
+                    }}
+                    className="text-[11px] text-slate-500 hover:text-slate-300 underline"
+                  >
+                    {t('structuredLearningCourse.teachingMarkAllWatchedEdit')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={!areVideosFinished}
+                  onClick={() => {
+                    if (!areVideosFinished) return;
+                    setTeachingSubStep('qa');
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-lg transition-all ${
+                    areVideosFinished
+                      ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-indigo-500/25 hover:scale-[1.02]'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  {!areVideosFinished ? <Lock className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+                  <span>{t('structuredLearningCourse.teachingGoToStep3Qa')}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-emerald-400" />
+                  <span className="text-sm font-semibold text-emerald-300">
+                    {t('structuredLearningCourse.teachingAudioTitle')}
+                  </span>
+                </div>
+                {isAudioFinished ? (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+                    <CheckCircle2 className="h-3 w-3" /> {t('structuredLearningCourse.teachingAudioCompleted')}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 rounded-full bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 text-[11px] font-medium text-amber-300">
+                    <Lock className="h-3 w-3" /> {audioProgressPercent > 0 ? t('structuredLearningCourse.teachingAudioListening', { percent: audioProgressPercent }) : t('structuredLearningCourse.teachingAudioListenToContinue')}
+                  </span>
+                )}
+              </div>
+              <audio
+                key={audioUrl}
+                controls
+                className="w-full h-10 rounded-lg accent-emerald-500"
+                src={audioUrl}
+                onTimeUpdate={(e) => {
+                  const audio = e.currentTarget;
+                  if (audio.duration && audio.duration > 0) {
+                    const pct = Math.round((audio.currentTime / audio.duration) * 100);
+                    setAudioProgressPercent(pct);
+                    if (audio.currentTime >= audio.duration - 0.5 && !isAudioFinished) {
+                      setIsAudioFinished(true);
+                    }
+                  }
+                }}
+                onEnded={() => {
+                  setIsAudioFinished(true);
+                  setAudioProgressPercent(100);
+                }}
+              >
+                Your browser does not support audio playback.
+              </audio>
+              <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-emerald-500/20">
+                {isAudioFinished ? (
+                  <span className="text-emerald-300 font-medium flex items-center gap-1">
+                    <Check className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioCompletedMsg')}
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-300/90 flex items-center gap-1">
+                      <Lock className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
+                    </span>
+                    {isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAudioFinished(true);
+                        }}
+                        className="text-[10px] text-slate-500 hover:text-slate-300 underline"
+                      >
+                        {t('structuredLearningCourse.teachingAudioSkipEdit')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  disabled={!isAudioFinished}
+                  onClick={() => {
+                    if (!isAudioFinished) return;
+                    setTeachingSubStep(hasVideos ? 'videos' : 'qa');
+                  }}
+                  className={`inline-flex items-center gap-1 font-semibold transition-colors ${
+                    isAudioFinished
+                      ? 'text-emerald-300 hover:text-emerald-200 cursor-pointer'
+                      : 'text-slate-500 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <span>{hasVideos ? t('structuredLearningCourse.teachingGoToVideosStep') : t('structuredLearningCourse.teachingGoToQaStep')}</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/30 shadow-2xl shadow-black/10">
+            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && <StepIllustration stepDataJson={step.StepDataJson} />}
+            <div className="px-5 py-6 sm:px-8 sm:py-8">
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-400">{t(`structuredLearningCourse.${meta.labelKey}`)}</p>
+              {step.StepType === 'Hypothesis' && step.Content && (
+                <RichStepContent content={step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content} />
+              )}
+              {step.StepType === 'Hypothesis' && !isEditing && (
+                <HypothesisQuestionCard sectionId={sectionId} step={step} />
+              )}
+              {step.StepType === 'Teaching' && !isEditing ? (
+                <RichStepContent content={step.Content} />
+              ) : (
+                step.StepType !== 'Hypothesis' && step.StepType !== 'Production' && step.Content && <RichStepContent content={step.Content} />
+              )}
+
+              {webCitations.length > 0 && (
+                <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-3 text-xs text-indigo-200">
+                  <div className="flex items-center gap-1.5 font-semibold text-indigo-300">
+                    <Globe className="h-4 w-4 text-indigo-400" />
+                    <span>{t('structuredLearningCourse.webSearchBadge')}</span>
+                    <span className="ml-auto rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] text-indigo-300">
+                      {t('structuredLearningCourse.webSearchSourcesCount', { count: webCitations.length })}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {webCitations.slice(0, 6).map((url, i) => {
+                      try {
+                        const host = new URL(url).hostname.replace(/^www\./, '');
+                        return (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] text-sky-300 hover:bg-white/[0.1] hover:underline" title={url}>
+                            🔗 {host}
+                          </a>
+                        );
+                      } catch {
+                        return null;
+                      }
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {step.StepType === 'Teaching' && (
+                <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+                  <span className="text-xs text-slate-400">
+                    {!canGoToVideos
+                      ? t('structuredLearningCourse.teachingGateListenAudio')
+                      : !areVideosFinished
+                      ? t('structuredLearningCourse.teachingGateWatchVideos')
+                      : t('structuredLearningCourse.teachingGateCompleted')}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!canGoToVideos}
+                    onClick={() => {
+                      if (!canGoToVideos) return;
+                      setTeachingSubStep(hasVideos ? 'videos' : 'qa');
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-lg transition-all ${
+                      !canGoToVideos
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50 shadow-none'
+                        : 'bg-gradient-to-r from-brand-500 to-indigo-500 text-white shadow-brand-500/20 hover:scale-[1.02] active:scale-[0.98]'
+                    }`}
+                  >
+                    {!canGoToVideos ? <Lock className="h-4 w-4" /> : hasVideos ? <Video className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+                    <span>{hasVideos ? t('structuredLearningCourse.teachingContinueToVideos') : t('structuredLearningCourse.teachingAskProfessor')}</span>
+                  </button>
+                </div>
+              )}
+
+              {isEditing && isEditableStepType && (
+                <>
+                  <StepEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
+                  <ManualEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
+                  {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} allSteps={allSteps} onVideosChanged={() => setVideoRefreshKey((k) => k + 1)} />}
+                  {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} refreshKey={videoRefreshKey} />}
+                </>
+              )}
+
+              {step.StepType === 'DeepDive' && step.StepDataJson && (
+                isEditing ? (
+                  <DeepDiveCardsEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
+                ) : (
+                  <DeepDiveQuiz sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} stepDataJson={step.StepDataJson} mode={mode} onComplete={onComplete} />
+                )
+              )}
+              {step.StepType === 'Recall' &&
+                (isEditing ? (
+                  <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.editModeGeneratedLive')}</p>
+                ) : (
+                  <RecallPractice sectionId={sectionId} onComplete={onComplete} />
+                ))}
+              {step.StepType === 'Production' && (
+                <WorkplaceApplicationStep
+                  key={sectionId}
+                  sectionId={sectionId}
+                  courseLanguage={courseLanguage}
+                  onComplete={onComplete}
+                />
+              )}
+              {step.StepType === 'Assessment' &&
+                (isEditing ? (
+                  <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.editModeGeneratedLive')}</p>
+                ) : (
+                  <AssessmentPractice sectionId={sectionId} questionType={questionType} onComplete={onComplete} />
+                ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function formatMentorInline(text: string): ReactNode {
+  const codeParts = text.split(/(`[^`]+`)/g);
+  return codeParts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      return (
+        <code
+          key={i}
+          className="rounded bg-teal-950/80 border border-teal-500/30 px-1.5 py-0.5 text-teal-200 font-mono text-[11px]"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+    return boldParts.map((bPart, j) => {
+      if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length >= 4) {
+        return (
+          <strong key={`${i}-${j}`} className="font-semibold text-white">
+            {bPart.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (bPart.includes(' → ') || bPart.includes(' -> ')) {
+        const arrowTokens = bPart.split(/\s*(?:→|->)\s*/);
+        return arrowTokens.map((tok, k) => (
+          <span key={`${i}-${j}-${k}`}>
+            {tok}
+            {k < arrowTokens.length - 1 && (
+              <span className="inline-flex items-center justify-center mx-1.5 px-1.5 py-0.5 text-[10px] rounded-md bg-teal-500/20 text-teal-300 font-mono border border-teal-500/30 shadow-xs">
+                →
+              </span>
+            )}
+          </span>
+        ));
+      }
+      return bPart;
+    });
+  });
+}
+
+function MentorMessageContent({
+  text,
+  onPromptClick,
+}: {
+  text: string;
+  onPromptClick?: (prompt: string) => void;
+}) {
+  const { t } = useTranslation();
+  const codeBlocks = text.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-3 text-xs text-slate-200 leading-relaxed">
+      {codeBlocks.map((block, bIdx) => {
+        if (block.startsWith('```') && block.endsWith('```')) {
+          const lines = block.slice(3, -3).trim().split('\n');
+          const firstLine = lines[0]?.trim();
+          const isLangHeader = /^[a-z0-9_-]+$/i.test(firstLine);
+          const codeLines = isLangHeader ? lines.slice(1) : lines;
+          return (
+            <pre
+              key={bIdx}
+              className="my-3 rounded-xl bg-slate-950 p-3.5 border border-teal-500/30 font-mono text-[11px] text-teal-200 overflow-x-auto shadow-inner"
+            >
+              <code>{codeLines.join('\n')}</code>
+            </pre>
+          );
+        }
+
+        const paragraphs = block.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+
+        return paragraphs.map((para, pIdx) => {
+          const lines = para.split('\n').map((l) => l.trim()).filter(Boolean);
+          const isListGroup = lines.length > 0 && lines.every((l) => /^[-*•]\s+|\d+[.)]\s+/.test(l));
+
+          if (isListGroup) {
+            return (
+              <ul key={`${bIdx}-${pIdx}`} className="space-y-2.5 my-3">
+                {lines.map((line, lIdx) => {
+                  const cleaned = line.replace(/^[-*•]\s+|\d+[.)]\s+/, '');
+                  const colonIndex = cleaned.indexOf(':');
+                  const hasTitle = colonIndex > 0 && colonIndex < 40;
+                  const title = hasTitle ? cleaned.slice(0, colonIndex + 1) : '';
+                  const body = hasTitle ? cleaned.slice(colonIndex + 1) : cleaned;
+
+                  return (
+                    <li
+                      key={lIdx}
+                      className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-white/[0.025] p-3 hover:bg-white/[0.05] transition-colors shadow-xs"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-teal-400 mt-1.5 shrink-0 ring-4 ring-teal-400/20" />
+                      <div className="flex-1 text-slate-300 leading-relaxed">
+                        {hasTitle && (
+                          <span className="font-semibold text-teal-200 block sm:inline sm:mr-1.5">
+                            {formatMentorInline(title)}
+                          </span>
+                        )}
+                        {formatMentorInline(body)}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }
+
+          const isEndingQuestion =
+            para.endsWith('?') ||
+            /^(would you like|do you want|shall we|¿te gustaría|deseas|quieres)/i.test(para);
+
+          if (isEndingQuestion) {
+            return (
+              <div
+                key={`${bIdx}-${pIdx}`}
+                className="mt-3.5 rounded-2xl border border-teal-500/30 bg-gradient-to-r from-teal-500/15 via-slate-950 to-emerald-500/15 p-3.5 shadow-md space-y-2"
+              >
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-teal-300">
+                  <Sparkles className="h-3.5 w-3.5 text-teal-400" />
+                  <span>{t('structuredLearningCourse.workplaceAppChatNextStep')}</span>
+                </div>
+                <p className="text-teal-100 font-medium leading-relaxed">
+                  {formatMentorInline(para)}
+                </p>
+                {onPromptClick && (
+                  <button
+                    type="button"
+                    onClick={() => onPromptClick(para)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-400/30 bg-teal-500/20 hover:bg-teal-500/30 px-2.5 py-1 text-[11px] font-semibold text-teal-200 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>{t('structuredLearningCourse.workplaceAppChatSend')}</span>
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <p key={`${bIdx}-${pIdx}`} className="text-slate-200 leading-relaxed">
+              {formatMentorInline(para)}
+            </p>
+          );
+        });
+      })}
+    </div>
+  );
+}
+
+function WorkplaceApplicationStep({
+  sectionId,
+  courseLanguage,
+  onComplete,
+}: {
+  sectionId: string;
+  courseLanguage?: 'es' | 'en';
+  onComplete: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const [data, setData] = useState<WorkplaceApplicationDto | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [audioTimestamp, setAudioTimestamp] = useState<number>(Date.now());
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+
+  const activeLanguage = courseLanguage || (i18n.language?.startsWith('es') ? 'es' : 'en');
+
+  const sendChatMessage = useCallback(async (textToSend?: string) => {
+    const msg = (textToSend ?? chatInput).trim();
+    if (!msg || chatLoading) return;
+
+    setChatMessages((prev) => [...prev, { role: 'user', text: msg }]);
+    if (!textToSend) setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await postStructuredLearningWorkplaceChat(
+        sectionId,
+        msg,
+        chatSessionId || undefined,
+        user?.memberId || undefined,
+        activeLanguage
+      );
+      if (res.SessionId) setChatSessionId(res.SessionId);
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: res.Reply }]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: err instanceof Error ? `Error: ${err.message}` : String(err),
+        },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  }, [chatInput, chatLoading, sectionId, chatSessionId, user?.memberId, activeLanguage]);
+
+  const clearChat = useCallback(() => {
+    setChatMessages([]);
+    setChatInput('');
+    setChatSessionId(null);
+  }, []);
+
+  const fetchApplication = useCallback(async (force = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getStructuredLearningWorkplaceApplication(
+        sectionId,
+        user?.memberId || undefined,
+        activeLanguage,
+        force
+      );
+      setData(res);
+      setAudioTimestamp(Date.now());
+      setHasLoaded(true);
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [sectionId, user?.memberId, activeLanguage, onComplete]);
+
+  return (
+    <div className="space-y-6 animate-fade-in mt-4">
+      {!hasLoaded && !loading && (
+        <div className="rounded-3xl border border-teal-500/30 bg-gradient-to-br from-teal-500/10 via-slate-950/60 to-emerald-500/10 p-8 text-center shadow-xl">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-500/20 text-teal-300 mb-4">
+            <Sparkles className="h-7 w-7" />
+          </div>
+          <h3 className="text-xl font-bold text-white mb-2">
+            {t('structuredLearningCourse.workplaceAppTitle')}
+          </h3>
+          <p className="max-w-xl mx-auto text-sm text-slate-300 leading-relaxed mb-6">
+            {t('structuredLearningCourse.workplaceAppDescription')}
+          </p>
+          <button
+            type="button"
+            onClick={() => fetchApplication(false)}
+            disabled={loading}
+            className="inline-flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Headphones className="h-4 w-4" />
+            <span>{t('structuredLearningCourse.workplaceAppButton')}</span>
+          </button>
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-3xl border border-teal-500/20 bg-slate-950/60 p-8 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-teal-400 mb-3" />
+          <p className="text-sm font-medium text-white">{t('structuredLearningCourse.workplaceAppLoadingTitle')}</p>
+          <p className="text-xs text-slate-400 mt-1">{t('structuredLearningCourse.workplaceAppLoadingSubtitle')}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-300 text-center">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => fetchApplication(false)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/30"
+          >
+            {t('structuredLearningCourse.workplaceAppRetry')}
+          </button>
+        </div>
+      )}
+
+      {data && (
+        <div className="rounded-3xl border border-teal-500/30 bg-gradient-to-br from-teal-500/10 via-slate-950 to-emerald-500/10 p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <span className="inline-flex items-center gap-1 rounded-full border border-teal-400/40 bg-teal-500/15 px-3 py-1 text-[11px] font-semibold text-teal-200">
+                <Sparkles className="h-3 w-3" /> {t('structuredLearningCourse.workplaceAppBadge')}
+              </span>
+              <h2 className="text-xl font-bold text-white mt-2">{data.ScenarioTitle}</h2>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {t('structuredLearningCourse.workplaceAppPersonalizedFor', { name: data.StudentName, role: data.RoleTitle })}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {data.Tools.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 max-w-sm">
+                  {data.Tools.slice(0, 3).map((tool, i) => (
+                    <span key={i} className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => fetchApplication(true)}
+                disabled={loading}
+                title={t('structuredLearningCourse.workplaceAppRegenerateButton')}
+                className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-slate-200 transition-colors cursor-pointer"
+              >
+                <Sparkles className="h-3 w-3 text-teal-300" />
+                <span>{t('structuredLearningCourse.workplaceAppRegenerateButton')}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Full-width Chat with Professor Button right above the Audio Player */}
+          <button
+            type="button"
+            onClick={() => setIsChatOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-teal-500/40 bg-gradient-to-r from-teal-500/20 via-slate-900 to-emerald-500/20 hover:from-teal-500/30 hover:to-emerald-500/30 px-5 py-3 text-sm font-semibold text-teal-200 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-lg shadow-teal-500/10"
+          >
+            <MessageSquareText className="h-4 w-4 text-teal-300" />
+            <span>{t('structuredLearningCourse.workplaceAppChatButton')}</span>
+          </button>
+
+          {/* Audio Player */}
+          {data.AudioUrl && (
+            <div className="rounded-2xl border border-teal-500/20 bg-slate-900/80 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Headphones className="h-4 w-4 text-teal-400" />
+                <span className="text-xs font-semibold text-teal-200">
+                  {t('structuredLearningCourse.workplaceAppAudioHeader')}
+                </span>
+              </div>
+              <audio
+                key={audioTimestamp}
+                controls
+                src={`${data.AudioUrl}${data.AudioUrl.includes('?') ? '&' : '?'}t=${audioTimestamp}`}
+                className="w-full"
+                onEnded={onComplete}
+              >
+                {t('structuredLearningCourse.workplaceAppAudioUnsupported')}
+              </audio>
+            </div>
+          )}
+
+          {/* Text Scenario */}
+          <div className="space-y-4 text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">
+            <h4 className="font-semibold text-white text-base">{t('structuredLearningCourse.workplaceAppScenarioHeader')}</h4>
+            <p className="text-slate-300">{data.ScenarioText}</p>
+          </div>
+
+          {data.PracticalActions.length > 0 && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
+              <h4 className="font-semibold text-xs uppercase tracking-wide text-teal-300">
+                {t('structuredLearningCourse.workplaceAppActionsHeader')}
+              </h4>
+              <ul className="list-disc pl-5 space-y-1 text-xs text-slate-300">
+                {data.PracticalActions.map((action, i) => (
+                  <li key={i}>{action}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Slide-over Side Drawer for Q&A with Professor (gpt-5-mini) */}
+      {isChatOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/70 backdrop-blur-sm animate-fade-in flex justify-end">
+          <div className="w-full max-w-xl sm:max-w-2xl bg-slate-900 border-l border-teal-500/30 shadow-2xl flex flex-col h-full transform transition-transform duration-300 ease-out">
+            {/* Header */}
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/20 text-teal-300">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white leading-tight">
+                    {t('structuredLearningCourse.workplaceAppChatDrawerTitle')}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    {data?.StudentName ? `Professor for ${data.StudentName}` : 'Personalized AI Professor'} · gpt-5-mini
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {chatMessages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearChat}
+                    title={t('structuredLearningCourse.workplaceAppChatClear')}
+                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 hover:bg-red-500/15 hover:border-red-500/30 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-red-200 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>{t('structuredLearningCourse.workplaceAppChatClear')}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Message Thread */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {chatMessages.length === 0 ? (
+                <div className="space-y-4 my-auto pt-6 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                    <MessageSquareText className="h-6 w-6" />
+                  </div>
+                  <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
+                    {t('structuredLearningCourse.workplaceAppChatEmptyHint')}
+                  </p>
+
+                  <div className="pt-2 flex flex-col gap-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(t('structuredLearningCourse.workplaceAppChatSuggested1'))}
+                      className="text-left text-xs rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] p-3 text-teal-200 transition-colors cursor-pointer"
+                    >
+                      💡 {t('structuredLearningCourse.workplaceAppChatSuggested1')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(t('structuredLearningCourse.workplaceAppChatSuggested2'))}
+                      className="text-left text-xs rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] p-3 text-teal-200 transition-colors cursor-pointer"
+                    >
+                      🛡️ {t('structuredLearningCourse.workplaceAppChatSuggested2')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(t('structuredLearningCourse.workplaceAppChatSuggested3'))}
+                      className="text-left text-xs rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] p-3 text-teal-200 transition-colors cursor-pointer"
+                    >
+                      📋 {t('structuredLearningCourse.workplaceAppChatSuggested3')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                chatMessages.map((m, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                  >
+                    {m.role === 'user' ? (
+                      <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed bg-teal-500 text-white rounded-br-none shadow-md">
+                        {m.text}
+                      </div>
+                    ) : (
+                      <div className="w-full max-w-[96%] rounded-2xl p-4 text-xs leading-relaxed bg-white/[0.04] border border-white/10 text-slate-200 rounded-bl-none shadow-md">
+                        <MentorMessageContent text={m.text} onPromptClick={(opt) => sendChatMessage(opt)} />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+
+              {chatLoading && (
+                <div className="flex items-center gap-2 text-xs text-teal-300 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-teal-400" />
+                  <span>Thinking...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Input Bar */}
+            <div className="p-3 border-t border-white/10 bg-slate-950/70">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  sendChatMessage();
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={t('structuredLearningCourse.workplaceAppChatPlaceholder')}
+                  disabled={chatLoading}
+                  className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-xs text-white placeholder-slate-400 focus:border-teal-400 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="inline-flex items-center justify-center rounded-xl bg-teal-500 hover:bg-teal-600 disabled:opacity-40 p-2.5 text-white shadow-md transition-colors cursor-pointer"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -756,9 +1809,11 @@ function StepEditBox({
 }) {
   const { t } = useTranslation();
   const [instruction, setInstruction] = useState('');
+  const [usePerplexity, setUsePerplexity] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [appliedCitations, setAppliedCitations] = useState<string[]>([]);
 
   async function handleApply() {
     if (!instruction.trim()) return;
@@ -766,10 +1821,15 @@ function StepEditBox({
     setError(null);
     setSuccess(false);
     try {
-      const updated = await editStructuredLearningStep(sectionId, step.StepType, instruction.trim());
+      const updated = await editStructuredLearningStep(sectionId, step.StepType, instruction.trim(), usePerplexity);
       onUpdated(updated);
       setInstruction('');
       setSuccess(true);
+      if (updated.WebSearchCitations && updated.WebSearchCitations.length > 0) {
+        setAppliedCitations(updated.WebSearchCitations);
+      } else {
+        setAppliedCitations([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -779,26 +1839,67 @@ function StepEditBox({
 
   return (
     <div className="mt-4 rounded-xl border border-sky-400/20 bg-sky-500/[0.04] p-3">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-sky-300">
-        <Sparkles className="h-3.5 w-3.5" /> {t('structuredLearningCourse.editWithAiLabel')}
-      </p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-sky-300">
+          <Sparkles className="h-3.5 w-3.5" /> {t('structuredLearningCourse.editWithAiLabel')}
+        </p>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-300 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20">
+          <input
+            type="checkbox"
+            checked={usePerplexity}
+            onChange={(e) => setUsePerplexity(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-indigo-400/40 bg-slate-900 text-indigo-500 focus:ring-0 focus:ring-offset-0"
+          />
+          <Globe className="h-3.5 w-3.5 text-indigo-300" />
+          <span>{t('structuredLearningCourse.webSearchLiveOption')}</span>
+        </label>
+      </div>
       <textarea
         value={instruction}
         onChange={(e) => setInstruction(e.target.value)}
         rows={2}
-        placeholder={t('structuredLearningCourse.editWithAiPlaceholder')}
+        placeholder={usePerplexity ? t('structuredLearningCourse.webSearchPlaceholder') : t('structuredLearningCourse.editWithAiPlaceholder')}
         className="input w-full"
       />
       {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
-      {success && <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-300"><Check className="h-3 w-3" /> {t('structuredLearningCourse.editApplied')}</p>}
+      {success && (
+        <div className="mt-2 space-y-1.5">
+          <p className="flex items-center gap-1 text-xs text-emerald-300">
+            <Check className="h-3 w-3" /> {t('structuredLearningCourse.editApplied')}
+          </p>
+          {appliedCitations.length > 0 && (
+            <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-2.5 text-xs text-indigo-200">
+              <p className="font-semibold flex items-center gap-1.5 text-indigo-300">
+                <Globe className="h-3.5 w-3.5" /> {t('structuredLearningCourse.webSearchSourcesFound', { count: appliedCitations.length })}
+              </p>
+              <ul className="mt-1.5 list-disc list-inside space-y-1 text-slate-300">
+                {appliedCitations.slice(0, 5).map((url, i) => {
+                  try {
+                    const host = new URL(url).hostname;
+                    return (
+                      <li key={i} className="truncate">
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline hover:text-sky-200" title={url}>
+                          {host} — {url.length > 55 ? url.substring(0, 55) + '...' : url}
+                        </a>
+                      </li>
+                    );
+                  } catch {
+                    return <li key={i}><a href={url} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline">{url}</a></li>;
+                  }
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
       <button
         type="button"
         onClick={handleApply}
         disabled={submitting || !instruction.trim()}
-        className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-sky-400"
       >
         {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-        {t('structuredLearningCourse.editApply')}
+        {usePerplexity ? t('structuredLearningCourse.webSearchApplyButton') : t('structuredLearningCourse.editApply')}
       </button>
     </div>
   );
@@ -1246,128 +2347,6 @@ function TeachingTimelineEditor({
   );
 }
 
-/** Student/reviewer-facing "wizard" playback (2026-08-22) of a Teaching
- * step's Text-Tutor + Video items, one at a time with its own Previous/
- * Next — always on for Teaching in real/demo mode. Uses the author's saved
- * TeachingTimelineEditor order (step.TimelineJson) when set, otherwise
- * falls back to the natural registration order: Text first, then each
- * generated Video in creation order. */
-function TeachingTimelineWizard({
-  sectionId,
-  step,
-  onItemTypeChange,
-}: {
-  sectionId: string;
-  step: StructuredLearningStepDetail;
-  onItemTypeChange: (type: 'Text' | 'Video') => void;
-}) {
-  const { t } = useTranslation();
-  const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
-  const [loadingVideos, setLoadingVideos] = useState(true);
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    listStructuredLearningSectionVideos(sectionId)
-      .then((list) => {
-        if (cancelled) return;
-        // Demo/Real preview shows what a student would see (2026-08-26) —
-        // Studio's own internal call never sends personId (that signal only
-        // applies to the external runtime proxy), so unpublished videos must
-        // be filtered out here explicitly instead.
-        setVideos(list.filter((v) => v.IsPublished));
-      })
-      .catch(() => { if (!cancelled) setVideos([]); })
-      .finally(() => { if (!cancelled) setLoadingVideos(false); });
-    return () => { cancelled = true; };
-  }, [sectionId]);
-
-  useEffect(() => {
-    setIndex(0);
-  }, [step.StructuredLearningSectionStepId]);
-
-  const saved = parseTeachingTimeline(step.TimelineJson);
-  const validSaved = saved?.filter((item) => item.Type === 'Text' || videos.some((v) => v.IllustrationId === item.IllustrationId)) ?? null;
-  const defaultItems: TeachingTimelineItem[] = [
-    { Type: 'Text' },
-    ...videos.map((v): TeachingTimelineItem => ({ Type: 'Video', IllustrationId: v.IllustrationId })),
-  ];
-  const missingFromSaved = validSaved
-    ? defaultItems.filter((item) => !validSaved.some((s) => (item.Type === 'Text' ? s.Type === 'Text' : s.Type === 'Video' && s.IllustrationId === item.IllustrationId)))
-    : [];
-  const items = validSaved && validSaved.length > 0 ? [...validSaved, ...missingFromSaved] : defaultItems;
-  const current = items[Math.min(index, items.length - 1)] as TeachingTimelineItem | undefined;
-
-  useEffect(() => {
-    if (current) onItemTypeChange(current.Type);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.Type === 'Video' ? current.IllustrationId : current?.Type]);
-
-  if (loadingVideos) return null;
-  if (!current) return null;
-
-  const isFirst = index === 0;
-  const isLast = index >= items.length - 1;
-
-  return (
-    <div className="mt-6 space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {items.map((item, i) => (
-          <button
-            key={item.Type === 'Text' ? 'text' : `video-${item.IllustrationId}`}
-            type="button"
-            onClick={() => setIndex(i)}
-            className={`flex h-10 min-w-[2.5rem] items-center justify-center rounded-full border px-2.5 text-sm font-semibold transition ${
-              i === index
-                ? 'border-brand-400 bg-brand-500/20 text-brand-200'
-                : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20'
-            }`}
-          >
-            {item.Type === 'Video' ? <Video className="h-5 w-5" /> : i + 1}
-          </button>
-        ))}
-      </div>
-
-      {current.Type === 'Video' ? (
-        <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-brand-300">
-            <Video className="h-4 w-4" /> {t('structuredLearningCourse.videoStartPrompt')}
-          </p>
-          <video
-            src={apiImageUrl(`/illustrations/structured-learning/${current.IllustrationId}/image`)}
-            controls
-            className="w-full rounded-xl bg-black"
-          />
-        </div>
-      ) : (
-        <RichStepContent content={step.Content} />
-      )}
-
-      {items.length > 1 && (
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            disabled={isFirst}
-            onClick={() => setIndex((i) => Math.max(0, i - 1))}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> {t('structuredLearningCourse.wizardPrevious')}
-          </button>
-          <span className="text-[11px] text-slate-500">{index + 1} / {items.length}</span>
-          <button
-            type="button"
-            disabled={isLast}
-            onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            {t('structuredLearningCourse.wizardNext')} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 async function fetchIllustrationAsBase64(illustrationId: string): Promise<{ base64: string; contentType: string; previewUrl: string }> {
   const url = apiImageUrl(`/illustrations/structured-learning/${illustrationId}/image`);
   try {
@@ -1495,6 +2474,7 @@ function VideoGenerationBox({
   const [wizardGeneratingImage, setWizardGeneratingImage] = useState(false);
   const [wizardGeneratingPrompts, setWizardGeneratingPrompts] = useState(false);
   const [wizardPrompts, setWizardPrompts] = useState<string[]>([]);
+  const [wizardMaxVideos, setWizardMaxVideos] = useState(10);
   const [wizardActiveClip, setWizardActiveClip] = useState(0);
   const [wizardError, setWizardError] = useState<string | null>(null);
   const [wizardChainImage, setWizardChainImage] = useState<{ base64: string; contentType: string } | null>(null);
@@ -1632,16 +2612,33 @@ function VideoGenerationBox({
     }
     setWizardGeneratingPrompts(true);
     setWizardError(null);
+    // Clear the previous clip sequence up front (2026-09-08) so a stale
+    // list from an earlier run (e.g. with a different Max clips value)
+    // never lingers on screen while the new one is being generated.
+    setWizardPrompts([]);
+    setWizardActiveClip(0);
+    setWizardChainImage(null);
     try {
       const imageDesc = wizardImageMode === 'engram' && !wizardImageDescription.trim()
         ? 'Starting frame based on the engram lesson illustration.'
         : wizardImageDescription.trim() || 'No specific starting image provided.';
 
+      let detectedLang = 'es';
+      if (step.ConfigSnapshotJson) {
+        try {
+          const parsed = JSON.parse(step.ConfigSnapshotJson);
+          const l = parsed.LanguageCode || parsed.languageCode;
+          if (l) detectedLang = String(l).toLowerCase().startsWith('es') ? 'es' : 'en';
+        } catch { }
+      }
+
       const result = await generateStructuredLearningVideoPrompt(
         wizardObjective.trim(),
         wizardVideoDescription.trim(),
         wizardEnvironment.trim(),
-        imageDesc
+        imageDesc,
+        detectedLang,
+        wizardMaxVideos
       );
       setWizardPrompts(result.RecommendedPrompts);
       setWizardActiveClip(0);
@@ -1662,11 +2659,15 @@ function VideoGenerationBox({
     if (!clipPrompt?.trim()) return;
     setWizardGeneratingClip(index);
     setWizardError(null);
-    // For the first clip (index 0), always use the starting image from tab 3 (wizardImage).
-    // For subsequent clips (index > 0), use the chained previous clip's last frame if available, otherwise fallback to wizardImage.
-    const anchorImage = wizardImageMode === 'none'
-      ? null
-      : (index === 0 ? wizardImage : (wizardChainImage ?? wizardImage));
+    // For the first clip (index 0), use the starting image from tab 3 (wizardImage) —
+    // or none at all if the reviewer picked "no image" mode, letting Veo invent the scene.
+    // For subsequent clips (index > 0), ALWAYS prefer the chained previous clip's last
+    // frame for continuity (2026-09-08 fix) — even in "no image" mode, once clip 1 has
+    // run we have a real last frame and must use it, otherwise every later clip restarts
+    // from text alone and Veo invents a different-looking teacher each time.
+    const anchorImage = index === 0
+      ? (wizardImageMode === 'none' ? null : wizardImage)
+      : (wizardChainImage ?? (wizardImageMode === 'none' ? null : wizardImage));
     try {
       const status = await startStructuredLearningVideo(
         sectionId, clipPrompt.trim(), step.StepType, videoModel,
@@ -1958,7 +2959,7 @@ function VideoGenerationBox({
                   onClick={() => handleDelete(video.IllustrationId)}
                   disabled={deletingId === video.IllustrationId}
                   className="absolute -right-1.5 -top-1.5 rounded-full border border-white/20 bg-slate-900 p-1 text-white shadow-lg hover:bg-red-600 disabled:opacity-50"
-                  aria-label="Eliminar video"
+                  aria-label={t('structuredLearningCourse.deleteVideo')}
                 >
                   {deletingId === video.IllustrationId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                 </button>
@@ -2317,6 +3318,17 @@ function VideoGenerationBox({
           )}
 
           <div className="flex items-center gap-2 border-t border-white/10 pt-2">
+            <label className="flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
+              Max clips
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={wizardMaxVideos}
+                onChange={(e) => setWizardMaxVideos(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+                className="input w-14 py-1 text-center text-xs"
+              />
+            </label>
             <button
               type="button"
               onClick={handleWizardGeneratePrompts}
@@ -2904,12 +3916,12 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
           e.preventDefault();
           void downloadImageFile(src, filename);
         }}
-        title="Download / Save image to local file"
+        title={t('structuredLearningCourse.saveImageTitle')}
         className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg border border-white/20 bg-slate-900/85 px-2.5 py-1 text-[11px] font-medium text-slate-200 shadow-md backdrop-blur-xs opacity-0 transition hover:bg-slate-800 hover:text-white group-hover:opacity-100 cursor-pointer"
-        aria-label="Save image to local file"
+        aria-label={t('structuredLearningCourse.saveImage')}
       >
         <Download className="h-3.5 w-3.5" />
-        <span>Save image</span>
+        <span>{t('structuredLearningCourse.saveImage')}</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={t('structuredLearningCourse.enlargedIllustration')} onClick={() => setOpen(false)}>
@@ -2922,10 +3934,10 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
                 void downloadImageFile(src, filename);
               }}
               className="absolute -top-2 right-12 flex items-center gap-1.5 rounded-full border border-white/20 bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-800 cursor-pointer"
-              aria-label="Download image"
+              aria-label={t('structuredLearningCourse.download')}
             >
               <Download className="h-3.5 w-3.5" />
-              <span>Download</span>
+              <span>{t('structuredLearningCourse.download')}</span>
             </button>
             <button type="button" onClick={() => setOpen(false)} className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800 cursor-pointer" aria-label={t('structuredLearningCourse.closeIllustration')}>
               <X className="h-4 w-4" />
@@ -3102,6 +4114,7 @@ function DeepDiveQuiz({
           <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{freeCard.Text}</p>
 
           <VoiceTutorAgent
+            key={`${stepId}:${cardIndex}`}
             structuredLearningSectionStepId={stepId}
             exampleCardIndex={cardIndex}
             reviewOnly
@@ -3245,6 +4258,7 @@ function DeepDiveQuiz({
         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{card.Text}</p>
 
         <VoiceTutorAgent
+          key={`${stepId}:${cardIndex}`}
           structuredLearningSectionStepId={stepId}
           exampleCardIndex={cardIndex}
           autoConnect={false}
@@ -3351,6 +4365,7 @@ function DeepDiveCardReviewOverlay({
         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{card.Text}</p>
 
         <VoiceTutorAgent
+          key={`${stepId}:${index}`}
           structuredLearningSectionStepId={stepId}
           exampleCardIndex={index}
           reviewOnly

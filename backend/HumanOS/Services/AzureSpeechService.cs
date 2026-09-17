@@ -55,13 +55,13 @@ public sealed class AzureSpeechService
 
         var accessToken = await IssueAccessTokenAsync(cancellationToken);
 
-        // Derive the voice's locale from its name (e.g. "es-MX-DaliaNeural"
+        // Derive the voice's locale from its name (e.g. "es-MX-CecilioNeural"
         // -> "es-MX") for the SSML <voice> element's xml:lang attribute.
         var locale = voiceName.Length >= 5 ? voiceName[..5] : "es-MX";
 
         var ssml =
             $"""
-            <speak version="1.0" xml:lang="{locale}">
+            <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{locale}">
               <voice xml:lang="{locale}" name="{voiceName}">{SecurityElement.Escape(text)}</voice>
             </speak>
             """;

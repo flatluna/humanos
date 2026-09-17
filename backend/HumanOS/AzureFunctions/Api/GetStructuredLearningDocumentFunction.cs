@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using HumanOS.Data;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -33,6 +34,8 @@ public sealed class StructuredLearningStepDetailDto
     public string? TimelineJson { get; set; }
 
     public string? VideoWizardStateJson { get; set; }
+
+    public List<string>? WebSearchCitations { get; set; }
 }
 
 public sealed class StructuredLearningSectionDetailDto
@@ -73,6 +76,10 @@ public sealed class StructuredLearningSectionDetailDto
     /// single logical root instead of guessing via degree count.</summary>
     public string? KnowledgeGraphRootEntityName { get; set; }
 
+    public List<string>? WebSearchSources { get; set; }
+
+    public bool HasApiData { get; set; }
+
     public List<StructuredLearningStepDetailDto> Steps { get; set; } = [];
 }
 
@@ -91,6 +98,10 @@ public sealed class StructuredLearningDocumentDetailResponse
     public Guid? CapabilityDomainId { get; set; }
 
     public Guid? TopicId { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? TargetSkill { get; set; }
 
     public string? ExecutiveSummary { get; set; }
 
@@ -188,6 +199,8 @@ public sealed class GetStructuredLearningDocumentFunction
             SubjectId = document.SubjectId,
             CapabilityDomainId = document.CapabilityDomainId,
             TopicId = document.TopicId,
+            Category = document.Category,
+            TargetSkill = document.TargetSkill,
             ExecutiveSummary = document.ExecutiveSummary,
             CoverIllustrationId = coverIllustrationId,
             PedagogicalAudience = document.PedagogicalAudience,
@@ -227,6 +240,8 @@ public sealed class GetStructuredLearningDocumentFunction
                     PedagogyStatus = s.PedagogyStatus.ToString(),
                     PedagogyErrorMessage = s.PedagogyErrorMessage,
                     KnowledgeGraphRootEntityName = s.KnowledgeGraphRootEntityName,
+                    WebSearchSources = ExtractSourcesFromConfigSnapshot(s.ConfigSnapshotJson),
+                    HasApiData = CheckHasApiData(s.ConfigSnapshotJson),
                     Steps = s.Steps
                         .OrderBy(st => st.SortOrder)
                         .Select(st => new StructuredLearningStepDetailDto
@@ -243,7 +258,8 @@ public sealed class GetStructuredLearningDocumentFunction
                             IsHumanApproved = st.IsHumanApproved,
                             HumanApprovedAtUtc = st.HumanApprovedAtUtc,
                             TimelineJson = st.TimelineJson,
-                            VideoWizardStateJson = st.VideoWizardStateJson
+                            VideoWizardStateJson = st.VideoWizardStateJson,
+                            WebSearchCitations = ExtractCitationsFromStepData(st.StepDataJson)
                         })
                         .ToList()
                 })
@@ -251,5 +267,64 @@ public sealed class GetStructuredLearningDocumentFunction
         };
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, response, cancellationToken: cancellationToken);
+    }
+
+    private static List<string>? ExtractCitationsFromStepData(string? stepDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(stepDataJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(stepDataJson);
+            if (doc.RootElement.TryGetProperty("WebSearchCitations", out var prop) && prop.ValueKind == JsonValueKind.Array)
+            {
+                var list = new List<string>();
+                foreach (var el in prop.EnumerateArray())
+                {
+                    var str = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(str)) list.Add(str);
+                }
+                return list.Count > 0 ? list : null;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static List<string>? ExtractSourcesFromConfigSnapshot(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(configSnapshotJson);
+            if ((doc.RootElement.TryGetProperty("WebSearchSources", out var prop) ||
+                 doc.RootElement.TryGetProperty("webSearchSources", out prop)) && prop.ValueKind == JsonValueKind.Array)
+            {
+                var list = new List<string>();
+                foreach (var el in prop.EnumerateArray())
+                {
+                    var str = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(str)) list.Add(str);
+                }
+                return list.Count > 0 ? list : null;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static bool CheckHasApiData(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(configSnapshotJson);
+            if ((doc.RootElement.TryGetProperty("HasApiData", out var prop) ||
+                 doc.RootElement.TryGetProperty("hasApiData", out prop)) && prop.ValueKind == JsonValueKind.True)
+            {
+                return true;
+            }
+        }
+        catch { }
+        return false;
     }
 }

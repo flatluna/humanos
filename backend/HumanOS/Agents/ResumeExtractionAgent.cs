@@ -1,6 +1,7 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using HumanOS.Agents.Studio;
+using HumanOS.Contracts.People;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
@@ -14,6 +15,8 @@ namespace HumanOS.Agents;
 /// <see cref="HumanOS.Models.People.PersonResume"/>.</summary>
 public sealed class ResumeExtractionProposal
 {
+    public StudentAcademicProfile? StudentAcademicProfile { get; set; }
+
     public string? Address { get; set; }
 
     public string? LinkedInUrl { get; set; }
@@ -158,6 +161,13 @@ public sealed class ResumeExtractionAgent
 
         9. Languages (List of strings):
            - Extract each spoken/written language with proficiency level if indicated (e.g., "Español (Nativo)", "Inglés (Avanzado / C1)").
+
+          10. StudentAcademicProfile (object):
+              - Extract this object when the résumé contains academic history, a transcript, cardex, semesters, subjects, grades, academic average, or distinctions.
+              - Institution = the explicitly named university; Degree = the explicitly named program; GraduationYear = the expected or completed year when present; AcademicStage = the stated status such as "Último semestre".
+              - CumulativeAverage and AverageScale must preserve the stated numeric average and scale. Distinctions must contain each explicitly stated academic distinction as a separate item.
+              - Semesters must contain EVERY semester in the cardex. Each semester must preserve its name, stated average (including a partial/current average), and EVERY subject with its numeric grade.
+              - Do not calculate averages, infer missing subjects, or invent semesters. If no academic transcript/cardex is explicitly present, return null or an empty object.
 
         GENERAL RULES:
         - ABSOLUTE REQUIREMENT: NO CONCATENATED ENTRIES IN ANY ARRAY

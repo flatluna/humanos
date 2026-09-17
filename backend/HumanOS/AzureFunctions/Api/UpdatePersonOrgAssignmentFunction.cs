@@ -60,7 +60,17 @@ public sealed class UpdatePersonOrgAssignmentFunction
         try
         {
             var person = await _personService.UpdateOrgAssignmentAsync(
-                personId, body.DepartmentId, body.JobRoleId, body.ManagerId, orgRole, cancellationToken);
+                personId,
+                body.DepartmentId,
+                body.JobRoleId,
+                body.ManagerId,
+                orgRole,
+                body.Email,
+                body.DisplayName,
+                body.PhoneNumber,
+                body.Address,
+                body.LinkedInUrl,
+                cancellationToken);
 
             if (person is null)
             {

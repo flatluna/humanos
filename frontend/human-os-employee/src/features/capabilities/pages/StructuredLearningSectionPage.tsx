@@ -21,6 +21,13 @@ import {
   Info,
   Sparkles,
   Download,
+  Headphones,
+  Volume2,
+  Bot,
+  Lock,
+  MessageSquareText,
+  Trash2,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
@@ -34,6 +41,9 @@ import {
   getActiveStructuredLearningAssessmentRound,
   submitStructuredLearningAssessmentAnswer,
   listStructuredLearningSectionVideos,
+  getStructuredLearningWorkplaceApplication,
+  postStructuredLearningWorkplaceChat,
+  type WorkplaceApplicationDto,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
@@ -52,7 +62,7 @@ import { RewardCelebration } from '@/features/gamification/components/RewardCele
 import { ReflectionPause } from '@/features/gamification/components/ReflectionPause';
 import type { GamificationRewardBundleDto } from '@/features/gamification/types';
 
-const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Recall', 'Production', 'Assessment'];
+const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Production', 'Recall', 'Assessment'];
 const GATED_STEP_TYPES = new Set(['DeepDive', 'Recall', 'Assessment']);
 const RECALL_MAX_ATTEMPTS = 5;
 
@@ -60,6 +70,7 @@ const STEP_META: Record<string, { labelEn: string; labelEs: string; Icon: typeof
   Hypothesis: { labelEn: 'Before you start', labelEs: 'Antes de iniciar', Icon: Lightbulb },
   Teaching: { labelEn: 'Learn', labelEs: 'Enseñanza', Icon: BookOpenText },
   DeepDive: { labelEn: 'Deep dive', labelEs: 'Profundización', Icon: Layers },
+  Production: { labelEn: 'In your role', labelEs: 'En tu puesto', Icon: Sparkles },
   Recall: { labelEn: 'Recall', labelEs: 'Evocación', Icon: Brain },
   Assessment: { labelEn: 'Assessment', labelEs: 'Evaluación', Icon: ClipboardCheck },
 };
@@ -321,8 +332,32 @@ export default function StructuredLearningSectionPage() {
     return impactScores.find((s) => s.engramId.toLowerCase() === sectionId.toLowerCase()) ?? null;
   }, [impactScores, sectionId]);
 
+  const courseLanguage: 'es' | 'en' = useMemo(() => {
+    const configs = [
+      currentSection?.Steps?.find((s) => s.StepType === 'Teaching')?.StepDataJson,
+      document?.ExecutiveSummary,
+    ];
+    for (const json of configs) {
+      if (json) {
+        try {
+          const parsed = JSON.parse(json);
+          const l = parsed.LanguageCode || parsed.languageCode;
+          if (l) return String(l).toLowerCase().startsWith('es') ? 'es' : 'en';
+        } catch { }
+      }
+    }
+    const sample = `${currentSection?.SubchapterTitle ?? ''} ${currentSection?.ChapterTitle ?? ''} ${currentSection?.Text ?? ''} ${document?.DocumentName ?? ''}`.toLowerCase();
+    const spanishWords = [' el ', ' la ', ' de ', ' que ', ' los ', ' las ', ' para ', ' con ', ' es ', ' en ', ' del ', ' por '];
+    const englishWords = [' the ', ' and ', ' you ', ' is ', ' to ', ' your ', ' with ', ' that ', ' this '];
+    const spHits = spanishWords.filter((w) => sample.includes(w)).length;
+    const enHits = englishWords.filter((w) => sample.includes(w)).length;
+    if (spHits > enHits) return 'es';
+    if (enHits > spHits) return 'en';
+    return isEn ? 'en' : 'es';
+  }, [currentSection, document, isEn]);
+
   const steps = useMemo(
-    () => (currentSection?.Steps ?? []).filter((s) => s.StepType !== 'Production'),
+    () => [...(currentSection?.Steps ?? [])].sort((a, b) => STEP_ORDER.indexOf(a.StepType) - STEP_ORDER.indexOf(b.StepType)),
     [currentSection]
   );
   const currentStep = steps[stepIndex] ?? null;
@@ -357,8 +392,8 @@ export default function StructuredLearningSectionPage() {
     }
   }
 
-  function goNext() {
-    if (!canAdvancePastCurrentStep) return;
+  function goNext(bypassGate = false) {
+    if (!bypassGate && !canAdvancePastCurrentStep) return;
     if (!isLastStep) {
       setStepIndex((i) => i + 1);
       return;
@@ -822,12 +857,15 @@ export default function StructuredLearningSectionPage() {
           <StepContent
             key={currentStep.StructuredLearningSectionStepId}
             step={currentStep}
+            allSteps={currentSection.Steps}
             sectionId={currentSection.StructuredLearningDocumentSectionId}
             personId={personId}
             engramTitle={currentSection.SubchapterTitle || currentSection.ChapterTitle}
+            courseLanguage={courseLanguage}
             tier={currentEngramScore?.tier}
             questionType={document.AssessmentQuestionType}
             onComplete={handleStepComplete}
+            onNext={() => goNext(true)}
             isEn={isEn}
           />
         ) : (
@@ -846,7 +884,7 @@ export default function StructuredLearningSectionPage() {
         </button>
         <button
           type="button"
-          onClick={goNext}
+          onClick={() => goNext()}
           disabled={!canAdvancePastCurrentStep}
           className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -920,87 +958,504 @@ function StepProgress({
 
 function StepContent({
   step,
+  allSteps: _allSteps,
   sectionId,
   personId,
   engramTitle,
+  courseLanguage,
   tier,
   questionType,
   onComplete,
+  onNext,
   isEn,
 }: {
   step: StructuredLearningStepDetail;
+  allSteps?: StructuredLearningStepDetail[];
   sectionId: string;
   personId: string;
   engramTitle?: string;
+  courseLanguage?: 'es' | 'en';
   tier?: string;
   questionType: string;
   onComplete: () => void;
+  onNext?: () => void;
   isEn: boolean;
 }) {
-  const [teachingWizardItemType, setTeachingWizardItemType] = useState<'Text' | 'Video'>('Text');
+  const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('listen');
+  const [isAudioFinished, setIsAudioFinished] = useState(false);
+  const [audioProgressPercent, setAudioProgressPercent] = useState(0);
+
+  const [publishedVideos, setPublishedVideos] = useState<StructuredLearningSectionVideo[]>([]);
+  const [watchedVideoIds, setWatchedVideoIds] = useState<Set<string>>(new Set());
+  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStructuredLearningSectionVideos(sectionId)
+      .then((list) => {
+        if (!cancelled) setPublishedVideos(list.filter((v) => v.IsPublished));
+      })
+      .catch(() => {
+        if (!cancelled) setPublishedVideos([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sectionId]);
+
+  const hasVideos = publishedVideos.length > 0;
+  const areVideosFinished = !hasVideos || watchedVideoIds.size >= publishedVideos.length;
+
   const meta = STEP_META[step.StepType] ?? { labelEn: step.StepType, labelEs: step.StepType, Icon: BookOpenText };
-  const teachingShowsVideo = step.StepType === 'Teaching' && teachingWizardItemType === 'Video';
+  const teachingShowsVideo = step.StepType === 'Teaching' && teachingSubStep === 'videos';
+
+  const hasAudio = step.StepType === 'Teaching' && Boolean(
+    step.StepDataJson && (step.StepDataJson.includes('SpeechStoragePath') || step.StepDataJson.includes('ProfessorLecture'))
+  );
+
+  const canGoToVideos = !hasAudio || isAudioFinished;
+  const canGoToQa = canGoToVideos && areVideosFinished;
+
+  useEffect(() => {
+    if (step.StepType !== 'Teaching') return;
+    const audioDone = !hasAudio || isAudioFinished;
+    const videosDone = !hasVideos || areVideosFinished;
+    if ((audioDone && videosDone) || teachingSubStep === 'qa') {
+      onComplete();
+    }
+  }, [step.StepType, hasAudio, isAudioFinished, hasVideos, areVideosFinished, teachingSubStep, onComplete]);
+
+  const audioCacheKey = `${step.StepDataJson?.length || 0}_${step.Content.length}`;
+  const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?v=${encodeURIComponent(audioCacheKey)}`;
 
   return (
     <div className="space-y-4">
-      {step.StepType === 'Teaching' && !teachingShowsVideo && (
-        <VoiceTutorAgent
-          structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
-          startLabel={isEn ? 'Talk to Tutor' : 'Hablar con el Tutor'}
-          autoConnect={true}
-        />
+      {step.StepType === 'Teaching' && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-1.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
+          <button
+            type="button"
+            onClick={() => setTeachingSubStep('listen')}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+              teachingSubStep === 'listen'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/25'
+                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
+            }`}
+          >
+            <Headphones className="h-4 w-4" />
+            <span>{isEn ? '1. Recorded Lecture & Whiteboard' : '1. Clase Grabada y Pizarra'}</span>
+            {hasAudio && isAudioFinished && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 ml-1" />}
+          </button>
+
+          {hasVideos && (
+            <button
+              type="button"
+              disabled={!canGoToVideos}
+              onClick={() => {
+                if (!canGoToVideos) return;
+                setTeachingSubStep('videos');
+              }}
+              title={!canGoToVideos ? (isEn ? 'Listen to the audio first to unlock videos' : 'Escucha el audio primero para desbloquear los videos') : undefined}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+                teachingSubStep === 'videos'
+                  ? 'bg-gradient-to-r from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/25'
+                  : !canGoToVideos
+                  ? 'cursor-not-allowed opacity-40 text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.02]'
+                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
+              }`}
+            >
+              {!canGoToVideos ? <Lock className="h-4 w-4 text-amber-500" /> : <Video className="h-4 w-4 text-sky-400" />}
+              <span>{isEn ? `2. Videos (${watchedVideoIds.size}/${publishedVideos.length})` : `2. Videos (${watchedVideoIds.size}/${publishedVideos.length})`}</span>
+              {areVideosFinished && <CheckCircle2 className="h-3.5 w-3.5 text-sky-400 ml-1" />}
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={!canGoToQa}
+            onClick={() => {
+              if (!canGoToQa) return;
+              setTeachingSubStep('qa');
+            }}
+            title={
+              !canGoToVideos
+                ? (isEn ? 'Listen to the audio first' : 'Escucha el audio primero')
+                : !areVideosFinished
+                ? (isEn ? 'Watch all videos first' : 'Mira todos los videos primero')
+                : undefined
+            }
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+              teachingSubStep === 'qa'
+                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/25'
+                : !canGoToQa
+                ? 'cursor-not-allowed opacity-40 text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.02]'
+                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
+            }`}
+          >
+            {!canGoToQa ? <Lock className="h-4 w-4 text-amber-500" /> : <Bot className="h-4 w-4 text-indigo-400" />}
+            <span>{isEn ? (hasVideos ? '3. Q&A with Professor' : '2. Q&A with Professor') : (hasVideos ? '3. Q&A con Profesor' : '2. Q&A con Profesor')}</span>
+          </button>
+        </div>
       )}
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900/80">
-        {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && (
-          <StepIllustration stepDataJson={step.StepDataJson} />
-        )}
-        <div className="px-5 py-6 sm:px-8 sm:py-8">
-          <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-            {isEn ? meta.labelEn : meta.labelEs}
-          </p>
+      {step.StepType === 'Teaching' && teachingSubStep === 'qa' ? (
+        <div className="space-y-4 animate-fade-in">
+          <div className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-violet-50/50 p-6 shadow-xl dark:border-indigo-500/30 dark:bg-gradient-to-br dark:from-indigo-500/10 dark:via-slate-950/40 dark:to-violet-500/10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                <Bot className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {isEn ? 'Interactive Voice Q&A with Professor' : 'Q&A por Voz con el Profesor'}
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  {isEn
+                    ? 'Ask questions aloud about the recorded lecture, explore edge cases, or ask for concrete examples.'
+                    : 'Haz preguntas en voz alta sobre la clase grabada, casos extremos o pide ejemplos concretos.'}
+                </p>
+              </div>
+            </div>
 
-          {step.StepType === 'Hypothesis' && step.Content && (
-            <RichStepContent content={step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content} />
-          )}
-
-          {step.StepType === 'Hypothesis' && (
-            <HypothesisQuestionCard sectionId={sectionId} personId={personId} step={step} isEn={isEn} />
-          )}
-
-          {step.StepType === 'Teaching' ? (
-            <TeachingTimelineWizard sectionId={sectionId} step={step} onItemTypeChange={setTeachingWizardItemType} isEn={isEn} />
-          ) : (
-            step.StepType !== 'Hypothesis' && !(step.StepType === 'Production') && step.Content && <RichStepContent content={step.Content} />
-          )}
-
-          {step.StepType === 'DeepDive' && step.StepDataJson && (
-            <DeepDiveQuiz
-              sectionId={sectionId}
-              stepId={step.StructuredLearningSectionStepId}
-              stepDataJson={step.StepDataJson}
-              onComplete={onComplete}
-              isEn={isEn}
-            />
-          )}
-
-          {step.StepType === 'Recall' && (
-            <RecallPractice sectionId={sectionId} personId={personId} onComplete={onComplete} isEn={isEn} />
-          )}
-
-          {step.StepType === 'Assessment' && (
-            <AssessmentPractice
-              sectionId={sectionId}
+            <VoiceTutorAgent
+              structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
               personId={personId}
-              engramTitle={engramTitle}
-              tier={tier}
-              questionType={questionType}
-              onComplete={onComplete}
-              isEn={isEn}
+              startLabel={isEn ? 'Start Q&A with Professor' : 'Iniciar Q&A con el Profesor'}
+              isQaMode={true}
+              autoConnect={true}
             />
-          )}
+
+            <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/[0.05]">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                {isEn ? 'No more questions? You can continue directly to the next step.' : '¿Sin preguntas? Puedes continuar directamente al siguiente paso.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onComplete();
+                  onNext?.();
+                }}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                <span>{isEn ? 'Continue to Next Step' : 'Continuar al siguiente paso'}</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={() => setTeachingSubStep(hasVideos ? 'videos' : 'listen')}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>{hasVideos ? (isEn ? 'Back to Videos' : 'Volver a Videos') : (isEn ? 'Back to Lecture' : 'Volver a Clase')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onComplete();
+                onNext?.();
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            >
+              <span>{isEn ? 'Continue to Next Step' : 'Continuar al siguiente paso'}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
+      ) : step.StepType === 'Teaching' && teachingSubStep === 'videos' && hasVideos ? (
+        <div className="space-y-4 animate-fade-in">
+          <div className="overflow-hidden rounded-3xl border border-sky-300 bg-sky-50/50 p-6 shadow-xl dark:border-sky-500/30 dark:bg-slate-950/40">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-slate-200 dark:border-white/10 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                  <Video className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    {isEn ? 'Lesson Video Clips' : 'Clips de Video de la Lección'}
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {isEn ? 'Watch the generated pedagogical videos in order.' : 'Mira los videos pedagógicos en orden.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  {isEn ? `${watchedVideoIds.size} of ${publishedVideos.length} watched` : `${watchedVideoIds.size} de ${publishedVideos.length} vistos`}
+                </span>
+                {areVideosFinished && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:border-emerald-500/30 dark:text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {isEn ? 'All Videos Watched' : 'Videos Completados'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Video Selector Tabs */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {publishedVideos.map((v, i) => {
+                const isWatched = watchedVideoIds.has(v.IllustrationId);
+                const isSelected = i === selectedVideoIndex;
+                return (
+                  <button
+                    key={v.IllustrationId}
+                    type="button"
+                    onClick={() => setSelectedVideoIndex(i)}
+                    className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold border transition-all ${
+                      isSelected
+                        ? 'border-sky-500 bg-sky-100 text-sky-800 dark:border-sky-400 dark:bg-sky-500/20 dark:text-sky-200 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400 dark:hover:border-white/20 dark:hover:text-white'
+                    }`}
+                  >
+                    <Video className="h-3.5 w-3.5" />
+                    <span>{isEn ? `Clip ${i + 1}` : `Clip ${i + 1}`}</span>
+                    {isWatched && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-1" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Current Video Player */}
+            {publishedVideos[selectedVideoIndex] && (
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-black dark:border-white/10">
+                  <video
+                    key={publishedVideos[selectedVideoIndex].IllustrationId}
+                    src={apiImageUrl(`/illustrations/structured-learning/${publishedVideos[selectedVideoIndex].IllustrationId}/image`)}
+                    controls
+                    className="w-full max-h-[460px] object-contain bg-black"
+                    onEnded={() => {
+                      const curId = publishedVideos[selectedVideoIndex].IllustrationId;
+                      setWatchedVideoIds((prev) => new Set([...prev, curId]));
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <p className="line-clamp-2 max-w-xl text-slate-700 dark:text-slate-300">
+                    {publishedVideos[selectedVideoIndex].Prompt}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curId = publishedVideos[selectedVideoIndex].IllustrationId;
+                      setWatchedVideoIds((prev) => new Set([...prev, curId]));
+                    }}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
+                      watchedVideoIds.has(publishedVideos[selectedVideoIndex].IllustrationId)
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/[0.05] dark:text-slate-200 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {watchedVideoIds.has(publishedVideos[selectedVideoIndex].IllustrationId) ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>{isEn ? 'Watched' : 'Visto'}</span>
+                      </>
+                    ) : (
+                      <span>{isEn ? 'Mark as watched' : 'Marcar como visto'}</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Actions */}
+            <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-slate-200 dark:border-white/10 pt-4">
+              <button
+                type="button"
+                onClick={() => setTeachingSubStep('listen')}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>{isEn ? 'Back to Audio Lecture' : 'Volver al Audio'}</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={!areVideosFinished}
+                  onClick={() => {
+                    if (!areVideosFinished) return;
+                    setTeachingSubStep('qa');
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-md transition-all ${
+                    areVideosFinished
+                      ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-indigo-500/25 hover:scale-[1.02]'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50 dark:bg-slate-800 dark:text-slate-500'
+                  }`}
+                >
+                  {!areVideosFinished ? <Lock className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+                  <span>{isEn ? 'Continue to Q&A with Professor' : 'Ir a Q&A con el Profesor'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-emerald-300 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                    {isEn ? 'Pre-recorded Neural Lecture' : 'Clase Magistral con Voz Neuronal'}
+                  </span>
+                </div>
+                {isAudioFinished ? (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-500/20 dark:border-emerald-500/40 dark:text-emerald-300">
+                    <CheckCircle2 className="h-3 w-3" /> {isEn ? 'Finished' : 'Completado'}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:border-amber-500/30 dark:text-amber-300">
+                    <Lock className="h-3 w-3" /> {audioProgressPercent > 0 ? (isEn ? `Listening (${audioProgressPercent}%)` : `Escuchando (${audioProgressPercent}%)`) : (isEn ? 'Listen to continue' : 'Escucha para continuar')}
+                  </span>
+                )}
+              </div>
+              <audio
+                key={audioUrl}
+                controls
+                className="w-full h-10 rounded-lg accent-emerald-500"
+                src={audioUrl}
+                onTimeUpdate={(e) => {
+                  const audio = e.currentTarget;
+                  if (audio.duration && audio.duration > 0) {
+                    const pct = Math.round((audio.currentTime / audio.duration) * 100);
+                    setAudioProgressPercent(pct);
+                    if (audio.currentTime >= audio.duration - 0.5 && !isAudioFinished) {
+                      setIsAudioFinished(true);
+                    }
+                  }
+                }}
+                onEnded={() => {
+                  setIsAudioFinished(true);
+                  setAudioProgressPercent(100);
+                }}
+              >
+                {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducción de audio.'}
+              </audio>
+              <div className="flex items-center justify-between pt-1 text-xs text-slate-500 dark:text-slate-400 border-t border-emerald-200 dark:border-emerald-500/20">
+                {isAudioFinished ? (
+                  <span className="text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-1">
+                    <Check className="h-3.5 w-3.5" /> {isEn ? 'Lecture completed — you can now advance' : 'Clase terminada — ahora puedes avanzar'}
+                  </span>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-300/90 flex items-center gap-1">
+                    <Lock className="h-3.5 w-3.5" /> {isEn ? 'Listen to the full lecture to unlock the next part' : 'Escucha la clase completa para desbloquear la siguiente parte'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={!isAudioFinished}
+                  onClick={() => {
+                    if (!isAudioFinished) return;
+                    setTeachingSubStep(hasVideos ? 'videos' : 'qa');
+                  }}
+                  className={`inline-flex items-center gap-1 font-semibold transition-colors ${
+                    isAudioFinished
+                      ? 'text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer'
+                      : 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <span>{hasVideos ? (isEn ? 'Go to Videos' : 'Ir a Videos') : (isEn ? 'Go to Q&A' : 'Ir a Q&A')}</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900/80">
+            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && (
+              <StepIllustration stepDataJson={step.StepDataJson} />
+            )}
+            <div className="px-5 py-6 sm:px-8 sm:py-8">
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                {isEn ? meta.labelEn : meta.labelEs}
+              </p>
+
+              {step.StepType === 'Hypothesis' && step.Content && (
+                <RichStepContent content={step.Content.replace(/^ContractVersion:\s*[^\n]+\s*/i, '').trim() || step.Content} />
+              )}
+
+              {step.StepType === 'Hypothesis' && (
+                <HypothesisQuestionCard sectionId={sectionId} personId={personId} step={step} isEn={isEn} />
+              )}
+
+              {step.StepType === 'Teaching' && (
+                <>
+                  <RichStepContent content={step.Content} />
+                  <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/5 dark:bg-white/[0.02]">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {!canGoToVideos
+                        ? (isEn ? 'Listen to the audio lecture above to continue' : 'Escucha la clase en audio arriba para continuar')
+                        : !areVideosFinished
+                        ? (isEn ? 'Watch the video clips to continue' : 'Mira los clips de video para continuar')
+                        : (isEn ? 'Lecture step completed' : 'Paso de clase completado')}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!canGoToVideos}
+                      onClick={() => {
+                        if (!canGoToVideos) return;
+                        setTeachingSubStep(hasVideos ? 'videos' : 'qa');
+                      }}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-md transition-all ${
+                        !canGoToVideos
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50 dark:bg-slate-800 dark:text-slate-500'
+                          : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98]'
+                      }`}
+                    >
+                      {!canGoToVideos ? <Lock className="h-4 w-4" /> : hasVideos ? <Video className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+                      <span>{hasVideos ? (isEn ? 'Continue to Videos' : 'Continuar a Videos') : (isEn ? 'Ask Professor (Q&A)' : 'Preguntar al Profesor')}</span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {step.StepType === 'DeepDive' && step.StepDataJson && (
+                <DeepDiveQuiz
+                  sectionId={sectionId}
+                  stepId={step.StructuredLearningSectionStepId}
+                  stepDataJson={step.StepDataJson}
+                  onComplete={onComplete}
+                  isEn={isEn}
+                />
+              )}
+
+              {step.StepType === 'Production' && (
+                <WorkplaceApplicationStep
+                  key={sectionId}
+                  sectionId={sectionId}
+                  personId={personId}
+                  courseLanguage={courseLanguage}
+                  onComplete={onComplete}
+                  isEn={isEn}
+                />
+              )}
+
+              {step.StepType === 'Recall' && (
+                <RecallPractice sectionId={sectionId} personId={personId} onComplete={onComplete} isEn={isEn} />
+              )}
+
+              {step.StepType === 'Assessment' && (
+                <AssessmentPractice
+                  sectionId={sectionId}
+                  personId={personId}
+                  engramTitle={engramTitle}
+                  tier={tier}
+                  questionType={questionType}
+                  onComplete={onComplete}
+                  isEn={isEn}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1099,146 +1554,6 @@ function formatInlineText(value: string): ReactNode {
       <span key={index}>{part}</span>
     );
   });
-}
-
-type TeachingTimelineItem =
-  | { Type: 'Text' }
-  | { Type: 'Video'; IllustrationId: string };
-
-function parseTeachingTimeline(timelineJson: string | null | undefined): TeachingTimelineItem[] | null {
-  if (!timelineJson) return null;
-  try {
-    const parsed = JSON.parse(timelineJson) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed.filter(
-      (item): item is TeachingTimelineItem =>
-        !!item && typeof item === 'object' && ((item as { Type?: string }).Type === 'Text' || (item as { Type?: string }).Type === 'Video')
-    );
-  } catch {
-    return null;
-  }
-}
-
-function TeachingTimelineWizard({
-  sectionId,
-  step,
-  onItemTypeChange,
-  isEn,
-}: {
-  sectionId: string;
-  step: StructuredLearningStepDetail;
-  onItemTypeChange: (type: 'Text' | 'Video') => void;
-  isEn: boolean;
-}) {
-  const [videos, setVideos] = useState<StructuredLearningSectionVideo[]>([]);
-  const [loadingVideos, setLoadingVideos] = useState(true);
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    listStructuredLearningSectionVideos(sectionId)
-      .then((list) => {
-        if (cancelled) return;
-        setVideos(list.filter((v) => v.IsPublished));
-      })
-      .catch(() => {
-        if (!cancelled) setVideos([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingVideos(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sectionId]);
-
-  useEffect(() => {
-    setIndex(0);
-  }, [step.StructuredLearningSectionStepId]);
-
-  const saved = parseTeachingTimeline(step.TimelineJson);
-  const validSaved = saved?.filter((item) => item.Type === 'Text' || videos.some((v) => v.IllustrationId === item.IllustrationId)) ?? null;
-  const defaultItems: TeachingTimelineItem[] = [
-    { Type: 'Text' },
-    ...videos.map((v): TeachingTimelineItem => ({ Type: 'Video', IllustrationId: v.IllustrationId })),
-  ];
-  const missingFromSaved = validSaved
-    ? defaultItems.filter((item) => !validSaved.some((s) => (item.Type === 'Text' ? s.Type === 'Text' : s.Type === 'Video' && s.IllustrationId === item.IllustrationId)))
-    : [];
-  const items = validSaved && validSaved.length > 0 ? [...validSaved, ...missingFromSaved] : defaultItems;
-  const current = items[Math.min(index, items.length - 1)] as TeachingTimelineItem | undefined;
-
-  useEffect(() => {
-    if (current) onItemTypeChange(current.Type);
-  }, [current, onItemTypeChange]);
-
-  if (loadingVideos) return null;
-  if (!current) return null;
-
-  const isFirst = index === 0;
-  const isLast = index >= items.length - 1;
-
-  return (
-    <div className="mt-6 space-y-4">
-      {items.length > 1 && (
-        <div className="flex flex-wrap gap-2">
-          {items.map((item, i) => (
-            <button
-              key={item.Type === 'Text' ? 'text' : `video-${item.IllustrationId}`}
-              type="button"
-              onClick={() => setIndex(i)}
-              className={`flex h-10 min-w-[2.5rem] items-center justify-center rounded-full border px-2.5 text-sm font-bold transition ${
-                i === index
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/20 dark:text-indigo-200 shadow-xs'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400 dark:hover:border-white/20'
-              }`}
-            >
-              {item.Type === 'Video' ? <Video className="h-5 w-5" /> : i + 1}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {current.Type === 'Video' ? (
-        <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
-            <Video className="h-4 w-4" /> {isEn ? 'Watch the video lesson below' : 'Mira la lección en video a continuación'}
-          </p>
-          <video
-            src={apiImageUrl(`/illustrations/structured-learning/${current.IllustrationId}/image`)}
-            controls
-            className="w-full rounded-2xl bg-black shadow-md"
-          />
-        </div>
-      ) : (
-        <RichStepContent content={step.Content} />
-      )}
-
-      {items.length > 1 && (
-        <div className="flex items-center justify-between gap-3 pt-2">
-          <button
-            type="button"
-            disabled={isFirst}
-            onClick={() => setIndex((i) => Math.max(0, i - 1))}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:bg-white/[0.06]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> {isEn ? 'Previous' : 'Anterior'}
-          </button>
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            {index + 1} / {items.length}
-          </span>
-          <button
-            type="button"
-            disabled={isLast}
-            onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isEn ? 'Next' : 'Siguiente'} <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
 interface DeepDiveCard {
@@ -1849,6 +2164,517 @@ function AssessmentPractice({
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         {isEn ? 'Submit Answer' : 'Enviar Respuesta'}
       </button>
+    </div>
+  );
+}
+
+function formatMentorInline(text: string): ReactNode {
+  const codeParts = text.split(/(`[^`]+`)/g);
+  return codeParts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      return (
+        <code
+          key={i}
+          className="rounded bg-teal-950/80 border border-teal-500/30 px-1.5 py-0.5 text-teal-200 font-mono text-[11px]"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+    return boldParts.map((bPart, j) => {
+      if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length >= 4) {
+        return (
+          <strong key={`${i}-${j}`} className="font-semibold text-slate-900 dark:text-white">
+            {bPart.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (bPart.includes(' → ') || bPart.includes(' -> ')) {
+        const arrowTokens = bPart.split(/\s*(?:→|->)\s*/);
+        return arrowTokens.map((tok, k) => (
+          <span key={`${i}-${j}-${k}`}>
+            {tok}
+            {k < arrowTokens.length - 1 && (
+              <span className="inline-flex items-center justify-center mx-1.5 px-1.5 py-0.5 text-[10px] rounded-md bg-teal-500/20 text-teal-700 dark:text-teal-300 font-mono border border-teal-500/30 shadow-xs">
+                →
+              </span>
+            )}
+          </span>
+        ));
+      }
+      return bPart;
+    });
+  });
+}
+
+function MentorMessageContent({
+  text,
+  onPromptClick,
+  isEn,
+}: {
+  text: string;
+  onPromptClick?: (prompt: string) => void;
+  isEn: boolean;
+}) {
+  const codeBlocks = text.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-3 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+      {codeBlocks.map((block, bIdx) => {
+        if (block.startsWith('```') && block.endsWith('```')) {
+          const lines = block.slice(3, -3).trim().split('\n');
+          const firstLine = lines[0]?.trim();
+          const isLangHeader = /^[a-z0-9_-]+$/i.test(firstLine);
+          const codeLines = isLangHeader ? lines.slice(1) : lines;
+          return (
+            <pre
+              key={bIdx}
+              className="my-3 rounded-xl bg-slate-950 p-3.5 border border-teal-500/30 font-mono text-[11px] text-teal-200 overflow-x-auto shadow-inner"
+            >
+              <code>{codeLines.join('\n')}</code>
+            </pre>
+          );
+        }
+
+        const paragraphs = block.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+
+        return paragraphs.map((para, pIdx) => {
+          const lines = para.split('\n').map((l) => l.trim()).filter(Boolean);
+          const isListGroup = lines.length > 0 && lines.every((l) => /^[-*•]\s+|\d+[.)]\s+/.test(l));
+
+          if (isListGroup) {
+            return (
+              <ul key={`${bIdx}-${pIdx}`} className="space-y-2.5 my-3">
+                {lines.map((line, lIdx) => {
+                  const cleaned = line.replace(/^[-*•]\s+|\d+[.)]\s+/, '');
+                  const colonIndex = cleaned.indexOf(':');
+                  const hasTitle = colonIndex > 0 && colonIndex < 40;
+                  const title = hasTitle ? cleaned.slice(0, colonIndex + 1) : '';
+                  const body = hasTitle ? cleaned.slice(colonIndex + 1) : cleaned;
+
+                  return (
+                    <li
+                      key={lIdx}
+                      className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/[0.025] hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-colors shadow-xs"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-teal-500 mt-1.5 shrink-0 ring-4 ring-teal-400/20" />
+                      <div className="flex-1 text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {hasTitle && (
+                          <span className="font-semibold text-teal-700 dark:text-teal-200 block sm:inline sm:mr-1.5">
+                            {formatMentorInline(title)}
+                          </span>
+                        )}
+                        {formatMentorInline(body)}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }
+
+          const isEndingQuestion =
+            para.endsWith('?') ||
+            /^(would you like|do you want|shall we|¿te gustaría|deseas|quieres)/i.test(para);
+
+          if (isEndingQuestion) {
+            return (
+              <div
+                key={`${bIdx}-${pIdx}`}
+                className="mt-3.5 rounded-2xl border border-teal-500/30 bg-gradient-to-r from-teal-50/80 via-white to-emerald-50/80 dark:from-teal-500/15 dark:via-slate-950 dark:to-emerald-500/15 p-3.5 shadow-md space-y-2"
+              >
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-300">
+                  <Sparkles className="h-3.5 w-3.5 text-teal-500 dark:text-teal-400" />
+                  <span>{isEn ? 'Suggested Next Step' : 'Siguiente paso sugerido'}</span>
+                </div>
+                <p className="text-teal-900 dark:text-teal-100 font-medium leading-relaxed">
+                  {formatMentorInline(para)}
+                </p>
+                {onPromptClick && (
+                  <button
+                    type="button"
+                    onClick={() => onPromptClick(para)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-400/30 bg-teal-500/10 hover:bg-teal-500/20 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 px-2.5 py-1 text-[11px] font-semibold text-teal-700 dark:text-teal-200 hover:text-teal-900 dark:hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>{isEn ? 'Send' : 'Enviar'}</span>
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <p key={`${bIdx}-${pIdx}`} className="text-slate-700 dark:text-slate-200 leading-relaxed">
+              {formatMentorInline(para)}
+            </p>
+          );
+        });
+      })}
+    </div>
+  );
+}
+
+function WorkplaceApplicationStep({
+  sectionId,
+  personId,
+  courseLanguage,
+  onComplete,
+  isEn,
+}: {
+  sectionId: string;
+  personId?: string;
+  courseLanguage?: 'es' | 'en';
+  onComplete: () => void;
+  isEn: boolean;
+}) {
+  const [data, setData] = useState<WorkplaceApplicationDto | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [audioTimestamp, setAudioTimestamp] = useState<number>(Date.now());
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+
+  const activeLanguage = courseLanguage || (isEn ? 'en' : 'es');
+
+  const sendChatMessage = useCallback(async (textToSend?: string) => {
+    const msg = (textToSend ?? chatInput).trim();
+    if (!msg || chatLoading) return;
+
+    setChatMessages((prev) => [...prev, { role: 'user', text: msg }]);
+    if (!textToSend) setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await postStructuredLearningWorkplaceChat(
+        sectionId,
+        msg,
+        chatSessionId || undefined,
+        personId || undefined,
+        activeLanguage
+      );
+      if (res.SessionId) setChatSessionId(res.SessionId);
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: res.Reply }]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: err instanceof Error ? `Error: ${err.message}` : String(err),
+        },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  }, [chatInput, chatLoading, sectionId, chatSessionId, personId, activeLanguage]);
+
+  const clearChat = useCallback(() => {
+    setChatMessages([]);
+    setChatInput('');
+    setChatSessionId(null);
+  }, []);
+
+  const fetchApplication = useCallback(async (force = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getStructuredLearningWorkplaceApplication(
+        sectionId,
+        personId || undefined,
+        activeLanguage,
+        force
+      );
+      setData(res);
+      setAudioTimestamp(Date.now());
+      setHasLoaded(true);
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [sectionId, personId, activeLanguage, onComplete]);
+
+  return (
+    <div className="space-y-6 animate-fade-in mt-4">
+      {!hasLoaded && !loading && (
+        <div className="rounded-3xl border border-teal-300 bg-gradient-to-br from-teal-50 via-white to-emerald-50 p-8 text-center shadow-lg dark:border-teal-500/30 dark:bg-gradient-to-br dark:from-teal-500/10 dark:via-slate-950/60 dark:to-emerald-500/10">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-300 mb-4">
+            <Sparkles className="h-7 w-7" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+            {isEn ? 'Workplace Application in Your Role' : 'Caso Práctico en tu Puesto'}
+          </h3>
+          <p className="max-w-xl mx-auto text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
+            {isEn
+              ? 'Generate a real workplace application tailored to your role, tools, and SMART objectives. You will listen to a pre-recorded audio explanation created specifically for you and see how to apply this engram in your daily work.'
+              : 'Genera un caso de aplicación real personalizado a tu rol, tecnologías y objetivos SMART. Escucharás un audio pre-grabado creado exclusivamente para ti y verás cómo aplicar este engrama en tu trabajo diario.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => fetchApplication(false)}
+            disabled={loading}
+            className="inline-flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Headphones className="h-4 w-4" />
+            <span>{isEn ? 'Generate and listen to workplace scenario for my role' : 'Generar y escuchar caso práctico para mi puesto'}</span>
+          </button>
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-3xl border border-teal-200 bg-slate-50 p-8 text-center dark:border-teal-500/20 dark:bg-slate-950/60">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-teal-500 dark:text-teal-400 mb-3" />
+          <p className="text-sm font-medium text-slate-900 dark:text-white">
+            {isEn ? 'Generating personalized workplace scenario and synthesizing audio...' : 'Generando caso práctico personalizado y sintetizando audio...'}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            {isEn ? 'Connecting your SMART objectives and technologies with this engram.' : 'Conectando tus objetivos SMART y tecnologías con este engrama.'}
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 text-center">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => fetchApplication(false)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-100 dark:bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-800 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-500/30"
+          >
+            {isEn ? 'Retry' : 'Reintentar'}
+          </button>
+        </div>
+      )}
+
+      {data && (
+        <div className="rounded-3xl border border-teal-200 bg-gradient-to-br from-teal-50/60 via-white to-emerald-50/60 p-6 sm:p-8 shadow-xl dark:border-teal-500/30 dark:bg-gradient-to-br dark:from-teal-500/10 dark:via-slate-950 dark:to-emerald-500/10 space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-white/10 pb-4">
+            <div>
+              <span className="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-100/80 px-3 py-1 text-[11px] font-semibold text-teal-800 dark:border-teal-400/40 dark:bg-teal-500/15 dark:text-teal-200">
+                <Sparkles className="h-3 w-3" /> {isEn ? 'Workplace Application' : 'Caso Práctico en tu Puesto'}
+              </span>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-2">{data.ScenarioTitle}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-300 mt-0.5">
+                {isEn ? `Personalized for ${data.StudentName} · ${data.RoleTitle}` : `Personalizado para ${data.StudentName} · ${data.RoleTitle}`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {data.Tools.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 max-w-sm">
+                  {data.Tools.slice(0, 3).map((tool, i) => (
+                    <span key={i} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => fetchApplication(true)}
+                disabled={loading}
+                title={isEn ? 'Regenerate workplace scenario' : 'Regenerar caso práctico'}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              >
+                <Sparkles className="h-3 w-3 text-teal-600 dark:text-teal-300" />
+                <span>{isEn ? 'Regenerate workplace scenario' : 'Regenerar caso práctico'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Full-width Chat with Professor Button right above the Audio Player */}
+          <button
+            type="button"
+            onClick={() => setIsChatOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-teal-300 bg-gradient-to-r from-teal-500/10 via-slate-50 to-emerald-500/10 hover:from-teal-500/20 hover:to-emerald-500/20 dark:border-teal-500/40 dark:bg-gradient-to-r dark:from-teal-500/20 dark:via-slate-900 dark:to-emerald-500/20 dark:hover:from-teal-500/30 dark:hover:to-emerald-500/30 px-5 py-3 text-sm font-semibold text-teal-800 dark:text-teal-200 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-md"
+          >
+            <MessageSquareText className="h-4 w-4 text-teal-600 dark:text-teal-300" />
+            <span>{isEn ? 'Chat with Professor' : 'Preguntar al Profesor'}</span>
+          </button>
+
+          {/* Audio Player */}
+          {data.AudioUrl && (
+            <div className="rounded-2xl border border-teal-200 bg-slate-50 p-4 dark:border-teal-500/20 dark:bg-slate-900/80">
+              <div className="flex items-center gap-2 mb-2">
+                <Headphones className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <span className="text-xs font-semibold text-teal-800 dark:text-teal-200">
+                  {isEn ? '🎙️ Workplace Application Audio (Explanation for you)' : '🎙️ Audio del Caso Práctico (Explicación para ti)'}
+                </span>
+              </div>
+              <audio
+                key={audioTimestamp}
+                controls
+                src={`${data.AudioUrl}${data.AudioUrl.includes('?') ? '&' : '?'}t=${audioTimestamp}`}
+                className="w-full"
+                onEnded={onComplete}
+              >
+                {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta el reproductor de audio.'}
+              </audio>
+            </div>
+          )}
+
+          {/* Text Scenario */}
+          <div className="space-y-4 text-sm leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+            <h4 className="font-semibold text-slate-900 dark:text-white text-base">
+              {isEn ? 'Scenario in your work environment' : 'Escenario en tu entorno laboral'}
+            </h4>
+            <p className="text-slate-700 dark:text-slate-300">{data.ScenarioText}</p>
+          </div>
+
+          {data.PracticalActions.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-2 dark:border-white/10 dark:bg-white/[0.03]">
+              <h4 className="font-semibold text-xs uppercase tracking-wide text-teal-700 dark:text-teal-300">
+                {isEn ? 'Suggested practical actions in your projects' : 'Acciones prácticas sugeridas en tus proyectos'}
+              </h4>
+              <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                {data.PracticalActions.map((action, i) => (
+                  <li key={i}>{action}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Slide-over Side Drawer for Q&A with Professor */}
+      {isChatOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/70 backdrop-blur-sm animate-fade-in flex justify-end">
+          <div className="w-full max-w-xl sm:max-w-2xl bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-teal-500/30 shadow-2xl flex flex-col h-full transform transition-transform duration-300 ease-out">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-300">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
+                    {isEn ? 'Q&A with Professor' : 'Q&A con el Profesor'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                    {data?.StudentName ? `Professor for ${data.StudentName}` : 'Personalized AI Professor'} · gpt-5-mini
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {chatMessages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearChat}
+                    title={isEn ? 'Clear chat' : 'Limpiar chat'}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-300 dark:border-white/10 dark:bg-white/5 dark:hover:bg-red-500/15 dark:hover:border-red-500/30 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-red-700 dark:text-slate-300 dark:hover:text-red-200 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>{isEn ? 'Clear' : 'Limpiar'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Message Thread */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {chatMessages.length === 0 ? (
+                <div className="space-y-4 my-auto pt-6 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-600 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
+                    <MessageSquareText className="h-6 w-6" />
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto leading-relaxed">
+                    {isEn
+                      ? 'Have questions about how to adapt this scenario to your tech stack, mitigate edge cases, or execute these actions? Ask your professor below.'
+                      : '¿Tienes dudas sobre cómo adaptar este caso a tu stack, riesgos a evitar o cómo ejecutar las acciones? Pregúntale a tu profesor aquí.'}
+                  </p>
+
+                  <div className="pt-2 flex flex-col gap-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(isEn ? 'How do I adapt this scenario to my current stack and constraints?' : '¿Cómo adapto este escenario a las restricciones de mi stack actual?')}
+                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
+                    >
+                      💡 {isEn ? 'How do I adapt this scenario to my current stack and constraints?' : '¿Cómo adapto este escenario a las restricciones de mi stack actual?'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(isEn ? 'What potential edge cases or risks should I watch out for?' : '¿Qué casos extremos o riesgos de seguridad debo prever?')}
+                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
+                    >
+                      🛡️ {isEn ? 'What potential edge cases or risks should I watch out for?' : '¿Qué casos extremos o riesgos de seguridad debo prever?'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendChatMessage(isEn ? 'Can you give me a step-by-step checklist to start this week?' : '¿Puedes darme una lista de pasos concretos para arrancar esta semana?')}
+                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
+                    >
+                      📋 {isEn ? 'Can you give me a step-by-step checklist to start this week?' : '¿Puedes darme una lista de pasos concretos para arrancar esta semana?'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                chatMessages.map((m, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                  >
+                    {m.role === 'user' ? (
+                      <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed bg-teal-600 text-white rounded-br-none shadow-md">
+                        {m.text}
+                      </div>
+                    ) : (
+                      <div className="w-full max-w-[96%] rounded-2xl p-4 text-xs leading-relaxed bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 text-slate-800 dark:text-slate-200 rounded-bl-none shadow-md">
+                        <MentorMessageContent text={m.text} onPromptClick={(opt) => sendChatMessage(opt)} isEn={isEn} />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+
+              {chatLoading && (
+                <div className="flex items-center gap-2 text-xs text-teal-600 dark:text-teal-300 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-teal-500 dark:text-teal-400" />
+                  <span>Thinking...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Input Bar */}
+            <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/70">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  sendChatMessage();
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={isEn ? 'Ask a question about this scenario or implementation...' : 'Pregunta sobre la implementación, riesgos o pasos concretos...'}
+                  disabled={chatLoading}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-teal-400"
+                />
+                <button
+                  type="submit"
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="inline-flex items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 p-2.5 text-white shadow-md transition-colors cursor-pointer"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

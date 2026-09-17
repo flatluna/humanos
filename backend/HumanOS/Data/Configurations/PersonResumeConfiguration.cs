@@ -56,6 +56,11 @@ public sealed class PersonResumeConfiguration : IEntityTypeConfiguration<PersonR
             .HasDefaultValue("[]")
             .IsRequired();
 
+        builder.Property(x => x.StudentAcademicProfileJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("{}")
+            .IsRequired();
+
         builder.Property(x => x.RawResumeText)
             .HasColumnType("nvarchar(max)");
 

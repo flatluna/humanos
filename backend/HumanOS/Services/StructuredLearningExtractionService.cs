@@ -120,6 +120,11 @@ public sealed class StructuredLearningCreationOptions
     /// knowledge. Best-effort — silently skipped if WebGroundingService
     /// isn't configured or the search fails.</summary>
     public bool UseWebGroundingForExpansion { get; set; }
+
+    /// <summary>Opt-in Perplexity AI web search across every engram/lesson.
+    /// When true, grounds each engram in real-time Perplexity web results
+    /// and records source citations in the engram metadata.</summary>
+    public bool UsePerplexitySearch { get; set; }
 }
 
 public sealed class StructuredLearningExtractionService
@@ -148,6 +153,7 @@ public sealed class StructuredLearningExtractionService
     private readonly DocumentClassificationEngine _documentClassification;
     private readonly SectionContentExpansionAgent _contentExpansion;
     private readonly WebGroundingService _webGrounding;
+    private readonly PerplexitySearchService _perplexityService;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly IConfiguration _configuration;
     private readonly GptEncoding _tokenEncoding = GptEncoding.GetEncoding("cl100k_base");
@@ -166,6 +172,7 @@ public sealed class StructuredLearningExtractionService
         DocumentClassificationEngine documentClassification,
         SectionContentExpansionAgent contentExpansion,
         WebGroundingService webGrounding,
+        PerplexitySearchService perplexityService,
         IDbContextFactory<HumanOsDbContext> dbContextFactory,
         IConfiguration configuration)
     {
@@ -183,6 +190,7 @@ public sealed class StructuredLearningExtractionService
         _documentClassification = documentClassification;
         _contentExpansion = contentExpansion;
         _webGrounding = webGrounding;
+        _perplexityService = perplexityService;
         _dbContextFactory = dbContextFactory;
         _configuration = configuration;
     }
@@ -401,7 +409,8 @@ public sealed class StructuredLearningExtractionService
         document.ConfigSnapshotJson = JsonSerializer.Serialize(new
         {
             LanguageCode = creationOptions?.LanguageCode,
-            IncludeHypothesisStep = creationOptions?.IncludeHypothesisStep ?? true
+            IncludeHypothesisStep = creationOptions?.IncludeHypothesisStep ?? true,
+            UsePerplexitySearch = creationOptions?.UsePerplexitySearch ?? false
         });
         dbContext.StructuredLearningDocuments.Add(document);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -612,7 +621,7 @@ public sealed class StructuredLearningExtractionService
             }
         });
 
-        if (!connectionPassSucceeded || !_knowledgeFactGeneration.IsConfigured)
+        if (!_knowledgeFactGeneration.IsConfigured)
         {
             return;
         }
@@ -760,6 +769,22 @@ public sealed class StructuredLearningExtractionService
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // Best-effort — proceed without grounding findings.
+                }
+            }
+            else if (creationOptions.UsePerplexitySearch && _perplexityService.IsConfigured)
+            {
+                try
+                {
+                    var searchQuery = $"{item.LevelTitle}: {item.ChapterTitle}".Trim();
+                    var search = await _perplexityService.SearchAsync(searchQuery, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(search.Answer))
+                    {
+                        groundingFindings = search.Answer;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Best-effort
                 }
             }
 

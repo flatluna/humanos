@@ -60,6 +60,54 @@ public sealed class ProgramService
         }
 
         var response = ToResponse(program);
+
+        var structuredMemberships = await _dbContext.StructuredLearningDocumentProgramMemberships
+            .AsNoTracking()
+            .Where(m => m.ProgramId == programId)
+            .Include(m => m.Document)
+                .ThenInclude(d => d.Sections)
+            .ToListAsync(cancellationToken);
+
+        var capabilityItems = program.ProgramCapabilities
+            .Select(pc => new ProgramCapabilityResponse
+            {
+                ProgramCapabilityId = pc.ProgramCapabilityId,
+                CapabilityId = pc.CapabilityId,
+                CapabilityCode = pc.Capability.Code,
+                CapabilityName = pc.Capability.Name,
+                SubjectCode = pc.Capability.Subject?.Code,
+                SortOrder = pc.SortOrder,
+                IsRequired = pc.IsRequired,
+                PhaseLabel = pc.PhaseLabel,
+                Objectives = pc.Objectives,
+                Requirements = pc.Requirements,
+                LevelCount = pc.Capability.Levels.Count,
+                NodeCount = pc.Capability.CapabilityGraph?.Nodes.Count ?? 0,
+                HasCoverImage = !string.IsNullOrEmpty(pc.Capability.CapabilityGraph?.CoverImageStoragePath),
+                CourseType = pc.Capability.LearningMode == Models.Capabilities.CourseLearningMode.TraditionalChapters ? "TraditionalChapters" : "Capability",
+            });
+
+        var structuredItems = structuredMemberships
+            .Select(sm => new ProgramCapabilityResponse
+            {
+                ProgramCapabilityId = sm.StructuredLearningDocumentProgramMembershipId,
+                CapabilityId = sm.StructuredLearningDocumentId,
+                CapabilityCode = $"SL-{sm.StructuredLearningDocumentId.ToString()[..8]}",
+                CapabilityName = sm.Document.DocumentName,
+                SubjectCode = null,
+                SortOrder = sm.SortOrder,
+                IsRequired = true,
+                PhaseLabel = null,
+                Objectives = null,
+                Requirements = null,
+                LevelCount = sm.Document.Sections.Count,
+                NodeCount = sm.Document.Sections.Count,
+                HasCoverImage = false,
+                CourseType = "StructuredLearning",
+            });
+
+        var allItems = capabilityItems.Concat(structuredItems).OrderBy(c => c.SortOrder).ToList();
+
         var detail = new ProgramDetailResponse
         {
             ProgramId = response.ProgramId,
@@ -70,27 +118,10 @@ public sealed class ProgramService
             Requirements = response.Requirements,
             HasLogo = response.HasLogo,
             IsActive = response.IsActive,
-            CapabilityCount = response.CapabilityCount,
+            CapabilityCount = allItems.Count,
             CreatedDate = response.CreatedDate,
             UpdatedDate = response.UpdatedDate,
-            Capabilities = [.. program.ProgramCapabilities
-                .OrderBy(pc => pc.SortOrder)
-                .Select(pc => new ProgramCapabilityResponse
-                {
-                    ProgramCapabilityId = pc.ProgramCapabilityId,
-                    CapabilityId = pc.CapabilityId,
-                    CapabilityCode = pc.Capability.Code,
-                    CapabilityName = pc.Capability.Name,
-                    SubjectCode = pc.Capability.Subject?.Code,
-                    SortOrder = pc.SortOrder,
-                    IsRequired = pc.IsRequired,
-                    PhaseLabel = pc.PhaseLabel,
-                    Objectives = pc.Objectives,
-                    Requirements = pc.Requirements,
-                    LevelCount = pc.Capability.Levels.Count,
-                    NodeCount = pc.Capability.CapabilityGraph?.Nodes.Count ?? 0,
-                    HasCoverImage = !string.IsNullOrEmpty(pc.Capability.CapabilityGraph?.CoverImageStoragePath),
-                })]
+            Capabilities = allItems
         };
 
         return detail;

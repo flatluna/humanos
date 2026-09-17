@@ -186,6 +186,11 @@ public sealed class PersonService
             .Where(pp => people.Select(x => x.Person.PersonId).Contains(pp.PersonId))
             .ToDictionaryAsync(pp => pp.PersonId, cancellationToken);
 
+        var resumes = await _dbContext.PersonResumes
+            .AsNoTracking()
+            .Where(r => people.Select(x => x.Person.PersonId).Contains(r.PersonId))
+            .ToDictionaryAsync(r => r.PersonId, cancellationToken);
+
         string? DisplayNameFor(Guid personId, string? email) =>
             profiles.TryGetValue(personId, out var profile)
                 ? (profile.DisplayName ?? $"{profile.FirstName} {profile.LastName}".Trim())
@@ -197,6 +202,9 @@ public sealed class PersonService
                 PersonId = x.Person.PersonId,
                 Email = x.Person.Email,
                 DisplayName = DisplayNameFor(x.Person.PersonId, x.Person.Email),
+                PhoneNumber = profiles.TryGetValue(x.Person.PersonId, out var prof) ? prof.PhoneNumber : null,
+                Address = resumes.TryGetValue(x.Person.PersonId, out var res) ? res.Address : null,
+                LinkedInUrl = resumes.TryGetValue(x.Person.PersonId, out var res2) ? res2.LinkedInUrl : null,
                 DepartmentId = x.Person.DepartmentId,
                 DepartmentName = x.DepartmentName,
                 JobRoleId = x.Person.JobRoleId,
@@ -213,7 +221,7 @@ public sealed class PersonService
     }
 
     /// <summary>Assigns/changes a person's Department, JobRole, Manager,
-    /// and/or permission tier (HRAdmin-only action, enforced by the
+    /// permission tier, and personal/contact details (HRAdmin-only action, enforced by the
     /// calling Function). Every field is a full replace — passing null for
     /// Department/JobRole/Manager clears that assignment. Validates that
     /// Department/JobRole/Manager (when provided) belong to the SAME
@@ -225,6 +233,11 @@ public sealed class PersonService
         Guid? jobRoleId,
         Guid? managerId,
         PersonOrgRole? orgRole,
+        string? email = null,
+        string? displayName = null,
+        string? phoneNumber = null,
+        string? address = null,
+        string? linkedInUrl = null,
         CancellationToken cancellationToken = default)
     {
         var person = await _dbContext.People
@@ -277,7 +290,60 @@ public sealed class PersonService
         {
             person.OrgRole = role;
         }
+        if (email is not null)
+        {
+            person.Email = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        }
         person.UpdatedDate = DateTime.UtcNow;
+
+        if (displayName is not null || phoneNumber is not null)
+        {
+            var profile = await _dbContext.PersonProfiles.SingleOrDefaultAsync(p => p.PersonId == personId, cancellationToken);
+            if (profile is null)
+            {
+                profile = new PersonProfile
+                {
+                    PersonProfileId = Guid.NewGuid(),
+                    PersonId = personId,
+                    DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim(),
+                    PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber.Trim(),
+                    PreferredLanguage = "es",
+                    CreatedDate = DateTime.UtcNow,
+                    UpdatedDate = DateTime.UtcNow,
+                };
+                _dbContext.PersonProfiles.Add(profile);
+            }
+            else
+            {
+                if (displayName is not null) profile.DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
+                if (phoneNumber is not null) profile.PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber.Trim();
+                profile.UpdatedDate = DateTime.UtcNow;
+            }
+        }
+
+        if (address is not null || linkedInUrl is not null)
+        {
+            var resume = await _dbContext.PersonResumes.SingleOrDefaultAsync(r => r.PersonId == personId, cancellationToken);
+            if (resume is null)
+            {
+                resume = new PersonResume
+                {
+                    PersonResumeId = Guid.NewGuid(),
+                    PersonId = personId,
+                    Address = string.IsNullOrWhiteSpace(address) ? null : address.Trim(),
+                    LinkedInUrl = string.IsNullOrWhiteSpace(linkedInUrl) ? null : linkedInUrl.Trim(),
+                    CreatedDate = DateTime.UtcNow,
+                    UpdatedDate = DateTime.UtcNow,
+                };
+                _dbContext.PersonResumes.Add(resume);
+            }
+            else
+            {
+                if (address is not null) resume.Address = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
+                if (linkedInUrl is not null) resume.LinkedInUrl = string.IsNullOrWhiteSpace(linkedInUrl) ? null : linkedInUrl.Trim();
+                resume.UpdatedDate = DateTime.UtcNow;
+            }
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

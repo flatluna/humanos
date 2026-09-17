@@ -173,6 +173,9 @@ export interface TenantPersonDto {
   personId: string;
   email: string | null;
   displayName: string | null;
+  phoneNumber?: string | null;
+  address?: string | null;
+  linkedInUrl?: string | null;
   departmentId: string | null;
   departmentName: string | null;
   jobRoleId: string | null;
@@ -188,6 +191,36 @@ export interface PersonOrgAssignmentRequest {
   jobRoleId?: string | null;
   managerId?: string | null;
   orgRole?: string | null;
+  email?: string | null;
+  displayName?: string | null;
+  phoneNumber?: string | null;
+  address?: string | null;
+  linkedInUrl?: string | null;
+}
+
+export interface AddressSuggestion {
+  address: string;
+  streetName?: string | null;
+  streetNumber?: string | null;
+  city?: string | null;
+  region?: string | null;
+  countryCode?: string | null;
+  postalCode?: string | null;
+  entityId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export async function searchAddresses(query: string): Promise<AddressSuggestion[]> {
+  if (!query || query.trim().length < 3) return [];
+  const { data } = await apiClient.get<AddressSuggestion[] | { value: AddressSuggestion[] }>(`/addresses/search`, {
+    params: { query: query.trim() },
+  });
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray((data as { value: AddressSuggestion[] }).value)) {
+    return (data as { value: AddressSuggestion[] }).value;
+  }
+  return [];
 }
 
 export interface TenantInvitationDto {
@@ -205,6 +238,9 @@ export interface TenantInvitationDto {
   updatedDate: string;
   acceptedDate: string | null;
   revokedDate: string | null;
+  /** One-time temporary password for the newly created local account, only present in the response
+   * of the create call that created it — never returned again afterward (see GetTenantInvitations). */
+  temporaryPassword?: string | null;
 }
 
 export interface CreateTenantInvitationRequest {
@@ -229,7 +265,21 @@ export interface PersonResumeDto {
   certifications: string[];
   languages: string[];
   rawResumeText: string | null;
+  studentAcademicProfile: StudentAcademicProfile | null;
   updatedDate: string | null;
+}
+
+export interface AcademicSubject { name: string | null; grade: number | null; }
+export interface AcademicSemester { name: string | null; average: number | null; subjects: AcademicSubject[]; }
+export interface StudentAcademicProfile {
+  institution: string | null;
+  degree: string | null;
+  graduationYear: number | null;
+  academicStage: string | null;
+  cumulativeAverage: number | null;
+  averageScale: string | null;
+  distinctions: string[];
+  semesters: AcademicSemester[];
 }
 
 export interface SavePersonResumeRequest {
@@ -243,6 +293,7 @@ export interface SavePersonResumeRequest {
   certifications?: string[];
   languages?: string[];
   rawResumeText?: string | null;
+  studentAcademicProfile?: StudentAcademicProfile | null;
 }
 
 export interface ExtractPersonResumeResponse {
@@ -255,6 +306,7 @@ export interface ExtractPersonResumeResponse {
   education: string[];
   certifications: string[];
   languages: string[];
+  studentAcademicProfile: StudentAcademicProfile | null;
   modelName: string;
   inputTokens: number;
   outputTokens: number;

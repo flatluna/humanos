@@ -24,4 +24,6 @@ public sealed class SavePersonResumeRequest
     public List<string>? Languages { get; set; }
 
     public string? RawResumeText { get; set; }
+
+    public StudentAcademicProfile? StudentAcademicProfile { get; set; }
 }

@@ -1108,6 +1108,17 @@ const en: Translations = {
     photoError: "We couldn't upload your photo. Please try again.",
     saving: 'Saving...',
     saveChanges: 'Save changes',
+    resumeTitle: 'Professional résumé',
+    resumeEmpty: 'No professional résumé is available yet.',
+    resumeLoading: 'Loading your professional résumé...',
+    resumeError: "We couldn't load your professional résumé.",
+    professionalObjective: 'Professional objective',
+    professionalSummary: 'Professional summary',
+    skills: 'Skills',
+    workExperience: 'Work experience',
+    education: 'Education',
+    certifications: 'Certifications',
+    languages: 'Languages',
   },
 };
 

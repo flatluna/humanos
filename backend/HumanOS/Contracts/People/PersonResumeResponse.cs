@@ -28,5 +28,7 @@ public sealed class PersonResumeResponse
 
     public string? RawResumeText { get; set; }
 
+    public StudentAcademicProfile? StudentAcademicProfile { get; set; }
+
     public DateTime? UpdatedDate { get; set; }
 }

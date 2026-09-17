@@ -92,6 +92,12 @@ public class StructuredLearningKnowledgeFactGenerationAgent
         semantically continuous connections. EpistemicStatus is explicit or inferred.
         Write every Statement in the requested Language, preserving canonical names where useful.
 
+        LANGUAGE RULE (STRICT):
+        When Language is 'es' (Spanish), EVERY single Statement in KnowledgeFacts and MissingGraphFacts
+        MUST be written in clear, natural SPANISH (e.g. "El Artículo 1 establece...", "Las facultades de la UIF...", "El SAT aplica las sanciones...").
+        Under NO circumstances write statements in English when Language is 'es'.
+        Preserve canonical entity names naturally within the Spanish syntax.
+
         GRAPH PATH:
         Every KnowledgeFact must have Evidence from SourceText and graph support.
         Atomic facts have exactly one GraphPath step with StepOrder 1.
@@ -186,7 +192,10 @@ public class StructuredLearningKnowledgeFactGenerationAgent
             throw new InvalidOperationException("StructuredLearningKnowledgeFactGenerationAgent is not configured.");
         }
 
-        var prompt = JsonSerializer.Serialize(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var langReminder = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
+            ? "MANDATORY LANGUAGE: Language is 'es' (Spanish). Every single Statement in KnowledgeFacts and MissingGraphFacts MUST be written in fluent SPANISH. Do NOT write in English.\n\n"
+            : string.Empty;
+        var prompt = langReminder + JsonSerializer.Serialize(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         ChatClientAgentRunOptions? runOptions = null;
         if (_isReasoningModel)
         {

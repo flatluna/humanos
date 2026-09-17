@@ -1108,6 +1108,17 @@ const es: Translations = {
     photoError: 'No pudimos subir tu foto. Intenta de nuevo.',
     saving: 'Guardando...',
     saveChanges: 'Guardar cambios',
+    resumeTitle: 'Resumen profesional',
+    resumeEmpty: 'Aún no hay un resumen profesional disponible.',
+    resumeLoading: 'Cargando tu resumen profesional...',
+    resumeError: 'No pudimos cargar tu resumen profesional.',
+    professionalObjective: 'Objetivo profesional',
+    professionalSummary: 'Perfil profesional',
+    skills: 'Habilidades',
+    workExperience: 'Experiencia laboral',
+    education: 'Educación',
+    certifications: 'Certificaciones',
+    languages: 'Idiomas',
   },
 };
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { Users, Pencil, Trash2, Search, GraduationCap, UserPlus } from 'lucide-react';
+import { Users, Pencil, Trash2, Search, GraduationCap, UserPlus, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import {
   createTenantInvitation,
@@ -35,6 +35,8 @@ export function PeoplePage() {
   const [inviteFirstName, setInviteFirstName] = useState('');
   const [inviteLastName, setInviteLastName] = useState('');
   const [inviteOrgRole, setInviteOrgRole] = useState<'Employee' | 'Manager' | 'HRAdmin'>('Employee');
+  const [lastCreatedInvite, setLastCreatedInvite] = useState<{ email: string; temporaryPassword: string } | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
 
   const peopleQuery = useQuery({
     queryKey: ['tenant-people', tenantId],
@@ -63,7 +65,10 @@ export function PeoplePage() {
         lastName: inviteLastName || null,
         orgRole: inviteOrgRole,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      setLastCreatedInvite(
+        created.temporaryPassword ? { email: created.email, temporaryPassword: created.temporaryPassword } : null,
+      );
       setInviteEmail('');
       setInviteFirstName('');
       setInviteLastName('');
@@ -80,6 +85,13 @@ export function PeoplePage() {
 
   const people = peopleQuery.data ?? [];
   const combinedError = deactivateMutation.error ?? inviteMutation.error ?? deleteInvitationMutation.error;
+  // Backend errors carry the real message in the JSON body (e.g. "Guest invitations not allowed for
+  // your company") — the generic axios Error.message would only say "Request failed with status code 502".
+  const combinedErrorMessage = combinedError
+    ? ((combinedError as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+       (combinedError instanceof Error ? combinedError.message : null) ??
+       t('common.unexpectedError'))
+    : null;
 
   const filteredPeople = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -216,9 +228,37 @@ export function PeoplePage() {
         </select>
       </div>
 
-      {combinedError && (
+      {combinedErrorMessage && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-          {combinedError instanceof Error ? combinedError.message : t('common.unexpectedError')}
+          {combinedErrorMessage}
+        </div>
+      )}
+
+      {lastCreatedInvite && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+          <p className="font-medium">{t('people.temporaryPasswordTitle')}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="font-mono">{lastCreatedInvite.email}</span>
+            <span className="select-all rounded bg-amber-100 px-2 py-0.5 font-mono font-semibold dark:bg-amber-500/20">
+              {lastCreatedInvite.temporaryPassword}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(lastCreatedInvite.temporaryPassword);
+                setPasswordCopied(true);
+                setTimeout(() => setPasswordCopied(false), 2000);
+              }}
+              className="inline-flex items-center gap-1 rounded border border-amber-300 px-2 py-0.5 text-xs font-medium hover:bg-amber-100 dark:border-amber-500/30 dark:hover:bg-amber-500/10"
+            >
+              {passwordCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {passwordCopied ? t('people.copied') : t('people.copyPassword')}
+            </button>
+          </p>
+          <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/70">{t('people.temporaryPasswordHint')}</p>
+          <button type="button" onClick={() => setLastCreatedInvite(null)} className="mt-2 text-xs font-medium underline">
+            {t('common.dismiss')}
+          </button>
         </div>
       )}
 

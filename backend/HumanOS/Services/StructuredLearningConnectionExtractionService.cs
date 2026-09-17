@@ -105,18 +105,20 @@ public sealed class StructuredLearningConnectionExtractionService
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var languageCode = ResolveLanguage(section.Document.ConfigSnapshotJson);
+        var languageCode = ResolveLanguage(section.Document?.ConfigSnapshotJson, section.ConfigSnapshotJson, section.Text);
         var extractionResult = await _extractionAgent.ExtractAsync(
             section.SubchapterTitle, section.Text, candidateIdNamePairs, existingRelationshipLabels: [], languageCode, cancellationToken);
         stopwatch.Stop();
 
-        // TEMP DEBUG (2026-08-15) — diagnosing why this agent returns 0
-        // connections despite thousands of output tokens; remove once solved.
-        // Written to a file (not Console) so it survives terminal buffer scrolling.
+        // TEMP DEBUG (2026-08-15)
         var kgDebugLines = new List<string>
         {
-            $"[KG-DEBUG] section={sectionId} candidates={candidateEntities.Count} candidateNames=[{string.Join(", ", candidateEntities.Select(e => e.Name))}] rawConnectionCount={extractionResult.Response.Connections.Count} outputTokens={extractionResult.OutputTokens}"
+            $"[KG-DEBUG] section={sectionId} candidates={candidateEntities.Count} candidateNames=[{string.Join(", ", candidateEntities.Select(e => e.Name))}] rawConnectionCount={extractionResult.Response.Connections.Count} outputTokens={extractionResult.OutputTokens} textLength={section.Text?.Length ?? 0}"
         };
+        if (extractionResult.Response.Connections.Count == 0)
+        {
+            kgDebugLines.Add($"[KG-DEBUG]   ZERO CONNECTIONS! Title='{section.SubchapterTitle}' Text='{section.Text?.Substring(0, Math.Min(100, section.Text?.Length ?? 0))}'");
+        }
         foreach (var raw in extractionResult.Response.Connections)
         {
             kgDebugLines.Add($"[KG-DEBUG]   {raw.SourceEntityId} --{raw.RelationshipLabel}--> {raw.TargetEntityId} ({raw.RelationshipCategory}) evidence=\"{raw.Evidence}\"");
@@ -233,30 +235,46 @@ public sealed class StructuredLearningConnectionExtractionService
         return created;
     }
 
-    /// <summary>Reads the document's own configured LanguageCode (2026-08-30
-    /// fix — connection extraction previously never read this at all, so
-    /// RelationshipLabel came back in Spanish even for English documents).
-    /// Falls back to "en" if unset/unparsable, same fallback convention as
-    /// StructuredLearningKnowledgeFactGenerationService.ResolveLanguage.</summary>
-    private static string ResolveLanguage(string? configSnapshotJson)
+    /// <summary>Reads the document's or section's own configured LanguageCode,
+    /// falling back to a text-based language detector. Ensures Spanish documents
+    /// get Spanish relationship labels.</summary>
+    private static string ResolveLanguage(string? documentConfigJson, string? sectionConfigJson, string? sampleText)
     {
-        if (string.IsNullOrWhiteSpace(configSnapshotJson))
+        foreach (var configJson in new[] { sectionConfigJson, documentConfigJson })
         {
-            return "en";
-        }
-
-        try
-        {
-            var snapshot = JsonSerializer.Deserialize<JsonElement>(configSnapshotJson);
-            if (snapshot.TryGetProperty("LanguageCode", out var language) &&
-                !string.IsNullOrWhiteSpace(language.GetString()))
+            if (string.IsNullOrWhiteSpace(configJson)) continue;
+            try
             {
-                return language.GetString()!;
+                var snapshot = JsonSerializer.Deserialize<JsonElement>(configJson);
+                foreach (var prop in snapshot.EnumerateObject())
+                {
+                    if (string.Equals(prop.Name, "languageCode", StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var code = prop.Value.GetString();
+                        if (!string.IsNullOrWhiteSpace(code))
+                        {
+                            return code.Trim().ToLowerInvariant().StartsWith("es") ? "es" : "en";
+                        }
+                    }
+                }
             }
+            catch (JsonException) { }
         }
-        catch (JsonException) { }
 
-        return "en";
+        if (!string.IsNullOrWhiteSpace(sampleText))
+        {
+            var padded = $" {sampleText.ToLowerInvariant()} ";
+            string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this "];
+            string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu ", " artículo ", " articulo ", " ley ", " uif ", " sat "];
+
+            var englishHits = englishWords.Count(w => padded.Contains(w));
+            var spanishHits = spanishWords.Count(w => padded.Contains(w));
+
+            return spanishHits >= englishHits ? "es" : "en";
+        }
+
+        return "es";
     }
 
     private static bool IsCompatibleCategory(string category, string label)

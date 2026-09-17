@@ -52,9 +52,12 @@ public sealed class StructuredLearningStepEditorAgent
         - Honor the reviewer's instruction as literally and completely as
           possible while staying true to the step's own pedagogical purpose
           (never turn a Teaching step into a quiz, etc.).
-        - Stay grounded STRICTLY in the section's own source text — never
-          invent a fact, example, or sub-topic the source text doesn't
-          support, even if the instruction asks for more detail.
+        - Stay grounded STRICTLY in the section's own source text, supplemented
+          by any verified web search grounding provided to you in the prompt —
+          never invent an ungrounded fact or statistic not supported by either.
+        - If verified web search findings (e.g. from Perplexity AI) are provided,
+          seamlessly integrate the rich real-world examples, advanced applications,
+          or deeper conceptual clarity into the lesson while preserving pedagogical focus.
         - If the instruction is vague ("make it better"), use your best
           pedagogical judgment to genuinely improve clarity and engagement
           for the section's audience — never just return the content
@@ -66,6 +69,15 @@ public sealed class StructuredLearningStepEditorAgent
           different language — never switch the document's content
           language just because the instruction itself was typed in
           another language.
+        - TEACHING STEP & PROFESSOR SPOKEN DELIVERY:
+          When editing a Teaching step, you MUST maintain its character as a
+          universal spoken masterclass lecture delivered by the professor for all
+          students (conversational, spoken cadence for audio TTS, no markdown
+          headers, no bullet points). The lecture is generic for any student:
+          do NOT include individual personal names (NO "Alejandro", NO "Student").
+          Greet the class universally (e.g. "Hola y bienvenidos a esta clase...",
+          "Hello and welcome to this lecture..."). Ground the teaching strictly in the
+          authoritative content and general professional relevance for this domain.
 
         ILLUSTRATION REGENERATION — leave IllustrationPrompt null/empty by
         default (the step's existing illustration is untouched unless you

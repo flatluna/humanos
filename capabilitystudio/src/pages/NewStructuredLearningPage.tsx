@@ -116,6 +116,10 @@ export default function NewStructuredLearningPage() {
   const [includeKnowledgeGraphEntities, setIncludeKnowledgeGraphEntities] = useState(true);
   const [includeKnowledgeGraphConnections, setIncludeKnowledgeGraphConnections] = useState(true);
 
+  // Perplexity AI web search opt-in — grounds each engram in real-time
+  // web findings and saves source citations into the engram metadata.
+  const [usePerplexitySearch, setUsePerplexitySearch] = useState(false);
+
   const [searchParams] = useSearchParams();
   const [autoLoadedPdfStatus, setAutoLoadedPdfStatus] = useState<string | null>(null);
 
@@ -418,6 +422,7 @@ export default function NewStructuredLearningPage() {
         expandSparseContent,
         contentExpansionModel,
         useWebGroundingForExpansion,
+        usePerplexitySearch,
       };
 
       let run: StructuredLearningExtractionRunStatus;
@@ -917,6 +922,33 @@ export default function NewStructuredLearningPage() {
             </label>
           </Field>
 
+          <div className="border-t border-white/10 pt-6">
+            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.perplexitySearchTitle')}</h3>
+            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.perplexitySearchSubtitle')}</p>
+          </div>
+
+          <div className="space-y-4 rounded-xl border-2 border-emerald-500/40 bg-emerald-500/[0.06] p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 shrink-0 text-emerald-400" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                {t('newStructuredLearning.perplexitySearchBadge')}
+              </p>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">{t('newStructuredLearning.perplexitySearchHint')}</p>
+
+            <Field label={t('newStructuredLearning.usePerplexitySearchLabel')}>
+              <label className="flex items-center gap-2.5 text-sm text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={usePerplexitySearch}
+                  onChange={(e) => setUsePerplexitySearch(e.target.checked)}
+                  className="h-4 w-4 rounded border-emerald-400/40 bg-white/[0.02] text-emerald-500 focus:ring-emerald-400"
+                />
+                <span className="font-medium text-emerald-200">{t('newStructuredLearning.usePerplexitySearchToggle')}</span>
+              </label>
+            </Field>
+          </div>
+
           <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} />
         </div>
       )}
@@ -1031,6 +1063,10 @@ export default function NewStructuredLearningPage() {
             <SummaryRow
               label={t('newStructuredLearning.summarySource')}
               value={sourceType === 'pdf' ? t('newStructuredLearning.sourcePdf') : t('newStructuredLearning.sourceText')}
+            />
+            <SummaryRow
+              label={t('newStructuredLearning.summaryPerplexitySearch')}
+              value={usePerplexitySearch ? t('common.yes') : t('common.no')}
             />
           </div>
 

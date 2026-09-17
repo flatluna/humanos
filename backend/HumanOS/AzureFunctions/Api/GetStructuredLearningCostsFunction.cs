@@ -20,7 +20,15 @@ public sealed class GetStructuredLearningCostsFunction
         HttpRequestData request,
         CancellationToken cancellationToken)
     {
-        var summaries = await _costService.GetSummariesAsync(cancellationToken);
+        Guid? callerTenantId = request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+            Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId)
+                ? studioTenantId
+                : null;
+
+        var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
+        var tenantId = callerTenantId ?? (Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null);
+
+        var summaries = await _costService.GetSummariesAsync(tenantId, cancellationToken);
         return await FunctionResponseFactory.SuccessResponseAsync(request, summaries, cancellationToken: cancellationToken);
     }
 }

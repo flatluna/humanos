@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
@@ -396,11 +397,60 @@ public class StructuredLearningConnectionExtractionAgent
             });
         }
 
-        var response = await _agent.RunAsync<StructuredLearningConnectionExtractionResponse>(prompt, options: runOptions, cancellationToken: cancellationToken);
-        var usage = response.Usage;
+        StructuredLearningConnectionExtractionResponse result;
+        Microsoft.Extensions.AI.UsageDetails? usage = null;
+
+        try
+        {
+            var response = await _agent.RunAsync<StructuredLearningConnectionExtractionResponse>(prompt, options: runOptions, cancellationToken: cancellationToken);
+            usage = response.Usage;
+            result = response.Result;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // If RunAsync<T> fails due to formatting issues (e.g. ```json markdown backticks),
+            // fallback to raw text RunAsync and manually clean the markdown fences before deserializing.
+            var stringResponse = await _agent.RunAsync(prompt, options: runOptions, cancellationToken: cancellationToken);
+            usage = stringResponse.Usage;
+            var text = stringResponse.Text?.Trim() ?? string.Empty;
+            if (text.StartsWith("```json", StringComparison.OrdinalIgnoreCase)) text = text[7..];
+            else if (text.StartsWith("```", StringComparison.OrdinalIgnoreCase)) text = text[3..];
+            if (text.EndsWith("```", StringComparison.OrdinalIgnoreCase)) text = text[..^3];
+            text = text.Trim();
+
+            result = JsonSerializer.Deserialize<StructuredLearningConnectionExtractionResponse>(text, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new StructuredLearningConnectionExtractionResponse();
+        }
+
+        // If the model produced output tokens but empty connections list, retry with raw string
+        if (result.Connections.Count == 0 && (usage?.OutputTokenCount ?? 0) > 100)
+        {
+            try
+            {
+                var stringResponse = await _agent.RunAsync(prompt, options: runOptions, cancellationToken: cancellationToken);
+                var text = stringResponse.Text?.Trim() ?? string.Empty;
+                if (text.StartsWith("```json", StringComparison.OrdinalIgnoreCase)) text = text[7..];
+                else if (text.StartsWith("```", StringComparison.OrdinalIgnoreCase)) text = text[3..];
+                if (text.EndsWith("```", StringComparison.OrdinalIgnoreCase)) text = text[..^3];
+                text = text.Trim();
+
+                var fallbackResult = JsonSerializer.Deserialize<StructuredLearningConnectionExtractionResponse>(text, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                if (fallbackResult != null && fallbackResult.Connections.Count > 0)
+                {
+                    result = fallbackResult;
+                }
+            }
+            catch { }
+        }
+
         return new StructuredLearningConnectionExtractionResult
         {
-            Response = response.Result,
+            Response = result,
             ModelName = _modelName,
             InputTokens = (int)(usage?.InputTokenCount ?? 0),
             OutputTokens = (int)(usage?.OutputTokenCount ?? 0),

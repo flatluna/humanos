@@ -1,0 +1,172 @@
+/*
+ * Dedicated "Claro" (light) theme stylesheet — kept separate from index.css so the light theme
+ * can be designed/tuned on its own terms instead of reusing dark-theme values. Loaded AFTER
+ * index.css (see main.tsx) so these rules win the cascade over the generic, theme-agnostic
+ * component classes defined there (.input, select.input, .glass-panel, etc.) for elements with
+ * equal selector specificity.
+ *
+ * Palette choice: a standard, professional "SaaS light mode" combination — neutral slate grays
+ * for surfaces/text (same family used by Linear, Vercel, GitHub's light theme) plus a proper
+ * indigo/blue brand accent with verified AA text contrast on white. All --color-slate-* /
+ * --color-brand-* variables below are consumed by the SAME Tailwind utility classes used in dark
+ * mode (bg-slate-950, text-slate-400, bg-brand-500, ...) via tailwind.config.js's withOpacity()
+ * — see index.css's header comment. Components keep referring to those dark-mode-named classes;
+ * only the variable VALUES differ here, remapped to sensible light-mode roles:
+ *   - slate-950/900/800/700 → page/panel backgrounds (near-white → light gray)
+ *   - slate-600/500/400     → body/secondary/hint text (all independently tuned for contrast,
+ *                             NOT required to be monotonically lighter than each other, since
+ *                             each one has a distinct real usage in the app as *text*, unlike
+ *                             dark mode where the same numbers are also reused as backgrounds)
+ *   - slate-300/200/100/50  → borders / dividers / strong headings
+ */
+[data-theme='light'] {
+  --color-ink: 15 23 42;
+
+  /* Backgrounds (page → panel → recessed), lightest to still-light */
+  --color-slate-50: 255 255 255;
+  --color-slate-100: 30 41 59;
+  --color-slate-200: 51 65 85;
+  --color-slate-300: 71 85 105;
+
+  /* Text tones — tuned independently for real contrast on white, not mechanically inverted */
+  --color-slate-400: 71 85 105;   /* secondary text, ~7:1 on white */
+  --color-slate-500: 71 85 105;   /* hint/caption text — same as 400, always readable */
+  --color-slate-600: 51 65 85;    /* slightly stronger secondary text */
+
+  --color-slate-700: 226 232 240;
+  --color-slate-800: 241 245 249;
+  --color-slate-900: 248 250 252;
+  --color-slate-950: 255 255 255;
+
+  --color-brand-50: 238 244 255;
+  --color-brand-100: 30 41 118;
+  --color-brand-200: 36 48 145;
+  --color-brand-300: 44 58 176;
+  --color-brand-400: 65 92 230;
+  --color-brand-500: 53 74 214;
+  --color-brand-600: 44 58 176;
+  --color-brand-700: 36 48 145;
+  --color-brand-800: 30 40 118;
+  --color-brand-900: 26 34 96;
+  --color-brand-950: 15 18 55;
+
+  --color-accent-400: 219 39 119;
+  --color-accent-500: 190 24 93;
+}
+
+/* body/page background + default text color for light theme */
+[data-theme='light'] body {
+  background-color: #f8fafc;
+  color: rgb(var(--color-ink));
+}
+
+/* Glass panels/borders are literal `white/alpha` utilities (bg-white/[0.04], border-white/10,
+   etc.) — meaningless on a light background (near-invisible), so give them real light-theme
+   surfaces + borders instead. */
+[data-theme='light'] .glass-panel,
+[data-theme='light'] [class*='bg-white/['],
+[data-theme='light'] .bg-white\/\[0\.02\],
+[data-theme='light'] .bg-white\/\[0\.03\],
+[data-theme='light'] .bg-white\/\[0\.04\] {
+  background-color: #ffffff;
+}
+
+[data-theme='light'] [class*='border-white/'],
+[data-theme='light'] .border-white\/10,
+[data-theme='light'] .border-white\/20 {
+  border-color: #e2e8f0 !important;
+}
+
+[data-theme='light'] .text-white {
+  color: rgb(var(--color-ink));
+}
+
+/* Inputs/selects: solid white surface, dark text, visible border on light background */
+[data-theme='light'] .input {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+[data-theme='light'] .input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme='light'] select.input {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+[data-theme='light'] select.input option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+[data-theme='light'] select.input option:checked {
+  background-color: rgb(var(--color-brand-500));
+  color: #ffffff;
+}
+
+/* Color contrast fixes for semantic status/badge text — dark-mode pastel tones (emerald/teal/
+   amber/brand-100..300) are unreadable on light backgrounds; darken to real, legible shades. */
+[data-theme='light'] .text-emerald-100 { color: #064e3b; }
+[data-theme='light'] .text-emerald-200 { color: #065f46; }
+[data-theme='light'] .text-emerald-300 { color: #047857; }
+[data-theme='light'] .text-emerald-400 { color: #059669; }
+
+[data-theme='light'] .text-teal-100 { color: #134e4a; }
+[data-theme='light'] .text-teal-200 { color: #0f766e; }
+[data-theme='light'] .text-teal-300 { color: #0d9488; }
+[data-theme='light'] .text-teal-400 { color: #0f766e; }
+
+[data-theme='light'] .text-amber-100 { color: #78350f; }
+[data-theme='light'] .text-amber-200 { color: #92400e; }
+[data-theme='light'] .text-amber-300 { color: #b45309; }
+[data-theme='light'] .text-amber-300\/90 { color: rgba(180, 83, 9, 0.9); }
+[data-theme='light'] .text-amber-400 { color: #d97706; }
+
+[data-theme='light'] .text-purple-100 { color: #4c1d95; }
+[data-theme='light'] .text-purple-200 { color: #5b21b6; }
+[data-theme='light'] .text-purple-300 { color: #6d28d9; }
+[data-theme='light'] .text-purple-400 { color: #7c3aed; }
+
+[data-theme='light'] .text-brand-100 { color: rgb(30 40 118); }
+[data-theme='light'] .text-brand-200 { color: rgb(36 48 145); }
+[data-theme='light'] .text-brand-300 { color: rgb(44 58 176); }
+
+[data-theme='light'] .text-slate-500 { color: rgb(71 85 105); }
+[data-theme='light'] .text-slate-400 { color: rgb(100 116 139); }
+
+/* Purple/emerald/teal/amber "/NN" tinted panels (e.g. bg-purple-950/20) are meant for a dark
+   backdrop — on light backgrounds they wash out to near-white and lose all contrast with the
+   page. Give them a proper light tinted surface instead. */
+[data-theme='light'] .bg-purple-950\/20 { background-color: #f3e8ff; }
+[data-theme='light'] .border-purple-500\/20 { border-color: #d8b4fe; }
+[data-theme='light'] .bg-purple-500\/10 { background-color: #f3e8ff; }
+[data-theme='light'] .border-purple-500\/30 { border-color: #d8b4fe; }
+
+[data-theme='light'] .bg-teal-500\/10,
+[data-theme='light'] .bg-teal-500\/5,
+[data-theme='light'] .bg-teal-500\/20 { background-color: #ccfbf1; }
+[data-theme='light'] .border-teal-500\/20,
+[data-theme='light'] .border-teal-500\/30,
+[data-theme='light'] .border-teal-500\/40,
+[data-theme='light'] .border-teal-400\/40 { border-color: #5eead4; }
+
+[data-theme='light'] .bg-brand-500\/5,
+[data-theme='light'] .bg-brand-500\/10,
+[data-theme='light'] .bg-brand-500\/20 { background-color: #e0e7ff; }
+[data-theme='light'] .border-brand-500\/30,
+[data-theme='light'] .border-brand-500\/40,
+[data-theme='light'] .border-brand-400\/40 { border-color: #a5b4fc; }
+
+/* Keep white text legible inside solid-colored buttons/badges/gradients */
+[data-theme='light'] .bg-gradient-to-r.from-emerald-500.to-teal-500,
+[data-theme='light'] .bg-gradient-to-r.from-teal-500.to-emerald-500,
+[data-theme='light'] .bg-emerald-500.text-white,
+[data-theme='light'] [class*='from-brand-500'][class*='to-accent-500'],
+[data-theme='light'] [class*='from-brand-500'][class*='to-indigo-500'],
+[data-theme='light'] .bg-brand-500.text-white,
+[data-theme='light'] .bg-emerald-500 {
+  color: #ffffff;
+}

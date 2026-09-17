@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, FileText, ChevronDown, Menu, X, Tags, Bot, UserCircle2, Clapperboard } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, FileText, ChevronDown, Menu, X, Tags, Bot, UserCircle2, Clapperboard, Sparkles, Network, FlaskConical } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -53,11 +53,18 @@ export default function Layout() {
               <Menu className="h-5 w-5" />
             </button>
 
-            <Link to="/" className="flex items-center gap-2.5 group">
-              <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-contain object-center shadow-lg shadow-brand-500/30 transition-transform group-hover:scale-105" />
-              <div className="leading-tight">
-                <div className="font-semibold tracking-tight text-white">HUMAN OS STUDIO</div>
-                <div className="text-[11px] text-slate-400">Knowledge Studio</div>
+            <Link to="/" className="flex items-center gap-3.5 group">
+              <img
+                src="/HumanOsLogoBlack.png"
+                alt="HUMAN OS"
+                className="h-8 sm:h-9 w-auto object-contain object-left transition-transform group-hover:scale-105 drop-shadow-[0_0_12px_rgba(59,130,246,0.3)]"
+              />
+              <div className="leading-tight border-l border-white/15 pl-3">
+                <div className="flex items-center gap-1.5 font-bold tracking-wider text-white text-xs sm:text-sm">
+                  <span>STUDIO</span>
+                  <Sparkles className="h-3.5 w-3.5 text-brand-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.6)]" />
+                </div>
+                <div className="text-[11px] sm:text-xs text-slate-400">Transforming source material into learning experiences</div>
               </div>
             </Link>
           </div>
@@ -148,9 +155,12 @@ export default function Layout() {
 
       <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:top-[57px] lg:h-[calc(100vh-57px)] lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between pb-3 lg:hidden">
-          <div className="flex items-center gap-2">
-            <img src="/engramslogo.png" alt="Engram" className="h-8 w-8 rounded-xl object-contain" />
-            <div className="font-semibold text-sm text-white">HUMAN OS STUDIO</div>
+          <div className="flex items-center gap-2.5">
+            <img src="/HumanOsLogoBlack.png" alt="HUMAN OS" className="h-7 w-auto object-contain" />
+            <div className="flex items-center gap-1.5 font-bold text-xs tracking-wider text-white border-l border-white/15 pl-2">
+              <span>STUDIO</span>
+              <Sparkles className="h-3 w-3 text-brand-400" />
+            </div>
           </div>
           <button type="button" onClick={() => setSidebarOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white">
             <X className="h-5 w-5" />
@@ -160,10 +170,12 @@ export default function Layout() {
         <nav className="space-y-1">
           <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-sky-400" activeColor="bg-sky-500/15" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/programs" label={t('nav.programs')} color="text-violet-400" activeColor="bg-violet-500/15" onNavigate={() => setSidebarOpen(false)}><GraduationCap className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/program-entities" label={t('nav.programEntities')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Network className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-emerald-400" activeColor="bg-emerald-500/15" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label="AI Agents" color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/film-productions" label="Film Productions" color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Clapperboard className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/labs" label={t('nav.labs')} color="text-teal-400" activeColor="bg-teal-500/15" onNavigate={() => setSidebarOpen(false)}><FlaskConical className="h-5 w-5" /></SidebarLink>
         </nav>
         <div className="mt-8 border-t border-white/10 pt-4">
           {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">Create</p>}

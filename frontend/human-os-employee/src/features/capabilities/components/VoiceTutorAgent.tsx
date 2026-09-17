@@ -35,11 +35,13 @@ export default function VoiceTutorAgent({
   structuredLearningSectionStepId,
   aiAgentQuestion,
   personName,
+  personId,
   startLabel,
   promptText,
   onTranscript,
   onExplanationAccepted,
   exampleCardIndex,
+  isQaMode = false,
   autoConnect = true,
   compact = false,
 }: {
@@ -60,11 +62,13 @@ export default function VoiceTutorAgent({
    * separate retrieval call. Provide this ALONE, instead of every other target. */
   aiAgentQuestion?: { documentId?: string; question: string; answer: string; engrams: { title: string; text: string }[] };
   personName?: string;
+  personId?: string;
   startLabel?: string;
   promptText?: string;
   onTranscript?: (transcript: string) => void;
   onExplanationAccepted?: (explanation: string) => void;
   exampleCardIndex?: number;
+  isQaMode?: boolean;
   autoConnect?: boolean;
   compact?: boolean;
 }) {
@@ -80,7 +84,8 @@ export default function VoiceTutorAgent({
   };
   const targetKey =
     (structuredLearningSectionStepId ?? learningSessionStepId ?? (aiAgentQuestion ? `aiAgentQuestion:${aiAgentQuestion.question}` : `${capabilityGraphNodeId}:${stepType}`)) +
-    (exampleCardIndex !== undefined ? ':' + exampleCardIndex : '');
+    (exampleCardIndex !== undefined ? ':' + exampleCardIndex : '') +
+    (isQaMode ? ':qa' : '');
 
   const [state, setState] = useState<VoiceState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -191,22 +196,26 @@ export default function VoiceTutorAgent({
         ? await requestVoiceTutorSession({
             structuredLearningSectionStepId,
             personName,
+            personId,
             exampleCardIndex,
             isReviewOnly: isReviewOnly || reviewOnly,
+            isQaMode,
           })
         : aiAgentQuestion
-        ? await requestVoiceTutorSession({ aiAgentQuestion, personName })
+        ? await requestVoiceTutorSession({ aiAgentQuestion, personName, personId })
         : learningSessionStepId
         ? await requestVoiceTutorSession({
             learningSessionStepId,
             promptText,
             personName,
+            personId,
             exampleCardIndex,
           })
         : await requestVoiceTutorSession({
             capabilityGraphNodeId: capabilityGraphNodeId!,
             stepType: stepType!,
             personName,
+            personId,
             exampleCardIndex,
             isReviewOnly: isReviewOnly || reviewOnly,
           });
@@ -384,10 +393,12 @@ export default function VoiceTutorAgent({
     structuredLearningSectionStepId,
     aiAgentQuestion,
     personName,
+    personId,
     promptText,
     onTranscript,
     onExplanationAccepted,
     exampleCardIndex,
+    isQaMode,
     monitorRemoteAudioLevel,
     teardown,
   ]);

@@ -1,4 +1,4 @@
-import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot } from 'lucide-react';
+import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot, Network, Trophy, FlaskConical } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
@@ -12,9 +12,14 @@ export function EmployeeSidebar() {
     today: t('nav.today'),
     objectives: t('nav.objectives'),
     availableCourses: t('nav.availableCourses', { defaultValue: 'Cursos Disponibles' }),
-    aiAgents: t('nav.aiAgents', { defaultValue: 'AI Agents' }),
+    programs: t('nav.programs', { defaultValue: 'Programas' }),
+    learningLabs: t('nav.learningLabs', { defaultValue: 'Learning Labs' }),
+    programEntities: t('nav.programEntities', { defaultValue: 'Entidades del Programa' }),
+    programAgents: t('nav.programAgents', { defaultValue: 'Agentes de Programa' }),
+    aiAgents: t('nav.aiAgents', { defaultValue: 'Agentes de Curso' }),
     brain: t('nav.brain'),
     evolution: t('nav.evolution'),
+    achievements: t('nav.achievements', { defaultValue: 'Mis Logros' }),
     profile: t('nav.profile'),
     courses: t('nav.courses'),
     job: t('nav.job'),
@@ -31,11 +36,16 @@ export function EmployeeSidebar() {
   ];
   const navLinks = [
     { to: '/', end: true, icon: Home, label: labels.today, iconColor: 'text-blue-500 dark:text-blue-400' },
+    { to: '/programs', end: false, icon: GraduationCap, label: labels.programs, iconColor: 'text-purple-500 dark:text-purple-400' },
+    { to: '/learning-labs', end: false, icon: FlaskConical, label: labels.learningLabs, iconColor: 'text-teal-500 dark:text-teal-400' },
+    { to: '/program-entities', end: false, icon: Network, label: labels.programEntities, iconColor: 'text-amber-500 dark:text-amber-400' },
+    { to: '/program-agents', end: false, icon: Bot, label: labels.programAgents, iconColor: 'text-violet-500 dark:text-violet-400' },
     { to: '/available-courses', end: false, icon: BookCheck, label: labels.availableCourses, iconColor: 'text-emerald-500 dark:text-emerald-400' },
     { to: '/ai-agents', end: false, icon: Bot, label: labels.aiAgents, iconColor: 'text-cyan-500 dark:text-cyan-400' },
     { to: '/objectives', end: false, icon: Target, label: labels.objectives, iconColor: 'text-rose-500 dark:text-rose-400' },
     { to: '/brain', end: false, icon: Brain, label: labels.brain, iconColor: 'text-fuchsia-500 dark:text-fuchsia-400' },
     { to: '/my-evolution', end: false, icon: TrendingUp, label: labels.evolution, iconColor: 'text-amber-500 dark:text-amber-400' },
+    { to: '/achievements', end: false, icon: Trophy, label: labels.achievements, iconColor: 'text-yellow-500 dark:text-yellow-400' },
     { to: '/profile', end: false, icon: UserCircle, label: labels.profile, iconColor: 'text-sky-500 dark:text-sky-400' },
   ];
   const collapsed = useSidebarStore((state) => state.collapsed);

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import {
@@ -39,6 +39,7 @@ import { getMyCareerPlan } from '@/features/career-plan/api/careerPlanApi';
 import { getSkills } from '@/features/capabilities/api/skillsApi';
 import {
   getAvailableDepartmentObjectives,
+  getAllCorporateDepartmentObjectives,
   getEmployeeObjectives,
   saveEmployeeObjectives,
   getEmployeeGrowthRecommendations,
@@ -233,15 +234,33 @@ export function ObjectivesPage() {
     };
   }
 
+  const departmentName = user?.departmentName ?? '';
+  const jobRoleTitle = user?.jobRoleTitle ?? jobRole?.title ?? '';
+
   // Available Department Objectives for alignment
   const departmentObjectives = useMemo(() => {
-    return getAvailableDepartmentObjectives(tenantId, departmentId, isEn);
-  }, [tenantId, departmentId, isEn]);
+    return getAvailableDepartmentObjectives(tenantId, departmentId, isEn, departmentName, jobRoleTitle);
+  }, [tenantId, departmentId, isEn, departmentName, jobRoleTitle]);
+
+  const groupedDeptObjectives = useMemo(() => {
+    return getAllCorporateDepartmentObjectives(tenantId, isEn, departmentId, departmentName, jobRoleTitle);
+  }, [tenantId, isEn, departmentId, departmentName, jobRoleTitle]);
+
+  const allCorporateObjectives = useMemo(() => {
+    return groupedDeptObjectives.flatMap((g) => g.objectives);
+  }, [groupedDeptObjectives]);
 
   // Personal SMART Objectives
   const [objectives, setObjectives] = useState<EmployeeObjective[]>(() => {
-    return getEmployeeObjectives(tenantId, personId, isEn);
+    return getEmployeeObjectives(tenantId, personId, isEn, departmentName, jobRoleTitle);
   });
+
+  // Re-sync default objectives once user profile details load
+  useEffect(() => {
+    if (personId) {
+      setObjectives(getEmployeeObjectives(tenantId, personId, isEn, departmentName, jobRoleTitle));
+    }
+  }, [tenantId, personId, isEn, departmentName, jobRoleTitle]);
 
   function updateObjectives(next: EmployeeObjective[]) {
     setObjectives(next);
@@ -325,7 +344,10 @@ export function ObjectivesPage() {
   }
 
   async function handleAiRecommend() {
-    const selectedDeptObj = departmentObjectives.find((d) => d.id === formDeptObjId) || departmentObjectives[0];
+    const selectedDeptObj =
+      allCorporateObjectives.find((d) => d.id === formDeptObjId) ||
+      departmentObjectives.find((d) => d.id === formDeptObjId) ||
+      departmentObjectives[0];
     setIsAiRecommending(true);
     try {
       const rec = await recommendSmartObjective({
@@ -377,7 +399,9 @@ export function ObjectivesPage() {
     e.preventDefault();
     if (!formTitle.trim()) return;
 
-    const selectedDeptObj = departmentObjectives.find((d) => d.id === formDeptObjId);
+    const selectedDeptObj =
+      allCorporateObjectives.find((d) => d.id === formDeptObjId) ||
+      departmentObjectives.find((d) => d.id === formDeptObjId);
     const curValNum = formCurrentVal.trim() !== '' && !isNaN(Number(formCurrentVal)) ? Number(formCurrentVal) : null;
     const tgtValNum = formTargetVal.trim() !== '' && !isNaN(Number(formTargetVal)) ? Number(formTargetVal) : null;
 
@@ -394,7 +418,7 @@ export function ObjectivesPage() {
               status: formStatus,
               departmentObjectiveId: selectedDeptObj ? selectedDeptObj.id : null,
               departmentObjectiveTitle: selectedDeptObj ? selectedDeptObj.title : null,
-              departmentName: user?.departmentName ?? 'Software Engineering',
+              departmentName: selectedDeptObj?.departmentName || user?.departmentName || 'Legal',
               strategicGoalTitle: selectedDeptObj ? selectedDeptObj.strategicGoalTitle : null,
               metricName: formMetricName.trim() || null,
               currentValue: curValNum,
@@ -423,7 +447,7 @@ export function ObjectivesPage() {
         status: formStatus,
         departmentObjectiveId: selectedDeptObj ? selectedDeptObj.id : null,
         departmentObjectiveTitle: selectedDeptObj ? selectedDeptObj.title : null,
-        departmentName: user?.departmentName ?? 'Software Engineering',
+        departmentName: selectedDeptObj?.departmentName || user?.departmentName || 'Legal',
         strategicGoalTitle: selectedDeptObj ? selectedDeptObj.strategicGoalTitle : null,
         metricName: formMetricName.trim() || null,
         currentValue: curValNum,
@@ -450,8 +474,15 @@ export function ObjectivesPage() {
 
   // ── Areas for Improvement / Growth Recommendations ─────────────────────────
   const [growthRecommendations, setGrowthRecommendations] = useState<EmployeeGrowthRecommendation[]>(() => {
-    return getEmployeeGrowthRecommendations(tenantId, personId, isEn);
+    return getEmployeeGrowthRecommendations(tenantId, personId, isEn, departmentName, jobRoleTitle);
   });
+
+  // Re-sync growth recommendations once user profile details load
+  useEffect(() => {
+    if (personId) {
+      setGrowthRecommendations(getEmployeeGrowthRecommendations(tenantId, personId, isEn, departmentName, jobRoleTitle));
+    }
+  }, [tenantId, personId, isEn, departmentName, jobRoleTitle]);
   const [selectedQuarter, setSelectedQuarter] = useState<string>('Q1 2026');
   const [growthSkillFilter, setGrowthSkillFilter] = useState<'all' | 'technical' | 'soft'>('all');
 
@@ -2109,29 +2140,48 @@ export function ObjectivesPage() {
                     className="mt-2 w-full rounded-xl border border-purple-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500 dark:border-purple-500/30 dark:bg-slate-900 dark:text-white"
                   >
                     <option value="">{isEn ? '— Independent Goal —' : '— Objetivo individual independiente —'}</option>
-                    {departmentObjectives.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.title} ({d.targetQuarter})
-                      </option>
+                    {groupedDeptObjectives.map((group) => (
+                      <optgroup key={group.departmentName} label={group.departmentName}>
+                        {group.objectives.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.title} ({d.targetQuarter})
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
 
                   {/* Selected Dept Objective Preview */}
                   {(() => {
-                    const preview = departmentObjectives.find((d) => d.id === formDeptObjId);
+                    const preview =
+                      allCorporateObjectives.find((d) => d.id === formDeptObjId) ||
+                      departmentObjectives.find((d) => d.id === formDeptObjId);
                     if (!preview) return null;
                     return (
                       <div className="mt-3 rounded-xl border border-purple-200/80 bg-white p-3.5 text-xs shadow-sm dark:border-purple-500/30 dark:bg-slate-900/90">
-                        <span className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">
-                          {isEn ? 'Department Objective Target' : 'Meta del Departamento'}
-                        </span>
-                        <h4 className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-white">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">
+                            {preview.departmentName ? `${preview.departmentName} · ` : ''}{isEn ? 'Department Objective Target' : 'Meta del Departamento'}
+                          </span>
+                          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
+                            {preview.targetQuarter}
+                          </span>
+                        </div>
+                        <h4 className="mt-1 text-xs font-semibold text-slate-900 dark:text-white">
                           {preview.title}
                         </h4>
                         {preview.description && (
                           <p className="mt-1 text-[11px] text-slate-600 dark:text-white/70">
                             {preview.description}
                           </p>
+                        )}
+                        {preview.metricName && (
+                          <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500 dark:text-white/50">
+                            <span>Métrica: <strong>{preview.metricName}</strong></span>
+                            {preview.targetValue != null && (
+                              <span>Meta: <strong>{preview.targetValue} {preview.unit ?? ''}</strong></span>
+                            )}
+                          </div>
                         )}
                         {preview.strategicGoalTitle && (
                           <div className="mt-2 border-t border-slate-100 pt-1.5 text-[10px] text-purple-700 dark:border-white/5 dark:text-purple-300">

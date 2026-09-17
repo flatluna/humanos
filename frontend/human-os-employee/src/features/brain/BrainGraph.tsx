@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from 'react-force-graph-2d';
 import { forceCollide } from 'd3-force';
-import { LocateFixed, Sparkles, X, Network, ArrowRight, Bot } from 'lucide-react';
+import { LocateFixed, Sparkles, X, Network, ArrowRight, Bot, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SelectedNeuron } from './types';
 import { getMemoryColor, getRetrievability } from './memoryScience';
-import { useKnowledgeNetwork, type BridgeConceptItem, type MasteredEngramItem } from './useKnowledgeNetwork';
+import {
+  useKnowledgeNetwork,
+  isArticleOrStructuralEntity,
+  type BridgeConceptItem,
+  type MasteredEngramItem,
+} from './useKnowledgeNetwork';
 import { ConceptAgentModal } from './ConceptAgentModal';
 
 export interface BrainGraphProps {
@@ -40,11 +45,26 @@ interface NetworkLink {
 }
 
 const ENTITY_TYPE_COLORS: Record<string, string> = {
+  Article: '#f59e0b', // Amber
+  LegalArticle: '#f59e0b', // Amber
+  LawArticle: '#f59e0b', // Amber
+  LegalProvision: '#f59e0b', // Amber
+  Clause: '#fbbf24', // Warm Amber
+  LegalReference: '#fbbf24', // Warm Amber
+  LegalDocument: '#38bdf8', // Light sky blue
+  LegalRule: '#818cf8', // Indigo
   Protocol: '#38bdf8', // Light sky blue
   Technology: '#818cf8', // Indigo
   GeneralConcept: '#60a5fa', // Blue
   SocialGroup: '#a78bfa', // Purple
   PersonRole: '#c084fc', // Fuchsia
+  FinancialConcept: '#34d399', // Emerald
+  FinancialStructure: '#10b981', // Emerald
+  Crime: '#f43f5e', // Rose
+  CriminalOrganization: '#e11d48', // Crimson
+  AdministrativeMeasure: '#a855f7', // Purple
+  Procedure: '#06b6d4', // Cyan
+  AuthorityRole: '#6366f1', // Indigo
 };
 
 export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onSelectCourse }: BrainGraphProps) {
@@ -176,14 +196,47 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
     fgRef.current?.zoomToFit(400, selectedConcept ? 140 : 80);
   }, [selectedConcept]);
 
-  // Left "Concepts" list (2026-09-03, explicit user request) — same bridge
-  // concepts rendered as graph nodes, but as a scannable sorted list (most-
-  // connected first) so the user can find e.g. "HTTP — 4 engrams" without
-  // having to hunt for the right node in the force-directed canvas.
-  const sortedConcepts = useMemo(() => {
-    if (!networkData) return [];
-    return [...networkData.bridgeConcepts].sort((a, b) => b.connectedEngrams.length - a.connectedEngrams.length);
+  const [conceptFilterTab, setConceptFilterTab] = useState<'all' | 'articles' | 'concepts'>('all');
+  const [conceptSearch, setConceptSearch] = useState('');
+
+  const { allConcepts, articleConcepts, regularConcepts } = useMemo(() => {
+    if (!networkData) return { allConcepts: [], articleConcepts: [], regularConcepts: [] };
+    const all = networkData.bridgeConcepts;
+    const articles: BridgeConceptItem[] = [];
+    const regulars: BridgeConceptItem[] = [];
+
+    for (const c of all) {
+      if (isArticleOrStructuralEntity(c.entityType, c.name)) {
+        articles.push(c);
+      } else {
+        regulars.push(c);
+      }
+    }
+
+    // Natural sort for articles (e.g. Artículo 1, Artículo 2, Artículo 10...)
+    articles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+    // Most-connected first for regular concepts
+    regulars.sort((a, b) => b.connectedEngrams.length - a.connectedEngrams.length || a.name.localeCompare(b.name));
+
+    return { allConcepts: all, articleConcepts: articles, regularConcepts: regulars };
   }, [networkData]);
+
+  const displayedConcepts = useMemo(() => {
+    let list =
+      conceptFilterTab === 'articles'
+        ? articleConcepts
+        : conceptFilterTab === 'concepts'
+        ? regularConcepts
+        : [...articleConcepts, ...regularConcepts];
+
+    if (conceptSearch.trim()) {
+      const q = conceptSearch.trim().toLowerCase();
+      list = list.filter((c) => c.name.toLowerCase().includes(q) || c.entityType.toLowerCase().includes(q));
+    }
+
+    return list;
+  }, [conceptFilterTab, conceptSearch, articleConcepts, regularConcepts]);
 
   const handleSelectConceptFromList = useCallback((concept: BridgeConceptItem) => {
     setSelectedConcept((prev) => (prev?.id === concept.id ? null : concept));
@@ -399,40 +452,119 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
         onEngineStop={() => fgRef.current?.zoomToFit(400, 80)}
       />
 
-      {/* Left "Concepts" list — sorted by how many mastered engrams share the
-          concept, so the most cross-cutting ideas surface first. */}
-      {sortedConcepts.length > 0 && (
-        <div className="absolute left-4 top-16 bottom-4 z-10 flex w-56 flex-col rounded-3xl border border-white/10 bg-slate-900/85 p-3 shadow-lg backdrop-blur-md">
-          <div className="flex items-center gap-1.5 px-1 pb-2 text-[11px] font-bold uppercase tracking-wide text-slate-300">
-            <Network className="h-3.5 w-3.5 text-sky-400" />
-            {t('brainNetwork.conceptsListTitle')}
+      {/* Left "Entities & Concepts" list */}
+      {(articleConcepts.length > 0 || regularConcepts.length > 0) && (
+        <div className="absolute left-4 top-16 bottom-4 z-10 flex w-72 flex-col rounded-3xl border border-white/10 bg-slate-900/90 p-3.5 shadow-2xl backdrop-blur-md">
+          {/* Header */}
+          <div className="flex items-center justify-between px-1 pb-2 border-b border-white/10 text-xs font-bold text-slate-200">
+            <span className="flex items-center gap-1.5 uppercase tracking-wide text-sky-400">
+              <Network className="h-3.5 w-3.5" />
+              {t('brainNetwork.conceptsListTitle')}
+            </span>
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+              {allConcepts.length}
+            </span>
           </div>
-          <div className="flex-1 space-y-1 overflow-y-auto pr-1">
-            {sortedConcepts.map((concept) => {
-              const count = concept.connectedEngrams.length;
-              const color = ENTITY_TYPE_COLORS[concept.entityType] || '#38bdf8';
-              const isActive = selectedConcept?.id === concept.id;
-              return (
-                <button
-                  key={concept.id}
-                  type="button"
-                  onClick={() => handleSelectConceptFromList(concept)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs transition ${
-                    isActive
-                      ? 'border-indigo-400/50 bg-indigo-500/15 text-white'
-                      : 'border-transparent bg-white/[0.03] text-slate-300 hover:bg-white/[0.08] hover:text-white'
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
-                    <span className="truncate font-medium">{concept.name}</span>
-                  </span>
-                  <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-slate-200">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+
+          {/* Filter Tabs: Todos | Artículos | Conceptos */}
+          <div className="mt-2.5 flex items-center gap-1 rounded-xl bg-slate-950/60 p-1 border border-white/5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setConceptFilterTab('all')}
+              className={`flex-1 rounded-lg py-1 text-center font-medium transition cursor-pointer ${
+                conceptFilterTab === 'all'
+                  ? 'bg-indigo-500/30 text-white font-semibold shadow-xs border border-indigo-400/40'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t('brainNetwork.tabAll')} ({allConcepts.length})
+            </button>
+            {articleConcepts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setConceptFilterTab('articles')}
+                className={`flex-1 rounded-lg py-1 text-center font-medium transition cursor-pointer ${
+                  conceptFilterTab === 'articles'
+                    ? 'bg-amber-500/25 text-amber-200 font-semibold shadow-xs border border-amber-400/40'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {t('brainNetwork.tabArticles')} ({articleConcepts.length})
+              </button>
+            )}
+            {regularConcepts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setConceptFilterTab('concepts')}
+                className={`flex-1 rounded-lg py-1 text-center font-medium transition cursor-pointer ${
+                  conceptFilterTab === 'concepts'
+                    ? 'bg-sky-500/25 text-sky-200 font-semibold shadow-xs border border-sky-400/40'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {t('brainNetwork.tabConcepts')} ({regularConcepts.length})
+              </button>
+            )}
+          </div>
+
+          {/* Search Input */}
+          <div className="relative mt-2">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <input
+              value={conceptSearch}
+              onChange={(e) => setConceptSearch(e.target.value)}
+              placeholder={t('brainNetwork.searchPlaceholder')}
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] py-1.5 pl-8 pr-6 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
+            />
+            {conceptSearch && (
+              <button
+                type="button"
+                onClick={() => setConceptSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Items List */}
+          <div className="mt-2.5 flex-1 space-y-1 overflow-y-auto pr-1">
+            {displayedConcepts.length === 0 ? (
+              <p className="p-3 text-center text-xs text-slate-500">{t('brainNetwork.noEntitiesFound')}</p>
+            ) : (
+              displayedConcepts.map((concept) => {
+                const isArt = isArticleOrStructuralEntity(concept.entityType, concept.name);
+                const count = concept.connectedEngrams.length;
+                const color = ENTITY_TYPE_COLORS[concept.entityType] || (isArt ? '#f59e0b' : '#38bdf8');
+                const isActive = selectedConcept?.id === concept.id;
+                return (
+                  <button
+                    key={concept.id}
+                    type="button"
+                    onClick={() => handleSelectConceptFromList(concept)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs transition cursor-pointer ${
+                      isActive
+                        ? isArt
+                          ? 'border-amber-400/60 bg-amber-500/20 text-white shadow-xs'
+                          : 'border-indigo-400/50 bg-indigo-500/20 text-white shadow-xs'
+                        : isArt
+                        ? 'border-amber-500/10 bg-amber-500/[0.04] text-slate-200 hover:border-amber-400/30 hover:bg-amber-500/10'
+                        : 'border-transparent bg-white/[0.03] text-slate-300 hover:bg-white/[0.08] hover:text-white'
+                    }`}
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+                      <span className={`truncate ${isArt ? 'font-semibold text-amber-100' : 'font-medium'}`}>
+                        {concept.name}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.2 text-[10px] font-bold text-slate-300">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -468,9 +600,19 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
             </button>
           </div>
 
-          <div className="mt-2 text-xs text-slate-400">
-            <span className="font-semibold text-sky-300">{selectedConcept.entityType}</span>
-            {selectedConcept.ontologicalClass && ` · Class: ${selectedConcept.ontologicalClass}`}
+          <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+            <span
+              className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${
+                isArticleOrStructuralEntity(selectedConcept.entityType, selectedConcept.name)
+                  ? 'border-amber-400/40 bg-amber-500/15 text-amber-300'
+                  : 'border-sky-400/30 bg-sky-500/10 text-sky-300'
+              }`}
+            >
+              {selectedConcept.entityType}
+            </span>
+            {selectedConcept.ontologicalClass && (
+              <span className="text-[11px] text-slate-400">· Clase: {selectedConcept.ontologicalClass}</span>
+            )}
           </div>
 
           {selectedConcept.description && (

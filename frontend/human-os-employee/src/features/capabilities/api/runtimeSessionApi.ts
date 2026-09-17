@@ -197,9 +197,9 @@ export interface VoiceTutorSessionDto {
 
 export function requestVoiceTutorSession(
   target:
-    | { learningSessionStepId: string; promptText?: string; personName?: string; exampleCardIndex?: number }
-    | { capabilityGraphNodeId: string; stepType: ExperienceStepType; personName?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
-    | { structuredLearningSectionStepId: string; personName?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
+    | { learningSessionStepId: string; promptText?: string; personName?: string; personId?: string; exampleCardIndex?: number }
+    | { capabilityGraphNodeId: string; stepType: ExperienceStepType; personName?: string; personId?: string; exampleCardIndex?: number; isReviewOnly?: boolean }
+    | { structuredLearningSectionStepId: string; personName?: string; personId?: string; exampleCardIndex?: number; isReviewOnly?: boolean; isQaMode?: boolean }
     | {
         aiAgentQuestion: {
           documentId?: string;
@@ -208,6 +208,7 @@ export function requestVoiceTutorSession(
           engrams: { title: string; text: string }[];
         };
         personName?: string;
+        personId?: string;
       }
 ): Promise<VoiceTutorSessionDto> {
   return rPost<VoiceTutorSessionDto>(
@@ -218,6 +219,8 @@ export function requestVoiceTutorSession(
       CapabilityGraphNodeId: 'capabilityGraphNodeId' in target ? target.capabilityGraphNodeId : undefined,
       StepType: 'capabilityGraphNodeId' in target ? target.stepType : undefined,
       StructuredLearningSectionStepId: 'structuredLearningSectionStepId' in target ? target.structuredLearningSectionStepId : undefined,
+      PersonId: 'personId' in target ? target.personId : undefined,
+      IsQaMode: 'isQaMode' in target ? target.isQaMode : undefined,
       AiAgentQuestion:
         'aiAgentQuestion' in target
           ? {

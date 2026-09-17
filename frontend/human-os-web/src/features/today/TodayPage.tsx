@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Compass, Sparkles } from 'lucide-react';
@@ -14,6 +15,7 @@ import { GrowthAlignment } from './components/GrowthAlignment';
 import { CapabilitiesSection } from './components/CapabilitiesSection';
 import { ContinueLearningSection, type ContinueLearningItem } from './components/ContinueLearningSection';
 import { HumanStateSection } from './components/HumanStateSection';
+import { getMyProfile, getMyResume } from '@/features/profile/api/personProfileApi';
 import type { CapabilityLevel, CapabilityProgress, HumanStateMetric, LocalizedText, PersonalGoal } from './types';
 import type { HumanStateCheckInResponse, UpsertHumanStateRequest } from '@/api/types';
 
@@ -48,6 +50,16 @@ export function TodayPage() {
   const { user } = useAuth();
   const personId = user?.personId ?? '';
   const greetingKey = useGreetingKey();
+  const profileQuery = useQuery({
+    queryKey: ['my-profile', personId],
+    queryFn: () => getMyProfile(personId),
+    enabled: !!personId,
+  });
+  const resumeQuery = useQuery({
+    queryKey: ['my-resume', personId],
+    queryFn: () => getMyResume(personId),
+    enabled: !!personId,
+  });
 
   const [programs, setPrograms] = useState<EnrolledProgram[]>([]);
   // Standalone Capability enrollments (2026-07-24, "Inscribirme" on
@@ -212,6 +224,18 @@ export function TodayPage() {
   }
 
   const displayName = user?.name?.split(' ')[0] ?? '';
+  const profile = profileQuery.data;
+  const resume = resumeQuery.data;
+  const profileDetails = [profile?.Company, profile?.Occupation].filter(Boolean);
+  const profileFacts = [
+    profile?.DisplayName || [profile?.FirstName, profile?.LastName].filter(Boolean).join(' ') || user?.name
+      ? { label: 'Nombre', value: profile?.DisplayName || [profile?.FirstName, profile?.LastName].filter(Boolean).join(' ') || user?.name }
+      : null,
+    profile?.Occupation ? { label: 'Situación actual', value: profile.Occupation } : null,
+    profile?.Company ? { label: 'Institución / organización', value: profile.Company } : null,
+    resume?.professionalObjective ? { label: 'Objetivo profesional', value: resume.professionalObjective } : null,
+    resume?.skills?.length ? { label: 'Capacidades principales', value: resume.skills.join(', ') } : null,
+  ].filter((fact): fact is { label: string; value: string } => fact !== null);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#05060a]">
@@ -227,7 +251,41 @@ export function TodayPage() {
           <p className="mt-3 text-2xl font-semibold text-slate-900 dark:text-white">
             {t(`greeting.${greetingKey}`, { name: displayName })}
           </p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-white/60">
+            Tu ruta de crecimiento conecta tu perfil, tus objetivos y las capacidades que necesitas para tu siguiente etapa profesional.
+          </p>
+          {(profileDetails.length > 0 || resume?.education?.length) && (
+            <p className="mt-2 text-sm text-slate-500 dark:text-white/50">
+              {[...profileDetails, resume?.education?.[0]].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
+
+        {profileFacts.length > 0 && (
+          <section className="mx-auto max-w-6xl px-6 pt-8">
+            <Card className="p-6">
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-300">Tu perfil hoy</p>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    {profileFacts.map((fact) => (
+                      <div key={fact.label}>
+                        <p className="text-xs text-slate-400 dark:text-white/40">{fact.label}</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800 dark:text-white">{fact.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Link
+                  to="/profile"
+                  className="shrink-0 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+                >
+                  Ver mi perfil
+                </Link>
+              </div>
+            </Card>
+          </section>
+        )}
 
         {/* Section 1 — real progress stats across all enrolled programs
          *  (same numbers already shown on /programs), never an invented

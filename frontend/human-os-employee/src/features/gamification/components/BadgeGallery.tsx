@@ -10,11 +10,13 @@ import {
   Target,
   RefreshCw,
   X,
+  HelpCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getBadgeProgress, type BadgeProgressDto } from '../api/gamificationApi';
 import { useGamificationStore } from '../store/useGamificationStore';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
+import { BadgeDetailModal } from './BadgeDetailModal';
 
 interface BadgeGalleryProps {
   /** If provided, renders within a modal frame with a close button */
@@ -83,6 +85,7 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
   const [badges, setBadges] = useState<BadgeProgressDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedBadge, setSelectedBadge] = useState<BadgeProgressDto | null>(null);
 
   const loadBadges = useCallback(async () => {
     setLoading(true);
@@ -318,6 +321,14 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                           style={{ width: `${Math.max(4, badge.progressPercent)}%` }}
                         />
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBadge(badge)}
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/25 bg-amber-500/5 px-2.5 py-1 text-[11px] font-bold text-amber-700 transition hover:bg-amber-500/15 dark:border-amber-400/20 dark:bg-amber-400/5 dark:text-amber-300 dark:hover:bg-amber-400/15"
+                      >
+                        <HelpCircle className="h-3 w-3" />
+                        <span>{t('badges.viewDetails')}</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -384,6 +395,15 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                         {formatDate(badge.earnedAt)}
                       </span>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBadge(badge)}
+                      className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-500/20 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:hover:bg-emerald-400/20"
+                    >
+                      <HelpCircle className="h-3 w-3" />
+                      <span>{t('badges.viewDetails')}</span>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -463,6 +483,15 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                                   <>{t('badges.completed100')}</>
                                 )}
                               </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBadge(badge)}
+                                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 transition hover:bg-emerald-500/20 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:hover:bg-emerald-400/20"
+                              >
+                                <HelpCircle className="h-3 w-3" />
+                                <span>{t('badges.viewDetailsShort')}</span>
+                              </button>
                             </div>
                           );
                         }
@@ -515,6 +544,14 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
                                   }}
                                 />
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBadge(badge)}
+                                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white/70 px-2 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10"
+                              >
+                                <HelpCircle className="h-3 w-3" />
+                                <span>{t('badges.viewDetailsShort')}</span>
+                              </button>
                             </div>
                           </div>
                         );
@@ -527,6 +564,12 @@ export const BadgeGallery: React.FC<BadgeGalleryProps> = ({ onClose, className =
           </section>
         </div>
       )}
+
+      {/* MODAL FOR FULL BADGE EXPLANATION (WHAT IT MEANS / NEUROSCIENCE / HOW TO EARN) */}
+      <BadgeDetailModal
+        badge={selectedBadge}
+        onClose={() => setSelectedBadge(null)}
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router';
 import {
@@ -11,7 +11,6 @@ import {
   Clock,
   Clock3,
   Compass,
-  ExternalLink,
   FileText,
   GraduationCap,
   Hammer,
@@ -38,21 +37,14 @@ import { getJobRole } from '@/features/profile/api/jobRoleApi';
 import { getSkills } from '@/features/capabilities/api/skillsApi';
 import {
   getAvailableDepartmentObjectives,
+  getAllCorporateDepartmentObjectives,
   getEmployeeObjectives,
   saveEmployeeObjectives,
   recommendSmartObjective,
   type EmployeeObjective,
 } from '@/features/objectives/api/employeeObjectivesApi';
 
-// Program matches still point at Engram (human-os-web, :5178) — Program
-// support hasn't been ported into this employee portal yet (see
-// EmployeeCareerPlanPage.tsx in human-os-enterprise, the HR-facing
-// twin of this page, for the same convention/rationale).
-const ENGRAM_APP_URL = 'http://localhost:5178';
-
-function buildEngramProgramUrl(programId: string): string {
-  return `${ENGRAM_APP_URL}/programs/${programId}`;
-}
+// Program matches point directly to /programs/:programId within this employee portal.
 
 type Track = 'technical' | 'soft' | 'department' | 'hr';
 type RoleSubTab = 'role' | 'objectives';
@@ -190,15 +182,33 @@ export function CareerPlanPage() {
     enabled: Boolean(tenantId),
   });
 
+  const departmentName = user?.departmentName ?? '';
+  const jobRoleTitle = user?.jobRoleTitle ?? jobRole?.title ?? '';
+
   // Available Department Objectives for alignment
   const departmentObjectives = useMemo(() => {
-    return getAvailableDepartmentObjectives(tenantId, departmentId, isEn);
-  }, [tenantId, departmentId, isEn]);
+    return getAvailableDepartmentObjectives(tenantId, departmentId, isEn, departmentName, jobRoleTitle);
+  }, [tenantId, departmentId, isEn, departmentName, jobRoleTitle]);
+
+  const groupedDeptObjectives = useMemo(() => {
+    return getAllCorporateDepartmentObjectives(tenantId, isEn, departmentId, departmentName, jobRoleTitle);
+  }, [tenantId, isEn, departmentId, departmentName, jobRoleTitle]);
+
+  const allCorporateObjectives = useMemo(() => {
+    return groupedDeptObjectives.flatMap((g) => g.objectives);
+  }, [groupedDeptObjectives]);
 
   // Personal SMART Objectives
   const [objectives, setObjectives] = useState<EmployeeObjective[]>(() => {
-    return getEmployeeObjectives(tenantId, personId, isEn);
+    return getEmployeeObjectives(tenantId, personId, isEn, departmentName, jobRoleTitle);
   });
+
+  // Re-sync default objectives once user profile details load
+  useEffect(() => {
+    if (personId) {
+      setObjectives(getEmployeeObjectives(tenantId, personId, isEn, departmentName, jobRoleTitle));
+    }
+  }, [tenantId, personId, isEn, departmentName, jobRoleTitle]);
 
   function updateObjectives(next: EmployeeObjective[]) {
     setObjectives(next);
@@ -282,7 +292,10 @@ export function CareerPlanPage() {
   }
 
   async function handleAiRecommend() {
-    const selectedDeptObj = departmentObjectives.find((d) => d.id === formDeptObjId) || departmentObjectives[0];
+    const selectedDeptObj =
+      allCorporateObjectives.find((d) => d.id === formDeptObjId) ||
+      departmentObjectives.find((d) => d.id === formDeptObjId) ||
+      departmentObjectives[0];
     setIsAiRecommending(true);
     try {
       const rec = await recommendSmartObjective({
@@ -334,7 +347,9 @@ export function CareerPlanPage() {
     e.preventDefault();
     if (!formTitle.trim()) return;
 
-    const selectedDeptObj = departmentObjectives.find((d) => d.id === formDeptObjId);
+    const selectedDeptObj =
+      allCorporateObjectives.find((d) => d.id === formDeptObjId) ||
+      departmentObjectives.find((d) => d.id === formDeptObjId);
     const curValNum = formCurrentVal.trim() !== '' && !isNaN(Number(formCurrentVal)) ? Number(formCurrentVal) : null;
     const tgtValNum = formTargetVal.trim() !== '' && !isNaN(Number(formTargetVal)) ? Number(formTargetVal) : null;
 
@@ -351,7 +366,7 @@ export function CareerPlanPage() {
               status: formStatus,
               departmentObjectiveId: selectedDeptObj ? selectedDeptObj.id : null,
               departmentObjectiveTitle: selectedDeptObj ? selectedDeptObj.title : null,
-              departmentName: user?.departmentName ?? 'Software Engineering',
+              departmentName: selectedDeptObj?.departmentName || user?.departmentName || 'Legal',
               strategicGoalTitle: selectedDeptObj ? selectedDeptObj.strategicGoalTitle : null,
               metricName: formMetricName.trim() || null,
               currentValue: curValNum,
@@ -380,7 +395,7 @@ export function CareerPlanPage() {
         status: formStatus,
         departmentObjectiveId: selectedDeptObj ? selectedDeptObj.id : null,
         departmentObjectiveTitle: selectedDeptObj ? selectedDeptObj.title : null,
-        departmentName: user?.departmentName ?? 'Software Engineering',
+        departmentName: selectedDeptObj?.departmentName || user?.departmentName || 'Legal',
         strategicGoalTitle: selectedDeptObj ? selectedDeptObj.strategicGoalTitle : null,
         metricName: formMetricName.trim() || null,
         currentValue: curValNum,
@@ -835,15 +850,13 @@ export function CareerPlanPage() {
                                   {isEn ? 'Start Class' : 'Iniciar Clase'}
                                 </Link>
                               ) : course.matchedProgramId ? (
-                                <a
-                                  href={buildEngramProgramUrl(course.matchedProgramId)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                                <Link
+                                  to={`/programs/${course.matchedProgramId}`}
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition hover:brightness-110"
                                 >
-                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  <GraduationCap className="h-3.5 w-3.5" />
                                   {isEn ? 'Open Program' : 'Abrir Programa'}
-                                </a>
+                                </Link>
                               ) : (
                                 <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
                                   {isEn ? 'In Development' : 'En desarrollo'}
@@ -1565,29 +1578,48 @@ export function CareerPlanPage() {
                         className="mt-2 w-full rounded-xl border border-purple-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500 dark:border-purple-500/30 dark:bg-slate-900 dark:text-white"
                       >
                         <option value="">{isEn ? '— Independent Goal —' : '— Objetivo individual independiente —'}</option>
-                        {departmentObjectives.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.title} ({d.targetQuarter})
-                          </option>
+                        {groupedDeptObjectives.map((group) => (
+                          <optgroup key={group.departmentName} label={group.departmentName}>
+                            {group.objectives.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.title} ({d.targetQuarter})
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
 
                       {/* Selected Dept Objective Preview */}
                       {(() => {
-                        const preview = departmentObjectives.find((d) => d.id === formDeptObjId);
+                        const preview =
+                          allCorporateObjectives.find((d) => d.id === formDeptObjId) ||
+                          departmentObjectives.find((d) => d.id === formDeptObjId);
                         if (!preview) return null;
                         return (
                           <div className="mt-3 rounded-xl border border-purple-200/80 bg-white p-3.5 text-xs shadow-sm dark:border-purple-500/30 dark:bg-slate-900/90">
-                            <span className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">
-                              {isEn ? 'Department Objective Target' : 'Meta del Departamento'}
-                            </span>
-                            <h4 className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-white">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">
+                                {preview.departmentName ? `${preview.departmentName} · ` : ''}{isEn ? 'Department Objective Target' : 'Meta del Departamento'}
+                              </span>
+                              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
+                                {preview.targetQuarter}
+                              </span>
+                            </div>
+                            <h4 className="mt-1 text-xs font-semibold text-slate-900 dark:text-white">
                               {preview.title}
                             </h4>
                             {preview.description && (
                               <p className="mt-1 text-[11px] text-slate-600 dark:text-white/70">
                                 {preview.description}
                               </p>
+                            )}
+                            {preview.metricName && (
+                              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500 dark:text-white/50">
+                                <span>Métrica: <strong>{preview.metricName}</strong></span>
+                                {preview.targetValue != null && (
+                                  <span>Meta: <strong>{preview.targetValue} {preview.unit ?? ''}</strong></span>
+                                )}
+                              </div>
                             )}
                             {preview.strategicGoalTitle && (
                               <div className="mt-2 border-t border-slate-100 pt-1.5 text-[10px] text-purple-700 dark:border-white/5 dark:text-purple-300">
@@ -1916,16 +1948,13 @@ function CourseSection({ title, icon: Icon, accent, courses, statusMeta, emptyMe
               )}
 
               {course.matchedProgramId ? (
-                <a
-                  href={buildEngramProgramUrl(course.matchedProgramId)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-500"
+                <Link
+                  to={`/programs/${course.matchedProgramId}`}
+                  className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full bg-purple-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-purple-500"
                 >
-                  <PlayCircle className="h-3 w-3" />
-                  {language === 'en' ? 'Open in Engram' : 'Abrir en Engram'}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                  <GraduationCap className="h-3 w-3" />
+                  {language === 'en' ? 'Open Program' : 'Abrir Programa'}
+                </Link>
               ) : course.matchedCapabilityId ? (
                 <Link
                   to={`/capabilities/${course.matchedCapabilityId}`}

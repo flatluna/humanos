@@ -46,6 +46,10 @@ public sealed class PostStructuredLearningChatFunction
         /// <summary>Course-level agent scope — restricts retrieval to a
         /// single StructuredLearningDocument's own Engrams.</summary>
         public Guid? DocumentId { get; set; }
+
+        /// <summary>Program-level agent scope — retrieves engrams across
+        /// all courses belonging to this program.</summary>
+        public Guid? ProgramId { get; set; }
     }
 
     [Function("PostStructuredLearningChat")]
@@ -58,10 +62,10 @@ public sealed class PostStructuredLearningChatFunction
             request.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken);
 
         if (body is null || string.IsNullOrWhiteSpace(body.Message)
-            || (body.TenantId == Guid.Empty && body.DocumentId is null && body.SubjectId is null && body.TopicId is null))
+            || (body.TenantId == Guid.Empty && body.DocumentId is null && body.SubjectId is null && body.TopicId is null && body.ProgramId is null))
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
-            request, HttpStatusCode.BadRequest, "InvalidRequest", "'message' and either 'tenantId', 'documentId', 'subjectId' or 'topicId' are required.", cancellationToken);
+            request, HttpStatusCode.BadRequest, "InvalidRequest", "'message' and either 'tenantId', 'documentId', 'subjectId', 'topicId' or 'programId' are required.", cancellationToken);
         }
 
         if (!_chatService.IsConfigured)
@@ -78,12 +82,17 @@ public sealed class PostStructuredLearningChatFunction
         try
         {
             result = await _chatService.AskAsync(
-                body.TenantId, body.Message, history, cancellationToken, body.SubjectId, body.TopicId, body.DocumentId, body.PersonId);
+                body.TenantId, body.Message, history, cancellationToken, body.SubjectId, body.TopicId, body.DocumentId, body.PersonId, body.ProgramId);
         }
         catch (InvalidOperationException ex)
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.Forbidden, "CourseNotAvailable", ex.Message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.InternalServerError, "ChatError", $"{ex.GetType().Name}: {ex.Message} \n {ex.StackTrace}", cancellationToken);
         }
 
         return await FunctionResponseFactory.SuccessResponseAsync(

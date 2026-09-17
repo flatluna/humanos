@@ -66,30 +66,41 @@ public sealed class StructuredLearningVideoPromptAgent
         that the camera stays on the teacher throughout, with no cut to
         other people, so the last frame is always the teacher.
 
-        STEP 1 — DECIDE HOW MANY CLIPS ARE NEEDED. Read the video intention
-        and estimate how much can actually be taught in 10 seconds of
-        narration. If the whole topic fits in one clean, complete 10-second
-        explanation, produce exactly ONE clip. If it needs more time (e.g.
-        writing an expression AND explaining what each part means AND
-        solving an example are three separate complete beats), split it
-        into MULTIPLE clips — one per complete beat — up to the maximum
-        given to you as "MAX VIDEOS: N". Never invent extra clips beyond
-        what the content actually needs, and never exceed the max.
+        STEP 1 — DECIDE HOW MANY CLIPS ARE NEEDED AND PLAN COVERAGE.
+        Read the video intention and estimate the content to be taught.
+        HARD CONSTRAINT — each clip is EXACTLY 10 seconds (roughly 20-25 spoken words).
+        
+        - If the topic is very simple (a single sign, a single short definition),
+          produce 1 to 2 clean, complete 10-second clips.
+        - BUT if the user's VIDEO INTENTION contains SUBSTANTIAL, MULTI-POINT,
+          OR DETAILED CONTENT (such as multiple legal articles, distinct clauses/incisos
+          I to VIII, several technical definitions, architecture mappings like
+          Azure / Purview / SAT / UIF / Key Vault, or an extensive lesson lecture):
+          DO NOT aggressively compress or drop points!
+          You CANNOT squeeze 500 words or 8 legal clauses into 3-6 clips without omitting
+          most of the lesson. In such cases, plan the sequence across up to MAX VIDEOS
+          (e.g. 7-10 clips) so that EVERY key clause, definition, practical implication,
+          and technical mapping from the user's intention is systematically covered across
+          consecutive 10-second clips.
+          Ensure that across the full sequence of clips, all points in the user's input
+          are fully taught in order, without exceeding MAX VIDEOS.
 
-        USE THE FEWEST CLIPS THAT FULLY COVER THE LESSON — CRITICAL. More
-        clips is not better and costs real money per clip generated; the
-        goal is the MINIMUM number of clips that still teaches the full
-        objective clearly, never splitting for its own sake. Before adding
-        another clip, actively check whether two adjacent beats can be
-        COMBINED into one clip's ~20-25 words (e.g. naming the sign AND
-        demonstrating it in one clip, instead of one clip just for naming
-        and a separate one just for the motion) — merge whenever the
-        combined narration still fits the time budget. Only split into
-        multiple clips when the content genuinely cannot be said/shown
-        within one clip's time budget without cutting a step short — most
-        simple single-item lessons (one sign, one vocabulary word, one
-        short fact) should need only ONE clip, and even multi-step lessons
-        rarely need more than two or three.
+        MAX VIDEOS IS A HARD CAP, NEVER EXCEED IT — IF NEEDED, SUMMARIZE
+        INSTEAD OF SPLITTING FURTHER. The input's MAX VIDEOS line is a firm
+        limit chosen by the user (it may be lower than what would be needed
+        to narrate every sentence of the input verbatim, e.g. MAX VIDEOS: 6
+        for a long lecture). When the full content does NOT fit within
+        MAX VIDEOS clips at the 20-25 word/clip budget, do NOT produce more
+        clips than MAX VIDEOS and do NOT just cut off the lesson partway
+        through — instead CONDENSE: keep every distinct topic/section from
+        the input represented by at least one clip, but merge closely
+        related minor points into a single denser clip, drop redundant
+        phrasing/repetition/filler, and state each remaining idea in its
+        most compact correct form. Prioritize covering the full breadth of
+        the lesson (every major concept/section reaches the viewer) over
+        preserving every minor supporting sentence verbatim. Always produce
+        EXACTLY the number of clips that best fits the content, but never
+        more than MAX VIDEOS.
 
         CONCRETE STEPS ONLY — NEVER VAGUE PLACEHOLDER LANGUAGE. The spoken
         line must state the EXACT, literal physical steps given in the
@@ -238,38 +249,25 @@ public sealed class StructuredLearningVideoPromptAgent
         ties the physical motion back to its meaning instead of presenting
         it as an arbitrary motion to copy.
 
-        STEP 4 — FINAL PROMPT FORMAT, ALWAYS STRUCTURED WITH LABELED
-        SECTIONS. Every clip's final Prompt string (what actually gets sent
-        to Veo) MUST be written as these labeled lines, in this exact
-        order, never collapsed into one loose paragraph that drops detail:
+        STEP 4 — FINAL PROMPT FORMAT AND LANGUAGE CONSISTENCY (CRITICAL).
+        Check the TARGET LANGUAGE provided in the input (e.g. "es" for Spanish, "en" for English).
+        
+        IF TARGET LANGUAGE IS SPANISH (es):
+        Every clip's final prompt MUST be 100% in SPANISH. Do NOT mix English labels or English
+        camera directions with Spanish speech — mixing languages confuses Google Veo's audio and lip-sync models!
+        Use these exact Spanish labeled lines:
 
-        Objective: <the OBJECTIVE line, verbatim or near-verbatim>
-        Lesson to teach (this clip): <THIS IS THE MAIN CONTENT — a full,
-        properly written mini-lesson description for this one clip, not a
-        terse fragment. Write it as real prose describing: WHO is teaching
-        (the professor/teacher), WHAT specific thing they are teaching in
-        this clip, and the ACTUAL explanation/content they give, including
-        the substance of what is said — not just a label like "perform the
-        first step". Example of the RIGHT depth: "The professor is
-        teaching the students how to say DOG in sign language. She
-        explains that to sign DOG, you pat your leg with your hand, as if
-        calling a dog to come to you, then says the class should try the
-        motion themselves." Example of the WRONG, too-thin depth:
-        "Introduce the sign for DOG and perform the first step — patting
-        your leg." Never write a garbled or truncated fragment here (e.g.
-        "you have to say to say dog yo") — this line must always be a
-        grammatically complete, clear description of the lesson content,
-        written in full sentences, long enough to actually convey what is
-        being taught and why/how, not just name the action in three words.>
-        Environment: <the ENVIRONMENT text given to you, copied close to
-        VERBATIM — do NOT summarize, shorten, or paraphrase away detail
-        the user wrote (e.g. specific zones, colors, lighting, layout).
-        Losing environment detail by compressing it into a vague phrase
-        like "a calm classroom" is a common failure — preserve as much of
-        the user's actual wording as fits.>
-        Scene: <the concrete visual scene/action/camera/dialogue direction
-        for this clip — subject, action, camera behavior (see NO CUTAWAYS),
-        and the exact quoted line to be said, synchronized with the action>
+        Objetivo: <el objetivo en español>
+        Lección a enseñar (este clip): <descripción detallada y completa de la mini-lección en español>
+        Entorno: <el entorno en español, preservando los detalles del usuario>
+        Escena: <dirección de escena, plano y cámara EN ESPAÑOL, indicando que el profesor/sujeto habla en español de forma pausada y clara mirando a la cámara, terminando en él, seguido de la línea textual en español que pronuncia entre comillas. Ej: Plano medio a la altura de los ojos, cámara estática, el profesor centrado junto al pizarrón, cuerpo superior visible. Habla en español de forma pausada, cálida y clara mirando a la cámara. La cámara permanece en él durante todo el clip sin cortes a otra persona, terminando en él. Dice en español: "..." >
+
+        IF TARGET LANGUAGE IS ENGLISH (en):
+        Use the English structure:
+        Objective: <the OBJECTIVE line>
+        Lesson to teach (this clip): <full mini-lesson description in English>
+        Environment: <the ENVIRONMENT text>
+        Scene: <visual scene/action/camera direction in English, ending with quoted spoken line>
 
         This structure is mandatory for every clip in the sequence, not
         just the first — never fall back to a single unstructured
@@ -363,6 +361,7 @@ public sealed class StructuredLearningVideoPromptAgent
         string environment,
         string imageDescription,
         int maxVideos,
+        string? languageCode = null,
         CancellationToken cancellationToken = default)
     {
         if (_agent is null)
@@ -370,7 +369,9 @@ public sealed class StructuredLearningVideoPromptAgent
             throw new InvalidOperationException("StructuredLearningVideoPromptAgent is not configured.");
         }
 
-        var input = $"MAX VIDEOS: {maxVideos}\n\nOBJECTIVE:\n{objective}\n\nVIDEO INTENTION:\n{videoDescription}\n\nENVIRONMENT:\n{environment}\n\nSTARTING IMAGE DESCRIPTION FROM IMAGE2:\n{imageDescription}";
+        var resolvedLanguage = ResolveLanguageCode(languageCode, objective, videoDescription);
+
+        var input = $"TARGET LANGUAGE: {resolvedLanguage}\nMAX VIDEOS: {maxVideos}\n\nOBJECTIVE:\n{objective}\n\nVIDEO INTENTION:\n{videoDescription}\n\nENVIRONMENT:\n{environment}\n\nSTARTING IMAGE DESCRIPTION FROM IMAGE2:\n{imageDescription}";
 
         ChatClientAgentRunOptions? runOptions = null;
         if (_isReasoningModel)
@@ -397,10 +398,30 @@ public sealed class StructuredLearningVideoPromptAgent
         }
 
         var response = await _agent.RunAsync<StructuredLearningVideoPromptSequenceResponse>(input, options: runOptions, cancellationToken: cancellationToken);
+        // Hard safety net (2026-09-08): the model can still ignore the MAX
+        // VIDEOS instruction and over-produce clips — never let more than
+        // maxVideos escape this method regardless of what the LLM returned.
         return response.Result.Videos
             .OrderBy(v => v.SortOrder)
             .Select(v => v.Prompt.Trim())
             .Where(p => p.Length > 0)
+            .Take(maxVideos)
             .ToList();
+    }
+
+    private static string ResolveLanguageCode(string? languageCode, string objective, string videoDescription)
+    {
+        if (!string.IsNullOrWhiteSpace(languageCode))
+        {
+            return languageCode.Trim().ToLowerInvariant().StartsWith("es") ? "es" : "en";
+        }
+
+        var combined = $" {objective.ToLowerInvariant()} {videoDescription.ToLowerInvariant()} ";
+        string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu ", " en ", " del ", " por "];
+        string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this ", " of ", " in ", " for "];
+        var spanishHits = spanishWords.Count(w => combined.Contains(w));
+        var englishHits = englishWords.Count(w => combined.Contains(w));
+
+        return spanishHits >= englishHits ? "es" : "en";
     }
 }

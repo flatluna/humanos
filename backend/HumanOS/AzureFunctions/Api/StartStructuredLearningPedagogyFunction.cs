@@ -41,6 +41,10 @@ public sealed class StartStructuredLearningPedagogyFunction
         /// <summary>Only meaningful when UploadedImageBase64 is set and the
         /// image should be used as a visual reference during generation.</summary>
         public string? ReferenceImageUsageInstruction { get; set; }
+
+        /// <summary>Optional override to enable/disable Perplexity AI search for each engram during pedagogy generation.
+        /// When null, defaults to the setting saved in the document's ConfigSnapshotJson.</summary>
+        public bool? UsePerplexitySearch { get; set; }
     }
 
     [Function("StartStructuredLearningPedagogy")]
@@ -91,7 +95,8 @@ public sealed class StartStructuredLearningPedagogyFunction
                 body.ForceRegenerateAll,
                 uploadedImageBytes,
                 body.UploadedImageContentType,
-                body.ReferenceImageUsageInstruction);
+                body.ReferenceImageUsageInstruction,
+                body.UsePerplexitySearch);
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }
         catch (StructuredLearningPedagogyOrchestrator.ActiveRunConflictException ex)

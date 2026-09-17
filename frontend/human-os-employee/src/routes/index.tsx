@@ -48,6 +48,50 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/today').then((m) => ({ Component: m.TodayPage })),
       },
       {
+        path: 'today',
+        loader: () => redirect('/'),
+      },
+      {
+        path: 'tec-contigo',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecContigoIndexPage })),
+      },
+      {
+        path: 'tec-contigo/mientras-estudias',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecMientrasEstudiasPage })),
+      },
+      {
+        path: 'tec-contigo/comienza-tu-carrera',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecComienzaTuCarreraPage })),
+      },
+      {
+        path: 'tec-contigo/mantente-vigente',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecMantenteVigentePage })),
+      },
+      {
+        path: 'tec-contigo/conecta-y-contribuye',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecConectaYContribuyePage })),
+      },
+      {
+        path: 'tec-contigo/semestre-actual',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecSemestreActualPage })),
+      },
+      {
+        path: 'tec-contigo/industria-monterrey',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecIndustriaMonterreyPage })),
+      },
+      {
+        path: 'tec-contigo/objetivo-profesional',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecObjetivoProfesionalPage })),
+      },
+      {
+        path: 'tec-contigo/fortalecer-conocimientos',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecFortalecerConocimientosPage })),
+      },
+      {
+        path: 'tec-contigo/capacidades-humanas',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecCapacidadesHumanasPage })),
+      },
+      {
         path: 'brain',
         lazy: () => import('@/features/brain').then((m) => ({ Component: m.BrainPage })),
       },
@@ -56,6 +100,23 @@ export const router = createBrowserRouter([
         // chart, ported from human-os-web's /my-evolution.
         path: 'my-evolution',
         lazy: () => import('@/features/my-evolution').then((m) => ({ Component: m.MyEvolutionPage })),
+      },
+      {
+        // "Mis Logros" / "My Achievements" — Gamification badges, milestones and habits
+        path: 'achievements',
+        lazy: () => import('@/features/achievements').then((m) => ({ Component: m.AchievementsPage })),
+      },
+      {
+        path: 'logros',
+        loader: () => redirect('/achievements'),
+      },
+      {
+        path: 'my-achievements',
+        loader: () => redirect('/achievements'),
+      },
+      {
+        path: 'mis-logros',
+        loader: () => redirect('/achievements'),
       },
       {
         // "Mi Perfil" (2026-08-02) — self-service profile view/edit, ported
@@ -75,6 +136,58 @@ export const router = createBrowserRouter([
       {
         path: 'objetivos',
         loader: () => redirect('/objectives'),
+      },
+      {
+        // "Programas" — Programs catalog and chronological progression management
+        path: 'programs',
+        lazy: () => import('@/features/programs').then((m) => ({ Component: m.ProgramsPage })),
+      },
+      {
+        path: 'programs/:programId',
+        lazy: () => import('@/features/programs').then((m) => ({ Component: m.ProgramDetailPage })),
+      },
+      {
+        path: 'programs/:programId/entities',
+        lazy: () => import('@/features/program-entities').then((m) => ({ Component: m.ProgramEntitiesDetailPage })),
+      },
+      {
+        path: 'program-entities',
+        lazy: () => import('@/features/program-entities').then((m) => ({ Component: m.ProgramEntitiesIndexPage })),
+      },
+      {
+        path: 'program-entities/:programId',
+        lazy: () => import('@/features/program-entities').then((m) => ({ Component: m.ProgramEntitiesDetailPage })),
+      },
+      {
+        path: 'programas',
+        loader: () => redirect('/programs'),
+      },
+      {
+        // "Learning Labs" (2026-09-14) — read-only catalog of published
+        // Simulation Labs (see Human OS Studio /labs), enroll-only for now.
+        path: 'learning-labs',
+        lazy: () => import('@/features/learning-labs').then((m) => ({ Component: m.LearningLabsPage })),
+      },
+      {
+        // Attempt run page (2026-09-15) — full page (no modal), one per attempt:
+        // conversation -> evaluation -> results. idAttempt is optional on first visit;
+        // the page creates the attempt then replaces the URL with its real id.
+        path: 'learning-labs/:idLab/attempts/:idAttempt?',
+        lazy: () => import('@/features/learning-labs').then((m) => ({ Component: m.AttemptPage })),
+      },
+      {
+        // Same page, reached from "My Attempts" history links which only know the attempt id.
+        path: 'learning-labs/attempts/:idAttempt',
+        lazy: () => import('@/features/learning-labs').then((m) => ({ Component: m.AttemptPage })),
+      },
+      {
+        // "Program AI Agents" — Multi-course intelligence across all engrams of a program
+        path: 'program-agents',
+        lazy: () => import('@/features/program-agents').then((m) => ({ Component: m.ProgramAgentsPage })),
+      },
+      {
+        path: 'program-agents/:programId',
+        lazy: () => import('@/features/program-agents').then((m) => ({ Component: m.ProgramAgentDetailPage })),
       },
       {
         // "Cursos Disponibles" — Only courses and engrams that are ready & available in the catalog

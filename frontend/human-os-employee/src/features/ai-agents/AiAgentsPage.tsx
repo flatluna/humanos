@@ -19,6 +19,7 @@ export function AiAgentsPage() {
   const isEn = language === 'en';
   const { user } = useAuth();
   const personId = user?.personId ?? '';
+  const tenantId = user?.tenantId ?? '';
 
   const [courses, setCourses] = useState<AiAgentCourseCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,11 +28,11 @@ export function AiAgentsPage() {
   useEffect(() => {
     if (!personId) return;
     setLoading(true);
-    listAiAgentCourses(personId)
+    listAiAgentCourses(personId, tenantId)
       .then(setCourses)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your agents.'))
       .finally(() => setLoading(false));
-  }, [personId]);
+  }, [personId, tenantId]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 pb-16 sm:p-8">

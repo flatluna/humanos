@@ -38,10 +38,17 @@ public sealed class StructuredLearningCostService
         return 0m;
     }
 
-    public async Task<IReadOnlyList<StructuredLearningCostSummaryResponse>> GetSummariesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<StructuredLearningCostSummaryResponse>> GetSummariesAsync(
+        Guid? tenantId = null,
+        CancellationToken cancellationToken = default)
     {
-        var documents = await _dbContext.StructuredLearningDocuments
-            .AsNoTracking()
+        var docQuery = _dbContext.StructuredLearningDocuments.AsNoTracking();
+        if (tenantId != null)
+        {
+            docQuery = docQuery.Where(d => d.IsGlobal || d.TenantId == Guid.Empty || d.TenantId == tenantId);
+        }
+
+        var documents = await docQuery
             .Select(d => new { d.StructuredLearningDocumentId, d.DocumentName })
             .ToListAsync(cancellationToken);
 
@@ -200,8 +207,10 @@ public sealed class StructuredLearningCostService
                 StepName = "Video",
                 Agents = "GoogleVeoVideoService/GoogleOmniFlashVideoService",
                 Models = string.Join(", ", illustrations.Where(i => i.MediaType == "Video").Select(i => i.ImageModel).Where(m => !string.IsNullOrWhiteSpace(m)).Distinct()),
-                ImagesGeneratedCount = videosGeneratedCount,
-                ImageCostUsd = videoCostUsd,
+                ImagesGeneratedCount = 0,
+                ImageCostUsd = 0m,
+                VideosGeneratedCount = videosGeneratedCount,
+                VideoCostUsd = videoCostUsd,
                 EstimatedCostUsd = videoCostUsd,
             });
         }

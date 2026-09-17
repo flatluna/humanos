@@ -43,12 +43,12 @@ public sealed class RealtimeVoiceSessionService
         _deploymentName = configuration["AzureOpenAIRealtimeDeploymentName"];
         _apiKey = configuration["AzureOpenAIRealtimeApiKey"] ?? configuration["AzureOpenAIApiKey"];
         // Switched to a male-sounding voice (2026-09-03, explicit user request) —
-        // "cedar" is one of the newer gpt-realtime expressive voices and reads as
+        // "echo" is the classic deep male voice in OpenAI Realtime API, unmistakably
         // male in both English and Spanish (the Realtime voice itself is language-
         // agnostic; the model still speaks whichever language the prompt requires).
         _voice = configuration["AzureOpenAIRealtimeVoice"] is { Length: > 0 } configuredVoice
             ? configuredVoice
-            : "cedar";
+            : "echo";
         _transcriptionModel = configuration["AzureOpenAIRealtimeTranscriptionModel"] is { Length: > 0 } configuredTranscriptionModel
             ? configuredTranscriptionModel
             : "whisper-1";

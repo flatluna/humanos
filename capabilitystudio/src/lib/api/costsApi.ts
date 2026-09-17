@@ -63,6 +63,8 @@ export interface StructuredLearningCostSummary {
   TotalElapsedMilliseconds: number;
   ImagesGeneratedCount: number;
   ImageCostUsd: number;
+  VideosGeneratedCount: number;
+  VideoCostUsd: number;
   EstimatedCostUsd: number;
   IsEstimate: boolean;
   GeneratedDate: string | null;
@@ -80,6 +82,8 @@ export interface StructuredLearningCostStep {
   CallCount: number;
   ImagesGeneratedCount: number;
   ImageCostUsd: number;
+  VideosGeneratedCount?: number;
+  VideoCostUsd?: number;
   EstimatedCostUsd: number;
 }
 

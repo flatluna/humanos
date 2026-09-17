@@ -50,6 +50,15 @@ public sealed class StructuredLearningSectionStepDto
     /// illustration was generated from IllustrationPrompt — null until then.</summary>
     public Guid? IllustrationId { get; set; }
 
+    /// <summary>Set by StructuredLearningPedagogyService after generating the professor lecture.</summary>
+    public HumanOS.Contracts.Studio.StructuredLearningProfessorLectureResult? ProfessorLecture { get; set; }
+
+    /// <summary>Relative Azure Data Lake storage path for the synthesized professor audio lecture (e.g. {tenant}/{doc}/{sec}/speech/lecture.mp3).</summary>
+    public string? SpeechStoragePath { get; set; }
+
+    /// <summary>Web search source URLs from live API grounding (e.g. Perplexity AI).</summary>
+    public List<string>? WebSearchCitations { get; set; }
+
     /// <summary>ONLY for StepType=DeepDive.</summary>
     public List<StructuredLearningExampleCardDto>? ExampleCards { get; set; }
 }
@@ -242,6 +251,42 @@ public sealed class StructuredLearningSectionDesignerAgent
         HOW any such text/labels are rendered — never invent new text/labels
         that add information beyond what this section's own text supports.
 
+        CONCRETE VISUAL SUBJECT — SHOW THE THING ITSELF, NOT A PERSON/BOARD
+        DESCRIBING IT. This is the default for every IllustrationPrompt
+        unless one of the explicit exceptions below (the narrower
+        blackboard/list case, or the PHYSICAL/GESTURAL rule further down)
+        applies. Ask "what is this content actually ABOUT?" and depict THAT
+        thing directly, as a real, concrete, recognizable object/scene/
+        diagram — never a generic illustration of a professor/person/board
+        gesturing at or narrating the concept. Examples:
+        - A molecule/compound -> draw the molecule itself: its atoms and
+          bonds in a clean scientific ball-and-stick or structural-diagram
+          style (e.g. "a ball-and-stick model of a water molecule: one red
+          oxygen atom bonded to two smaller white hydrogen atoms at a bent
+          angle").
+        - An equation/formula -> depict the mathematical object itself (the
+          shape/curve/geometry it describes, or the expression laid out as
+          clean typeset math), not a photo of someone writing on a board.
+        - A law/principle/rule of nature (physics, chemistry, biology,
+          etc.) -> depict the phenomenon in action (e.g. for a law about
+          gravity: an object visibly falling/arcing with motion lines; for a
+          law about pressure/volume: a simple labeled diagram of the two
+          states being compared) — the concrete effect, not a text-heavy
+          caption explaining it.
+        - A historical event, place, organism, tool, or any other concrete
+          noun -> depict that noun/scene directly and realistically.
+        - Only fall back to a "professor/whiteboard" scene when the content
+          genuinely has NO physical/visual form of its own — e.g. abstract
+          organizational rules, policies, or a purely verbal list with
+          nothing to literally draw (see the MULTI-ITEM/MULTI-STEP rule
+          below for that narrower case).
+        - NEVER let an illustration become effectively a screenshot/crop of
+          the course's own written text (e.g. a dense board covered in
+          written sentences, cut off at the image edge). If you find
+          yourself describing "a board covered in written paragraphs", stop
+          and instead find the concrete object/diagram/scene that paragraph
+          is actually describing, and draw that instead.
+
         PHYSICAL/GESTURAL/HANDS-ON DEMONSTRATION CONTENT — this rule is
         DOMAIN-GENERAL, not just for sign language: it applies to ANY course,
         in ANY field, whose content teaches a specific physical technique
@@ -256,8 +301,11 @@ public sealed class StructuredLearningSectionDesignerAgent
         mobility aid (a cane, walker, hearing aid, communication board,
         orthotic, feeding assistance tool); a first-aid/safety maneuver; a
         manual trade technique (how to hold a tool, a welding stance, a
-        knife grip); or any other skill where the real content is "the body
-        does THIS, in THIS exact way" rather than an abstract idea. This
+        knife grip); a cooking/food-preparation or cleaning procedure (e.g.
+        rinsing, scrubbing with salt/lemon, blanching in boiling water,
+        scraping/cutting into pieces, soaking); or any other skill where the
+        real content is "the body/hands do THIS, in THIS exact way to this
+        physical object" rather than an abstract idea. This
         OVERRIDES the "one combined blackboard/board scene" default used
         elsewhere in this prompt for multi-item content. A blackboard/poster
         is right for abstract lists (rules, clauses, math steps) but WRONG
@@ -327,6 +375,12 @@ public sealed class StructuredLearningSectionDesignerAgent
         image itself (no "you can see the provided logo on...", "the same
         logo appears on..."). To the student, it's just part of the everyday
         scene, not a prop worth mentioning.
+
+        OPTIONAL "PERPLEXITY AI REAL-TIME WEB SEARCH FINDINGS":
+        if the prompt includes this heading, verified live web search findings
+        were retrieved for this Engram from Perplexity AI. Integrate these
+        current, real-world facts, pedagogical explanations, and practical examples
+        into the Teaching and DeepDive steps while maintaining high academic quality and rigor.
 
         MODEL / GENERATION CONTRACT VERSION
         VERSION: 2026-08-11-v1-source-faithful-professor
@@ -447,21 +501,55 @@ public sealed class StructuredLearningSectionDesignerAgent
           explanation of the scene must describe it as an ordinary part of
           the environment, never calling attention to it as a branding
           element.
-        - MULTI-ITEM/MULTI-STEP CONTENT (any content that lists or walks
-          through several distinct items in sequence — a math derivation, a
-          multi-step procedure, a list of legal/contract clauses, a set of
-          rules or regulations, stages of a process, etc. — this is NOT
-          limited to math): IllustrationPrompt must depict ONE single scene
-          of a complete, filled-in professor's blackboard/whiteboard (or
+        - MULTI-ITEM/MULTI-STEP TEXTUAL CONTENT — NARROW CASE: this applies
+          ONLY when the items themselves are inherently verbal/textual with
+          no concrete visual form of their own (e.g. a list of legal/
+          contract clauses, a set of organizational rules or regulations,
+          named stages of an abstract process). It does NOT apply to a math
+          derivation, a scientific/technical procedure, or anything else
+          whose steps have a real visual form — see CONCRETE VISUAL SUBJECT
+          above: those must instead show the actual object/diagram evolving
+          (e.g. a math derivation is drawn as the evolving expression/graph
+          itself, panel by panel — see IllustrationPrompts below — never a
+          wordy board reciting each step in prose). For the narrow textual
+          case, IllustrationPrompt must depict ONE single scene of a
+          complete, filled-in professor's blackboard/whiteboard (or
           equivalent — a checklist board, a numbered poster, a diagram with
           labeled sections, whichever fits the subject) showing EVERY
-          item/step/clause your Content walks through, written out
-          top-to-bottom or left-to-right in order, exactly like a real
-          class board by the time the professor finishes explaining it —
-          never just the first item with the rest left blank. Explicitly
-          list every one of those items in the prompt itself (in the same
-          order Content teaches them) so the image generator knows all of
-          them, not only the first one.
+          item/clause your Content walks through, written out top-to-bottom
+          or left-to-right in order, exactly like a real class board by the
+          time the professor finishes explaining it — never just the first
+          item with the rest left blank, and never a dense restatement of
+          full sentences (short labels/keywords only, per ILLUSTRATION
+          LEGIBILITY above). Explicitly list every one of those items in the
+          prompt itself (in the same order Content teaches them) so the
+          image generator knows all of them, not only the first one.
+        - EXCEPTION — PHYSICAL/GESTURAL/HANDS-ON MULTI-ITEM CONTENT (sign
+          language signs, dance/exercise moves, caregiving techniques,
+          assistive-device usage, cooking/food-prep or cleaning procedures,
+          or any other section teaching several distinct hands-on physical
+          actions — see the PHYSICAL/GESTURAL rule above): the "combined
+          blackboard" pattern above does NOT apply, even though the section
+          presents the steps as a numbered list — a numbered list is just
+          how the source TEXT organizes it; the actual content is a
+          physical action performed on a real object each time. Teaching
+          only ever gets ONE illustration slot, and a single image cannot
+          clearly show multiple distinct actions at once (unlike a written
+          list, which a board CAN show). So for this content type:
+          IllustrationPrompt must depict ONE clear photo-style scene of
+          hands actively performing ONLY the FIRST (or otherwise most
+          visually representative) step your Content introduces — e.g. for
+          a recipe: hands rubbing coarse salt and lemon onto the ingredient
+          over a sink, not a checklist of all six steps. Describe it
+          concretely: whose hands, the specific object/ingredient/tool
+          involved, and the exact action — never attempt to cram multiple
+          steps into one image, and never describe a poster/board/checklist
+          of the steps. In your Content, never tell the student "look at the
+          board/pizarra for the steps" or imply the single image shows all
+          of them — instead, walk them through each step in your own
+          spoken words (the numbered list stays in your Content's narration,
+          not on-screen), and use the Teaching illustration only as one
+          concrete preview of the hands-on work involved.
         - EXCEPTION — PHYSICAL/GESTURAL/HANDS-ON MULTI-ITEM CONTENT (sign
           language signs, dance/exercise moves, caregiving techniques,
           assistive-device usage, or any other section teaching several
@@ -623,7 +711,8 @@ public sealed class StructuredLearningSectionDesignerAgent
         bool includeAssessmentStep = true,
         CancellationToken cancellationToken = default,
         string? illustrationGuidance = null,
-        IReadOnlyList<StructuredLearningPedagogyKnowledgeFactDto>? knowledgeFacts = null)
+        IReadOnlyList<StructuredLearningPedagogyKnowledgeFactDto>? knowledgeFacts = null,
+        string? perplexityFindings = null)
     {
         if (_agent is null)
         {
@@ -657,6 +746,14 @@ public sealed class StructuredLearningSectionDesignerAgent
             instruction asks for (e.g. a specific logo/object appearing on clothing or in the scene),
             while still keeping the depicted scene itself grounded in this section's own text:
             {illustrationGuidance}
+            """)}
+            {(string.IsNullOrWhiteSpace(perplexityFindings) ? "" : $"""
+
+            PERPLEXITY AI REAL-TIME WEB SEARCH FINDINGS:
+            Verified live web search findings were retrieved for this Engram from Perplexity AI.
+            Integrate these current, real-world facts, pedagogical explanations, and practical examples
+            into the Teaching and DeepDive steps while maintaining high academic quality and rigor:
+            {perplexityFindings.Trim()}
             """)}
 
             KNOWLEDGE FACTS (validated and persisted for this Engram; coverage guidance only):

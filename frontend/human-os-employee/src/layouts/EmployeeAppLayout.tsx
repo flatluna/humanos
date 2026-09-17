@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Outlet } from 'react-router';
+import { Outlet, useLocation } from 'react-router';
 import { InteractionStatus } from '@azure/msal-browser';
 import { useMsal } from '@azure/msal-react';
 import { useAuth } from '@/auth/AuthContext';
@@ -9,6 +9,16 @@ import { AccessDenied } from '@/components/AccessDenied';
 
 const REDIRECT_GUARD_KEY = 'humanos.employee.loginRedirect.startedAt';
 const REDIRECT_GUARD_MAX_AGE_MS = 30_000;
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname]);
+
+  return null;
+}
 
 /** Shell for the whole Employee Portal: real MSAL session gate, then a
  *  "belongs to a company tenant" gate (same as human-os-enterprise), but
@@ -81,6 +91,7 @@ export function EmployeeAppLayout() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#05060a]">
+      <ScrollToTop />
       <EmployeeHeader />
 
       <div className="flex">

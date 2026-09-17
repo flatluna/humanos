@@ -18,6 +18,7 @@ import {
   UploadCloud,
   BookOpen,
   X,
+  Globe,
 } from 'lucide-react';
 import {
   getStructuredLearningExtractionStatus,
@@ -238,6 +239,7 @@ function PedagogySection({ documentId }: { documentId: string }) {
   // back here instead of re-asking (2026-08-23 fix); only the optional
   // illustration reference image is unique to this step.
   const [pedagogyLanguageCode, setPedagogyLanguageCode] = useState<'es' | 'en'>('es');
+  const [hasPerplexitySearch, setHasPerplexitySearch] = useState(false);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [referenceImageUsageInstruction, setReferenceImageUsageInstruction] = useState('');
@@ -261,6 +263,10 @@ function PedagogySection({ documentId }: { documentId: string }) {
           const savedLanguage = snapshot?.LanguageCode ?? snapshot?.languageCode;
           if (savedLanguage === 'es' || savedLanguage === 'en') {
             setPedagogyLanguageCode(savedLanguage);
+          }
+          const pplx = snapshot?.UsePerplexitySearch ?? snapshot?.usePerplexitySearch;
+          if (typeof pplx === 'boolean') {
+            setHasPerplexitySearch(pplx);
           }
         } catch {
           // Keep the default if the snapshot can't be parsed.
@@ -322,6 +328,7 @@ function PedagogySection({ documentId }: { documentId: string }) {
         uploadedImageBase64,
         referenceImageFile?.type ?? null,
         referenceImageFile ? referenceImageUsageInstruction.trim() || null : null,
+        hasPerplexitySearch,
       );
       setPedagogyRunId(run.RunId);
       setPedagogyStatus(run);
@@ -339,7 +346,7 @@ function PedagogySection({ documentId }: { documentId: string }) {
     setRetrying(true);
     setSubmitError(null);
     try {
-      const run = await startStructuredLearningPedagogy(documentId, pedagogyLanguageCode);
+      const run = await startStructuredLearningPedagogy(documentId, pedagogyLanguageCode, false, null, null, null, hasPerplexitySearch);
       setDocumentDetail(null);
       setPedagogyRunId(run.RunId);
       setPedagogyStatus(run);
@@ -357,7 +364,7 @@ function PedagogySection({ documentId }: { documentId: string }) {
     setRegeneratingAll(true);
     setSubmitError(null);
     try {
-      const run = await startStructuredLearningPedagogy(documentId, pedagogyLanguageCode, true);
+      const run = await startStructuredLearningPedagogy(documentId, pedagogyLanguageCode, true, null, null, null, hasPerplexitySearch);
       setDocumentDetail(null);
       setPedagogyRunId(run.RunId);
       setPedagogyStatus(run);
@@ -743,6 +750,33 @@ function SectionViewer({ section }: { section: StructuredLearningDocumentDetail[
           {section.PedagogyErrorMessage && (
             <p className="text-xs text-red-300">{section.PedagogyErrorMessage}</p>
           )}
+
+          {section.WebSearchSources && section.WebSearchSources.length > 0 && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] p-3 text-xs text-emerald-200">
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-300">
+                <Globe className="h-4 w-4 text-emerald-400" />
+                <span>Perplexity AI Sources ({section.WebSearchSources.length})</span>
+                <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300 font-mono">
+                  API Data
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {section.WebSearchSources.slice(0, 6).map((url, i) => {
+                  try {
+                    const host = new URL(url).hostname.replace(/^www\./, '');
+                    return (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] text-emerald-300 hover:bg-white/[0.1] hover:underline" title={url}>
+                        🔗 {host}
+                      </a>
+                    );
+                  } catch {
+                    return null;
+                  }
+                })}
+              </div>
+            </div>
+          )}
+
           {section.Steps.map((step, index) => (
             <div key={index} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
               {(step.StepType === 'Hypothesis' || step.StepType === 'Teaching') && (

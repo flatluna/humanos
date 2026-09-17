@@ -77,6 +77,10 @@ export interface StartStructuredLearningExtractionRequest {
   /** Opt-in Bing grounding for the content expansion — ignored when
    * expandSparseContent is false. */
   useWebGroundingForExpansion?: boolean;
+
+  /** Opt-in Perplexity AI web search for each engram — grounds
+   * every lesson/engram in real-time web results and saves sources in metadata. */
+  usePerplexitySearch?: boolean;
 }
 
 export type StructuredLearningExtractionStage = 'Running' | 'Completed' | 'Failed';
@@ -282,7 +286,8 @@ export function startStructuredLearningPedagogy(
   forceRegenerateAll = false,
   uploadedImageBase64?: string | null,
   uploadedImageContentType?: string | null,
-  referenceImageUsageInstruction?: string | null
+  referenceImageUsageInstruction?: string | null,
+  usePerplexitySearch?: boolean | null
 ): Promise<StructuredLearningPedagogyRunStatus> {
   return apiPost<StructuredLearningPedagogyRunStatus>('/studio/structured-learning/pedagogy/start', {
     structuredLearningDocumentId,
@@ -291,6 +296,7 @@ export function startStructuredLearningPedagogy(
     uploadedImageBase64,
     uploadedImageContentType,
     referenceImageUsageInstruction,
+    usePerplexitySearch,
   });
 }
 
@@ -303,6 +309,10 @@ export function getStructuredLearningPedagogyStatus(runId: string): Promise<Stru
  * the in-memory RunId (2026-08-30). Null when nothing is running. */
 export function getActiveStructuredLearningPedagogyRun(): Promise<StructuredLearningPedagogyRunStatus | null> {
   return apiGet<StructuredLearningPedagogyRunStatus | null>('/studio/structured-learning/pedagogy/active');
+}
+
+export function getStructuredLearningSectionAudioUrl(sectionId: string): string {
+  return `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio`;
 }
 
 export interface StructuredLearningStepDetail {
@@ -324,6 +334,8 @@ export interface StructuredLearningStepDetail {
   TimelineJson?: string | null;
 
   VideoWizardStateJson?: string | null;
+
+  WebSearchCitations?: string[] | null;
 }
 
 // ==================== "Edit mode" review tools (2026-08-10) ====================
@@ -335,9 +347,13 @@ export interface StructuredLearningStepDetail {
 export function editStructuredLearningStep(
   sectionId: string,
   stepType: string,
-  instruction: string
+  instruction: string,
+  usePerplexitySearch = false
 ): Promise<StructuredLearningStepDetail> {
-  return apiPost<StructuredLearningStepDetail>(`/studio/structured-learning/sections/${sectionId}/steps/${stepType}/edit`, { instruction });
+  return apiPost<StructuredLearningStepDetail>(`/studio/structured-learning/sections/${sectionId}/steps/${stepType}/edit`, {
+    instruction,
+    usePerplexitySearch,
+  });
 }
 
 /** Direct manual save (2026-08-11) — no AI involved, overwrites Content
@@ -444,14 +460,69 @@ export function generateStructuredLearningVideoPrompt(
   objective: string,
   videoDescription: string,
   environment: string,
-  imageDescription: string
+  imageDescription: string,
+  languageCode?: string,
+  maxVideos?: number
 ): Promise<{ RecommendedPrompts: string[] }> {
   return apiPost<{ RecommendedPrompts: string[] }>('/studio/structured-learning/video-prompt/generate', {
     objective,
     videoDescription,
     environment,
     imageDescription,
+    languageCode,
+    maxVideos,
   });
+}
+
+export interface WorkplaceApplicationDto {
+  SectionId: string;
+  PersonId: string;
+  StudentName: string;
+  RoleTitle: string;
+  Tools: string[];
+  TargetObjective?: string | null;
+  ScenarioTitle: string;
+  ScenarioText: string;
+  PracticalActions: string[];
+  AudioUrl: string;
+  LanguageCode: string;
+}
+
+export function getStructuredLearningWorkplaceApplication(
+  sectionId: string,
+  personId?: string,
+  languageCode?: string,
+  force = false
+): Promise<WorkplaceApplicationDto> {
+  const query = new URLSearchParams();
+  if (personId) query.set('personId', personId);
+  if (languageCode) query.set('languageCode', languageCode);
+  if (force) query.set('force', 'true');
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return apiGet<WorkplaceApplicationDto>(`/studio/structured-learning/sections/${sectionId}/workplace-application${qs}`);
+}
+
+export interface WorkplaceMentorChatResponse {
+  Reply: string;
+  SessionId: string;
+}
+
+export function postStructuredLearningWorkplaceChat(
+  sectionId: string,
+  message: string,
+  sessionId?: string,
+  personId?: string,
+  languageCode?: string
+): Promise<WorkplaceMentorChatResponse> {
+  return apiPost<WorkplaceMentorChatResponse>(
+    `/studio/structured-learning/sections/${sectionId}/workplace-application/chat`,
+    {
+      personId: personId || null,
+      message,
+      sessionId: sessionId || null,
+      languageCode: languageCode || null,
+    }
+  );
 }
 
 /** Video wizard tab 3 "Generar con IA" — cheap ephemeral starting-image
@@ -593,6 +664,8 @@ export interface StructuredLearningSectionDetail {
   PedagogyStatus: string;
   PedagogyErrorMessage: string | null;
   KnowledgeGraphRootEntityName?: string | null;
+  WebSearchSources?: string[] | null;
+  HasApiData?: boolean;
   Steps: StructuredLearningStepDetail[];
 }
 
@@ -675,6 +748,8 @@ export interface StructuredLearningDocumentSummary {
   SectionCount: number;
   CreatedDate: string;
   CoverIllustrationId: string | null;
+  Category?: string | null;
+  TargetSkill?: string | null;
 }
 
 export function getStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {

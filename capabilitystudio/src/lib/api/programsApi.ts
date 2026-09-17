@@ -31,6 +31,7 @@ export interface BackendProgramCapability {
   LevelCount: number;
   NodeCount: number;
   HasCoverImage: boolean;
+  CourseType?: string | null;
 }
 
 /** See ProgramDetailResponse.cs. */
@@ -117,6 +118,54 @@ export interface CapabilityProgramMembership {
   PhaseLabel: string | null;
   Objectives: string | null;
   Requirements: string | null;
+}
+
+export interface ProgramEntityOccurrence {
+  CourseId: string;
+  CourseName: string;
+  EngramId: string;
+  EngramTitle: string;
+  ChapterTitle?: string | null;
+  SortOrder: number;
+  SourceText: string;
+  StartPosition?: number | null;
+  EndPosition?: number | null;
+}
+
+export interface ProgramEntityItem {
+  EntityId: string;
+  CanonicalName: string;
+  EntityType: string;
+  Description?: string | null;
+  OntologicalClass?: string | null;
+  Aliases: string[];
+  TotalOccurrences: number;
+  DistinctCoursesCount: number;
+  Occurrences: ProgramEntityOccurrence[];
+}
+
+export interface ProgramCourseSummary {
+  CourseId: string;
+  CourseName: string;
+  EngramCount: number;
+  EntityCount: number;
+}
+
+export interface ProgramEntitiesResponse {
+  ProgramId: string;
+  ProgramName: string;
+  ProgramCode?: string | null;
+  Description?: string | null;
+  TotalCourses: number;
+  TotalEngrams: number;
+  TotalEntities: number;
+  TotalOccurrences: number;
+  Courses: ProgramCourseSummary[];
+  Entities: ProgramEntityItem[];
+}
+
+export async function getProgramEntities(programId: string): Promise<ProgramEntitiesResponse> {
+  return apiGet<ProgramEntitiesResponse>(`/programs/${programId}/entities`);
 }
 
 /** Every Program a given Capability currently belongs to. */

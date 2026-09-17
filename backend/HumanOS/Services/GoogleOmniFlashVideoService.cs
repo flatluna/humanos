@@ -53,7 +53,20 @@ public sealed class GoogleOmniFlashVideoService
 
         // Same rationale as GoogleVeoVideoService: always append an explicit
         // audio cue so the model doesn't render a near-silent track.
-        var effectivePrompt = $"{prompt} Include clear, audible narration describing the action out loud, synchronized with the movement, plus natural ambient sound.";
+        var isSpanish = prompt.StartsWith("Objetivo:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains("Lección a enseñar", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains("Escena:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" Dice:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" Dice en español:", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" el ", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" la ", StringComparison.OrdinalIgnoreCase)
+            || prompt.Contains(" de ", StringComparison.OrdinalIgnoreCase);
+
+        var audioCue = isSpanish
+            ? " Incluye narración audible y clara en español describiendo la acción en voz alta, sincronizada con el movimiento, más sonido ambiente natural."
+            : " Include clear, audible narration describing the action out loud, synchronized with the movement, plus natural ambient sound.";
+
+        var effectivePrompt = $"{prompt}{audioCue}";
 
         var hasImage = imageBytes is { Length: > 0 };
         object requestBody;

@@ -75,23 +75,50 @@ public sealed class StructuredLearningChatService
         Guid? subjectId = null,
         Guid? topicId = null,
         Guid? documentId = null,
-        Guid? personId = null)
+        Guid? personId = null,
+        Guid? programId = null)
     {
+        List<Guid>? programDocumentIds = null;
+        if (programId.HasValue)
+        {
+            await using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var memberships = await context.StructuredLearningDocumentProgramMemberships
+                .Where(m => m.ProgramId == programId.Value)
+                .Select(m => m.StructuredLearningDocumentId)
+                .ToListAsync(cancellationToken);
+
+            // Also check legacy ProgramCapabilities if any
+            var capDocIds = await context.ProgramCapabilities
+                .Where(pc => pc.ProgramId == programId.Value)
+                .Select(pc => pc.CapabilityId)
+                .ToListAsync(cancellationToken);
+
+            var combinedDocIds = memberships.Concat(capDocIds).Distinct().ToList();
+
+            if (combinedDocIds.Count > 0)
+            {
+                programDocumentIds = combinedDocIds;
+                if (tenantId == Guid.Empty)
+                {
+                    tenantId = await context.StructuredLearningDocuments
+                        .Where(d => combinedDocIds.Contains(d.StructuredLearningDocumentId))
+                        .Select(d => d.TenantId)
+                        .FirstOrDefaultAsync(cancellationToken);
+                }
+            }
+        }
+
         if (tenantId == Guid.Empty && documentId is Guid scopedDocumentId)
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-            // IsGlobal is NOT required here (2026-08-25 fix) — this
-            // fallback also serves Studio's own authoring/testing chat
-            // (no logged-in tenant), which must be able to test ANY
-            // published course's agent, not only ones in the public
-            // student catalog. IsPublished alone still blocks drafts.
-            tenantId = await context.StructuredLearningDocuments
-                .Where(d => d.StructuredLearningDocumentId == scopedDocumentId && d.IsPublished)
-                .Select(d => d.TenantId)
+            var docTenant = await context.StructuredLearningDocuments
+                .Where(d => d.StructuredLearningDocumentId == scopedDocumentId)
+                .Select(d => (Guid?)d.TenantId)
                 .FirstOrDefaultAsync(cancellationToken);
-            if (tenantId == Guid.Empty)
+
+            if (docTenant.HasValue && docTenant.Value != Guid.Empty)
             {
-                throw new InvalidOperationException("The requested course is not available in the student catalog.");
+                tenantId = docTenant.Value;
             }
         }
 
@@ -114,9 +141,19 @@ public sealed class StructuredLearningChatService
             }
         }
 
-        var studentContext = await BuildStudentContextAsync(personId, documentId, subjectId, topicId, cancellationToken);
+        var studentContext = await BuildStudentContextAsync(personId, documentId, subjectId, topicId, programId, programDocumentIds, cancellationToken);
+
+        // Follow-up questions ("¿en qué se diferencian?", "explícame el segundo")
+        // often carry no entity/article number of their own — retrieving on
+        // userMessage alone then falls back to generic semantic ranking and
+        // can land on completely unrelated Engrams. Folding in the last turn
+        // (which still contains the previously-cited article text) keeps
+        // retrieval anchored to what the conversation is actually about.
+        var retrievalQuery = history.Count > 0
+            ? string.Join(" ", history.TakeLast(2).Select(h => h.Text)) + " " + userMessage
+            : userMessage;
         var package = await _retrieval.BuildRetrievalPackageAsync(
-            tenantId, userMessage, cancellationToken, subjectId, topicId, documentId);
+            tenantId, retrievalQuery, cancellationToken, subjectId, topicId, documentId, programDocumentIds);
 
         var prompt = BuildPrompt(package, history, userMessage, studentContext);
         var answer = await _tutorAgent.AnswerAsync(prompt, cancellationToken);
@@ -181,7 +218,7 @@ public sealed class StructuredLearningChatService
         return sb.ToString();
     }
 
-    private async Task<string> BuildStudentContextAsync(Guid? personId, Guid? documentId, Guid? subjectId, Guid? topicId, CancellationToken cancellationToken)
+    private async Task<string> BuildStudentContextAsync(Guid? personId, Guid? documentId, Guid? subjectId, Guid? topicId, Guid? programId, List<Guid>? programDocumentIds, CancellationToken cancellationToken)
     {
         if (personId is null) return "Student identity/progress unavailable. Do not invent a name or progress.";
 
@@ -196,8 +233,15 @@ public sealed class StructuredLearningChatService
             .ToListAsync(cancellationToken);
 
         var documents = db.StructuredLearningDocuments.AsNoTracking().Where(d => documentIds.Contains(d.StructuredLearningDocumentId));
-        if (subjectId is not null) documents = documents.Where(d => d.SubjectId == subjectId);
-        if (topicId is not null) documents = documents.Where(d => d.TopicId == topicId);
+        if (programDocumentIds is { Count: > 0 })
+        {
+            documents = db.StructuredLearningDocuments.AsNoTracking().Where(d => programDocumentIds.Contains(d.StructuredLearningDocumentId));
+        }
+        else
+        {
+            if (subjectId is not null) documents = documents.Where(d => d.SubjectId == subjectId);
+            if (topicId is not null) documents = documents.Where(d => d.TopicId == topicId);
+        }
 
         var scopeDocumentIds = await documents.Select(d => d.StructuredLearningDocumentId).ToListAsync(cancellationToken);
         var sectionIds = await db.StructuredLearningDocumentSections.AsNoTracking()
@@ -209,6 +253,12 @@ public sealed class StructuredLearningChatService
             .GroupBy(r => r.StructuredLearningDocumentSectionId)
             .Select(g => new { SectionId = g.Key, Score = g.OrderByDescending(r => r.RoundNumber).Select(r => r.FinalScore).FirstOrDefault() })
             .ToListAsync(cancellationToken);
+
+        if (programId.HasValue && programDocumentIds is { Count: > 0 })
+        {
+            var programName = await db.Programs.Where(p => p.ProgramId == programId.Value).Select(p => p.Name).FirstOrDefaultAsync(cancellationToken) ?? "Program";
+            return $"Student name: {personName}. Program: {programName}. Program total courses: {programDocumentIds.Count}. Program total engrams: {passedRounds.Count}/{sectionIds.Count} mastered.";
+        }
 
         var currentSectionIds = documentId is null
             ? []

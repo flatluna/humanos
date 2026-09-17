@@ -48,15 +48,15 @@ public sealed class SynthesizeSpeechFunction
     /// logic elsewhere, as more languages are added.</summary>
     internal static string DefaultVoiceFor(string? languageCode) => languageCode switch
     {
-        "es-ES" => "es-ES-ElviraNeural",
-        "es-MX" or null or "" => "es-MX-DaliaNeural",
-        "en-US" => "en-US-AvaNeural",
-        "en-GB" => "en-GB-SoniaNeural",
-        "pt-BR" => "pt-BR-FranciscaNeural",
-        "fr-FR" => "fr-FR-DeniseNeural",
-        "de-DE" => "de-DE-KatjaNeural",
-        "ja-JP" => "ja-JP-NanamiNeural",
-        _ => "es-MX-DaliaNeural"
+        "es-ES" => "es-ES-AlvaroNeural",
+        "es-MX" or null or "" => "es-MX-CecilioNeural",
+        "en-US" => "en-US-AndrewNeural",
+        "en-GB" => "en-GB-RyanNeural",
+        "pt-BR" => "pt-BR-AntonioNeural",
+        "fr-FR" => "fr-FR-HenriNeural",
+        "de-DE" => "de-DE-ConradNeural",
+        "ja-JP" => "ja-JP-KeitaNeural",
+        _ => "es-MX-CecilioNeural"
     };
 
     [Function("SynthesizeSpeech")]

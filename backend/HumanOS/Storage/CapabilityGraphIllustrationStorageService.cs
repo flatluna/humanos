@@ -116,6 +116,143 @@ public sealed class CapabilityGraphIllustrationStorageService
         return blobPath;
     }
 
+    /// <summary>
+    /// Uploads an engram professor lecture audio file (speech) to Azure Data Lake
+    /// under {tenantId}/{capabilityId}/{nodeId}/speech/lecture.mp3.
+    /// </summary>
+    public async Task<string> UploadLectureAudioAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        Stream audioContent,
+        string contentType = "audio/mpeg",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/speech/lecture.mp3";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            audioContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>
+    /// Uploads a personalized workplace application audio file to Azure Data Lake
+    /// under {tenantId}/{capabilityId}/{nodeId}/workplace/{personId}/application.mp3.
+    /// </summary>
+    public async Task<string> UploadWorkplaceAudioAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        Guid personId,
+        Stream audioContent,
+        string contentType = "audio/mpeg",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException("Data Lake storage is not configured.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/application.mp3";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        // Delete existing blob first if present to ensure clean recreation
+        await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+
+        await blobClient.UploadAsync(
+            audioContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>
+    /// Uploads a personalized workplace application JSON file to Azure Data Lake
+    /// under {tenantId}/{capabilityId}/{nodeId}/workplace/{personId}/application.json.
+    /// </summary>
+    public async Task<string> UploadWorkplaceJsonAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        Guid personId,
+        string jsonContent,
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException("Data Lake storage is not configured.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/application.json";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(jsonContent));
+        await blobClient.UploadAsync(
+            stream,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = "application/json; charset=utf-8" },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>
+    /// Downloads a previously-uploaded JSON file from Azure Data Lake as string, or null if not found.
+    /// </summary>
+    public async Task<string?> DownloadWorkplaceJsonAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        Guid personId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null) return null;
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/application.json";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        if (!await blobClient.ExistsAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var response = await blobClient.DownloadContentAsync(cancellationToken);
+        return response.Value.Content.ToString();
+    }
+
+    public string GetWorkplaceAudioStoragePath(Guid tenantId, Guid capabilityId, Guid nodeId, Guid personId) =>
+        $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/application.mp3";
+
     /// <summary>Overwrites an EXISTING video blob at a known StoragePath in
     /// place (2026-08-22) — used for in-place edits like trimming, where
     /// the illustration row/id/path must stay the same, only the bytes

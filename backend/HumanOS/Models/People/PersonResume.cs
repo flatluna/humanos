@@ -58,6 +58,8 @@ public sealed class PersonResume
     /// avanzado").</summary>
     public string LanguagesJson { get; set; } = "[]";
 
+    public string StudentAcademicProfileJson { get; set; } = "{}";
+
     /// <summary>The raw résumé/CV text the employee/HRAdmin pasted in —
     /// kept for audit and so "Extraer con IA" can be re-run even after the
     /// structured fields above are hand-edited during review.</summary>

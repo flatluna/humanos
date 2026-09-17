@@ -25,12 +25,10 @@ import {
 import {
   getEnrolledCapabilities,
 } from '@/features/capabilities/api/enrolledCapabilitiesApi';
-
-const ENGRAM_APP_URL = 'http://localhost:5178';
-
-function buildEngramProgramUrl(programId: string): string {
-  return `${ENGRAM_APP_URL}/programs/${programId}`;
-}
+import {
+  getCourseProgramMembershipMap,
+} from '@/features/programs/api/programsApi';
+import { GraduationCap } from 'lucide-react';
 
 export interface AvailableCourseCardItem {
   id: string;
@@ -48,6 +46,7 @@ export interface AvailableCourseCardItem {
   sectionCount?: number;
   nodeCount?: number;
   gradient: string;
+  programMembership?: { programId: string; programName: string } | null;
 }
 
 const CATEGORY_STYLES: Record<
@@ -149,12 +148,18 @@ export function AvailableCoursesPage() {
     queryFn: () => getCapabilities(),
   });
 
+  const programMembershipQuery = useQuery({
+    queryKey: ['course-program-memberships'],
+    queryFn: () => getCourseProgramMembershipMap(),
+  });
+
   const isLoading =
     planQuery.isLoading ||
     skillsQuery.isLoading ||
     enrolledSlQuery.isLoading ||
     enrolledCapsQuery.isLoading ||
-    publishedCapsQuery.isLoading;
+    publishedCapsQuery.isLoading ||
+    programMembershipQuery.isLoading;
 
   // Build the list of ONLY READY / AVAILABLE courses (excluding ones "In Development" / with no course)
   const availableCourses = useMemo<AvailableCourseCardItem[]>(() => {
@@ -198,8 +203,8 @@ export function AvailableCoursesPage() {
             category,
             categoryLabel: isEn ? catStyle.labelEn : catStyle.labelEs,
             courseType: 'program',
-            targetUrl: buildEngramProgramUrl(step.matchedProgramId),
-            isExternalProgram: true,
+            targetUrl: `/programs/${step.matchedProgramId}`,
+            isExternalProgram: false,
             status: (step.trainingStatus as any) || 'Available',
             gradient: catStyle.gradient,
           });
@@ -306,8 +311,27 @@ export function AvailableCoursesPage() {
       }
     }
 
+    // 6. Enrich with Program Membership (if course is part of a program)
+    const membershipMap = programMembershipQuery.data;
+    if (membershipMap) {
+      for (const item of itemsMap.values()) {
+        const membership = membershipMap.get(item.id);
+        if (membership) {
+          item.programMembership = membership;
+        }
+      }
+    }
+
     return Array.from(itemsMap.values());
-  }, [planQuery.data, skillsQuery.data, publishedCapsQuery.data, enrolledSlQuery.data, enrolledCapsQuery.data, isEn]);
+  }, [
+    planQuery.data,
+    skillsQuery.data,
+    publishedCapsQuery.data,
+    enrolledSlQuery.data,
+    enrolledCapsQuery.data,
+    programMembershipQuery.data,
+    isEn,
+  ]);
 
   // Filtered by search & category
   const filteredCourses = useMemo(() => {
@@ -475,9 +499,16 @@ export function AvailableCoursesPage() {
                       <span className="rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
                         {course.categoryLabel}
                       </span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusMeta.className}`}>
-                        {isEn ? statusMeta.labelEn : statusMeta.labelEs}
-                      </span>
+                      {course.programMembership ? (
+                        <span className="flex items-center gap-1 rounded-full border border-purple-400/40 bg-purple-900/80 px-2 py-0.5 text-[10px] font-bold text-purple-200 backdrop-blur-sm shadow-xs">
+                          <GraduationCap className="h-3 w-3" />
+                          {isEn ? 'Program Course' : 'Parte de un Programa'}
+                        </span>
+                      ) : (
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusMeta.className}`}>
+                          {isEn ? statusMeta.labelEn : statusMeta.labelEs}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -487,7 +518,24 @@ export function AvailableCoursesPage() {
                       {course.title}
                     </h3>
 
-                    {course.skillName && (
+                    {course.programMembership && (
+                      <div className="rounded-xl border border-purple-200/80 bg-purple-50/70 p-2.5 text-xs text-purple-800 dark:border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-300">
+                        <div className="flex items-center gap-1.5 font-semibold">
+                          <GraduationCap className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                          <span>{isEn ? 'Included in Program:' : 'Incluido en el Programa:'}</span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-300 line-clamp-1">
+                          {course.programMembership.programName}
+                        </p>
+                        <p className="mt-1 text-[10px] text-purple-600/90 dark:text-purple-400/80">
+                          {isEn
+                            ? 'Cannot be taken standalone. Follow its chronological sequence inside the program.'
+                            : 'No se puede cursar de forma aislada. Sigue su orden cronológico en el programa.'}
+                        </p>
+                      </div>
+                    )}
+
+                    {course.skillName && !course.programMembership && (
                       <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-semibold">
                         <Sparkles className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{course.skillName}</span>
@@ -515,7 +563,15 @@ export function AvailableCoursesPage() {
 
                 {/* Card Action Footer */}
                 <div className="border-t border-slate-100 p-4 pt-3 dark:border-white/5">
-                  {course.isExternalProgram ? (
+                  {course.programMembership ? (
+                    <Link
+                      to={`/programs/${course.programMembership.programId}`}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 py-2.5 text-xs font-bold text-white shadow-md shadow-purple-600/20 transition hover:bg-purple-700 hover:shadow-lg"
+                    >
+                      <GraduationCap className="h-4 w-4" />
+                      <span>{isEn ? 'View in Program' : 'Ver en su Programa'}</span>
+                    </Link>
+                  ) : course.isExternalProgram ? (
                     <a
                       href={course.targetUrl}
                       target="_blank"

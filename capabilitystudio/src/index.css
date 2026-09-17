@@ -41,34 +41,6 @@
   --color-accent-500: 236 72 153;
 }
 
-[data-theme='light'] {
-  --color-ink: 15 23 42;
-  --color-slate-50: 255 255 255;
-  --color-slate-100: 30 41 59;
-  --color-slate-200: 51 65 85;
-  --color-slate-300: 71 85 105;
-  --color-slate-400: 100 116 139;
-  --color-slate-500: 148 163 184;
-  --color-slate-600: 180 190 205;
-  --color-slate-700: 203 213 225;
-  --color-slate-800: 226 232 240;
-  --color-slate-900: 241 245 249;
-  --color-slate-950: 248 250 252;
-  --color-brand-50: 238 244 255;
-  --color-brand-100: 224 235 255;
-  --color-brand-200: 199 217 255;
-  --color-brand-300: 164 191 255;
-  --color-brand-400: 65 92 230;
-  --color-brand-500: 53 74 214;
-  --color-brand-600: 44 58 176;
-  --color-brand-700: 36 48 145;
-  --color-brand-800: 30 40 118;
-  --color-brand-900: 26 34 96;
-  --color-brand-950: 15 18 55;
-  --color-accent-400: 219 39 119;
-  --color-accent-500: 190 24 93;
-}
-
 [data-theme='blue'] {
   --color-ink: 255 255 255;
   --color-slate-50: 248 250 252;
@@ -183,11 +155,11 @@ body {
 
 /* Fix select/combobox visibility in dark mode */
 select.input {
-  @apply text-slate-900 bg-slate-100;
+  @apply text-white bg-slate-800;
 }
 
 select.input option {
-  @apply text-slate-900 bg-slate-100;
+  @apply text-white bg-slate-800;
 }
 
 select.input option:checked {
@@ -195,11 +167,9 @@ select.input option:checked {
   color: rgb(var(--color-ink));
 }
 
-/* Light theme adjustments */
-[data-theme='light'] select.input {
-  @apply text-slate-950 bg-slate-50;
-}
-
-[data-theme='light'] select.input option {
-  @apply text-slate-950 bg-slate-50;
+[data-theme='light'] [class*='from-brand-500'][class*='to-accent-500'] svg,
+[data-theme='light'] [class*='from-brand-500'][class*='to-indigo-500'] svg,
+[data-theme='light'] [class*='from-emerald-500'][class*='to-teal-500'] svg,
+[data-theme='light'] [class*='from-teal-500'][class*='to-emerald-500'] svg {
+  color: #ffffff;
 }

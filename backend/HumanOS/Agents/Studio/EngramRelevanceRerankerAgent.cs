@@ -72,7 +72,14 @@ public sealed class EngramRelevanceRerankerAgent
         For each candidate:
         - Score ConfidencePercent from 0 to 100:
           * 80–100%: The excerpt directly defines, explains, solves, or gives
-            essential instructions for what was asked.
+            essential instructions for what was asked. If the student asks for a specific
+            article, section, law, rule, or concept (e.g. "Artículo 1", "Art. 5", "Artículo 1.-", "Concepto X"),
+            any candidate whose Title or Excerpt directly contains, defines, or quotes that
+            specific article or concept MUST be scored 90–100%.
+            Be flexible with colloquial, shorthand, and legal naming: students frequently say
+            "ley de lavado de dinero", "ley antilavado", "la ley", "reglamento", or "norma" interchangeably.
+            If the candidate excerpt contains the corresponding article from the course's regulatory/legal
+            material (such as "Artículo 1.- El presente ordenamiento tiene por objeto..."), score it 90–100%.
           * 50–79%: The excerpt is topically related or provides context, but
             does NOT directly answer the specific question.
           * 0–49%: The excerpt only mentions keywords in passing, is about a

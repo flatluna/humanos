@@ -1,7 +1,7 @@
 namespace HumanOS.Contracts.Programs;
 
-/// <summary>One Capability's membership within a Program's sequence —
-/// enriched with just enough Capability data for the designer's picker
+/// <summary>One Capability's or StructuredLearningDocument's membership within a Program's sequence —
+/// enriched with just enough data for the designer's picker
 /// and a student-facing program landing page to render without a second
 /// round-trip per capability.</summary>
 public sealed class ProgramCapabilityResponse
@@ -33,4 +33,6 @@ public sealed class ProgramCapabilityResponse
     public int NodeCount { get; set; }
 
     public bool HasCoverImage { get; set; }
+
+    public string? CourseType { get; set; }
 }

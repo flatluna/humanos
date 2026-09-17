@@ -51,6 +51,25 @@ export interface KnowledgeNetworkData {
   availableCourses: { id: string; name: string }[];
 }
 
+/** Identifies whether an entity represents a legal/regulatory article, section, clause or provision. */
+export function isArticleOrStructuralEntity(entityType?: string | null, name?: string | null): boolean {
+  const t = (entityType || '').toLowerCase();
+  const n = (name || '').toLowerCase();
+  return (
+    t.includes('article') ||
+    t.includes('articulo') ||
+    t.includes('legalprovision') ||
+    t.includes('clause') ||
+    t.includes('clausula') ||
+    t.includes('legalreference') ||
+    t.includes('lawarticle') ||
+    t.includes('norm') ||
+    /^art[íi]culo\s+\d+/i.test(n.trim()) ||
+    /^art\.\s*\d+/i.test(n.trim()) ||
+    /^cl[áa]usula\s+\d+/i.test(n.trim())
+  );
+}
+
 export function useKnowledgeNetwork(personId: string, courseId?: string | null) {
   return useQuery<KnowledgeNetworkData>({
     queryKey: ['knowledgeNetwork', personId, courseId ?? 'all'],
@@ -136,7 +155,7 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
       const masteredSectionIds = new Set(masteredEngrams.map((m) => m.sectionId));
       const engramMap = new Map<string, MasteredEngramItem>(masteredEngrams.map((m) => [m.sectionId, m]));
 
-      // 2. Group entities by normalized name to find Bridge Concepts across mastered engrams
+      // 2. Group entities by normalized name to find Concepts & Articles across mastered engrams
       const byNormName = new Map<
         string,
         {
@@ -172,11 +191,39 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
         byNormName.set(norm, existing);
       }
 
-      // 3. Filter strictly: ONLY entities present in 2+ MASTERED engrams
+      // Also ensure that mastered engrams whose title represents an Article
+      // (e.g. "Artículo 1.- ...", "Artículo 15.- ...") are represented as primary article entities
+      for (const engram of masteredEngrams) {
+        const articleMatch =
+          engram.title.match(/^(art[íi]culo\s+\d+(?:\s*(?:bis|ter|qu[aá]ter|[a-z]))?)/i) ||
+          engram.title.match(/^(cl[áa]usula\s+\d+)/i);
+        if (articleMatch) {
+          const rawArticleName = articleMatch[1].trim();
+          const articleName = rawArticleName.charAt(0).toUpperCase() + rawArticleName.slice(1);
+          const norm = articleName.toLowerCase();
+          const existing = byNormName.get(norm) ?? {
+            canonicalName: articleName,
+            entityType: 'LegalArticle',
+            ontologicalClass: 'LegalDocument',
+            matchingEntities: [],
+            masteredEngrams: new Set<string>(),
+          };
+          existing.masteredEngrams.add(engram.sectionId);
+          byNormName.set(norm, existing);
+        }
+      }
+
+      // 3. Build Concept/Article list:
+      // - Bridge Concepts: entities present in 2+ MASTERED engrams
+      // - Articles & Legal Provisions: present in >= 1 MASTERED engram
+      // - When a single course is selected: all entities with >= 1 MASTERED engram
       const bridgeConcepts: BridgeConceptItem[] = [];
 
       for (const [norm, group] of byNormName.entries()) {
-        if (group.masteredEngrams.size >= 2) {
+        const isArticle = isArticleOrStructuralEntity(group.entityType, group.canonicalName);
+        const minEngrams = isArticle || Boolean(courseId) ? 1 : 2;
+
+        if (group.masteredEngrams.size >= minEngrams) {
           const connectedEngramList = Array.from(group.masteredEngrams)
             .map((id) => engramMap.get(id)!)
             .filter(Boolean);
@@ -191,14 +238,15 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
               (allEntIds.has(c.SourceEntityId) || allEntIds.has(c.TargetEntityId))
           );
 
-          const connectionInfoList = relatedConns.map((c) => {
-            const engram = engramMap.get(c.SourceSectionId!)!;
+          const connectionInfoList = Array.from(group.masteredEngrams).map((sectionId) => {
+            const engram = engramMap.get(sectionId)!;
+            const existingConn = relatedConns.find((c) => c.SourceSectionId === sectionId);
             return {
-              relationshipLabel: c.RelationshipLabel,
-              targetEngramId: c.SourceSectionId!,
+              relationshipLabel: existingConn?.RelationshipLabel ?? (isArticle ? 'norma en' : 'conecta a'),
+              targetEngramId: sectionId,
               targetEngramTitle: engram?.title ?? 'Engram',
-              sourceSectionId: c.SourceSectionId,
-              evidence: c.Evidence,
+              sourceSectionId: sectionId,
+              evidence: existingConn?.Evidence ?? null,
             };
           });
 

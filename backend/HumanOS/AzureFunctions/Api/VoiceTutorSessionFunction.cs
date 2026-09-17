@@ -286,7 +286,10 @@ public sealed class VoiceTutorSessionFunction
 
         if (!string.IsNullOrWhiteSpace(learnerContext))
         {
-            instructions = $"{learnerContext}\n\n{instructions}";
+            var deepDiveOverride = stepType == ExperienceStepType.DeepDive
+                ? "\n\nCRITICAL OVERRIDE FOR DEEP DIVE:\nIgnore any instruction above to give a multi-sentence opening greeting about career objectives. You must strictly follow the DEEP DIVE OPENING RULE: greet briefly and immediately present the exact card text.\n\n"
+                : "\n\n";
+            instructions = $"{learnerContext}{deepDiveOverride}{instructions}";
         }
 
         // Deep Dive only (2026-07-30): a real Realtime function-calling tool,
@@ -700,8 +703,45 @@ public sealed class VoiceTutorSessionFunction
 
         // Personalized LEARNER CONTEXT resolution
         var employeeId = explicitPersonId ?? await ResolveAuthenticatedEmployeeIdAsync(request, cancellationToken);
+        if (!employeeId.HasValue)
+        {
+            var defaultProfilePerson = await _dbContext.PersonProfiles.AsNoTracking()
+                .Where(pp => (pp.DisplayName != null && pp.DisplayName.Contains("Alejandro")) || (pp.FirstName != null && pp.FirstName.Contains("Alejandro")))
+                .Select(pp => (Guid?)pp.PersonId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            employeeId = defaultProfilePerson ?? await _dbContext.People.AsNoTracking()
+                .Where(p => p.IsActive)
+                .OrderBy(p => p.CreatedDate)
+                .Select(p => (Guid?)p.PersonId)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
         var courseId = step.Section.Document?.StructuredLearningDocumentId;
         var engramId = step.Section.StructuredLearningDocumentSectionId.ToString();
+
+        if (employeeId.HasValue)
+        {
+            var pProfile = await _dbContext.PersonProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.PersonId == employeeId.Value, cancellationToken);
+            if (pProfile is not null && (!string.IsNullOrWhiteSpace(pProfile.DisplayName) || !string.IsNullOrWhiteSpace(pProfile.FirstName)))
+            {
+                personName = !string.IsNullOrWhiteSpace(pProfile.FirstName) ? pProfile.FirstName : pProfile.DisplayName;
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(personName) && personName.Contains("@"))
+        {
+            var pByEmail = await _dbContext.People.AsNoTracking().FirstOrDefaultAsync(p => p.Email == personName.Trim(), cancellationToken);
+            if (pByEmail is not null)
+            {
+                employeeId = pByEmail.PersonId;
+                var pProfile = await _dbContext.PersonProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.PersonId == pByEmail.PersonId, cancellationToken);
+                personName = pProfile?.FirstName ?? pProfile?.DisplayName ?? personName.Split('@')[0];
+            }
+            else
+            {
+                personName = personName.Split('@')[0];
+            }
+        }
 
         var learnerContext = await _learnerContextBuilder.BuildLearnerContextBlockAsync(
             employeeId,
@@ -750,7 +790,7 @@ public sealed class VoiceTutorSessionFunction
 
             if (!string.IsNullOrWhiteSpace(learnerContext))
             {
-                deepDiveInstructions = $"{learnerContext}\n\n{deepDiveInstructions}";
+                deepDiveInstructions = $"{learnerContext}\n\nCRITICAL OVERRIDE FOR DEEP DIVE:\nIgnore any instruction above to give a multi-sentence opening greeting about career objectives. You must strictly follow the DEEP DIVE OPENING RULE: greet briefly and immediately present the exact card text.\n\n{deepDiveInstructions}";
             }
 
             var deepDiveTools = effectiveIsReviewOnly ? null : BuildDeepDiveTools();
@@ -853,7 +893,42 @@ public sealed class VoiceTutorSessionFunction
             return parsedQueryId;
         }
 
-        // 4. Fallback for single-tenant / local development context
+        // 4. Authorization: Bearer token (Studio launch JWT or SSO token)
+        if (request.Headers.TryGetValues("Authorization", out var authHeaders))
+        {
+            var authHeader = authHeaders.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var token = authHeader["Bearer ".Length..].Trim();
+                try
+                {
+                    var parts = token.Split('.');
+                    if (parts.Length == 3)
+                    {
+                        var base64 = parts[1].Replace('-', '+').Replace('_', '/');
+                        var padded = base64.PadRight(base64.Length + (4 - base64.Length % 4) % 4, '=');
+                        var json = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("memberId", out var mProp) && Guid.TryParse(mProp.GetString(), out var mId))
+                        {
+                            return mId;
+                        }
+                        if (doc.RootElement.TryGetProperty("email", out var eProp))
+                        {
+                            var email = eProp.GetString();
+                            if (!string.IsNullOrWhiteSpace(email))
+                            {
+                                var p = await _dbContext.People.AsNoTracking().FirstOrDefaultAsync(x => x.Email == email, cancellationToken);
+                                if (p is not null) return p.PersonId;
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // 5. Fallback for single-tenant / local development context
         var defaultPersonId = await _dbContext.People
             .Where(p => p.IsActive)
             .OrderBy(p => p.CreatedDate)
@@ -1056,68 +1131,79 @@ public sealed class VoiceTutorSessionFunction
         string subchapterTitle, string chapterTitle, string stepContent, string? personName, string? documentName, string? documentLanguageCode = null)
     {
         var isEnglish = (documentLanguageCode ?? DetectLanguageCode(stepContent)) == "en";
-        var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim();
-        var document = string.IsNullOrWhiteSpace(documentName) ? null : documentName.Trim();
-
-        var greeting = isEnglish
-            ? (name is null ? "Hi. How can I help you? I'm your AI expert agent." : $"Hi, {name}. How can I help you? I'm your AI expert agent.")
-            : (name is null ? "Hola. ¿En qué te puedo ayudar? Soy tu agente experto en IA." : $"Hola, {name}. ¿En qué te puedo ayudar? Soy tu agente experto en IA.");
-        var greetingWithDocument = isEnglish
-            ? (document is null ? greeting : $"{greeting} About \"{document}\".")
-            : (document is null ? greeting : $"{greeting} Sobre \"{document}\".");
+        var name = string.IsNullOrWhiteSpace(personName) ? null : personName.Trim().Split(' ')[0];
 
         if (isEnglish)
         {
+            var greetingName = name is not null ? $" {name}" : "";
             return $"""
-                You are an AI Agent answering questions about one section of a course
-                ("{chapterTitle}" → "{subchapterTitle}"). This is a QUESTION-AND-ANSWER conversation, NOT a
-                class — you never teach the section unprompted.
+                You are a distinguished University Professor conducting a Live Q&A session with your student
+                after the class they just listened to on "{chapterTitle}" → "{subchapterTitle}".
 
-                Start talking YOURSELF immediately upon connecting, without waiting for the student to speak
-                first. Your first and ONLY unprompted sentence must be exactly: "{greetingWithDocument}" —
-                then STOP TALKING and wait silently for the student's spoken question. NEVER continue past
-                the greeting into an explanation of the content — that is the single most important rule
-                here.
+                MANDATORY RULES:
+                1. OPENING SPOKEN GREETING AND ULTRA-QUICK PERSONALIZED HOOK:
+                   Start talking immediately upon connecting.
+                   Your very first spoken response MUST follow this exact formula in 1 or 2 spoken sentences:
+                   "Hello{greetingName}, this lesson can help you [ultra-quick 1-sentence summary of how this engram specifically empowers you in your professional role, tools, and active objectives based on the LEARNER CONTEXT]. What questions do you have?"
+                   Example: "Hello{greetingName}, this lesson on {subchapterTitle} can help you establish clearer prompt boundaries and automate recurring workflows in your cloud architecture projects. What questions do you have?"
+                   Immediately after asking "What questions do you have?", STOP TALKING and wait in complete silence for the student to speak.
 
-                For the rest of the conversation:
-                - LANGUAGE — HARD RULE, NEVER BREAK IT: speak ONLY in English, every turn.
-                - Answer each question the student asks, grounded STRICTLY in the section content below —
-                  never invent facts, numbers, or examples that aren't there.
-                - Keep answers brief and conversational — a direct answer, not a lecture.
-                - After answering, STOP and wait silently for the next question — never volunteer more
-                  content unprompted, never resume "teaching" on your own.
-                - If the student says they have no more questions or wants to end, say a brief goodbye and
-                  stop talking.
-                - NEVER grade the student or claim to affect their progress.
+                2. DO NOT DELIVER LONG MONOLOGUES OR REPEAT THE WHOLE LECTURE:
+                   The student already heard the full recorded lecture. Do NOT re-deliver or repeat the whole class.
+                   Your role here is STRICTLY to answer their specific questions.
 
-                SECTION CONTENT (your only source of truth):
+                3. ANSWER DIRECTLY, CONCISELY AND CLEARLY:
+                   - When the student asks a question, answer it directly, warmly, and concisely (2 to 4 sentences),
+                     grounded strictly in the LESSON CONTENT provided below.
+                   - Connect your answer to their role, technical background, and active SMART objectives whenever relevant
+                     to give vivid, practical context.
+                   - Keep answers conversational, natural, and paced for automated voice audio.
+
+                4. PAUSE AFTER EACH ANSWER:
+                   After answering each question, pause and wait for the student's next question. Never continue talking unprompted.
+
+                5. CLOSING:
+                   If the student says they have no more questions (e.g. "no more questions", "all clear", "thank you professor"),
+                   warmly congratulate them and tell them they can proceed to the next step.
+
+                LESSON CONTENT (your sole source of truth):
                 {stepContent}
                 """;
         }
 
+        var greetingNombre = name is not null ? $" {name}" : "";
         return $"""
-            Eres un Agente de IA que responde preguntas sobre una sección de un curso
-            ("{chapterTitle}" → "{subchapterTitle}"). Esta es una conversación de PREGUNTAS Y RESPUESTAS,
-            NO una clase — nunca enseñas la sección sin que te lo pidan.
+            Eres un distinguido Profesor Universitario en una sesión de preguntas y respuestas en vivo (Live Q&A)
+            con tu estudiante tras la clase que acaba de estudiar de "{chapterTitle}" → "{subchapterTitle}".
 
-            Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el estudiante
-            diga algo primero. Tu primera y ÚNICA frase sin que te lo pidan debe ser exactamente:
-            "{greetingWithDocument}" — y después CÁLLATE y espera en silencio la pregunta hablada del
-            estudiante. NUNCA sigas más allá del saludo para explicar el contenido — esa es la regla más
-            importante de todo este prompt.
+            REGLAS OBLIGATORIAS:
+            1. SALUDO DE APERTURA Y GANCHO PERSONALIZADO MEGA RÁPIDO:
+               Empieza a hablar de inmediato al conectarte.
+               Tu primerísima respuesta hablada DEBE seguir exactamente esta fórmula en 1 o 2 oraciones habladas:
+               "Hola{greetingNombre}, esta lección te puede ayudar a [resumen mega rápido de 1 oración explicando cómo este engrama en específico te ayuda en tu rol profesional, tus herramientas y tus objetivos SMART según el LEARNER CONTEXT]. ¿Qué preguntas tienes?"
+               Ejemplo: "Hola{greetingNombre}, esta lección sobre {subchapterTitle} te puede ayudar a estructurar mejores reglas técnicas y acelerar tus objetivos de automatización en la nube. ¿Qué preguntas tienes?"
+               Inmediatamente después de preguntar "¿Qué preguntas tienes?", CÁLLATE por completo y espera en silencio a que el estudiante hable.
 
-            Para el resto de la conversación:
-            - IDIOMA — REGLA DURA, NUNCA LA ROMPAS: habla ÚNICAMENTE en español, en todos los turnos.
-            - Responde cada pregunta que haga el estudiante, basándote ESTRICTAMENTE en el contenido de la
-              sección de abajo — nunca inventes datos, cifras ni ejemplos que no estén ahí.
-            - Mantén las respuestas breves y conversacionales — una respuesta directa, no una clase.
-            - Después de responder, DETENTE y espera en silencio la siguiente pregunta — nunca sigas
-              explicando contenido por tu cuenta, nunca retomes "enseñar" sin que te lo pidan.
-            - Si el estudiante dice que ya no tiene más preguntas o quiere terminar, despídete brevemente y
-              deja de hablar.
-            - NUNCA calificas al estudiante ni afirmas poder afectar su progreso.
+            2. NO REPITAS LA CLASE NI DES MONÓLOGOS LARGOS:
+               El estudiante ya escuchó la clase grabada. Bajo NINGUNA circunstancia vuelvas a dictar o repetir la lección completa.
+               Tu rol aquí es ESTRICTAMENTE responder sus preguntas específicas.
 
-            CONTENIDO DE LA SECCIÓN (tu única fuente de verdad):
+            3. RESPONDE DE FORMA DIRECTA, CONCISA Y CLARA:
+               - Cuando el estudiante pregunte algo, respóndele directamente y con calidez pedagógica (2 a 4 oraciones), basándote
+                 ESTRICTAMENTE en el contenido de la lección que tienes abajo.
+               - Conecta tus explicaciones con su rol, su experiencia y sus objetivos SMART siempre que sea relevante para darle
+                 contexto práctico y útil en su trabajo.
+               - Mantén las respuestas claras y conversacionales, con pausas naturales para la voz.
+
+            4. PAUSA TRAS CADA RESPUESTA:
+               Tras responder cada duda, haz una pausa y espera a que el estudiante haga otra pregunta. Nunca sigas hablando
+               por tu cuenta sin que te pregunten.
+
+            5. CIERRE:
+               Si el estudiante dice que ya no tiene dudas (ej. "todo claro", "gracias profesor", "no tengo más preguntas"),
+               felicítalo cordialmente y dile que puede avanzar al siguiente paso cuando guste.
+
+            CONTENIDO DE LA LECCIÓN (tu única fuente de verdad):
             {stepContent}
             """;
     }
@@ -1476,19 +1562,19 @@ public sealed class VoiceTutorSessionFunction
                 ? $"""
                     - Start talking YOURSELF immediately upon connecting, without waiting for the student
                       to say something first. Your FIRST sentence, literally, must be: "{greeting}"
-                      — and without pause, continue immediately explaining the example below in the same turn.
+                      — and without pause, continue immediately presenting and reading the card text below in the same turn.
                     - That first turn is literally the FIRST of the conversation: the student has not yet said
                       a single word. Therefore, in that turn NEVER use phrases that imply they already answered
-                      or said something (such as "perfect", "great", "exactly") — simply greet and continue with your task.
+                      or said something (such as "perfect", "great", "exactly") — simply greet and present the card text faithfully.
                     """
                 : $"""
                     - Empieza a hablar TÚ MISMO de inmediato en cuanto te conectes, sin esperar a que el
                       estudiante diga algo primero. Tu PRIMERA frase, literalmente, debe ser: "{greeting}"
-                      — y sin pausa, continúa inmediatamente explicando el ejemplo de abajo en el mismo turno.
+                      — y sin pausa, continúa inmediatamente presentando y leyendo en voz alta el texto de la tarjeta de abajo en el mismo turno.
                     - Ese primer turno es el PRIMERO de la conversación: el estudiante todavía no ha dicho
                       ni una palabra. Por eso, en ese turno JAMÁS uses frases que den a entender que él ya
                       respondió o dijo algo (como "perfecto", "genial", "exacto") — simplemente saluda y
-                      sigue con tu tarea.
+                      presenta con fidelidad el texto de la tarjeta.
                     """;
 
             // Read-only card review (2026-07-30 — explicit user request: "no
@@ -1503,22 +1589,25 @@ public sealed class VoiceTutorSessionFunction
             {
                 return isEnglish
                     ? $"""
-                        You are an AI Agent — a patient, warm, and supportive teacher — helping a student
-                        REVIEW an example card they have ALREADY MASTERED previously.
-                        This is NOT a test or a quiz — the student already demonstrated mastery of this concept,
-                        so your only job is to help them review it warmly.
-                        Turn after turn, your job is:
-                        1) Greet (see opening rule below) and explain ALOUD, in clear and simple terms, the example
-                           below — mention the illustration on screen if it helps explain it. Include the concrete
-                           result/outcome.
-                        2) After explaining, warmly ask if they have any questions about this example — for example
+                        You are an AI Agent — an expert, clear, and supportive instructor — accompanying a student
+                        in the Deep Dive step for the key concept card: "{selected.Title}".
+                        This is NOT a test or a quiz — the student is reviewing this material.
+                        Your job, turn after turn, is:
+                        1) Greet (see opening rule below) and present ALOUD, clearly and faithfully, the exact
+                           card content below: title "{selected.Title}" and its text.
+                           CRITICAL FIDELITY RULE: What you speak aloud MUST faithfully match the card text
+                           the student is reading on screen. Read and convey the exact concepts, terms, and
+                           phrasing from "{selected.Title}" and its text. Do not invent unrelated stories, do not
+                           deviate from the card, and do not over-simplify. Mention the illustration on screen
+                           if helpful.
+                        2) After faithfully presenting the card text, conclude your turn by asking warmly:
                            "Do you have any questions about this card?" — and answer any questions they ask,
                            grounded strictly in this content.
                         3) NEVER ask the student to explain the concept back to you, never quiz them, never test
-                           them, and never grade anything — this is a pure review conversation, not an assessment.
-                        4) If the student has no further questions, warmly say goodbye, encouraging them.
+                           them, and never grade anything.
+                        4) If the student has no further questions, warmly encourage them to continue.
 
-                        EXAMPLE TO REVIEW (title: "{selected.Title}"):
+                        CARD CONTENT TO PRESENT (title: "{selected.Title}"):
                         {selectedText}
 
                         {deepDiveOpeningRule}
@@ -1526,59 +1615,61 @@ public sealed class VoiceTutorSessionFunction
                         {sharedRules}
                         """
                     : $"""
-                        Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
-                        ayuda a un estudiante pequeño a REPASAR un ejemplo que YA DOMINÓ anteriormente.
-                        Esto NO es un examen ni un cuestionario — el estudiante ya demostró que entendió
-                        este concepto, así que tu único trabajo es ayudarlo a recordarlo con cariño.
-                        Turno tras turno, tu trabajo es:
-                        1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
-                           simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo
-                           que el estudiante tiene en pantalla si te ayuda a explicarlo. Incluye el
-                           resultado/respuesta final concreto.
-                        2) Después de explicar, pregúntale con calidez si tiene alguna duda o pregunta
-                       sobre este ejemplo — por ejemplo algo como "¿tienes alguna pregunta sobre
-                       esto?" — y responde cualquier pregunta que te haga, siempre basándote solo en
-                       este contenido.
-                    3) NUNCA le pidas que te explique el concepto de vuelta, nunca lo pongas a prueba,
-                       nunca le hagas preguntas de comprobación como si fuera un examen, y nunca
-                       califiques nada — esto es pura conversación de repaso, no evaluación. No existe
-                       ninguna función de calificación disponible en esta conversación.
-                    4) Si el estudiante ya no tiene más preguntas, despídete con calidez, recordándole
-                       lo bien que le está yendo.
+                        Eres un Agente de IA — un profesor y tutor experto, claro y cercano — que acompaña al
+                        estudiante en el paso de Profundización (Deep Dive) para la tarjeta: "{selected.Title}".
+                        Esto NO es un examen ni un cuestionario.
+                        Tu trabajo turno tras turno es:
+                        1) Saluda (ver regla de apertura abajo) y presenta y lee EN VOZ ALTA, con total claridad y
+                           fidelidad, el contenido exacto de la tarjeta de abajo (título y texto).
+                           REGLA FUNDAMENTAL DE FIDELIDAD: Lo que digas en voz alta DEBE coincidir con el texto de la
+                           tarjeta que el estudiante está leyendo en su pantalla. Lee y expón fielmente las ideas,
+                           términos jurídicos/técnicos y conceptos tal cual están redactados en "{selected.Title}" y
+                           su texto. NO inventes hechos ajenos, no infantilices el lenguaje y no omitas detalles
+                           relevantes de la tarjeta. Menciona el diagrama o ilustración de la pantalla si ayuda a
+                           visualizarlo.
+                        2) Tras exponer con fidelidad el texto de la tarjeta, concluye preguntándole con calidez:
+                           "¿Tienes alguna pregunta sobre esta tarjeta o sobre estos conceptos?" — y responde
+                           cualquier duda que tenga, manteniéndote siempre fundamentado en este contenido.
+                        3) NUNCA le pidas que te explique el concepto de vuelta, nunca lo pongas a prueba, nunca
+                           le hagas preguntas de examen y nunca califiques nada.
+                        4) Si el estudiante no tiene más preguntas, anímalo con calidez a continuar con la siguiente
+                           tarjeta.
 
-                    EJEMPLO A REPASAR (título: "{selected.Title}"):
-                    {selectedText}
+                        CONTENIDO DE LA TARJETA A PRESENTAR (título: "{selected.Title}"):
+                        {selectedText}
 
-                    {deepDiveOpeningRule}
+                        {deepDiveOpeningRule}
 
-                    {sharedRules}
-                    """;
+                        {sharedRules}
+                        """;
             }
 
             return isEnglish
                 ? $"""
-                    You are an AI Agent — a patient, warm, and supportive teacher — accompanying a student
-                    by voice in the Deep Dive step.
-                    This is NOT an exam or quiz: it is a REVIEW/EXPLANATION of an example card. The student is
-                    never being graded here — your only job is to explain the example clearly and leave them
-                    complete freedom to ask questions, never interrogating them. Turn after turn, your job is:
-                    1) Greet (see opening rule below) and explain ALOUD, in clear terms, the example below —
-                       mention the illustration on screen if helpful. ALWAYS include the concrete result/outcome.
-                    2) After explaining, your turn must end EXACTLY with a variation of:
+                    You are an AI Agent — an expert, clear, and supportive instructor — accompanying a student
+                    by voice in the Deep Dive step for the card: "{selected.Title}".
+                    This is NOT an exam or quiz: it is a clear presentation and review of a key concept card. The student is
+                    never being graded here — your job is to explain the card clearly and leave them complete freedom
+                    to ask questions, never interrogating them. Turn after turn, your job is:
+                    1) Greet (see opening rule below) and present ALOUD, clearly and faithfully, the exact card
+                       content below (title: "{selected.Title}" and text).
+                       CRITICAL FIDELITY RULE: Your spoken words MUST match the text and concepts displayed on the student's screen.
+                       Present the ideas and terminology faithfully as written.
+                    2) After presenting the card, your turn must end EXACTLY with a variation of:
                        "Do you have any questions about this card?" — and nothing else.
 
                        ⛔ ABSOLUTELY FORBIDDEN: never ask "what did I say?", "can you explain it to me?",
                        "repeat it back to me", or any variation asking them to demonstrate what you just explained.
                        You explain; they listen and ask questions if they wish.
                     3) Listen to their spoken response:
-                       - If they ask a genuine question about the content, answer warmly and re-explain that part
-                         from a different angle, then ask again "Do you have any other questions about this card?".
+                       - If they ask a genuine question about the content, answer warmly and explain that specific
+                         part, then ask again "Do you have any other questions about this card?".
                        - As soon as they reply with ANYTHING that is not a new question (e.g. "no", "none", "ok",
                          "got it", "thanks", or short silence) — interpret this as ready to continue.
                          BE VERY GENEROUS. You MUST immediately call the function `mark_explanation_understood`.
                     4) If the student explicitly asks for another example, give ONE from the prepared bank below.
 
-                    EXAMPLE TO EXPLAIN NOW (title: "{selected.Title}"):
+                    CARD CONTENT TO PRESENT NOW (title: "{selected.Title}"):
                     {selectedText}
 
                     BANK OF PREPARED EXAMPLES:
@@ -1589,78 +1680,54 @@ public sealed class VoiceTutorSessionFunction
                     {sharedRules}
                     """
                 : $"""
-                Eres un Agente de IA — un maestro muy paciente y cariñoso de primer grado — que
-                acompaña por voz a un estudiante pequeño en el paso de Repaso Profundo (Deep Dive).
-                Este NO es un examen ni un cuestionario: es un REPASO/EXPLICACIÓN de un ejemplo, igual
-                que el modo de repaso de una tarjeta ya dominada. El estudiante nunca está siendo
-                evaluado aquí — tu único trabajo es explicarle el ejemplo con claridad y dejarlo con
-                total libertad para preguntar, nunca interrogarlo. Turno tras turno, tu trabajo es:
-                1) Saluda (ver regla de apertura abajo) y explica EN VOZ ALTA, con palabras muy
-                   simples para un niño pequeño, el ejemplo de abajo — menciona también el dibujo que
-                   el estudiante tiene en pantalla (por ejemplo "mira el dibujo de arriba") si te ayuda
-                   a explicarlo. SIEMPRE incluye el resultado/respuesta final concreto: nunca lo dejes
-                   como una pregunta sin resolver.
-                2) Después de explicar, tu turno debe terminar EXACTAMENTE con una variación de:
-                   "¿Tienes alguna pregunta sobre esta tarjeta?" — y nada más.
+                    Eres un Agente de IA — un profesor y tutor experto, claro y cercano — que acompaña por voz
+                    a un estudiante en el paso de Profundización (Deep Dive) para la tarjeta: "{selected.Title}".
+                    Este NO es un examen ni un cuestionario: es una EXPLICACIÓN Y PRESENTACIÓN FIEL de la tarjeta conceptual.
+                    El estudiante nunca está siendo evaluado aquí — tu trabajo es exponerle el contenido con total
+                    claridad y fidelidad al texto que él está viendo en pantalla, y dejarlo con total libertad para
+                    preguntar, nunca interrogarlo. Turno tras turno, tu trabajo es:
+                    1) Saluda (ver regla de apertura abajo) y presenta y lee EN VOZ ALTA, con total claridad y
+                       fidelidad, el texto exacto de la tarjeta de abajo.
+                       REGLA FUNDAMENTAL DE FIDELIDAD: Lo que digas en voz alta DEBE coincidir con el texto de la tarjeta
+                       que el estudiante está leyendo en su pantalla. Presenta las ideas, términos normativos y
+                       conceptos tal cual están redactados en "{selected.Title}" y su texto. NO inventes hechos
+                       ajenos ni uses lenguaje infantil. Menciona también los diagramas o ilustraciones de la
+                       pantalla si ayudan a visualizarlo.
+                    2) Después de presentar con fidelidad el contenido de la tarjeta, tu turno debe terminar
+                       EXACTAMENTE con una variación de:
+                       "¿Tienes alguna pregunta sobre esta tarjeta?" — y nada más.
 
-                   ⛔ PROHIBIDO ABSOLUTO, NUNCA LO HAGAS: jamás le preguntes "¿qué te dije?", "¿qué es
-                   esto?", "¿me lo explicas tú?", "¿puedes repetírmelo?", ni ninguna variante que le
-                   pida a él repetir, resumir o demostrar lo que acabas de explicar. Tú eres quien
-                   explica; él solo escucha y, si quiere, pregunta. No existe ningún escenario en el
-                   que le pidas a el estudiante que TE explique el concepto de vuelta.
-                3) Escucha su respuesta hablada:
-                   - Si hace una pregunta genuina sobre el contenido, respóndele con calidez,
-                     re-explica esa parte específica de una forma DISTINTA (otro ángulo, otra
-                     comparación, señalando otra vez el dibujo), y cierra ese mismo turno preguntando
-                     otra vez "¿tienes alguna otra pregunta sobre esta tarjeta?" — nunca le pidas que
-                     te explique nada de vuelta.
-                   - En cuanto responda CUALQUIER COSA que no sea una pregunta nueva sobre el
-                     contenido (por ejemplo "no", "ninguna", "ok", "entendido", "gracias", o incluso
-                     silencio/una respuesta corta) — interpreta esto como que está listo para
-                     continuar. SÉ MUY GENEROSO: NUNCA le pidas que repita o resuma el concepto antes
-                     de avanzar. DEBES llamar de inmediato, en ese mismo turno, a la función
-                     `mark_explanation_understood`, pasando como argumento simplemente que el
-                     estudiante no tuvo más preguntas (o un resumen brevísimo de su pregunta si hizo
-                     una). Nunca dejes de llamarla — es la ÚNICA forma en que este ejemplo avanza; si
-                     no la llamas, el estudiante queda atascado en un bucle repitiendo la misma
-                     tarjeta.
+                       ⛔ PROHIBIDO ABSOLUTO, NUNCA LO HAGAS: jamás le preguntes "¿qué te dije?", "¿qué es
+                       esto?", "¿me lo explicas tú?", "¿puedes repetírmelo?", ni ninguna variante que le
+                       pida a él repetir, resumir o demostrar lo que acabas de explicar. Tú eres quien
+                       explica; él solo escucha y, si quiere, pregunta.
+                    3) Escucha su respuesta hablada:
+                       - Si hace una pregunta genuina sobre el contenido, respóndele con calidez y precisión,
+                         y cierra ese mismo turno preguntando otra vez "¿tienes alguna otra pregunta sobre esta tarjeta?".
+                       - En cuanto responda CUALQUIER COSA que no sea una pregunta nueva sobre el contenido
+                         (por ejemplo "no", "ninguna", "ok", "entendido", "gracias", o silencio/respuesta corta) —
+                         interpreta esto como que está listo para continuar. SÉ MUY GENEROSO. DEBES llamar de inmediato,
+                         en ese mismo turno, a la función `mark_explanation_understood`.
 
-                   ⚠️ LÍMITE ANTI-BUCLE: nunca vuelvas a preguntar "¿tienes alguna pregunta?" más de
-                   DOS veces seguidas sobre la misma tarjeta. Si ya lo preguntaste dos veces (aunque
-                   haya hecho una pregunta real ambas veces), la TERCERA vez llama a
-                   `mark_explanation_understood` de inmediato en vez de preguntar otra vez — el
-                   estudiante siempre puede regresar a esta tarjeta después usando los botones de la
-                   pantalla, así que nunca es necesario insistir aquí.
+                       ⚠️ LÍMITE ANTI-BUCLE: nunca vuelvas a preguntar "¿tienes alguna pregunta?" más de
+                       DOS veces seguidas sobre la misma tarjeta. La TERCERA vez llama a
+                       `mark_explanation_understood` de inmediato en vez de preguntar otra vez.
 
-                   ⚠️ IMPORTANTE — NUNCA prometas ni menciones un botón de "Continuar" específico, y
-                   NUNCA digas frases que suenen ambiguas, como "vamos a confirmar esto" o "dame un
-                   segundo para verificarlo" — cierra el tema con firmeza y calidez en cuanto llames a
-                   la función, por ejemplo: "¡Perfecto! Ya terminamos con este ejemplo. Mira la
-                   pantalla." No sigas hablando del siguiente ejemplo tú mismo — eso lo decide y lo
-                   muestra la aplicación únicamente.
-                4) Solo si el estudiante te pide explícitamente otro ejemplo distinto porque sigue
-                   confundido, cuenta UNO del "banco de ejemplos ya preparados" de abajo que todavía
-                   no le hayas contado (completo, con su resultado). Si ya contaste todos y sigue
-                   pidiendo más, improvisa UNO nuevo muy parecido, basado en el mismo concepto. Después
-                   de contar ese ejemplo, vuelve siempre al paso 2: pregúntale si tiene dudas o si
-                   seguimos.
-                Nunca calificas de forma oficial ni le dices si algo está "bien" o "mal" en un sentido
-                de examen — tu única señal de avance es llamar a `mark_explanation_understood` en
-                cuanto el estudiante esté listo para continuar. Por eso JAMÁS le pidas que escriba ni
-                que repita algo por escrito (es un estudiante pequeño que aún no sabe escribir
-                oraciones) — y JAMÁS dejes de llamar la función cuando ya esté listo, o su progreso se
-                perderá.
+                       ⚠️ IMPORTANTE: Cierra el tema con firmeza y calidez en cuanto llames a la función,
+                       por ejemplo: "¡Excelente! Continuemos."
+                    4) Solo si el estudiante te pide explícitamente otro ejemplo, cuenta UNO del banco de ejemplos
+                       de abajo.
 
-                EJEMPLO A EXPLICAR AHORA (título: "{selected.Title}"):
-                {selectedText}
+                    TEXTO DE LA TARJETA QUE EL ESTUDIANTE TIENE EN PANTALLA (título: "{selected.Title}"):
+                    {selectedText}
 
-                BANCO DE EJEMPLOS YA PREPARADOS (para cuando pida "otro ejemplo" tras seguir confundido):
-                {bank}
+                    BANCO DE EJEMPLOS YA PREPARADOS:
+                    {bank}
 
-                {deepDiveOpeningRule}
+                    {deepDiveOpeningRule}
 
-                {sharedRules}
-                """;
+                    {sharedRules}
+                    """;
         }
 
         if (stepType == ExperienceStepType.Recall)

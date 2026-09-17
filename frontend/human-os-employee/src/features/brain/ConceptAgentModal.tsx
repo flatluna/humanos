@@ -11,6 +11,7 @@ import {
   type AiAgentChatHistoryEntry,
   type AiAgentUsedEngram,
 } from '@/features/ai-agents/api/aiAgentsApi';
+import { AgentMessageContent } from '@/features/ai-agents/components/AgentMessageContent';
 
 export interface ConceptAgentModalProps {
   concept: BridgeConceptItem;
@@ -197,13 +198,21 @@ export function ConceptAgentModal({ concept, onClose }: ConceptAgentModalProps) 
           {messages.map((message, index) => (
             <div key={index} className={`max-w-[85%] ${message.role === 'student' ? 'ml-auto' : ''}`}>
               <div
-                className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                   message.role === 'student'
-                    ? 'rounded-br-md bg-gradient-to-br from-brand-500 to-accent-500 text-white shadow-md'
+                    ? 'rounded-br-md bg-gradient-to-br from-brand-500 to-accent-500 text-white shadow-md whitespace-pre-wrap'
                     : 'rounded-bl-md border border-white/10 bg-white/[0.04] text-white/95'
                 }`}
               >
-                {message.text}
+                {message.role === 'student' ? (
+                  message.text
+                ) : (
+                  <AgentMessageContent
+                    text={message.text}
+                    isEn={isEn}
+                    onPromptClick={(prompt) => setInput(prompt)}
+                  />
+                )}
               </div>
 
               {message.role === 'agent' && message.usedEngrams && message.usedEngrams.length > 0 && (

@@ -85,6 +85,19 @@ public sealed class StructuredLearningEntityExtractionService
                normalizedType is "engram" or "learningmodule" or "learningunit";
     }
 
+    /// <summary>Strips OCR image descriptions (e.g. descriptions of national seals, stamps,
+    /// letterhead emblems) from the raw section text before feeding to the LLM extractor.</summary>
+    public static string CleanSectionText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(
+            text,
+            @"\[(?:Descripci[óo]n\s+de\s+imagen|Image\s+description)[^\]]*\][\s\S]*?(?=(?:\r?\n){2,}[A-ZÁÉÍÓÚ0-9]|$)",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return cleaned.Trim();
+    }
+
     /// <summary>Extracts and persists entities for ONE section. Safe to
     /// call repeatedly (idempotent) — returns the number of NEW entity-to-
     /// section links created (0 if everything already existed or the
@@ -162,8 +175,9 @@ public sealed class StructuredLearningEntityExtractionService
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var cleanedText = CleanSectionText(section.Text);
         var extractionResult = await _extractionAgent.ExtractAsync(
-            section.SubchapterTitle, section.Text, existingClasses.Select(c => c.DisplayLabel).ToList(), masterCandidates, cancellationToken);
+            section.SubchapterTitle, cleanedText, existingClasses.Select(c => c.DisplayLabel).ToList(), masterCandidates, cancellationToken);
         stopwatch.Stop();
 
         try
@@ -286,6 +300,7 @@ public sealed class StructuredLearningEntityExtractionService
         HumanOsDbContext dbContext, Guid tenantId, Guid? domainId, Guid? topicId, ExtractedEntityDto extracted,
         Dictionary<string, Guid> masterIdMap, CancellationToken cancellationToken)
     {
+        extracted.EntityType = MasterEntityClasses.NormalizeEntityType(extracted.EntityType, extracted.CanonicalName);
         var normalized = Normalize(extracted.CanonicalName);
 
         // Master de Clases (2026-08-14, Fase 2): resolve/create the reusable

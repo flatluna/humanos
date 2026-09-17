@@ -57,7 +57,7 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
             return Failure(engramId, "Engram SourceText is empty.");
         }
 
-        var language = ResolveLanguage(section.Document.ConfigSnapshotJson, _logger, engramId);
+        var language = ResolveLanguage(section.Document?.ConfigSnapshotJson, section.ConfigSnapshotJson, section.Text, _logger, engramId);
         var entityRows = await readContext.StructuredLearningEntitySections
             .Where(link => link.StructuredLearningDocumentSectionId == engramId)
             .Select(link => new
@@ -314,24 +314,52 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
     private static string NormalizeWhitespace(string value) =>
         string.Join(' ', value.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-    private static string ResolveLanguage(string? snapshotJson, ILogger logger, Guid engramId)
+    private static string ResolveLanguage(string? documentConfigJson, string? sectionConfigJson, string? sampleText, ILogger logger, Guid engramId)
     {
-        if (!string.IsNullOrWhiteSpace(snapshotJson))
+        foreach (var configJson in new[] { sectionConfigJson, documentConfigJson })
         {
+            if (string.IsNullOrWhiteSpace(configJson)) continue;
             try
             {
-                var snapshot = JsonSerializer.Deserialize<JsonElement>(snapshotJson);
-                if (snapshot.TryGetProperty("LanguageCode", out var language) &&
-                    !string.IsNullOrWhiteSpace(language.GetString()))
+                var snapshot = JsonSerializer.Deserialize<JsonElement>(configJson);
+                foreach (var prop in snapshot.EnumerateObject())
                 {
-                    return language.GetString()!;
+                    if (string.Equals(prop.Name, "languageCode", StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var code = prop.Value.GetString();
+                        if (!string.IsNullOrWhiteSpace(code))
+                        {
+                            var resolved = code.Trim().ToLowerInvariant().StartsWith("es") ? "es" : "en";
+                            logger.LogInformation("Resolved language '{Resolved}' from config for Engram {EngramId}", resolved, engramId);
+                            return resolved;
+                        }
+                    }
                 }
             }
             catch (JsonException) { }
         }
 
-        logger.LogWarning("No persisted language found for Engram {EngramId}; using temporary fallback 'en'", engramId);
-        return "en";
+        var detected = DetectLanguageCode(sampleText);
+        logger.LogInformation("No persisted languageCode found in config for Engram {EngramId}; heuristic detected '{Detected}'", engramId, detected);
+        return detected;
+    }
+
+    private static string DetectLanguageCode(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "es";
+        }
+
+        var padded = $" {text.ToLowerInvariant()} ";
+        string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this "];
+        string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu ", " artículo ", " articulo ", " ley ", " uif ", " sat "];
+
+        var englishHits = englishWords.Count(w => padded.Contains(w));
+        var spanishHits = spanishWords.Count(w => padded.Contains(w));
+
+        return spanishHits >= englishHits ? "es" : "en";
     }
 
     private static bool IsEducationalContainer(string entityType) =>

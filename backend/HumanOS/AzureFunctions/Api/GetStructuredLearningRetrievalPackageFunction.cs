@@ -28,6 +28,10 @@ public sealed class GetStructuredLearningRetrievalPackageFunction
         public Guid TenantId { get; set; }
 
         public string Query { get; set; } = string.Empty;
+
+        public Guid? DocumentId { get; set; }
+
+        public List<Guid>? DocumentIds { get; set; }
     }
 
     [Function("GetStructuredLearningRetrievalPackage")]
@@ -39,13 +43,13 @@ public sealed class GetStructuredLearningRetrievalPackageFunction
         var body = await JsonSerializer.DeserializeAsync<RetrievalRequest>(
             request.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken);
 
-        if (body is null || body.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(body.Query))
+        if (body is null || (body.TenantId == Guid.Empty && body.DocumentId is null && (body.DocumentIds == null || body.DocumentIds.Count == 0)) || string.IsNullOrWhiteSpace(body.Query))
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
-                request, HttpStatusCode.BadRequest, "InvalidRequest", "'tenantId' and 'query' are required.", cancellationToken);
+                request, HttpStatusCode.BadRequest, "InvalidRequest", "'query' and either 'tenantId', 'documentId' or 'documentIds' are required.", cancellationToken);
         }
 
-        var package = await _retrieval.BuildRetrievalPackageAsync(body.TenantId, body.Query, cancellationToken);
+        var package = await _retrieval.BuildRetrievalPackageAsync(body.TenantId, body.Query, cancellationToken, documentId: body.DocumentId, documentIds: body.DocumentIds);
         return await FunctionResponseFactory.SuccessResponseAsync(request, package, cancellationToken: cancellationToken);
     }
 }

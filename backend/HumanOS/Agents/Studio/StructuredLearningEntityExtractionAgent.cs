@@ -1,5 +1,6 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using HumanOS.Models.Capabilities.Studio;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
@@ -117,10 +118,24 @@ public class StructuredLearningEntityExtractionAgent
             such as Classification, Scoring, Productivity, Innovation, Data, Privacy, or Risk
             Management when the text explicitly discusses them. Treat each as a GeneralConcept
             unless a more precise existing class fits.
-        3b. Engram, LearningModule, learning module, lesson, chapter, section, and similar
-            educational containers are structural containers, not domain concepts. Never emit
-            them as entities unless the text is explicitly defining that container as the
-            subject matter itself.
+        3b. Educational containers of the online learning platform (such as Engram,
+            LearningModule, Course, Lesson, Chapter, Slide, Unit, Deck) are system wrappers,
+            never domain concepts. Never emit platform wrappers as entities unless the text
+            is explicitly defining software architecture or educational theory itself.
+            CRITICAL DISTINCTION FOR REAL-WORLD SOURCE ARTIFACTS ACROSS ALL DOMAINS:
+            Domain-native units, specifications, and structural references explicitly discussed
+            in the source material ARE NOT platform containers — they ARE legitimate, primary
+            domain entities. For example:
+            * Technology/Engineering: "RFC 7540", "ISO 27001", "Section 4.2", "API Endpoint",
+              "Protocol Header", "Algorithm Step 3", "Service Contract".
+            * Medicine/Science: "Phase III Trial", "Protocol 12", "Criterion A", "Theorem 2.1",
+              "Axiom of Choice", "ICD-10 Code".
+            * Business/HR/Finance: "SOP-04", "Policy 102", "Clause 4", "KPI 1.2", "Level 3 SLA".
+            * Law/Regulation: "Artículo 1", "Artículo 15", "Artículo 17 de la Ley", "Fracción X",
+              "Código de Comercio".
+            Always extract these domain units (EntityType: "Specification", "Protocol", "Standard",
+            "Article", "Clause", "Theorem", "Policy", or "DomainReference") so they act as shared
+            anchors across the entire organization's knowledge graph.
         4. CanonicalName must be a single concept/noun phrase, NEVER a full clause or sentence
            fragment copied verbatim (e.g. "helps feel safe and cared for" or "Purpose of the
            Policy" are NOT valid entities — they are prose/section-title fragments, not concepts).
@@ -137,10 +152,32 @@ public class StructuredLearningEntityExtractionAgent
               of identity when resolving against Existing entities too, including reversed forms
               such as "Search" and "Intelligent search" when the text makes clear they name the
               same concept.
-        8. EntityType is a free-text label (e.g. Person, PersonRole, Organization, Activity,
-           SocialGroup, BusinessObject, Place, Event, MathematicalVariable,
-           MathematicalExpression, MathematicalConcept, Number, Quantity, GeneralConcept) — pick
-           the closest fit, or a new concise type if none fits.
+        8. EntityType MUST BE CHOSEN from the CANONICAL ENTITY CLASSES list provided in the prompt.
+           Do NOT invent arbitrary or synonymous names (e.g. do NOT use "LawArticle", "LegalProvision",
+           "LegalReference" — always use "LegalArticle").
+           Standard examples across domains:
+           * Legal & Normative: LegalArticle, Law, LegalChapter, LegalFraction, Sanction, Obligation,
+             Right, AuthorityRole, Crime, OfficialPublication.
+           * Geography: City, Country, Place.
+           * Physical & Nature: Material, Food, Animal, Plant, PhysicalObject, Asset, Commodity.
+           * People & Organizations: Organization, GovernmentBody, PersonRole, Person.
+           * Finance & Economy: FinancialInstrument, FinancialConcept, Currency, Threshold, TimeLimit, Date.
+           * Operations & Systems: Process, Activity, Service, Risk, Condition, Metric, Standard, Event.
+           * Technology & Records: System, Database, Document, Certificate, CommunicationMethod, Tool.
+           * Science & Math: ScientificPrinciple, MathematicalConcept, MathematicalExpression, Quantity.
+           * General: GeneralRule, GeneralConcept.
+
+           CRITICAL RULE FOR STATUTORY AND REGULATORY ARTICLES (2026-09-07):
+           * When a lesson or section is an article or references articles (e.g. "Artículo 1", "Artículo 12",
+             "Artículo 17 de la Ley", "Article 5"), you MUST EXTRACT that article as an entity with
+             EntityType = "LegalArticle".
+           * 100% of the lessons that cover an article MUST have that article extracted as a "LegalArticle".
+           * For cities (e.g. "Seattle", "Monterrey", "Madrid"), EntityType MUST be "City".
+           * For foods/produce (e.g. "Pera", "Manzana", "Café"), EntityType MUST be "Food".
+           * For materials/substances (e.g. "Acero", "Cemento", "Oro"), EntityType MUST be "Material".
+           * NEVER extract entities from document headers, footers, official seals, coats of arms, or image
+             descriptions (e.g., "stylized eagle", "prickly pear cactus", "serpent", "Mexican national coat of arms",
+             "seal", "official stamp"). These are non-domain visual artifacts from government letterheads/PDF stamps.
         9. Never duplicate the same canonical entity twice in your output.
         10. If the text has no useful entities, return an empty list — do not force extraction.
         11. A list of ALREADY-EXISTING entity classes for this same domain may be provided in the
@@ -174,22 +211,30 @@ public class StructuredLearningEntityExtractionAgent
         17. If no "Existing entities" list is given (or it's empty), every entity is "new" by
             definition — do not invent master ids.
 
-        STRUCTURED NORMS/RULES (2026-08-15, applies to ANY domain — law, contract, math, history):
-        18. When the text states a CONDITIONED norm (an obligation/right/consequence that only
-            applies IF some condition holds — e.g. "personas físicas y morales... que... realicen
-            los actos... siguientes" = obligation conditioned on performing certain acts), extract
-            a dedicated "Rule"/"LegalRule"/"Norm" entity for it (e.g. "Regla de obligación de
-            pago") INSTEAD OF only extracting the actors and objects separately. This lets the
-            connection step attach actors/conditions/results to the rule rather than stating the
-            obligation as an unconditional fact about the actor.
-        19. Extract the FULL activity/act as its own entity when the text frames it as a taxable/
-            legally-relevant act, not just its bare object — e.g. "Enajenación de bienes"
-            (the act of transferring goods), not only "Bien" (the good itself). Both may coexist:
-            the act entity AND the object entity it operates on.
-        20. Preserve quantities, dates, formulas, conditions, and exceptions as their OWN entities
-            whenever they participate in a calculation, threshold, comparison, or rule (types
-            like Quantity, Date, TimePeriod, Formula, Variable, Condition, Exception, Result) —
-            never drop them silently just because they're "just a number/date".
+        STRUCTURED NORMS, RULES AND SPECIFICATIONS (2026-08-15, applies to ANY domain — engineering, science, business, law, math):
+        18. When the text states a CONDITIONED norm, rule, logic, or constraint (an obligation,
+            state transition, mathematical consequence, or business outcome that only applies IF
+            some condition or trigger holds — e.g. "if temperature exceeds 80C, trigger cooling",
+            "when balance < 0, charge fee", "quienes realicen los actos siguientes estarán obligados a..."),
+            extract a dedicated "Rule", "Constraint", "Norm", or "Specification" entity for it
+            (e.g. "Cooling Trigger Rule", "Overdraft Policy", "Regla de pago de contribuciones")
+            INSTEAD OF only extracting the actors and objects separately. This lets the connection
+            step attach preconditions, actors, and outcomes to the rule.
+        18b. DOMAIN-NATIVE UNITS, SECTIONS, ARTICLES AND SPECIFICATIONS (2026-09-07): Across all
+             domains, whenever the text refers to specific formal units (e.g. "Artículo 1",
+             "Sección 4", "Cláusula 5a", "RFC 2616", "ISO 9001 Clause 4", "Theorem 3", "Rule 4.1"),
+             ALWAYS extract them as primary entities (EntityType: "Article", "LegalArticle", "Clause",
+             "StandardSection", "Theorem", or "Specification"). This allows knowledge graphs across
+             multiple courses and subjects to cross-reference, index, and query all concepts,
+             calculations, and procedures tied to that specific reference.
+        19. Extract the FULL activity/action/operation as its own entity when the text frames it as a
+            meaningful domain operation, not just its passive object — e.g. "Data pipeline ingestion"
+            (the operational process), not only "Data" (the object); "Enajenación de bienes" (the act),
+            not only "Bien" (the good). Both may coexist: the operation entity AND the object entity.
+        20. Preserve quantities, units, dates, formulas, rates, thresholds, conditions, and exceptions
+            as their OWN entities whenever they participate in a calculation, trigger, comparison,
+            benchmark, or rule (types like Quantity, Rate, Threshold, Date, TimePeriod, Formula,
+            Variable, Condition, Exception, Result) — never drop them silently.
 
         ROLE ONTOLOGY (2026-08-16, applies to ANY domain and ANY class-of-being — Person,
         Organization, Animal, RealEstate, Vehicle, Institution, or any other class the text
@@ -260,8 +305,11 @@ public class StructuredLearningEntityExtractionAgent
         }
 
         var existingClassesBlock = existingClassNames.Count > 0
-            ? $"\n\nExisting classes (reuse these EXACT names when they fit):\n{string.Join("\n", existingClassNames.Select(n => $"- {n}"))}"
+            ? $"\n\nExisting classes in this workspace:\n{string.Join("\n", existingClassNames.Select(n => $"- {n}"))}"
             : string.Empty;
+
+        var canonicalTaxonomyBlock = "\n\nCANONICAL ENTITY CLASSES (MANDATORY: choose EntityType ONLY from this list, DO NOT invent alternative names):\n" +
+            string.Join("\n", MasterEntityClasses.All.Select(c => $"- {c.Code} (ES: {c.NameEs} / EN: {c.NameEn}): {c.DescriptionEn}"));
 
         var existingEntitiesBlock = existingMasterEntities.Count > 0
             ? $"\n\nExisting entities (Id | Name | Aliases — from other already-processed sections of this same domain):\n{string.Join("\n", existingMasterEntities.Select(e => $"- {e.Id} | {e.Name} | {string.Join(", ", e.Aliases)}"))}"
@@ -270,7 +318,7 @@ public class StructuredLearningEntityExtractionAgent
         var prompt = $"""
             Section: {sectionTitle}
             Text:
-            {sectionText}{existingClassesBlock}{existingEntitiesBlock}
+            {sectionText}{canonicalTaxonomyBlock}{existingClassesBlock}{existingEntitiesBlock}
             """;
 
         var response = await _agent.RunAsync<StructuredLearningEntityExtractionResponse>(prompt, cancellationToken: cancellationToken);

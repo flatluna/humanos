@@ -51,6 +51,21 @@ export const router = createBrowserRouter([
       },
       { path: 'skills', lazy: () => import('@/pages/SkillsPage').then((m) => ({ Component: m.SkillsPage })) },
       {
+        path: 'proceso-aprendizaje',
+        lazy: () =>
+          import('@/pages/ProcessLearningWizardPage').then((m) => ({ Component: m.ProcessLearningWizardPage })),
+      },
+      {
+        path: 'procesos',
+        lazy: () =>
+          import('@/pages/ProcessLearningWizardPage').then((m) => ({ Component: m.ProcessLearningWizardPage })),
+      },
+      {
+        path: 'process-documents',
+        lazy: () =>
+          import('@/pages/ProcessLearningWizardPage').then((m) => ({ Component: m.ProcessLearningWizardPage })),
+      },
+      {
         path: 'skills/nuevo',
         lazy: () => import('@/pages/SkillDetailPage').then((m) => ({ Component: m.SkillDetailPage })),
       },

@@ -29,11 +29,19 @@ public sealed class CapabilityCostService
     /// falls on that UTC calendar day are returned (2026-07-23).</summary>
     public async Task<IReadOnlyList<CapabilityCostSummaryResponse>> GetSummariesAsync(
         DateOnly? date = null,
+        Guid? tenantId = null,
         CancellationToken cancellationToken = default)
     {
-        var capabilities = await _dbContext.Capabilities
+        var capQuery = _dbContext.Capabilities
             .AsNoTracking()
-            .Where(c => c.CapabilityGraph != null)
+            .Where(c => c.CapabilityGraph != null);
+
+        if (tenantId != null)
+        {
+            capQuery = capQuery.Where(c => c.OwnerTenantId == null || c.OwnerTenantId == tenantId);
+        }
+
+        var capabilities = await capQuery
             .Select(c => new { c.CapabilityId, c.Name })
             .ToListAsync(cancellationToken);
 

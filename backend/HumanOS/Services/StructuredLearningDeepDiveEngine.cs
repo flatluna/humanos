@@ -4,7 +4,9 @@ using HumanOS.Agentic.Runtime;
 using HumanOS.Agents.Studio;
 using HumanOS.Data;
 using HumanOS.Models.Capabilities.Studio;
+using HumanOS.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 
 namespace HumanOS.Services;
 
@@ -29,10 +31,12 @@ namespace HumanOS.Services;
 public sealed class StructuredLearningDeepDiveEngine
 {
     private readonly StructuredLearningDeepDiveAgent _agent;
+    private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
 
-    public StructuredLearningDeepDiveEngine(StructuredLearningDeepDiveAgent agent)
+    public StructuredLearningDeepDiveEngine(StructuredLearningDeepDiveAgent agent, CapabilityGraphIllustrationStorageService illustrationStorage)
     {
         _agent = agent;
+        _illustrationStorage = illustrationStorage;
     }
 
     public sealed class DeepDiveTurnResult
@@ -118,11 +122,14 @@ public sealed class StructuredLearningDeepDiveEngine
 
         var context = await LoadSectionContextAsync(dbContext, sectionId, cancellationToken);
         var prompt = BuildTurnPrompt(context, currentCard, effectiveTutorPromptShown, studentResponse);
-        var turn = await _agent.RunTurnAsync(prompt, cancellationToken);
+        var sessionKey = $"{step.StructuredLearningSectionStepId}:{currentCardIndex}";
+        var isFirstTurnOnCard = _agent.IsFirstTurnOnCard(sessionKey);
+        var message = await BuildTurnMessageAsync(dbContext, currentCard, prompt, isFirstTurnOnCard, cancellationToken);
+        var turn = await _agent.RunTurnAsync(sessionKey, message, cancellationToken);
 
         for (var attempt = 0; attempt < 2 && turn.DeepDiveScore is null; attempt++)
         {
-            turn = await _agent.RunTurnAsync(prompt, cancellationToken);
+            turn = await _agent.RunTurnAsync(sessionKey, message, cancellationToken);
         }
 
         var score = turn.DeepDiveScore
@@ -194,6 +201,27 @@ public sealed class StructuredLearningDeepDiveEngine
         builder.AppendLine($"CARD TITLE: {card.Title}");
         builder.AppendLine("CARD CONTENT:");
         builder.AppendLine(card.Text);
+
+        // The prompt originally used to generate the card's own illustration
+        // (2026-09-05) — the image itself is only attached to the chat on the
+        // card's first turn (see BuildTurnMessageAsync), but this text
+        // description is cheap to include on EVERY turn so the agent always
+        // knows what the picture actually shows, even mid-conversation.
+        if (card.IllustrationPrompts is { Count: > 0 } stepPrompts)
+        {
+            builder.AppendLine();
+            builder.AppendLine("IMAGE DESCRIPTION (what the accompanying illustration(s) show, step by step):");
+            for (var i = 0; i < stepPrompts.Count; i++)
+            {
+                builder.AppendLine($"  Step {i + 1}: {stepPrompts[i]}");
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(card.IllustrationPrompt))
+        {
+            builder.AppendLine();
+            builder.AppendLine($"IMAGE DESCRIPTION (what the accompanying illustration shows): {card.IllustrationPrompt}");
+        }
+
         builder.AppendLine();
         builder.AppendLine("THE QUESTION BEING ANSWERED RIGHT NOW (you asked this last turn — verify against it):");
         builder.AppendLine(currentQuestion);
@@ -201,5 +229,57 @@ public sealed class StructuredLearningDeepDiveEngine
         builder.AppendLine($"STUDENT ANSWER: {studentResponse}");
 
         return builder.ToString();
+    }
+
+    /// <summary>Builds the actual chat turn sent to the agent — on a
+    /// card's first turn this attaches the card's own generated
+    /// illustration(s) alongside the text prompt (so the agent can
+    /// literally see and explain what the student is looking at); on
+    /// every later turn for the SAME card only the text is sent, since the
+    /// session (see <see cref="StructuredLearningDeepDiveAgent"/>) already
+    /// remembers the image from the first turn.</summary>
+    private async Task<ChatMessage> BuildTurnMessageAsync(
+        HumanOsDbContext dbContext, StructuredLearningExampleCardDto card, string prompt, bool isFirstTurnOnCard, CancellationToken cancellationToken)
+    {
+        var contents = new List<AIContent> { new TextContent(prompt) };
+
+        if (isFirstTurnOnCard && _illustrationStorage.IsConfigured)
+        {
+            var illustrationIds = new List<Guid>();
+            if (card.IllustrationIds is { Count: > 0 } ids)
+            {
+                illustrationIds.AddRange(ids);
+            }
+            else if (card.IllustrationId is { } singleId)
+            {
+                illustrationIds.Add(singleId);
+            }
+
+            foreach (var illustrationId in illustrationIds.Distinct())
+            {
+                var illustration = await dbContext.StructuredLearningIllustrations
+                    .AsNoTracking()
+                    .Where(i => i.StructuredLearningIllustrationId == illustrationId)
+                    .Select(i => new { i.StoragePath, i.MediaType })
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (illustration is null || illustration.MediaType == "Video")
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var bytes = await _illustrationStorage.DownloadIllustrationBytesAsync(illustration.StoragePath, cancellationToken);
+                    contents.Add(new DataContent(bytes.ToMemory(), "image/png"));
+                }
+                catch
+                {
+                    // Best-effort — never block the teaching turn on a missing/unreachable image blob.
+                }
+            }
+        }
+
+        return new ChatMessage(ChatRole.User, contents);
     }
 }

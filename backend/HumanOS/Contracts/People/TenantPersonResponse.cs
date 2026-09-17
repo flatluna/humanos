@@ -11,6 +11,12 @@ public sealed class TenantPersonResponse
 
     public string? DisplayName { get; set; }
 
+    public string? PhoneNumber { get; set; }
+
+    public string? Address { get; set; }
+
+    public string? LinkedInUrl { get; set; }
+
     public Guid? DepartmentId { get; set; }
 
     public string? DepartmentName { get; set; }

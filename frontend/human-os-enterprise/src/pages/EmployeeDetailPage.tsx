@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, IdCard, Paperclip, Sparkles } from 'lucide-react';
+import { ArrowLeft, IdCard, Paperclip, Sparkles, MapPin, Mail, Phone, User, Globe } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { extractPdfText } from '@/lib/pdfText';
 import {
@@ -12,10 +12,13 @@ import {
   getPersonResume,
   getTenantPeople,
   savePersonResume,
+  searchAddresses,
   updatePersonOrgAssignment,
+  type AddressSuggestion,
   type ExtractPersonResumeResponse,
   type PersonOrgAssignmentRequest,
   type SavePersonResumeRequest,
+  type StudentAcademicProfile,
 } from '@/api/orgStructureApi';
 
 function linesToArray(value: string): string[] {
@@ -116,6 +119,11 @@ interface OrgAssignmentFormState {
   jobRoleId: string;
   managerId: string;
   orgRole: string;
+  displayName: string;
+  email: string;
+  phoneNumber: string;
+  address: string;
+  linkedInUrl: string;
 }
 
 export function EmployeeDetailPage() {
@@ -137,6 +145,11 @@ export function EmployeeDetailPage() {
   // copy of each row's applyValue and only diverges once the user edits that field's box.
   const [editedValues, setEditedValues] = useState<Partial<Record<ResumeFormKey, string>>>({});
   const [orgForm, setOrgForm] = useState<OrgAssignmentFormState | null>(null);
+  const [academicProfile, setAcademicProfile] = useState<StudentAcademicProfile | null>(null);
+
+  // Bing / Azure Maps address autocomplete state
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
   const peopleQuery = useQuery({
     queryKey: ['tenant-people', tenantId],
@@ -167,6 +180,11 @@ export function EmployeeDetailPage() {
         jobRoleId: person.jobRoleId ?? '',
         managerId: person.managerId ?? '',
         orgRole: person.orgRole,
+        displayName: person.displayName ?? '',
+        email: person.email ?? '',
+        phoneNumber: person.phoneNumber ?? '',
+        address: person.address ?? '',
+        linkedInUrl: person.linkedInUrl ?? '',
       });
     }
   }, [person, orgForm]);
@@ -175,8 +193,42 @@ export function EmployeeDetailPage() {
     mutationFn: (body: PersonOrgAssignmentRequest) => updatePersonOrgAssignment(personId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tenant-people', tenantId] });
+      void queryClient.invalidateQueries({ queryKey: ['person-resume', personId] });
     },
   });
+
+  const addressSearchTimerRef = useRef<number | null>(null);
+
+  function handleAddressQueryChange(query: string) {
+    setOrgForm((f) => (f ? { ...f, address: query } : f));
+    setForm((f) => ({ ...f, address: query }));
+
+    if (addressSearchTimerRef.current) {
+      window.clearTimeout(addressSearchTimerRef.current);
+    }
+
+    if (!query || query.trim().length < 3) {
+      setAddressSuggestions([]);
+      setIsSearchingAddress(false);
+      return;
+    }
+
+    setIsSearchingAddress(true);
+    addressSearchTimerRef.current = window.setTimeout(() => {
+      void searchAddresses(query)
+        .then((suggs) => {
+          setAddressSuggestions(suggs);
+        })
+        .finally(() => setIsSearchingAddress(false));
+    }, 300);
+  }
+
+  function selectAddressSuggestion(sugg: AddressSuggestion) {
+    const val = sugg.address;
+    setOrgForm((f) => (f ? { ...f, address: val } : f));
+    setForm((f) => ({ ...f, address: val }));
+    setAddressSuggestions([]);
+  }
 
   function handleOrgSubmit(e: FormEvent) {
     e.preventDefault();
@@ -186,6 +238,11 @@ export function EmployeeDetailPage() {
       jobRoleId: orgForm.jobRoleId || null,
       managerId: orgForm.managerId || null,
       orgRole: orgForm.orgRole || null,
+      displayName: orgForm.displayName || null,
+      email: orgForm.email || null,
+      phoneNumber: orgForm.phoneNumber || null,
+      address: orgForm.address || null,
+      linkedInUrl: orgForm.linkedInUrl || null,
     });
   }
 
@@ -229,6 +286,13 @@ export function EmployeeDetailPage() {
         languages: arrayToLines(r.languages),
         rawResumeText: r.rawResumeText ?? '',
       });
+      setAcademicProfile(r.studentAcademicProfile ?? null);
+      if (r.address) {
+        setOrgForm((prev) => (prev && !prev.address ? { ...prev, address: r.address ?? '' } : prev));
+      }
+      if (r.linkedInUrl) {
+        setOrgForm((prev) => (prev && !prev.linkedInUrl ? { ...prev, linkedInUrl: r.linkedInUrl ?? '' } : prev));
+      }
     }
   }, [resumeQuery.data, personId]);
 
@@ -245,8 +309,24 @@ export function EmployeeDetailPage() {
   // before/after diff against a snapshot of the form taken right now, and the review panel
   // below lets the HRAdmin accept/reject each field individually before anything changes.
   const extractMutation = useMutation({
-    mutationFn: () => extractPersonResume(personId, form.rawResumeText),
+    mutationFn: async () => {
+      const proposal = await extractPersonResume(personId, form.rawResumeText);
+      if (proposal.studentAcademicProfile) {
+        const saved = await savePersonResume(personId, {
+          ...form,
+          skills: linesToArray(form.skills),
+          workExperience: linesToArray(form.workExperience),
+          education: linesToArray(form.education),
+          certifications: linesToArray(form.certifications),
+          languages: linesToArray(form.languages),
+          studentAcademicProfile: proposal.studentAcademicProfile,
+        });
+        queryClient.setQueryData(['person-resume', personId], saved);
+      }
+      return proposal;
+    },
     onSuccess: (data) => {
+      setAcademicProfile(data.studentAcademicProfile ?? null);
       const rows = buildResumeDiffRows(form, data, (k) => t(k as any));
       setReviewRows(rows);
       setAcceptedKeys(new Set(rows.map((row) => row.key)));
@@ -302,6 +382,7 @@ export function EmployeeDetailPage() {
       certifications: linesToArray(form.certifications),
       languages: linesToArray(form.languages),
       rawResumeText: form.rawResumeText || null,
+      studentAcademicProfile: academicProfile,
     };
     saveMutation.mutate(body);
   }
@@ -385,10 +466,135 @@ export function EmployeeDetailPage() {
       {orgForm && (
         <form
           onSubmit={handleOrgSubmit}
-          className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5"
+          className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5"
         >
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{t('employeeDetail.orgAssignmentTitle')}</h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/10">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{t('employeeDetail.orgAssignmentTitle')}</h2>
+            <span className="text-xs text-slate-400 dark:text-white/40">ID: {personId}</span>
+          </div>
+
+          {/* Personal & Contact Information */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-sky-500" />
+                  {t('employeeDetail.fullNameLabel')}
+                </span>
+              </label>
+              <input
+                type="text"
+                value={orgForm.displayName}
+                onChange={(e) => setOrgForm((f) => (f ? { ...f, displayName: e.target.value } : f))}
+                placeholder="Nombre completo"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-sky-500" />
+                  {t('employeeDetail.emailLabel')}
+                </span>
+              </label>
+              <input
+                type="email"
+                value={orgForm.email}
+                onChange={(e) => setOrgForm((f) => (f ? { ...f, email: e.target.value } : f))}
+                placeholder="ejemplo@empresa.com"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 text-sky-500" />
+                  {t('employeeDetail.phoneLabel')}
+                </span>
+              </label>
+              <input
+                type="tel"
+                value={orgForm.phoneNumber}
+                onChange={(e) => setOrgForm((f) => (f ? { ...f, phoneNumber: e.target.value } : f))}
+                placeholder="+1 555 123 4567"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* Address with Bing / Azure Maps autocomplete */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="relative">
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                  {t('employeeDetail.addressLabel')}
+                </span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={orgForm.address}
+                  onChange={(e) => handleAddressQueryChange(e.target.value)}
+                  placeholder="Escribe una dirección (ej. Austin, TX)..."
+                  className={inputClass}
+                  autoComplete="off"
+                />
+                {isSearchingAddress && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                    Buscando…
+                  </span>
+                )}
+              </div>
+
+              {/* Autocomplete Dropdown */}
+              {addressSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-900">
+                  {addressSuggestions.map((sugg, idx) => (
+                    <button
+                      key={sugg.entityId || idx}
+                      type="button"
+                      onClick={() => selectAddressSuggestion(sugg)}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-sky-50 dark:text-slate-200 dark:hover:bg-sky-950/50"
+                    >
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      <div className="flex-1">
+                        <p className="font-medium text-slate-900 dark:text-white">{sugg.address}</p>
+                        {(sugg.city || sugg.region || sugg.countryCode) && (
+                          <p className="text-[11px] text-slate-400 dark:text-white/40">
+                            {[sugg.city, sugg.region, sugg.countryCode, sugg.postalCode].filter(Boolean).join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Globe className="h-3.5 w-3.5 text-sky-500" />
+                  {t('employeeDetail.linkedInLabel')}
+                </span>
+              </label>
+              <input
+                type="text"
+                value={orgForm.linkedInUrl}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setOrgForm((f) => (f ? { ...f, linkedInUrl: val } : f));
+                  setForm((f) => ({ ...f, linkedInUrl: val }));
+                }}
+                placeholder={t('employeeDetail.linkedInPlaceholder')}
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* Org structure / roles */}
+          <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2">
             <div>
               <label className={labelClass}>{t('employeeDetail.departmentLabel')}</label>
               <select
@@ -477,7 +683,8 @@ export function EmployeeDetailPage() {
               </select>
             </div>
           </div>
-          <div className="flex justify-end">
+
+          <div className="flex justify-end pt-2">
             <button
               type="submit"
               disabled={orgMutation.isPending}
@@ -542,6 +749,29 @@ export function EmployeeDetailPage() {
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
             {extractMutation.error instanceof Error ? extractMutation.error.message : t('employeeDetail.extractError')}
           </div>
+        )}
+
+        {academicProfile && academicProfile.semesters.length > 0 && (
+          <section className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+            <div>
+              <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Perfil académico estructurado</h2>
+              <p className="mt-1 text-xs text-emerald-800/70 dark:text-emerald-200/70">
+                {academicProfile.institution} · {academicProfile.degree} · Promedio acumulado: {academicProfile.cumulativeAverage ?? 'N/D'} / {academicProfile.averageScale ?? '100'}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {academicProfile.semesters.map((semester) => (
+                <div key={semester.name} className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-500/20 dark:bg-white/5">
+                  <div className="flex justify-between text-sm font-semibold text-slate-800 dark:text-white">
+                    <span>{semester.name}</span><span>{semester.average ?? 'N/D'}</span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs text-slate-600 dark:text-white/70">
+                    {semester.subjects.map((subject) => <div key={subject.name} className="flex justify-between gap-2"><span>{subject.name}</span><span>{subject.grade ?? 'N/D'}</span></div>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {reviewRows && (

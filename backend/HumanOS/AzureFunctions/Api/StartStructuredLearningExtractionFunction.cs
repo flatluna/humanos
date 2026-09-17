@@ -120,6 +120,10 @@ public sealed class StartStructuredLearningExtractionFunction
         /// <summary>Opt-in Bing grounding for the content expansion —
         /// ignored when ExpandSparseContent is false.</summary>
         public bool UseWebGroundingForExpansion { get; set; }
+
+        /// <summary>Opt-in Perplexity AI web search for each engram — grounds
+        /// every lesson/engram in real-time web results and saves sources in metadata.</summary>
+        public bool UsePerplexitySearch { get; set; }
     }
 
     [Function("StartStructuredLearningExtraction")]
@@ -185,7 +189,8 @@ public sealed class StartStructuredLearningExtractionFunction
             ConfirmedDocumentType = string.IsNullOrWhiteSpace(body.ConfirmedDocumentType) ? null : body.ConfirmedDocumentType,
             ExpandSparseContent = body.ExpandSparseContent,
             ContentExpansionModel = body.ContentExpansionModel,
-            UseWebGroundingForExpansion = body.UseWebGroundingForExpansion
+            UseWebGroundingForExpansion = body.UseWebGroundingForExpansion,
+            UsePerplexitySearch = body.UsePerplexitySearch
         };
 
         try

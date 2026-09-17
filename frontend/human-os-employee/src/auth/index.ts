@@ -88,8 +88,10 @@ export const humanOsApiScopes = import.meta.env.VITE_API_SCOPE
   ? [import.meta.env.VITE_API_SCOPE as string]
   : [];
 
-/** X-Azure-OID / X-Azure-TID headers for the active MSAL account, or {}
- *  when signed out — matches backend PersonService identity lookups. */
+/** X-Azure-OID / X-Azure-TID / X-Azure-Email headers for the active MSAL
+ *  account, or {} when signed out — matches backend PersonService identity
+ *  lookups. The email is required for GetMeFunction's pending-invitation
+ *  auto-claim to run at all. */
 export function getIdentityHeaders(): Record<string, string> {
   const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0] ?? null;
   if (!account) return {};
@@ -97,5 +99,16 @@ export function getIdentityHeaders(): Record<string, string> {
   const claims = account.idTokenClaims as Record<string, unknown> | undefined;
   const oid = (claims?.oid as string) ?? (claims?.sub as string) ?? account.homeAccountId.split('.')[0];
   const tid = (claims?.tid as string) ?? account.homeAccountId.split('.')[1];
-  return { 'X-Azure-OID': oid, 'X-Azure-TID': tid };
+  const emails = claims?.emails as string[] | undefined;
+  const email =
+    (claims?.email as string) ??
+    emails?.[0] ??
+    (claims?.preferred_username as string) ??
+    account.username;
+
+  const headers: Record<string, string> = { 'X-Azure-OID': oid, 'X-Azure-TID': tid };
+  if (email) {
+    headers['X-Azure-Email'] = email;
+  }
+  return headers;
 }

@@ -108,12 +108,14 @@ public sealed class TenantInvitationService
         _dbContext.Set<TenantInvitation>().Add(invitation);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        string? temporaryPassword;
         try
         {
-            await _entraInvitationProvisioningService.InviteMemberAsync(
+            var provisioned = await _entraInvitationProvisioningService.InviteMemberAsync(
                 email,
                 BuildDisplayName(request.FirstName, request.LastName),
                 cancellationToken);
+            temporaryPassword = provisioned.TemporaryPassword;
         }
         catch
         {
@@ -124,7 +126,9 @@ public sealed class TenantInvitationService
             throw;
         }
 
-        return ToResponse(invitation);
+        var response = ToResponse(invitation);
+        response.TemporaryPassword = temporaryPassword;
+        return response;
     }
 
     public async Task DeletePendingAsync(

@@ -63,6 +63,7 @@ public sealed class PersonResumeService
         resume.EducationJson = JsonSerializer.Serialize(request.Education ?? []);
         resume.CertificationsJson = JsonSerializer.Serialize(request.Certifications ?? []);
         resume.LanguagesJson = JsonSerializer.Serialize(request.Languages ?? []);
+        resume.StudentAcademicProfileJson = JsonSerializer.Serialize(request.StudentAcademicProfile ?? new StudentAcademicProfile());
         resume.RawResumeText = string.IsNullOrWhiteSpace(request.RawResumeText) ? null : request.RawResumeText.Trim();
         resume.UpdatedDate = now;
 
@@ -85,6 +86,7 @@ public sealed class PersonResumeService
         Education = JsonSerializer.Deserialize<List<string>>(resume.EducationJson) ?? [],
         Certifications = JsonSerializer.Deserialize<List<string>>(resume.CertificationsJson) ?? [],
         Languages = JsonSerializer.Deserialize<List<string>>(resume.LanguagesJson) ?? [],
+        StudentAcademicProfile = JsonSerializer.Deserialize<StudentAcademicProfile>(resume.StudentAcademicProfileJson) ?? new StudentAcademicProfile(),
         RawResumeText = resume.RawResumeText,
         UpdatedDate = resume.UpdatedDate,
     };

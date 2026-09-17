@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AccessDenied } from '../components/AccessDenied';
 import { getIdentityHeaders } from '../auth';
-import { hasValidLaunchSession } from '../auth/launchSession';
+import { getLaunchSession, hasValidLaunchSession } from '../auth/launchSession';
 
 /** Shell gate for the whole Studio app (2026-08-19): Studio no longer
  *  supports standalone MSAL login — it can only be opened via a parent
@@ -18,6 +18,12 @@ export default function StudioAuthGate() {
   useEffect(() => {
     if (!hasLaunchSession) {
       setStudioAccess(null);
+      return;
+    }
+
+    const launch = getLaunchSession();
+    if (launch?.claims?.studioView === true) {
+      setStudioAccess(true);
       return;
     }
 

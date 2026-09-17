@@ -5482,6 +5482,12 @@ namespace HumanOS.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]");
 
+                    b.Property<string>("StudentAcademicProfileJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("{}");
+
                     b.Property<DateTime>("UpdatedDate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -5685,6 +5691,227 @@ namespace HumanOS.Migrations
                         {
                             t.HasCheckConstraint("CK_CapabilityPractice_AssistanceLevel", "[AssistanceLevel] BETWEEN 0 AND 5");
                         });
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessChapterRecord", b =>
+                {
+                    b.Property<Guid>("ProcessChapterId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ChapterNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ProcessDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.HasKey("ProcessChapterId");
+
+                    b.HasIndex("ProcessDocumentId");
+
+                    b.ToTable("ProcessChapter", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessDocumentRecord", b =>
+                {
+                    b.Property<Guid>("ProcessDocumentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FullText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("JobRoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("Draft");
+
+                    b.Property<string>("StorageBlobPath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("StorageContainer")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("TotalStepsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UniqueSkillsCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("1.0");
+
+                    b.HasKey("ProcessDocumentId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("JobRoleId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("ProcessDocument", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessStepRecord", b =>
+                {
+                    b.Property<Guid>("ProcessStepId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActivitiesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CompletionCondition")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DeliverablesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsExcluded")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("Objective")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ObservableAbilitiesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ProcessChapterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProcessDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequiredToolsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SourcePagesJson")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("StepNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("ProcessStepId");
+
+                    b.HasIndex("ProcessChapterId");
+
+                    b.HasIndex("ProcessDocumentId");
+
+                    b.ToTable("ProcessStep", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessStepSkillRecord", b =>
+                {
+                    b.Property<Guid>("ProcessStepSkillId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("CoverageStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("new_skill_required");
+
+                    b.Property<string>("Criticality")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("critical");
+
+                    b.Property<bool>("IsAiSkill")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("MatchedCourseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MatchedCourseName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<Guid>("ProcessStepId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("SkillId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SkillName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("ProcessStepSkillId");
+
+                    b.HasIndex("ProcessStepId");
+
+                    b.HasIndex("SkillId");
+
+                    b.ToTable("ProcessStepSkill", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Programs.LearningProgram", b =>
@@ -7745,6 +7972,78 @@ namespace HumanOS.Migrations
                     b.Navigation("PersonCapability");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessChapterRecord", b =>
+                {
+                    b.HasOne("HumanOS.Models.Processes.ProcessDocumentRecord", "ProcessDocument")
+                        .WithMany("Chapters")
+                        .HasForeignKey("ProcessDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProcessDocument");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessDocumentRecord", b =>
+                {
+                    b.HasOne("HumanOS.Models.OrgStructure.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("HumanOS.Models.OrgStructure.JobRole", "JobRole")
+                        .WithMany()
+                        .HasForeignKey("JobRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("HumanOS.Models.Tenancy.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+
+                    b.Navigation("JobRole");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessStepRecord", b =>
+                {
+                    b.HasOne("HumanOS.Models.Processes.ProcessChapterRecord", "ProcessChapter")
+                        .WithMany("Steps")
+                        .HasForeignKey("ProcessChapterId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("HumanOS.Models.Processes.ProcessDocumentRecord", "ProcessDocument")
+                        .WithMany("Steps")
+                        .HasForeignKey("ProcessDocumentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ProcessChapter");
+
+                    b.Navigation("ProcessDocument");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessStepSkillRecord", b =>
+                {
+                    b.HasOne("HumanOS.Models.Processes.ProcessStepRecord", "ProcessStep")
+                        .WithMany("Skills")
+                        .HasForeignKey("ProcessStepId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HumanOS.Models.OrgStructure.Skill", "Skill")
+                        .WithMany()
+                        .HasForeignKey("SkillId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ProcessStep");
+
+                    b.Navigation("Skill");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Programs.ProgramCapability", b =>
                 {
                     b.HasOne("HumanOS.Models.Capabilities.Capability", "Capability")
@@ -8131,6 +8430,23 @@ namespace HumanOS.Migrations
             modelBuilder.Entity("HumanOS.Models.People.Person", b =>
                 {
                     b.Navigation("DirectReports");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessChapterRecord", b =>
+                {
+                    b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessDocumentRecord", b =>
+                {
+                    b.Navigation("Chapters");
+
+                    b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Processes.ProcessStepRecord", b =>
+                {
+                    b.Navigation("Skills");
                 });
 
             modelBuilder.Entity("HumanOS.Models.Programs.LearningProgram", b =>

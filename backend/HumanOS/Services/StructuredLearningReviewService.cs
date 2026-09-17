@@ -25,17 +25,23 @@ public sealed class StructuredLearningReviewService
     private readonly StructuredLearningExampleCardEditorAgent _cardAgent;
     private readonly GraphIllustrationImageService _imageService;
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
+    private readonly AzureSpeechService _speechService;
+    private readonly PerplexitySearchService _perplexityService;
 
     public StructuredLearningReviewService(
         StructuredLearningStepEditorAgent stepAgent,
         StructuredLearningExampleCardEditorAgent cardAgent,
         GraphIllustrationImageService imageService,
-        CapabilityGraphIllustrationStorageService illustrationStorage)
+        CapabilityGraphIllustrationStorageService illustrationStorage,
+        AzureSpeechService speechService,
+        PerplexitySearchService perplexityService)
     {
         _stepAgent = stepAgent;
         _cardAgent = cardAgent;
         _imageService = imageService;
         _illustrationStorage = illustrationStorage;
+        _speechService = speechService;
+        _perplexityService = perplexityService;
     }
 
     public sealed class StepResult
@@ -46,6 +52,8 @@ public sealed class StructuredLearningReviewService
         public string? StepDataJson { get; set; }
         public bool IsHumanApproved { get; set; }
         public DateTime? HumanApprovedAtUtc { get; set; }
+        public List<string> WebSearchCitations { get; set; } = [];
+        public string? WebSearchSnippet { get; set; }
     }
 
     /// <summary>Applies a reviewer's free-text instruction to ONE step's
@@ -55,7 +63,7 @@ public sealed class StructuredLearningReviewService
     /// edit always resets any prior human sign-off — it needs its own
     /// review.</summary>
     public async Task<StepResult> EditStepContentAsync(
-        HumanOsDbContext dbContext, Guid sectionId, StructuredLearningStepType stepType, string instruction, CancellationToken cancellationToken = default)
+        HumanOsDbContext dbContext, Guid sectionId, StructuredLearningStepType stepType, string instruction, bool usePerplexitySearch = false, CancellationToken cancellationToken = default)
     {
         if (stepType is StructuredLearningStepType.DeepDive or StructuredLearningStepType.Recall or StructuredLearningStepType.Assessment)
         {
@@ -71,7 +79,32 @@ public sealed class StructuredLearningReviewService
         var step = section.Steps.FirstOrDefault(s => s.StepType == stepType)
             ?? throw new InvalidOperationException($"Section {sectionId} has no {stepType} step.");
 
-        var prompt = BuildStepEditPrompt(section, stepType, step.Content, instruction);
+        string? perplexityFindings = null;
+        List<string> citations = [];
+        if (usePerplexitySearch)
+        {
+            if (!_perplexityService.IsConfigured)
+            {
+                throw new InvalidOperationException("PerplexityApiKey no está configurada en local.settings.json. Por favor añade tu clave de Perplexity.");
+            }
+
+            try
+            {
+                var searchQuery = $"{section.ChapterTitle}: {section.SubchapterTitle}. {instruction}";
+                var searchResult = await _perplexityService.SearchAsync(searchQuery, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(searchResult.Answer))
+                {
+                    perplexityFindings = searchResult.Answer;
+                    citations = searchResult.Citations;
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Error consultando Perplexity Search: {ex.Message}", ex);
+            }
+        }
+
+        var prompt = BuildStepEditPrompt(section, stepType, step.Content, instruction, perplexityFindings);
         var result = await _stepAgent.EditStepAsync(prompt, cancellationToken);
 
         step.Content = result.UpdatedContent;
@@ -96,9 +129,18 @@ public sealed class StructuredLearningReviewService
             }
         }
 
+        // Regenerate and replace speech audio if Teaching content changed
+        if (stepType == StructuredLearningStepType.Teaching)
+        {
+            await RegenerateTeachingAudioAsync(dbContext, section, step, citations, cancellationToken);
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToStepResult(step);
+        var finalResult = ToStepResult(step);
+        finalResult.WebSearchCitations = citations;
+        finalResult.WebSearchSnippet = perplexityFindings;
+        return finalResult;
     }
 
     /// <summary>Directly persists a reviewer's own hand-edited Content for
@@ -127,9 +169,76 @@ public sealed class StructuredLearningReviewService
         step.Content = content;
         step.IsHumanApproved = true;
         step.HumanApprovedAtUtc = DateTime.UtcNow;
+
+        // Regenerate and replace speech audio if Teaching content was edited manually
+        if (stepType == StructuredLearningStepType.Teaching)
+        {
+            await RegenerateTeachingAudioAsync(dbContext, section, step, citations: null, cancellationToken);
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return ToStepResult(step);
+    }
+
+    private async Task RegenerateTeachingAudioAsync(
+        HumanOsDbContext dbContext,
+        StructuredLearningDocumentSection section,
+        StructuredLearningSectionStep step,
+        List<string>? citations,
+        CancellationToken cancellationToken)
+    {
+        if (!_speechService.IsConfigured || !_illustrationStorage.IsConfigured || string.IsNullOrWhiteSpace(step.Content))
+        {
+            return;
+        }
+
+        try
+        {
+            // Detect language
+            var padded = $" {step.Content.ToLowerInvariant()} ";
+            string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this "];
+            string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu "];
+            var isEnglish = englishWords.Count(w => padded.Contains(w)) > spanishWords.Count(w => padded.Contains(w));
+            var voiceName = isEnglish ? "en-US-AndrewNeural" : "es-MX-CecilioNeural";
+
+            var audioBytes = await _speechService.SynthesizeAsync(step.Content, voiceName, cancellationToken);
+            using var audioStream = new MemoryStream(audioBytes);
+
+            var storagePath = await _illustrationStorage.UploadLectureAudioAsync(
+                section.TenantId,
+                section.StructuredLearningDocumentId,
+                section.StructuredLearningDocumentSectionId,
+                audioStream,
+                contentType: "audio/mpeg",
+                cancellationToken: cancellationToken);
+
+            // Update StepDataJson with the speech storage path while preserving illustration id
+            Guid? illustrationId = null;
+            if (!string.IsNullOrWhiteSpace(step.StepDataJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(step.StepDataJson);
+                    if (doc.RootElement.TryGetProperty("IllustrationId", out var prop) && prop.ValueKind == JsonValueKind.String)
+                    {
+                        if (Guid.TryParse(prop.GetString(), out var parsedId)) illustrationId = parsedId;
+                    }
+                }
+                catch { }
+            }
+
+            step.StepDataJson = JsonSerializer.Serialize(new
+            {
+                IllustrationId = illustrationId,
+                SpeechStoragePath = storagePath,
+                WebSearchCitations = citations ?? []
+            });
+        }
+        catch
+        {
+            // Best-effort: synthesis failure does not prevent saving text changes.
+        }
     }
 
     public static StructuredLearningExampleCardDto CreateInstructionAlignedCard(string instruction)
@@ -378,7 +487,7 @@ public sealed class StructuredLearningReviewService
     };
 
     private static string BuildStepEditPrompt(
-        StructuredLearningDocumentSection section, StructuredLearningStepType stepType, string currentContent, string instruction)
+        StructuredLearningDocumentSection section, StructuredLearningStepType stepType, string currentContent, string instruction, string? perplexityFindings = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine($"Chapter: {section.ChapterTitle}");
@@ -386,11 +495,31 @@ public sealed class StructuredLearningReviewService
         builder.AppendLine("SECTION SOURCE TEXT (only source of truth):");
         builder.AppendLine(section.Text);
         builder.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(perplexityFindings))
+        {
+            builder.AppendLine("=== PERPLEXITY AI REAL-TIME WEB SEARCH FINDINGS ===");
+            builder.AppendLine(perplexityFindings.Trim());
+            builder.AppendLine("=================================================");
+            builder.AppendLine();
+        }
+
         builder.AppendLine($"STEP TYPE: {stepType}");
         builder.AppendLine("CURRENT CONTENT:");
         builder.AppendLine(currentContent);
         builder.AppendLine();
         builder.AppendLine($"REVIEWER INSTRUCTION: {instruction}");
+
+        if (stepType == StructuredLearningStepType.Teaching)
+        {
+            builder.AppendLine();
+            builder.AppendLine("CRITICAL TEACHING STEP AUDIO & UNIVERSAL DELIVERY REQUIREMENTS:");
+            builder.AppendLine("- This Teaching step is delivered as a spoken masterclass lecture for all students and converted directly into audio via Text-to-Speech (TTS).");
+            builder.AppendLine("- The lecture is universal and generic: NEVER include individual personal names (NO 'Alejandro', NO 'Student', NO 'Learner').");
+            builder.AppendLine("- Address the class warmly and universally (e.g., 'Hola y bienvenidos a esta clase...', 'Hello and welcome to this lecture...').");
+            builder.AppendLine("- Write in pure spoken paragraphs suitable for automated voice audio (NO markdown headers #, NO bullet points *, NO brackets).");
+        }
+
         return builder.ToString();
     }
 

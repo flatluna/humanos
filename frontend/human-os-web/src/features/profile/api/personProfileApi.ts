@@ -49,6 +49,21 @@ export interface UpsertPersonProfileRequest {
   biography?: string | null;
 }
 
+export interface PersonResumeDto {
+  personId: string;
+  address: string | null;
+  linkedInUrl: string | null;
+  professionalObjective: string | null;
+  professionalSummary: string | null;
+  skills: string[];
+  workExperience: string[];
+  education: string[];
+  certifications: string[];
+  languages: string[];
+  rawResumeText: string | null;
+  updatedDate: string | null;
+}
+
 /** Returns `null` (not a thrown error) when the account has no profile
  *  row yet — every account created before this feature, or that simply
  *  never filled it in, hits this on first visit to "Mi Perfil". */
@@ -69,6 +84,31 @@ export function createMyProfile(personId: string, body: UpsertPersonProfileReque
 
 export function updateMyProfile(personId: string, body: UpsertPersonProfileRequest): Promise<PersonProfileDto> {
   return apiPut<PersonProfileDto>(`/people/${personId}/profile`, body);
+}
+
+export async function getMyResume(personId: string): Promise<PersonResumeDto> {
+  const response = await fetch(`${API_BASE_URL}/people/${personId}/resume`, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (response.status === 404) {
+    return {
+      personId,
+      address: null,
+      linkedInUrl: null,
+      professionalObjective: null,
+      professionalSummary: null,
+      skills: [],
+      workExperience: [],
+      education: [],
+      certifications: [],
+      languages: [],
+      rawResumeText: null,
+      updatedDate: null,
+    };
+  }
+  if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+  return (await response.json()) as PersonResumeDto;
 }
 
 /** Uploads a new profile photo (overwrites any existing one). */

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowUp, ArrowDown, Layers, GitBranch, Trash2, X, GraduationCap, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ArrowUp, ArrowDown, Layers, GitBranch, Trash2, X, GraduationCap, AlertTriangle, Pencil, Save, Network } from 'lucide-react';
 import {
   getProgramById,
   deleteProgram,
+  updateProgram,
   updateProgramCapabilities,
   removeCapabilityFromProgram,
   type BackendProgramDetail,
@@ -25,6 +26,15 @@ export default function ProgramDetailPage() {
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [unlinkTarget, setUnlinkTarget] = useState<{ capabilityId: string; capabilityName: string } | null>(null);
 
+  // Edit Program Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editObjectives, setEditObjectives] = useState('');
+  const [editRequirements, setEditRequirements] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!programId) return;
     let cancelled = false;
@@ -43,6 +53,48 @@ export default function ProgramDetailPage() {
       cancelled = true;
     };
   }, [programId]);
+
+  function openEditModal() {
+    if (!program) return;
+    setEditName(program.Name);
+    setEditDescription(program.Description || '');
+    setEditObjectives(program.Objectives || '');
+    setEditRequirements(program.Requirements || '');
+    setEditError(null);
+    setShowEditModal(true);
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!program) return;
+    if (!editName.trim()) {
+      setEditError(t('programDetail.editProgramName') + ' is required');
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await updateProgram(program.ProgramId, {
+        name: editName.trim(),
+        description: editDescription.trim() || null,
+        objectives: editObjectives.trim() || null,
+        requirements: editRequirements.trim() || null,
+      });
+      setProgram({
+        ...program,
+        Name: updated.Name,
+        Description: updated.Description,
+        Objectives: updated.Objectives,
+        Requirements: updated.Requirements,
+        UpdatedDate: updated.UpdatedDate,
+      });
+      setShowEditModal(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : t('programDetail.saveErrorFallback'));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function handleDelete() {
     if (!program) return;
@@ -137,21 +189,69 @@ export default function ProgramDetailPage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-10">
-        {program.Description && <p className="max-w-3xl text-lg text-slate-300">{program.Description}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {program.Description ? (
+            <p className="max-w-3xl text-lg text-slate-300">{program.Description}</p>
+          ) : (
+            <p className="text-sm italic text-slate-500">No description provided</p>
+          )}
+          <div className="flex items-center gap-3">
+            <Link
+              to={`/programs/${program.ProgramId}/entities`}
+              className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/15 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:border-amber-400/50 hover:bg-amber-500/25 shadow-lg shadow-amber-500/5"
+            >
+              <Network className="h-4 w-4 text-amber-400" />
+              <span>{t('nav.programEntities', 'Entidades del programa')}</span>
+            </Link>
+            <button
+              type="button"
+              onClick={openEditModal}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:border-brand-400/40 hover:bg-brand-500/15"
+            >
+              <Pencil className="h-4 w-4 text-brand-400" />
+              {t('programDetail.editProgram')}
+            </button>
+          </div>
+        </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {program.Objectives && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <h3 className="mb-2 text-sm font-semibold text-white">{t('programDetail.objectives')}</h3>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 relative group">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-white">{t('programDetail.objectives')}</h3>
+              <button
+                type="button"
+                onClick={openEditModal}
+                className="opacity-70 group-hover:opacity-100 rounded p-1 text-slate-400 hover:text-white transition-opacity"
+                title={t('programDetail.editProgramObjectives')}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {program.Objectives ? (
               <p className="whitespace-pre-line text-sm text-slate-400">{program.Objectives}</p>
+            ) : (
+              <p className="text-xs italic text-slate-500">Click edit to add objectives</p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 relative group">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-white">{t('programDetail.requirements')}</h3>
+              <button
+                type="button"
+                onClick={openEditModal}
+                className="opacity-70 group-hover:opacity-100 rounded p-1 text-slate-400 hover:text-white transition-opacity"
+                title={t('programDetail.editProgramRequirements')}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
             </div>
-          )}
-          {program.Requirements && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <h3 className="mb-2 text-sm font-semibold text-white">{t('programDetail.requirements')}</h3>
+            {program.Requirements ? (
               <p className="whitespace-pre-line text-sm text-slate-400">{program.Requirements}</p>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs italic text-slate-500">Click edit to add requirements</p>
+            )}
+          </div>
         </div>
 
         <div className="mt-8">
@@ -170,13 +270,22 @@ export default function ProgramDetailPage() {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-sm font-semibold text-brand-300">
                     {pc.SortOrder}
                   </div>
-                  <Link to={`/capabilities/${pc.CapabilityId}`} className="min-w-0 flex-1">
+                  <Link
+                    to={
+                      pc.CourseType === 'StructuredLearning'
+                        ? `/structured-learning/${pc.CapabilityId}/course?mode=edit`
+                        : pc.CourseType === 'TraditionalChapters'
+                        ? `/capabilities/${pc.CapabilityId}/traditional-course`
+                        : `/capabilities/${pc.CapabilityId}`
+                    }
+                    className="min-w-0 flex-1"
+                  >
                     <div className="truncate font-medium text-white">{pc.CapabilityName}</div>
                     {pc.PhaseLabel && <div className="text-xs text-slate-500">{pc.PhaseLabel}</div>}
                   </Link>
                   <span className="flex items-center gap-1.5 text-xs text-slate-500">
                     <Layers className="h-3.5 w-3.5" />
-                    {pc.LevelCount}
+                    {pc.LevelCount} {pc.CourseType === 'StructuredLearning' ? 'Engrams' : pc.CourseType === 'TraditionalChapters' ? 'Chapters' : 'Levels'}
                   </span>
                   <span className="flex items-center gap-1.5 text-xs text-slate-500">
                     <GitBranch className="h-3.5 w-3.5" />
@@ -303,6 +412,104 @@ export default function ProgramDetailPage() {
                   {deleting ? t('programDetail.deleting') : t('programDetail.deletePermanently')}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {showEditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+            <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+              <div className="mb-5 flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <Pencil className="h-5 w-5 text-brand-400" />
+                  <h2 className="text-lg font-bold text-white">{t('programDetail.editProgramModalTitle')}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {editError && (
+                <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                  {editError}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveEdit} className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {t('programDetail.editProgramName')} *
+                  </label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:border-brand-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {t('programDetail.editProgramDescription')}
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2 text-sm text-white placeholder:text-slate-600 focus:border-brand-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {t('programDetail.editProgramObjectives')}
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editObjectives}
+                    onChange={(e) => setEditObjectives(e.target.value)}
+                    placeholder="Describe what learners will achieve by completing this program..."
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:border-brand-400 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {t('programDetail.editProgramRequirements')}
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editRequirements}
+                    onChange={(e) => setEditRequirements(e.target.value)}
+                    placeholder="Describe prerequisites or prior requirements..."
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:border-brand-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="mt-6 flex justify-end gap-3 border-t border-white/10 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    disabled={savingEdit}
+                    className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/5 disabled:opacity-50"
+                  >
+                    {t('programDetail.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 hover:opacity-95 disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {savingEdit ? t('programDetail.saving') : t('programDetail.saveChanges')}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -12,6 +12,7 @@ import {
   type EngramReference,
   type StructuredLearningChatHistoryEntry,
 } from '../lib/api/structuredLearningChatApi';
+import { AgentMessageContent } from '../components/AgentMessageContent';
 
 const DEFAULT_STUDIO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -133,14 +134,17 @@ export default function AiAgentsChatPage() {
         )}
         {messages.map((message, index) => (
           <div key={index} className={`max-w-[85%] ${message.author === 'student' ? 'ml-auto' : ''}`}>
-            <div
-              className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                message.author === 'student' ? 'bg-cyan-500/20 text-white' : 'bg-white/[0.05] text-slate-200'
-              }`}
-              style={{ whiteSpace: 'pre-wrap' }}
-            >
-              {message.text}
-            </div>
+            {message.author === 'student' ? (
+              <div
+                className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-cyan-500/20 text-white whitespace-pre-wrap"
+              >
+                {message.text}
+              </div>
+            ) : (
+              <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed bg-white/[0.05] text-slate-200">
+                <AgentMessageContent text={message.text} onPromptClick={(prompt) => setInput(prompt)} />
+              </div>
+            )}
             {message.usedEngrams && message.usedEngrams.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {message.usedEngrams.map((engram) => (

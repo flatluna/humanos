@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Camera, CheckCircle2, User } from 'lucide-react';
+import { Award, BriefcaseBusiness, Camera, CheckCircle2, GraduationCap, Languages, User } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
@@ -11,6 +11,7 @@ import {
   getProfilePhotoUrl,
   updateMyProfile,
   uploadProfilePhoto,
+  getMyResume,
   type PersonProfileDto,
   type UpsertPersonProfileRequest,
 } from '../api/personProfileApi';
@@ -175,6 +176,12 @@ export function ProfilePage() {
   const profileQuery = useQuery({
     queryKey: ['my-profile', personId],
     queryFn: () => getMyProfile(personId),
+    enabled: !!personId,
+  });
+
+  const resumeQuery = useQuery({
+    queryKey: ['my-resume', personId],
+    queryFn: () => getMyResume(personId),
     enabled: !!personId,
   });
 
@@ -454,6 +461,55 @@ export function ProfilePage() {
             </button>
           </div>
         </form>
+      </Card>
+
+      <Card className="p-6 sm:p-8">
+        <div className="mb-6 flex items-center gap-3">
+          <BriefcaseBusiness className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{t('profile.resumeTitle')}</h2>
+        </div>
+
+        {resumeQuery.isLoading && <p className="text-sm text-slate-500 dark:text-white/50">{t('profile.resumeLoading')}</p>}
+        {resumeQuery.isError && <p className="text-sm text-red-600 dark:text-red-400">{t('profile.resumeError')}</p>}
+        {resumeQuery.isSuccess && (
+          <div className="space-y-7">
+            {resumeQuery.data.professionalObjective && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('profile.professionalObjective')}</h3>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600 dark:text-white/70">{resumeQuery.data.professionalObjective}</p>
+              </div>
+            )}
+            {resumeQuery.data.professionalSummary && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('profile.professionalSummary')}</h3>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600 dark:text-white/70">{resumeQuery.data.professionalSummary}</p>
+              </div>
+            )}
+            {([
+              ['skills', resumeQuery.data.skills, BriefcaseBusiness],
+              ['workExperience', resumeQuery.data.workExperience, BriefcaseBusiness],
+              ['education', resumeQuery.data.education, GraduationCap],
+              ['certifications', resumeQuery.data.certifications, Award],
+              ['languages', resumeQuery.data.languages, Languages],
+            ] as const).map(([key, values, Icon]) => values.length > 0 && (
+              <div key={key}>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                  <Icon className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                  {t(`profile.${key}`)}
+                </h3>
+                <ul className="mt-2 space-y-2 text-sm text-slate-600 dark:text-white/70">
+                  {values.map((value, index) => <li key={`${key}-${index}`} className="whitespace-pre-line">{value}</li>)}
+                </ul>
+              </div>
+            ))}
+            {!resumeQuery.data.professionalObjective && !resumeQuery.data.professionalSummary &&
+              !resumeQuery.data.skills.length && !resumeQuery.data.workExperience.length &&
+              !resumeQuery.data.education.length && !resumeQuery.data.certifications.length &&
+              !resumeQuery.data.languages.length && (
+                <p className="text-sm text-slate-500 dark:text-white/50">{t('profile.resumeEmpty')}</p>
+              )}
+          </div>
+        )}
       </Card>
     </div>
   );

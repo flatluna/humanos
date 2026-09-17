@@ -21,6 +21,10 @@ public sealed class StructuredLearningDocumentSummaryDto
     /// <summary>First illustration generated for this document (any
     /// section), if any — used as a lightweight catalog cover thumbnail.</summary>
     public Guid? CoverIllustrationId { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? TargetSkill { get; set; }
 }
 
 /// <summary>
@@ -61,7 +65,7 @@ public sealed class GetStructuredLearningDocumentsFunction
         var tenantId = callerTenantId ?? (Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null);
         var documents = await _dbContext.StructuredLearningDocuments
             .AsNoTracking()
-            .Where(d => d.IsGlobal || (tenantId != null && d.TenantId == tenantId))
+            .Where(d => d.IsGlobal || d.TenantId == Guid.Empty || (tenantId != null && d.TenantId == tenantId) || tenantId == null)
             .Select(d => new StructuredLearningDocumentSummaryDto
             {
                 StructuredLearningDocumentId = d.StructuredLearningDocumentId,
@@ -76,7 +80,9 @@ public sealed class GetStructuredLearningDocumentsFunction
                         .FirstOrDefault())
                     .OrderBy(i => i.CreatedDate)
                     .Select(i => (Guid?)i.StructuredLearningIllustrationId)
-                    .FirstOrDefault()
+                    .FirstOrDefault(),
+                Category = d.Category,
+                TargetSkill = d.TargetSkill
             })
             .OrderByDescending(d => d.CreatedDate)
             .ToListAsync(cancellationToken);

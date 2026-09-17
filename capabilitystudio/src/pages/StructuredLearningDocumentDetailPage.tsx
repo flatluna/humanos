@@ -125,6 +125,7 @@ export default function StructuredLearningDocumentDetailPage() {
     if (!documentId) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    let wasRunning = false;
 
     async function poll() {
       const run = await getActiveStructuredLearningPedagogyRun().catch(() => null);
@@ -132,10 +133,15 @@ export default function StructuredLearningDocumentDetailPage() {
       const belongsToThisDocument = run?.DocumentId === documentId;
       setPedagogyRun(belongsToThisDocument ? run : null);
       if (belongsToThisDocument && run?.Stage === 'Running') {
+        wasRunning = true;
         timer = setTimeout(poll, 3000);
-      } else if (belongsToThisDocument && run?.Stage === 'Completed' && documentId) {
-        // Refresh section statuses once the run this page was watching finishes.
-        getStructuredLearningDocument(documentId).then((detail) => { if (!cancelled) setDocument(detail); }).catch(() => {});
+      } else {
+        if (wasRunning && documentId) {
+          wasRunning = false;
+          getStructuredLearningDocument(documentId)
+            .then((detail) => { if (!cancelled) setDocument(detail); })
+            .catch(() => {});
+        }
       }
     }
 
@@ -531,12 +537,21 @@ export default function StructuredLearningDocumentDetailPage() {
           const pendingSections = document.Sections.filter((s) => s.PedagogyStatus !== 'Completed').length;
           const isRunningHere = pedagogyRun?.Stage === 'Running';
           if (isRunningHere) {
+            const targetCount = pedagogyRun?.TotalSections ?? (pendingSections > 0 ? pendingSections : totalSections);
+            const doneCount = pedagogyRun?.CompletedSections ?? 0;
             return (
               <div className="mt-8 flex items-center gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
-                <Loader2 className="h-4 w-4 flex-none animate-spin" />
-                <span>
-                  Generating pedagogy… {pedagogyRun?.CompletedSections ?? 0}/{pedagogyRun?.TotalSections ?? '?'} remaining sections done
-                </span>
+                <Loader2 className="h-4 w-4 flex-none animate-spin text-emerald-400" />
+                <div className="min-w-0 flex-1">
+                  <span>
+                    Generating pedagogy… {doneCount}/{targetCount} remaining sections done
+                  </span>
+                  {pedagogyRun?.ActiveSectionTitles && pedagogyRun.ActiveSectionTitles.length > 0 && (
+                    <p className="mt-0.5 truncate text-xs text-emerald-300/80">
+                      Processing: {pedagogyRun.ActiveSectionTitles.join(', ')}
+                    </p>
+                  )}
+                </div>
               </div>
             );
           }

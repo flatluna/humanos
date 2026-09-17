@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw, X } from 'lucide-react';
+import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw, X, ListFilter } from 'lucide-react';
 import {
   getStructuredLearningDocumentEntities,
   getStructuredLearningDocumentConnections,
@@ -44,10 +44,10 @@ type NodeKind = 'Document' | 'Rule' | 'Action' | 'Value' | 'Entity';
 
 function getNodeKind(entityType: string): NodeKind {
   const t = entityType.toLowerCase();
-  if (/(document|law|regulation|contract|reference|reglament)/.test(t)) return 'Document';
-  if (/(rule|norm)/.test(t)) return 'Rule';
-  if (/(activity|action|process|procedure|service)/.test(t)) return 'Action';
-  if (/(quantity|rate|date|time|formula|variable|number|value|result)/.test(t)) return 'Value';
+  if (/(document|law|regulation|contract|reference|reglament|article|clause|standard|specification|rfc|iso|policy)/.test(t)) return 'Document';
+  if (/(rule|norm|constraint|logic|axiom|theorem|condition)/.test(t)) return 'Rule';
+  if (/(activity|action|process|procedure|service|operation|pipeline|method|algorithm)/.test(t)) return 'Action';
+  if (/(quantity|rate|date|time|formula|variable|number|value|result|threshold|metric)/.test(t)) return 'Value';
   return 'Entity';
 }
 
@@ -218,6 +218,7 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
   const [engramGraphs, setEngramGraphs] = useState<EngramGraph[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
+  const [showEntitiesBySection, setShowEntitiesBySection] = useState<Record<string, boolean>>({});
   const [showSecondaryBySection, setShowSecondaryBySection] = useState<Record<string, boolean>>({});
   const [showJsonBySection, setShowJsonBySection] = useState<Record<string, boolean>>({});
   const [factsBySection, setFactsBySection] = useState<Record<string, StructuredLearningKnowledgeFactsResponse | null>>({});
@@ -400,9 +401,22 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                     const showJson = showJsonBySection[section.StructuredLearningDocumentSectionId] ?? false;
                     const showGraph = showGraphBySection[section.StructuredLearningDocumentSectionId] ?? true;
                     const showFacts = showFactsBySection[section.StructuredLearningDocumentSectionId] ?? true;
+                    const showEntities = showEntitiesBySection[section.StructuredLearningDocumentSectionId] ?? false;
                     const hasFactsLoaded = !!factsBySection[section.StructuredLearningDocumentSectionId];
                     return (
                       <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowEntitiesBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showEntities }))}
+                          className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                            showEntities
+                              ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200'
+                              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                          }`}
+                        >
+                          <ListFilter className="h-3 w-3" />
+                          {showEntities ? `Ocultar entidades (${entities.length})` : `Listar entidades (${entities.length})`}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -480,6 +494,75 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                       <p className="max-h-96 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-300">
                         {section.Text || 'Sin contenido.'}
                       </p>
+                    </div>
+                  )}
+
+                  {showEntitiesBySection[section.StructuredLearningDocumentSectionId] && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 shadow-inner">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold">
+                            {entities.length}
+                          </span>
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
+                            Entidades del Engram
+                          </h4>
+                        </div>
+                        <span className="text-[11px] text-slate-400">
+                          {new Set(entities.map((e) => e.EntityType)).size} tipos distintos
+                        </span>
+                      </div>
+                      {entities.length === 0 ? (
+                        <p className="text-xs text-slate-400">No hay entidades extraídas para este engrama.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {entities.map((entity) => {
+                            const kind = getNodeKind(entity.EntityType);
+                            return (
+                              <div
+                                key={entity.EntityId}
+                                className="flex flex-col justify-between rounded-xl border border-white/10 bg-slate-900/80 p-3 shadow-xs hover:border-emerald-400/40 hover:bg-slate-900 transition"
+                              >
+                                <div>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="text-sm font-semibold text-white leading-snug">
+                                      {entity.CanonicalName}
+                                    </span>
+                                    <span
+                                      className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${NODE_KIND_STYLES[kind]}`}
+                                    >
+                                      {entity.EntityType}
+                                    </span>
+                                  </div>
+                                  {entity.Description && (
+                                    <p className="mt-1.5 text-xs text-slate-300 leading-relaxed line-clamp-3">
+                                      {entity.Description}
+                                    </p>
+                                  )}
+                                  {entity.OntologicalClass && (
+                                    <div className="mt-1 text-[10px] text-slate-400 italic">
+                                      Clase: {entity.OntologicalClass}
+                                    </div>
+                                  )}
+                                </div>
+                                {entity.Aliases && entity.Aliases.length > 0 && (
+                                  <div className="mt-2.5 flex flex-wrap items-center gap-1 border-t border-white/5 pt-2 text-[10px] text-slate-400">
+                                    <span className="text-slate-500">Alias:</span>
+                                    {entity.Aliases.map((alias, aIdx) => (
+                                      <span
+                                        key={aIdx}
+                                        className="rounded bg-white/5 px-1.5 py-0.5 text-slate-300 font-mono text-[10px]"
+                                      >
+                                        {alias}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 

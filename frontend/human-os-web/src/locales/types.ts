@@ -919,5 +919,16 @@ export interface Translations {
     photoError: string;
     saving: string;
     saveChanges: string;
+    resumeTitle: string;
+    resumeEmpty: string;
+    resumeLoading: string;
+    resumeError: string;
+    professionalObjective: string;
+    professionalSummary: string;
+    skills: string;
+    workExperience: string;
+    education: string;
+    certifications: string;
+    languages: string;
   };
 }

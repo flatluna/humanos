@@ -478,6 +478,26 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<PlayerBadge> PlayerBadges =>
         Set<PlayerBadge>();
 
+    /// <summary>Process-to-Learning: Persisted business process manuals —
+    /// see <see cref="Models.Processes.ProcessDocumentRecord"/>.</summary>
+    public DbSet<Models.Processes.ProcessDocumentRecord> ProcessDocuments =>
+        Set<Models.Processes.ProcessDocumentRecord>();
+
+    /// <summary>Process-to-Learning: Chapters or major phases —
+    /// see <see cref="Models.Processes.ProcessChapterRecord"/>.</summary>
+    public DbSet<Models.Processes.ProcessChapterRecord> ProcessChapters =>
+        Set<Models.Processes.ProcessChapterRecord>();
+
+    /// <summary>Process-to-Learning: Individual work steps —
+    /// see <see cref="Models.Processes.ProcessStepRecord"/>.</summary>
+    public DbSet<Models.Processes.ProcessStepRecord> ProcessSteps =>
+        Set<Models.Processes.ProcessStepRecord>();
+
+    /// <summary>Process-to-Learning: Process Training & Skills Matrix items —
+    /// see <see cref="Models.Processes.ProcessStepSkillRecord"/>.</summary>
+    public DbSet<Models.Processes.ProcessStepSkillRecord> ProcessStepSkills =>
+        Set<Models.Processes.ProcessStepSkillRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
