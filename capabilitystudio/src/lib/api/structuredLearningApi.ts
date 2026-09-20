@@ -46,6 +46,10 @@ export interface StartStructuredLearningExtractionRequest {
   category?: string | null;
   targetSkill?: string | null;
   pedagogicalAudience?: string | null;
+  /** "L100" (foundational) / "L200" (intermediate) / "L300" (advanced) —
+   * content depth, same convention Microsoft Learn uses for course levels.
+   * Orthogonal to pedagogicalAudience (that's tone/age; this is depth). */
+  courseLevel?: 'L100' | 'L200' | 'L300' | null;
   maxDeepDiveCardsPerNode?: number | null;
   includeProductionStep?: boolean;
   includeHypothesisStep?: boolean;
@@ -287,7 +291,9 @@ export function startStructuredLearningPedagogy(
   uploadedImageBase64?: string | null,
   uploadedImageContentType?: string | null,
   referenceImageUsageInstruction?: string | null,
-  usePerplexitySearch?: boolean | null
+  usePerplexitySearch?: boolean | null,
+  fromEngramNumber?: number | null,
+  toEngramNumber?: number | null
 ): Promise<StructuredLearningPedagogyRunStatus> {
   return apiPost<StructuredLearningPedagogyRunStatus>('/studio/structured-learning/pedagogy/start', {
     structuredLearningDocumentId,
@@ -297,6 +303,8 @@ export function startStructuredLearningPedagogy(
     uploadedImageContentType,
     referenceImageUsageInstruction,
     usePerplexitySearch,
+    fromEngramNumber,
+    toEngramNumber,
   });
 }
 

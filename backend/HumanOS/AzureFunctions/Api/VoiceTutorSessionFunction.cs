@@ -287,7 +287,7 @@ public sealed class VoiceTutorSessionFunction
         if (!string.IsNullOrWhiteSpace(learnerContext))
         {
             var deepDiveOverride = stepType == ExperienceStepType.DeepDive
-                ? "\n\nCRITICAL OVERRIDE FOR DEEP DIVE:\nIgnore any instruction above to give a multi-sentence opening greeting about career objectives. You must strictly follow the DEEP DIVE OPENING RULE: greet briefly and immediately present the exact card text.\n\n"
+                ? "\n\nCRITICAL OVERRIDE FOR DEEP DIVE:\nIgnore any instruction above to give a multi-sentence opening greeting about career objectives. You must strictly follow the DEEP DIVE OPENING RULE: greet briefly, then give ONE genuine, SPECIFIC sentence connecting THIS card's actual concept to the learner's real role/objectives/tools (using real details from LEARNER CONTEXT, worded differently than on other cards — never a repeated generic template), then immediately present the exact card text. You MUST still fully and faithfully cover the ENTIRE card content below, exactly as the DEEP DIVE rules require — the personalization sentence is only a brief hook, never a substitute for actually explaining the card.\n\n"
                 : "\n\n";
             instructions = $"{learnerContext}{deepDiveOverride}{instructions}";
         }
@@ -790,7 +790,7 @@ public sealed class VoiceTutorSessionFunction
 
             if (!string.IsNullOrWhiteSpace(learnerContext))
             {
-                deepDiveInstructions = $"{learnerContext}\n\nCRITICAL OVERRIDE FOR DEEP DIVE:\nIgnore any instruction above to give a multi-sentence opening greeting about career objectives. You must strictly follow the DEEP DIVE OPENING RULE: greet briefly and immediately present the exact card text.\n\n{deepDiveInstructions}";
+                deepDiveInstructions = $"{learnerContext}\n\nCRITICAL OVERRIDE FOR DEEP DIVE:\nIgnore any instruction above to give a multi-sentence opening greeting about career objectives. You must strictly follow the DEEP DIVE OPENING RULE: greet briefly, then give ONE genuine, SPECIFIC sentence connecting THIS card's actual concept to the learner's real role/objectives/tools (using real details from LEARNER CONTEXT, worded differently than on other cards — never a repeated generic template), then immediately present the exact card text. You MUST still fully and faithfully cover the ENTIRE card content below, exactly as the DEEP DIVE rules require — the personalization sentence is only a brief hook, never a substitute for actually explaining the card.\n\n{deepDiveInstructions}";
             }
 
             var deepDiveTools = effectiveIsReviewOnly ? null : BuildDeepDiveTools();

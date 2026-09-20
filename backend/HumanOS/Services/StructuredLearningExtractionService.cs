@@ -67,6 +67,10 @@ public sealed class StructuredLearningCreationOptions
 
     public string? PedagogicalAudience { get; set; }
 
+    /// <summary>"L100"/"L200"/"L300" content depth — see
+    /// StructuredLearningDocument.CourseLevel's own doc comment.</summary>
+    public string? CourseLevel { get; set; }
+
     public int? MaxDeepDiveCardsPerNode { get; set; }
 
     public bool? IncludeProductionStep { get; set; }
@@ -396,6 +400,7 @@ public sealed class StructuredLearningExtractionService
             Category = creationOptions?.Category,
             TargetSkill = creationOptions?.TargetSkill,
             PedagogicalAudience = creationOptions?.PedagogicalAudience,
+            CourseLevel = creationOptions?.CourseLevel,
             MaxDeepDiveCardsPerNode = creationOptions?.MaxDeepDiveCardsPerNode,
             IncludeProductionStep = creationOptions?.IncludeProductionStep ?? true,
             IncludeRecallStep = creationOptions?.IncludeRecallStep ?? true,

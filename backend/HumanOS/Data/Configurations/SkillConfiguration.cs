@@ -30,6 +30,11 @@ public sealed class SkillConfiguration : IEntityTypeConfiguration<Skill>
         builder.Property(x => x.Description)
             .HasMaxLength(2000);
 
+        builder.Property(x => x.AssignmentScope)
+            .HasMaxLength(40);
+
+        builder.Ignore(x => x.ApplicableDepartmentIdsJson);
+
         builder.Property(x => x.IsActive)
             .HasDefaultValue(true)
             .IsRequired();

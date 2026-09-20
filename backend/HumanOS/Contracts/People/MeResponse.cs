@@ -11,6 +11,14 @@ public sealed class MeResponse
 
     public string? TenantName { get; set; }
 
+    /// <summary>True when the signed-in Person's Tenant is an academic
+    /// institution (Tenant.OrgType == "Academic", e.g. Tecnológico de
+    /// Monterrey) rather than a corporate employer — drives the employee
+    /// portal's branding/presentation (logo, header copy, student-only
+    /// sections). False (default) for a normal company tenant or an
+    /// individual (no-company) account.</summary>
+    public bool IsAcademicTenant { get; set; }
+
     public string? Email { get; set; }
 
     /// <summary>The signed-in Person's PersonProfile.PreferredLanguage

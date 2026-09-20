@@ -1,5 +1,6 @@
 import { createBrowserRouter, redirect } from 'react-router';
 import { EmployeeAppLayout } from '@/layouts/EmployeeAppLayout';
+import { withAcademicGuard } from '@/components/RequireAcademicTenant';
 
 /** Routes deliberately mirror human-os-web's /capabilities/* structure
  * (same ported feature module, see src/features/capabilities) so a
@@ -52,44 +53,48 @@ export const router = createBrowserRouter([
         loader: () => redirect('/'),
       },
       {
+        path: 'start-in-your-role',
+        lazy: () => import('@/features/start-in-your-role').then((m) => ({ Component: m.StartInYourRolePage })),
+      },
+      {
         path: 'tec-contigo',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecContigoIndexPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecContigoIndexPage) })),
       },
       {
         path: 'tec-contigo/mientras-estudias',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecMientrasEstudiasPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecMientrasEstudiasPage) })),
       },
       {
         path: 'tec-contigo/comienza-tu-carrera',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecComienzaTuCarreraPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecComienzaTuCarreraPage) })),
       },
       {
         path: 'tec-contigo/mantente-vigente',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecMantenteVigentePage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecMantenteVigentePage) })),
       },
       {
         path: 'tec-contigo/conecta-y-contribuye',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecConectaYContribuyePage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecConectaYContribuyePage) })),
       },
       {
         path: 'tec-contigo/semestre-actual',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecSemestreActualPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecSemestreActualPage) })),
       },
       {
         path: 'tec-contigo/industria-monterrey',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecIndustriaMonterreyPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecIndustriaMonterreyPage) })),
       },
       {
         path: 'tec-contigo/objetivo-profesional',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecObjetivoProfesionalPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecObjetivoProfesionalPage) })),
       },
       {
         path: 'tec-contigo/fortalecer-conocimientos',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecFortalecerConocimientosPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecFortalecerConocimientosPage) })),
       },
       {
         path: 'tec-contigo/capacidades-humanas',
-        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: m.TecCapacidadesHumanasPage })),
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecCapacidadesHumanasPage) })),
       },
       {
         path: 'brain',

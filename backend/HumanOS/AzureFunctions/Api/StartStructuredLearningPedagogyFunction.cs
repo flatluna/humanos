@@ -45,6 +45,14 @@ public sealed class StartStructuredLearningPedagogyFunction
         /// <summary>Optional override to enable/disable Perplexity AI search for each engram during pedagogy generation.
         /// When null, defaults to the setting saved in the document's ConfigSnapshotJson.</summary>
         public bool? UsePerplexitySearch { get; set; }
+
+        /// <summary>Optional 1-based inclusive engram range (by position in the
+        /// document, not raw SortOrder) — lets a designer regenerate only e.g.
+        /// engrams 1 through 10 instead of the whole document. Null means no
+        /// lower/upper bound.</summary>
+        public int? FromEngramNumber { get; set; }
+
+        public int? ToEngramNumber { get; set; }
     }
 
     [Function("StartStructuredLearningPedagogy")]
@@ -96,7 +104,9 @@ public sealed class StartStructuredLearningPedagogyFunction
                 uploadedImageBytes,
                 body.UploadedImageContentType,
                 body.ReferenceImageUsageInstruction,
-                body.UsePerplexitySearch);
+                body.UsePerplexitySearch,
+                body.FromEngramNumber,
+                body.ToEngramNumber);
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);
         }
         catch (StructuredLearningPedagogyOrchestrator.ActiveRunConflictException ex)

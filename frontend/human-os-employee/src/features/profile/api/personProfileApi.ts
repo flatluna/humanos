@@ -1,4 +1,4 @@
-import { apiPost, apiPut, API_BASE_URL } from '@/features/capabilities/api/httpClient';
+import { apiPost, apiPostFile, apiPut, API_BASE_URL } from '@/features/capabilities/api/httpClient';
 
 /**
  * "Mi Perfil" — client for the employee's own self-service profile
@@ -50,6 +50,31 @@ export interface UpsertPersonProfileRequest {
   biography?: string | null;
 }
 
+export interface PersonDto {
+  personId: string;
+  tenantId: string;
+  email: string;
+  isActive: boolean;
+  lastLoginDate: string | null;
+  createdDate: string;
+  updatedDate: string;
+  orgRole: string;
+  departmentId: string | null;
+  jobRoleId: string | null;
+  managerId: string | null;
+}
+
+export async function getPerson(personId: string): Promise<PersonDto | null> {
+  const response = await fetch(`${API_BASE_URL}/people/${personId}`, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+
+  return (await response.json()) as PersonDto;
+}
+
 /** Returns `null` (not a thrown error) when the employee has no profile
  *  row yet — every account created before this feature, or that simply
  *  never filled it in, hits this on first visit to "Mi Perfil". */
@@ -70,4 +95,20 @@ export function createMyProfile(personId: string, body: UpsertPersonProfileReque
 
 export function updateMyProfile(personId: string, body: UpsertPersonProfileRequest): Promise<PersonProfileDto> {
   return apiPut<PersonProfileDto>(`/people/${personId}/profile`, body);
+}
+
+/** Uploads a new profile photo (overwrites any existing one — the backend
+ *  always writes it to a single `{personId}/photo.{ext}` blob path). */
+export function uploadProfilePhoto(personId: string, file: File): Promise<{ personId: string; photoUrl: string }> {
+  return apiPostFile(`/people/${personId}/profile/photo`, file);
+}
+
+/** Direct <img src> URL for the employee's own profile photo. `version` is
+ *  an arbitrary cache-busting value (e.g. `UpdatedDate`) — the endpoint is
+ *  served with `Cache-Control: no-cache`, but browsers still dedupe
+ *  identical URLs within a single page session, so a fresh upload needs a
+ *  changed query string to actually show up immediately. */
+export function getProfilePhotoUrl(personId: string, version?: string | number): string {
+  const query = version !== undefined ? `?v=${encodeURIComponent(String(version))}` : '';
+  return `${API_BASE_URL}/people/${personId}/profile/photo${query}`;
 }

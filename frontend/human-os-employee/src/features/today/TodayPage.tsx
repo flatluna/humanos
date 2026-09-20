@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router';
+import { UserPlus, Briefcase, Camera, RefreshCw, Users, Calendar, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { getEnrolledCapabilities, type EnrolledCapability } from '@/features/capabilities/api/enrolledCapabilitiesApi';
-import { getMyProfile, type PersonProfileDto } from '@/features/profile/api/personProfileApi';
+import { getMyProfile, getProfilePhotoUrl, uploadProfilePhoto, type PersonProfileDto } from '@/features/profile/api/personProfileApi';
 import { getMyResume, type PersonResumeDto } from '@/features/profile/api/resumeApi';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -12,7 +13,7 @@ import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import type { CapabilityLevel, CapabilityProgress } from './types';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
 import { demoTecPrograms } from './demoTecPrograms';
-import { TecContigoHub } from '@/features/tec-contigo';
+import { TecContigoHub, LearningExecutiveSummary } from '@/features/tec-contigo';
 
 type GreetingKey = 'morning' | 'afternoon' | 'evening';
 
@@ -108,6 +109,110 @@ function scoreToLevel(averageScore: number | null | undefined): CapabilityLevel 
  *  human-state check-in sections here — those are consumer-app-only
  *  features this portal never adopted (v1 scope is just the assigned
  *  learning runtime, see EmployeeSidebar's doc comment). */
+
+type CompanyStageLink = {
+  title: string;
+  description: string;
+  status: string;
+  moment: string;
+  momentColor: string;
+  icon: LucideIcon;
+  active?: boolean;
+  href?: string;
+};
+
+/** Corporate mirror of tec-contigo's Tec360StageNavigation — one company
+ * relationship lifecycle instead of the academic one, shown only for
+ * non-academic tenants (see TecContigoHub's isAcademicTenant gate below). */
+function CompanyLifecycleNavigation({ tenantName, isEn }: { tenantName: string; isEn: boolean }) {
+  const navigate = useNavigate();
+  const stages: CompanyStageLink[] = [
+    {
+      title: isEn ? 'Start in Your Role' : 'Comienza en tu rol',
+      description: isEn
+        ? 'Get to know the company, complete your essential training, and begin developing the knowledge required for your role.'
+        : 'Conoce la empresa, completa tu capacitación esencial y comienza a desarrollar los conocimientos que requiere tu puesto.',
+      status: isEn ? 'You are here' : 'Estás aquí',
+      moment: isEn ? 'First 90 days' : 'Primeros 90 días',
+      momentColor: 'text-emerald-700 dark:text-emerald-300',
+      icon: UserPlus,
+      active: true,
+      href: '/start-in-your-role',
+    },
+    {
+      title: isEn ? 'In your role' : 'En tu puesto',
+      description: isEn
+        ? 'Grow in your day-to-day: assigned courses, real objectives, and evidence of your progress.'
+        : 'Crece en tu día a día: cursos asignados, objetivos reales y evidencia de tu progreso.',
+      status: isEn ? 'Ongoing' : 'En curso',
+      moment: isEn ? 'Every day' : 'Cada día',
+      momentColor: 'text-blue-700 dark:text-blue-300',
+      icon: Briefcase,
+    },
+    {
+      title: isEn ? 'Stay current' : 'Mantente vigente',
+      description: isEn
+        ? 'Update your capabilities as your role and industry evolve.'
+        : 'Actualiza tus capacidades conforme evolucionan tu puesto y tu industria.',
+      status: isEn ? 'Throughout your career' : 'A lo largo de tu carrera',
+      moment: isEn ? 'Always' : 'Siempre',
+      momentColor: 'text-amber-700 dark:text-amber-300',
+      icon: RefreshCw,
+    },
+    {
+      title: isEn ? `After ${tenantName}` : `Después de ${tenantName}`,
+      description: isEn
+        ? 'What you built here stays with you — turn it into your next opportunity, wherever it is.'
+        : 'Lo que construiste aquí te acompaña — conviértelo en tu siguiente oportunidad, donde sea que esté.',
+      status: isEn ? 'Whenever that day comes' : 'Cuando llegue ese momento',
+      moment: isEn ? 'Alumni' : 'Alumni',
+      momentColor: 'text-violet-700 dark:text-violet-300',
+      icon: Users,
+    },
+  ];
+
+  return (
+    <section className="mx-auto max-w-6xl px-6 pt-8" aria-labelledby="company-lifecycle-title">
+      <h3 id="company-lifecycle-title" className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60">
+        {isEn ? `Your journey with ${tenantName}` : `Tu vida con ${tenantName}`}
+      </h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {stages.map((stage, index) => {
+          const Icon = stage.icon;
+          return (
+            <div
+              key={stage.title}
+              className={`rounded-2xl border p-4 ${stage.active ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-400/30 dark:bg-emerald-400/10' : 'border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.03]'} ${stage.href ? 'cursor-pointer' : ''}`}
+              onClick={stage.href ? () => navigate(stage.href!) : undefined}
+              onKeyDown={stage.href ? (event) => { if (event.key === 'Enter' || event.key === ' ') navigate(stage.href!); } : undefined}
+              role={stage.href ? 'link' : undefined}
+              tabIndex={stage.href ? 0 : undefined}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/70">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-white/55">0{index + 1}</span>
+              </div>
+              <h4 className="mt-4 font-semibold text-slate-950 dark:text-white">{stage.title}</h4>
+              <span className={`mt-1 inline-flex items-center gap-1.5 text-xs font-bold ${stage.momentColor}`}>
+                <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                {stage.moment}
+              </span>
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-white/65">{stage.description}</p>
+              <span
+                className={`mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${stage.active ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-200' : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/65'}`}
+              >
+                {stage.status}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function TodayPage() {
   const [isAcademicDetailsOpen, setIsAcademicDetailsOpen] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
@@ -116,6 +221,8 @@ export function TodayPage() {
   const { t, language } = useI18n();
   const personId = user?.personId ?? '';
   const greetingKey = useGreetingKey();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const profileQuery = useQuery<PersonProfileDto | null>({
     queryKey: ['my-profile', personId],
     queryFn: () => getMyProfile(personId),
@@ -126,6 +233,19 @@ export function TodayPage() {
     queryFn: () => getMyResume(personId),
     enabled: !!personId,
   });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (file: File) => uploadProfilePhoto(personId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-profile', personId] });
+    },
+  });
+
+  function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) uploadPhotoMutation.mutate(file);
+  }
 
   const greetings: Record<GreetingKey, string> = useMemo(() => ({
     morning: t.todayGreetingMorning,
@@ -233,6 +353,9 @@ export function TodayPage() {
       <main>
         <style>{`span[class*="text-[10px]"] { display: none; }`}</style>
         <div className="mx-auto max-w-6xl px-6 pt-10">
+          {user?.isAcademicTenant && (
+            <img src="/TecMOnterreyLogo.png" alt="Tecnológico de Monterrey" className="mb-5 h-10 sm:h-12 w-auto object-contain object-left" />
+          )}
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">{academic.institution || 'Human OS'}</p>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">
             {greetings[greetingKey]}{displayName ? `, ${displayName}` : ''}
@@ -240,7 +363,7 @@ export function TodayPage() {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-white/60">
             {language === 'es'
               ? 'Tu ruta de crecimiento conecta tu perfil, tus objetivos y las capacidades que necesitas para tu siguiente etapa profesional.'
-              : 'Your growth path connects your profile, your goals, and the capabilities you need for your next professional stage.'}
+              : 'We want to help you maximize your full potential.'}
           </p>
           {(academic.degree || academic.graduationYear || academic.academicStage) && (
             <p className="mt-4 text-sm font-medium text-slate-600 dark:text-white/60">
@@ -250,11 +373,43 @@ export function TodayPage() {
         </div>
 
         <section className="mx-auto grid max-w-6xl gap-5 px-6 pt-8 lg:grid-cols-[1.1fr_0.9fr]">
-          <Card className="border-0 bg-slate-950 p-7 text-white shadow-xl shadow-blue-950/10 dark:border dark:border-white/10 dark:bg-white/[0.05] dark:shadow-none">
+          <Card className="!border-0 !bg-slate-950 p-7 text-white shadow-xl shadow-blue-950/10 dark:!border dark:border-white/10 dark:!bg-white/[0.05] dark:shadow-none">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">{language === 'es' ? 'Tu perfil hoy' : 'Your profile today'}</p>
-                <h2 className="mt-3 text-2xl font-semibold">{safeName}</h2>
+              <div className="flex items-center gap-4">
+                <div className="group relative h-14 w-14 shrink-0">
+                  {profile?.ProfilePhotoUrl ? (
+                    <img
+                      src={getProfilePhotoUrl(personId, profile.UpdatedDate)}
+                      alt={safeName}
+                      className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/25"
+                    />
+                  ) : (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-lg font-bold ring-1 ring-white/25 backdrop-blur">
+                      {safeName?.trim().charAt(0).toUpperCase() || '?'}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadPhotoMutation.isPending}
+                    aria-label={language === 'es' ? 'Cambiar foto de perfil' : 'Change profile photo'}
+                    title={language === 'es' ? 'Cambiar foto de perfil' : 'Change profile photo'}
+                    className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-slate-950 bg-blue-600 text-white shadow-md transition hover:bg-blue-700 disabled:opacity-60 dark:border-slate-900"
+                  >
+                    <Camera className="h-3 w-3" />
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">{language === 'es' ? 'Tu perfil hoy' : 'Your profile today'}</p>
+                  <h2 className="mt-3 text-2xl font-semibold">{safeName}</h2>
+                </div>
               </div>
               <Link to="/profile" className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10">
                 {language === 'es' ? 'Ver perfil' : 'View profile'}
@@ -307,7 +462,14 @@ export function TodayPage() {
         )}
 
         {/* TODO: Después de validar las páginas de Tec Contigo, las listas detalladas podrán moverse desde Today hacia sus páginas especializadas. */}
-        <TecContigoHub />
+        <section className="mx-auto max-w-6xl px-6 pt-8">
+          <LearningExecutiveSummary />
+        </section>
+        {user?.isAcademicTenant ? (
+          <TecContigoHub />
+        ) : (
+          <CompanyLifecycleNavigation tenantName={user?.tenantName ?? 'tu empresa'} isEn={language === 'en'} />
+        )}
 
         {capabilityProgress.length > 0 && (
           <section className="mx-auto max-w-6xl px-6 pt-8">

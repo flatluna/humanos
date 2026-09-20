@@ -150,6 +150,15 @@ interface LabVersionListItem {
   IdVersion: string;
 }
 
+export interface LabVersionDetail {
+  IdVersion: string;
+  ObjetivoGeneral: string;
+}
+
+export function getLabVersion(idVersion: string, orgTenantId: string): Promise<LabVersionDetail> {
+  return labsApiGet<LabVersionDetail>(`/lab-versions/${encodeURIComponent(idVersion)}`, orgTenantId);
+}
+
 interface ScenarioListItem {
   IdScenario: string;
 }
@@ -250,22 +259,58 @@ export interface AttemptVoiceSession {
   ActorNombre: string | null;
   ActorRol: string | null;
   ActorId: string | null;
+  Committee: AttemptVoiceSessionActor[] | null;
+}
+
+export interface AttemptVoiceSessionActor {
+  ClientSecret: string;
+  RealtimeCallsUrl: string;
+  Model: string;
+  Voice: string;
+  ExpiresAtUnixSeconds: number | null;
+  ActorNombre: string | null;
+  ActorRol: string | null;
+  ActorId: string | null;
+}
+
+export interface AttemptVoiceEmployeeProfilePayload {
+  EmployeeName?: string;
+  CompanyName?: string;
+  JobRoleTitle?: string;
+  JobRoleSummary?: string;
+  RequiredTechnicalSkills?: string[];
+  RequiredSoftSkills?: string[];
+  ResumeSummary?: string;
+  ProfessionalObjective?: string;
+  AcademicProfileSummary?: string;
+  ThesisSummary?: string;
 }
 
 export function getAttemptVoiceSession(
   idAttempt: string,
   orgTenantId: string,
-  employeeProfile?: {
-    EmployeeName?: string;
-    CompanyName?: string;
-    JobRoleTitle?: string;
-    JobRoleSummary?: string;
-    RequiredTechnicalSkills?: string[];
-    RequiredSoftSkills?: string[];
-    ResumeSummary?: string;
-  },
+  employeeProfile?: AttemptVoiceEmployeeProfilePayload,
 ): Promise<AttemptVoiceSession> {
   return labsApiPost<AttemptVoiceSession>(`/attempts/${encodeURIComponent(idAttempt)}/voice-session`, orgTenantId, employeeProfile);
+}
+
+/** Academic Defense committee only: mints a FRESH Realtime session for the next sinodal right
+ * before the frontend connects to them, grounded in the real transcript so far (backend reads
+ * ConversationTurns itself — nothing to pass here except which actor is speaking next). This is
+ * what lets later sinodales know what was already asked/answered instead of starting blank. */
+export function getAttemptCommitteeNextSpeakerVoiceSession(
+  idAttempt: string,
+  orgTenantId: string,
+  actorId: string,
+  employeeProfile?: AttemptVoiceEmployeeProfilePayload,
+  options?: { isFirstCommitteeSpeaker?: boolean; isIntroductionOnlyTurn?: boolean },
+): Promise<AttemptVoiceSessionActor> {
+  return labsApiPost<AttemptVoiceSessionActor>(`/attempts/${encodeURIComponent(idAttempt)}/committee-voice-session`, orgTenantId, {
+    ActorId: actorId,
+    IsFirstCommitteeSpeaker: options?.isFirstCommitteeSpeaker ?? false,
+    IsIntroductionOnlyTurn: options?.isIntroductionOnlyTurn ?? false,
+    ...employeeProfile,
+  });
 }
 
 export type ConversationTurnSpeakerType = 'PARTICIPANT' | 'SIMULATED_ACTOR';

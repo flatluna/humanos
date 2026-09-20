@@ -199,6 +199,57 @@ public sealed class StructuredLearningVideoPromptAgent
         Keep the same subject identity/appearance and environment
         description consistent across all clips.
 
+        STEP 3.5 — MANDATORY CONTINUATION INSTRUCTION FOR EVERY CLIP AFTER
+        THE FIRST (CRITICAL, ALWAYS INCLUDE, NEVER SKIP). Every clip except
+        the very first one in the sequence is started from a real starting
+        image that is the EXACT LAST FRAME of the previous clip's own
+        generated video — not a fresh scene, not a new shot, not anything
+        the Environment/Scene text implies on its own. Regardless of what
+        the Environment or Scene description otherwise says, you MUST
+        append this exact instruction, adapted to the clip's own language
+        (Spanish or English), at the END of every clip's Scene line from
+        clip 2 onward: the provided starting image is the direct
+        continuation of the previous clip — do NOT change the camera
+        angle/framing, do NOT refocus or re-establish the shot, do NOT
+        pause, fade in, cut, or otherwise treat this as a new scene start;
+        the subject must continue speaking/acting immediately from that
+        exact frame with zero visual discontinuity, as if this clip were
+        simply the next few seconds of the same continuous shot. Example
+        (English): "This clip continues directly from the exact last
+        frame of the previous video — do not change the camera angle, do
+        not refocus, do not pause or cut; continue the action and speech
+        immediately as an unbroken continuation of the same shot."
+        Example (Spanish): "Este clip continúa directamente desde el
+        último fotograma exacto del video anterior — no cambies el ángulo
+        de cámara, no reenfoques, no hagas pausas ni cortes; continúa la
+        acción y el habla de inmediato como una continuación ininterrumpida
+        de la misma toma." Never omit this for clip 2 and beyond, and never
+        include it for clip 1 (which starts from the user's own chosen
+        starting image, not a previous clip's last frame).
+
+        STEP 3.6 — APPEARANCE LOCK, UNLESS AN EXCEPTION IS EXPLICITLY STATED
+        (CRITICAL, ALWAYS INCLUDE). Video generation models can drift and
+        silently change the subject's clothing, hair, accessories, or other
+        appearance details between clips, breaking continuity. To prevent
+        this, append this exact instruction, adapted to the clip's own
+        language, at the END of every clip's Scene line (for ALL clips,
+        including clip 1): the subject's clothing, hairstyle, and overall
+        appearance must remain EXACTLY the same as in the starting/reference
+        image — do NOT change clothing, hair, accessories, or any other
+        visual detail of the subject unless THIS SPECIFIC clip's own Scene
+        description explicitly states a change (e.g. the user's own input
+        explicitly says she puts on a jacket, changes rooms, etc.). Example
+        (English): "Keep the subject's clothing, hairstyle, and appearance
+        exactly as shown in the starting image — do not change anything
+        about her outfit, hair, or accessories unless explicitly stated
+        above." Example (Spanish): "Mantén la ropa, el peinado y la
+        apariencia del sujeto exactamente como se ve en la imagen inicial —
+        no cambies nada de su vestuario, cabello o accesorios salvo que se
+        indique explícitamente arriba." If the user's own input for THIS
+        clip does explicitly describe an appearance change, state that
+        change plainly instead of this lock sentence — the lock is the
+        DEFAULT, only overridden when the clip's own content requires it.
+
         LOGICAL FLOW BETWEEN CLIPS — CRITICAL. The sequence must read as ONE
         coherent lesson, not disconnected beats. Two failure modes to avoid:
         (a) a later clip introduces new content (e.g. a concrete numeric

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X, Loader2, Sparkles, Building2, Award, GraduationCap } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X, Loader2, Sparkles, Building2, Award, GraduationCap, RotateCcw, UploadCloud } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   addStructuredLearningDocumentToProgram,
@@ -18,6 +18,7 @@ import {
   type StructuredLearningPedagogyRunStatus,
 } from '../lib/api/structuredLearningApi';
 import { getPrograms, type BackendProgram } from '../lib/api/programsApi';
+import { readFileAsBase64 } from '../lib/api/pdfPipelineApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { getStructuredLearningTopics, type StructuredLearningTopic } from '../lib/api/structuredLearningTopicsApi';
 import { getSkills, type SkillDto } from '../lib/api/skillsApi';
@@ -69,6 +70,22 @@ export default function StructuredLearningDocumentDetailPage() {
   const [pedagogyRun, setPedagogyRun] = useState<StructuredLearningPedagogyRunStatus | null>(null);
   const [pedagogyStarting, setPedagogyStarting] = useState(false);
   const [pedagogyError, setPedagogyError] = useState<string | null>(null);
+
+  // "Restart from first engram" (2026-09-19) — forces a full regeneration of
+  // EVERY section (not just pending ones) while letting the designer fix the
+  // language and optionally upload a company logo/reference image reused
+  // across every generated illustration. Backend now deletes each section's
+  // old steps/illustrations/hypothesis/assessment history atomically before
+  // writing the fresh content (StructuredLearningPedagogyService).
+  const [showRestartModal, setShowRestartModal] = useState(false);
+  const [restartLanguage, setRestartLanguage] = useState<'es' | 'en'>('es');
+  const [restartImageFile, setRestartImageFile] = useState<File | null>(null);
+  const [restartImagePreviewUrl, setRestartImagePreviewUrl] = useState<string | null>(null);
+  const [restartImageInstruction, setRestartImageInstruction] = useState('');
+  const [restartFromEngram, setRestartFromEngram] = useState('');
+  const [restartToEngram, setRestartToEngram] = useState('');
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!documentId) {
@@ -163,6 +180,76 @@ export default function StructuredLearningDocumentDetailPage() {
       setPedagogyError(err instanceof Error ? err.message : 'Could not start pedagogy generation.');
     } finally {
       setPedagogyStarting(false);
+    }
+  }
+
+  function openRestartModal() {
+    if (document) {
+      try {
+        const snapshot = document.ConfigSnapshotJson ? JSON.parse(document.ConfigSnapshotJson) : null;
+        const savedLanguage = snapshot?.LanguageCode ?? snapshot?.languageCode;
+        if (savedLanguage === 'es' || savedLanguage === 'en') setRestartLanguage(savedLanguage);
+      } catch {
+        // Keep the current default.
+      }
+    }
+    setRestartError(null);
+    setShowRestartModal(true);
+  }
+
+  function closeRestartModal() {
+    if (restarting) return;
+    setShowRestartModal(false);
+    setRestartError(null);
+    if (restartImagePreviewUrl) URL.revokeObjectURL(restartImagePreviewUrl);
+    setRestartImagePreviewUrl(null);
+    setRestartImageFile(null);
+    setRestartImageInstruction('');
+  }
+
+  async function handleRestartFromFirstEngram() {
+    if (!documentId || restarting) return;
+    if (restartImageFile && !restartImageInstruction.trim()) {
+      setRestartError('Describe how the logo/reference image should be used (e.g. "use this logo on clothing/signage in every illustration").');
+      return;
+    }
+    const fromNum = restartFromEngram.trim() ? Number(restartFromEngram.trim()) : null;
+    const toNum = restartToEngram.trim() ? Number(restartToEngram.trim()) : null;
+    if ((fromNum != null && (!Number.isInteger(fromNum) || fromNum < 1)) || (toNum != null && (!Number.isInteger(toNum) || toNum < 1))) {
+      setRestartError('Engram range must be positive whole numbers (e.g. 1 to 10).');
+      return;
+    }
+    if (fromNum != null && toNum != null && fromNum > toNum) {
+      setRestartError('"From" engram must be less than or equal to "To" engram.');
+      return;
+    }
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      const uploadedImageBase64 = restartImageFile ? await readFileAsBase64(restartImageFile) : null;
+      const run = await startStructuredLearningPedagogy(
+        documentId,
+        restartLanguage,
+        true,
+        uploadedImageBase64,
+        restartImageFile?.type ?? null,
+        restartImageFile ? restartImageInstruction.trim() || null : null,
+        undefined,
+        fromNum,
+        toNum,
+      );
+      setPedagogyRun(run);
+      setShowRestartModal(false);
+      if (restartImagePreviewUrl) URL.revokeObjectURL(restartImagePreviewUrl);
+      setRestartImagePreviewUrl(null);
+      setRestartImageFile(null);
+      setRestartImageInstruction('');
+      setRestartFromEngram('');
+      setRestartToEngram('');
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : 'Could not start the full regeneration.');
+    } finally {
+      setRestarting(false);
     }
   }
 
@@ -570,6 +657,14 @@ export default function StructuredLearningDocumentDetailPage() {
                   <Sparkles className="h-3.5 w-3.5" />
                   {pedagogyStarting ? 'Starting…' : 'Continue generating'}
                 </button>
+                <button
+                  type="button"
+                  onClick={openRestartModal}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-400/40 bg-transparent px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/10"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Restart from first engram
+                </button>
                 {pedagogyError && <span className="text-red-300">{pedagogyError}</span>}
               </div>
             );
@@ -594,6 +689,14 @@ export default function StructuredLearningDocumentDetailPage() {
             <Trash2 className="h-4 w-4" />
             {deleting ? 'Deleting...' : 'Delete course'}
           </button>
+          <button
+            type="button"
+            onClick={openRestartModal}
+            disabled={pedagogyRun?.Stage === 'Running'}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 font-medium text-slate-200 transition hover:border-white/20 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RotateCcw className="h-4 w-4" /> Restart from first engram
+          </button>
           <Link
             to="/"
             className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 font-medium text-slate-200 transition hover:border-white/20 hover:bg-white/[0.06]"
@@ -601,6 +704,136 @@ export default function StructuredLearningDocumentDetailPage() {
             <ArrowLeft className="h-4 w-4" /> Keep browsing catalog
           </Link>
         </div>
+
+        {showRestartModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={closeRestartModal}
+          >
+            <div
+              className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Restart from first engram</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Regenerates every section from scratch — the old cards, illustrations, hypothesis answers and
+                    assessment/recall history for each engram are deleted and replaced atomically.
+                  </p>
+                </div>
+                <button onClick={closeRestartModal} className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Close">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-400">Language</label>
+                  <select
+                    value={restartLanguage}
+                    onChange={(e) => setRestartLanguage(e.target.value as 'es' | 'en')}
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                  >
+                    <option value="es">Español</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-400">Engram range (optional)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={restartFromEngram}
+                      onChange={(e) => setRestartFromEngram(e.target.value)}
+                      placeholder="From (e.g. 1)"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                    />
+                    <span className="text-slate-500">to</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={restartToEngram}
+                      onChange={(e) => setRestartToEngram(e.target.value)}
+                      placeholder="To (e.g. 10)"
+                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">Leave both blank to restart every engram in the course.</p>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <label className="block text-xs font-medium text-slate-400">Company logo / reference image (optional)</label>
+                  {restartImagePreviewUrl ? (
+                    <div className="flex items-center gap-3">
+                      <img src={restartImagePreviewUrl} alt="reference" className="h-16 w-16 rounded-lg object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-slate-300">{restartImageFile?.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (restartImagePreviewUrl) URL.revokeObjectURL(restartImagePreviewUrl);
+                            setRestartImagePreviewUrl(null);
+                            setRestartImageFile(null);
+                          }}
+                          className="mt-1 text-xs font-medium text-brand-400 hover:text-brand-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 py-3 text-sm text-slate-400 hover:border-white/25 hover:text-slate-300">
+                      <UploadCloud className="h-4 w-4" />
+                      Upload logo / reference image
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setRestartImageFile(file);
+                          setRestartImagePreviewUrl((prev) => {
+                            if (prev) URL.revokeObjectURL(prev);
+                            return file ? URL.createObjectURL(file) : null;
+                          });
+                        }}
+                      />
+                    </label>
+                  )}
+                  {restartImageFile && (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">How should this image be used?</label>
+                      <textarea
+                        value={restartImageInstruction}
+                        onChange={(e) => setRestartImageInstruction(e.target.value)}
+                        rows={2}
+                        placeholder="e.g. use this exact logo on clothing/signage in every illustration"
+                        className="input w-full"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {restartError && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">{restartError}</div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleRestartFromFirstEngram}
+                  disabled={restarting}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition-transform enabled:hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {restarting ? 'Starting…' : 'Restart all sections now'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
           <h3 className="text-lg font-semibold text-white">{t('structuredLearningVisibility.title')}</h3>

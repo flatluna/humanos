@@ -424,7 +424,34 @@ public sealed class EmployeeScoringProfileService
 
         profile.YearsOfExperience = CalculateYearsOfExperience(profile.WorkExperience);
 
+        profile.StudentAcademicProfileSummary = BuildStudentAcademicProfileSummary(personResume?.StudentAcademicProfileJson);
+
         return profile;
+    }
+
+    private static string? BuildStudentAcademicProfileSummary(string? studentAcademicProfileJson)
+    {
+        if (string.IsNullOrWhiteSpace(studentAcademicProfileJson)) return null;
+        HumanOS.Contracts.People.StudentAcademicProfile? academic;
+        try
+        {
+            academic = System.Text.Json.JsonSerializer.Deserialize<HumanOS.Contracts.People.StudentAcademicProfile>(
+                studentAcademicProfileJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            return null;
+        }
+        if (academic is null || string.IsNullOrWhiteSpace(academic.Institution)) return null;
+
+        var parts = new List<string> { academic.Institution };
+        if (!string.IsNullOrWhiteSpace(academic.Degree)) parts.Add(academic.Degree);
+        if (!string.IsNullOrWhiteSpace(academic.AcademicStage)) parts.Add(academic.AcademicStage);
+        if (academic.CumulativeAverage is not null)
+        {
+            parts.Add($"Average: {academic.CumulativeAverage}/{academic.AverageScale ?? "100"}");
+        }
+        return string.Join(" | ", parts);
     }
 
     private static WorkExperienceInfo ParseWorkExperience(string entry)

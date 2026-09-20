@@ -22,6 +22,8 @@ public sealed class StructuredLearningWorkplaceApplicationContext
     public List<string> TechnicalSkills { get; set; } = [];
     public string? EngramImpactTier { get; set; }
     public string? EngramPersonalizationRationale { get; set; }
+    public bool IsStudent { get; set; }
+    public string? StudentAcademicProfileSummary { get; set; }
 }
 
 public sealed class StructuredLearningWorkplaceApplicationResult

@@ -1,13 +1,15 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Award, Briefcase, CheckCircle2, GraduationCap, Languages, User } from 'lucide-react';
+import { Award, Briefcase, Camera, CheckCircle2, GraduationCap, Languages, User, X, ZoomIn } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import {
   createMyProfile,
   getMyProfile,
+  getProfilePhotoUrl,
   updateMyProfile,
+  uploadProfilePhoto,
   type PersonProfileDto,
   type UpsertPersonProfileRequest,
 } from './api/personProfileApi';
@@ -180,6 +182,7 @@ export function ProfilePage() {
   const { t, language } = useI18n();
   const personId = user?.personId ?? '';
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<ProfileFormState>(emptyForm);
   const [savedMessage, setSavedMessage] = useState(false);
@@ -243,9 +246,24 @@ export function ProfilePage() {
     },
   });
 
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (file: File) => uploadProfilePhoto(personId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-profile', personId] });
+    },
+  });
+
+  function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) uploadPhotoMutation.mutate(file);
+  }
+
   function handleChange(key: keyof ProfileFormState, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
+
+  const [isPhotoZoomOpen, setIsPhotoZoomOpen] = useState(false);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -282,15 +300,56 @@ export function ProfilePage() {
       {/* Gradient header banner — same visual family as CareerPlanPage's. */}
       <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 p-6 text-white shadow-lg shadow-indigo-500/20 dark:border-white/10 sm:p-8">
         <div className="flex items-center gap-4">
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold ring-1 ring-white/25 backdrop-blur">
-            {initialsOf(user?.name ?? 'Empleado')}
-          </span>
+          <div className="group relative h-16 w-16 shrink-0">
+            {profileQuery.data?.ProfilePhotoUrl ? (
+              <button
+                type="button"
+                onClick={() => setIsPhotoZoomOpen(true)}
+                aria-label="Ampliar foto de perfil"
+                title="Ampliar foto de perfil"
+                className="group/zoom relative block h-16 w-16 overflow-hidden rounded-2xl ring-1 ring-white/25"
+              >
+                <img
+                  src={getProfilePhotoUrl(personId, profileQuery.data.UpdatedDate)}
+                  alt={user?.name ?? 'Empleado'}
+                  className="h-16 w-16 object-cover"
+                />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover/zoom:opacity-100">
+                  <ZoomIn className="h-5 w-5 text-white" />
+                </span>
+              </button>
+            ) : (
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold ring-1 ring-white/25 backdrop-blur">
+                {initialsOf(user?.name ?? 'Empleado')}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadPhotoMutation.isPending}
+              aria-label="Cambiar foto de perfil"
+              title="Cambiar foto de perfil"
+              className="absolute -bottom-1.5 -right-1.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-md transition hover:bg-indigo-700 disabled:opacity-60 dark:border-slate-900"
+            >
+              <Camera className="h-3.5 w-3.5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+          </div>
           <div>
             <p className="text-lg font-semibold">{user?.name}</p>
             <p className="text-sm text-white/80">{user?.email}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               {user?.tenantName && (
                 <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">{user.tenantName}</span>
+              )}
+              {user?.tenantId && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 font-mono">Tenant ID: {user.tenantId}</span>
               )}
               {user?.orgRole && (
                 <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">
@@ -302,11 +361,6 @@ export function ProfilePage() {
               )}
               {user?.departmentName && (
                 <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">{user.departmentName}</span>
-              )}
-              {user?.managerDisplayName && (
-                <span className="rounded-full bg-white/15 px-2.5 py-1 font-medium">
-                  {t.profileReportsToPrefix} {user.managerDisplayName}
-                </span>
               )}
             </div>
           </div>
@@ -658,6 +712,28 @@ export function ProfilePage() {
           </div>
         )}
       </Card>
+
+      {isPhotoZoomOpen && profileQuery.data?.ProfilePhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          onClick={() => setIsPhotoZoomOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setIsPhotoZoomOpen(false)}
+            aria-label="Cerrar"
+            className="absolute right-6 top-6 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={getProfilePhotoUrl(personId, profileQuery.data.UpdatedDate)}
+            alt={user?.name ?? 'Empleado'}
+            className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

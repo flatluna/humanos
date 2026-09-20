@@ -23,6 +23,9 @@ import {
   getEnrolledStructuredLearningDocuments,
 } from '@/features/capabilities/api/enrolledStructuredLearningApi';
 import {
+  getStructuredLearningDocuments,
+} from '@/features/capabilities/api/structuredLearningRuntimeApi';
+import {
   getEnrolledCapabilities,
 } from '@/features/capabilities/api/enrolledCapabilitiesApi';
 import {
@@ -137,6 +140,11 @@ export function AvailableCoursesPage() {
     enabled: Boolean(personId),
   });
 
+  const publishedSlQuery = useQuery({
+    queryKey: ['published-structured-learning-available'],
+    queryFn: getStructuredLearningDocuments,
+  });
+
   const enrolledCapsQuery = useQuery({
     queryKey: ['my-enrolled-caps-available', personId],
     queryFn: () => getEnrolledCapabilities(personId),
@@ -157,6 +165,7 @@ export function AvailableCoursesPage() {
     planQuery.isLoading ||
     skillsQuery.isLoading ||
     enrolledSlQuery.isLoading ||
+    publishedSlQuery.isLoading ||
     enrolledCapsQuery.isLoading ||
     publishedCapsQuery.isLoading ||
     programMembershipQuery.isLoading;
@@ -299,7 +308,30 @@ export function AvailableCoursesPage() {
       }
     }
 
-    // 5. Enrolled Capabilities
+    // 5. Published Structured Learning Documents, including courses created
+    // in Human OS Studio that are not enrolled by the current person yet.
+    if (publishedSlQuery.data) {
+      for (const doc of publishedSlQuery.data) {
+        const key = `cap-${doc.structuredLearningDocumentId}`;
+        if (!itemsMap.has(key)) {
+          itemsMap.set(key, {
+            id: doc.structuredLearningDocumentId,
+            title: doc.documentName,
+            description: doc.executiveSummary || (isEn ? 'Interactive structured learning course.' : 'Curso interactivo de aprendizaje estructurado.'),
+            category: 'general',
+            categoryLabel: isEn ? CATEGORY_STYLES.general.labelEn : CATEGORY_STYLES.general.labelEs,
+            courseType: 'structured-learning',
+            targetUrl: `/structured-learning/${doc.structuredLearningDocumentId}`,
+            coverIllustrationId: doc.coverIllustrationId,
+            sectionCount: doc.sectionCount,
+            status: 'Available',
+            gradient: CATEGORY_STYLES.general.gradient,
+          });
+        }
+      }
+    }
+
+    // 6. Enrolled Capabilities
     if (enrolledCapsQuery.data) {
       for (const cap of enrolledCapsQuery.data) {
         const key = `cap-${cap.capabilityId}`;
@@ -311,7 +343,7 @@ export function AvailableCoursesPage() {
       }
     }
 
-    // 6. Enrich with Program Membership (if course is part of a program)
+    // 7. Enrich with Program Membership (if course is part of a program)
     const membershipMap = programMembershipQuery.data;
     if (membershipMap) {
       for (const item of itemsMap.values()) {
@@ -328,6 +360,7 @@ export function AvailableCoursesPage() {
     skillsQuery.data,
     publishedCapsQuery.data,
     enrolledSlQuery.data,
+    publishedSlQuery.data,
     enrolledCapsQuery.data,
     programMembershipQuery.data,
     isEn,

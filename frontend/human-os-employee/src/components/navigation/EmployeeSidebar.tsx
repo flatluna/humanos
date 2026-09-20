@@ -3,13 +3,17 @@ import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
 import { useSidebarStore } from '@/store/useSidebarStore';
+import { useAuth } from '@/auth/AuthContext';
 
 /** Sidebar for the employee portal using standard react-i18next translations. */
 export function EmployeeSidebar() {
   const { t } = useTranslation();
+  const { user } = useAuth();
 
   const labels = {
-    today: t('nav.today'),
+    // "Tec Contigo" only for the academic (Tec de Monterrey) tenant — every
+    // other tenant gets the generic "Hoy"/"Today" label instead.
+    today: user?.isAcademicTenant ? t('nav.today') : t('nav.todayGeneric', { defaultValue: 'Hoy' }),
     objectives: t('nav.objectives'),
     availableCourses: t('nav.availableCourses', { defaultValue: 'Cursos Disponibles' }),
     programs: t('nav.programs', { defaultValue: 'Programas' }),
@@ -29,11 +33,6 @@ export function EmployeeSidebar() {
     collapse: t('nav.collapse'),
   };
 
-  const courseCategoryLinks = [
-    { to: '/capabilities/job-skills', label: labels.job },
-    { to: '/capabilities/department-processes', label: labels.department },
-    { to: '/capabilities/hr-processes', label: labels.hr },
-  ];
   const navLinks = [
     { to: '/', end: true, icon: Home, label: labels.today, iconColor: 'text-blue-500 dark:text-blue-400' },
     { to: '/programs', end: false, icon: GraduationCap, label: labels.programs, iconColor: 'text-purple-500 dark:text-purple-400' },
@@ -48,6 +47,12 @@ export function EmployeeSidebar() {
     { to: '/achievements', end: false, icon: Trophy, label: labels.achievements, iconColor: 'text-yellow-500 dark:text-yellow-400' },
     { to: '/profile', end: false, icon: UserCircle, label: labels.profile, iconColor: 'text-sky-500 dark:text-sky-400' },
   ];
+  const courseCategoryLinks = [
+    { to: '/capabilities/job-skills', label: labels.job },
+    { to: '/capabilities/department-processes', label: labels.department },
+    { to: '/capabilities/hr-processes', label: labels.hr },
+  ];
+  const visibleNavLinks = navLinks.filter((link) => link.to !== '/objectives' && link.to !== '/capabilities');
   const collapsed = useSidebarStore((state) => state.collapsed);
 
   const navItemClass = ({ isActive }: { isActive: boolean }) =>
@@ -76,7 +81,7 @@ export function EmployeeSidebar() {
     >
       <nav>
         <ul className="space-y-1">
-          {navLinks.slice(0, 1).map((link) => (
+          {visibleNavLinks.slice(0, 1).map((link) => (
             <li key={link.to}>
               <NavLink to={link.to} end={link.end} className={navItemClass} title={collapsed ? link.label : undefined}>
                 <link.icon className={clsx('h-4 w-4 shrink-0 transition-transform group-hover:scale-110', link.iconColor)} />
@@ -84,28 +89,30 @@ export function EmployeeSidebar() {
               </NavLink>
             </li>
           ))}
-          <li>
-            <NavLink
-              to="/capabilities"
-              className={navItemClass}
-              title={collapsed ? labels.courses : undefined}
-            >
-              <GraduationCap className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-400 transition-transform group-hover:scale-110" />
-              {!collapsed && <span>{labels.courses}</span>}
-            </NavLink>
-            {!collapsed && (
-              <ul className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-3 dark:border-white/10">
-                {courseCategoryLinks.map((link) => (
-                  <li key={link.to}>
-                    <NavLink to={link.to} className={subNavItemClass}>
-                      {link.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-          {navLinks.slice(1).map((link) => (
+          {false && (
+            <li>
+              <NavLink
+                to="/capabilities"
+                className={navItemClass}
+                title={collapsed ? labels.courses : undefined}
+              >
+                <GraduationCap className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-400 transition-transform group-hover:scale-110" />
+                {!collapsed && <span>{labels.courses}</span>}
+              </NavLink>
+              {!collapsed && (
+                <ul className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-3 dark:border-white/10">
+                  {courseCategoryLinks.map((link) => (
+                    <li key={link.to}>
+                      <NavLink to={link.to} className={subNavItemClass}>
+                        {link.label}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )}
+          {visibleNavLinks.slice(1).map((link) => (
             <li key={link.to}>
               <NavLink to={link.to} end={link.end} className={navItemClass} title={collapsed ? link.label : undefined}>
                 <link.icon className={clsx('h-4 w-4 shrink-0 transition-transform group-hover:scale-110', link.iconColor)} />

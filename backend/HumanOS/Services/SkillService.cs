@@ -14,6 +14,14 @@ namespace HumanOS.Services;
 /// the enterprise console's "Catálogo de Skills" page.</summary>
 public sealed class SkillService
 {
+    public static readonly string[] ValidAssignmentScopes =
+    [
+        "COMPANY_WIDE_ESSENTIAL",
+        "DEPARTMENT_ESSENTIAL",
+        "JOB_ROLE_ESSENTIAL",
+        "RECOMMENDED_DEVELOPMENT",
+        "EXPLORATORY",
+    ];
     /// <summary>The 4 career-plan tracks — same values used everywhere
     /// else in this feature (JobRoleResponse's 4 list fields,
     /// PersonCareerPlanService.AutoMatchCapabilitiesAsync, Capability.Category).</summary>
@@ -94,6 +102,7 @@ public sealed class SkillService
                 jrs.JobRoleId,
                 JobRoleTitle = jrs.JobRole.Title,
                 DepartmentName = jrs.JobRole.Department.Name,
+                jrs.RequiredLevel,
             })
             .ToListAsync(cancellationToken);
 
@@ -107,6 +116,7 @@ public sealed class SkillService
                         JobRoleId = l.JobRoleId,
                         JobRoleTitle = l.JobRoleTitle,
                         DepartmentName = l.DepartmentName,
+                        RequiredLevel = l.RequiredLevel,
                     })
                     .OrderBy(l => l.JobRoleTitle)
                     .ToList());
@@ -212,6 +222,7 @@ public sealed class SkillService
     {
         var category = ValidateCategory(request.Category);
         var name = ValidateName(request.Name);
+        var assignmentScope = ValidateAssignmentScope(request.AssignmentScope);
 
         var duplicate = await _dbContext.Skills.AnyAsync(
             s => s.TenantId == tenantId && s.Category == category && s.IsActive && s.Name.ToLower() == name.ToLower(),
@@ -221,8 +232,6 @@ public sealed class SkillService
             throw new InvalidOperationException($"A skill named \"{name}\" already exists in this category.");
         }
 
-        var jobRoleIds = await ValidateJobRoleIdsAsync(tenantId, request.JobRoleIds, cancellationToken);
-
         var now = DateTime.UtcNow;
         var skill = new Skill
         {
@@ -231,15 +240,26 @@ public sealed class SkillService
             Category = category,
             Name = name,
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            AssignmentScope = assignmentScope,
+            ApplicableDepartmentIdsJson = JsonSerializer.Serialize(await ValidateDepartmentIdsAsync(tenantId, request.ApplicableDepartmentIds, cancellationToken)),
             IsActive = true,
             CreatedDate = now,
             UpdatedDate = now,
         };
         _dbContext.Skills.Add(skill);
 
-        foreach (var jobRoleId in jobRoleIds)
+        ValidateAudience(assignmentScope, request.ApplicableDepartmentIds, request.JobRoleLinks, request.JobRoleIds);
+        var roleLinks = ResolveJobRoleLinks(request);
+        var validatedRoleIds = await ValidateJobRoleIdsAsync(tenantId, roleLinks.Select(l => l.JobRoleId).ToList(), cancellationToken);
+        foreach (var link in roleLinks.Where(l => validatedRoleIds.Contains(l.JobRoleId)))
         {
-            _dbContext.JobRoleSkills.Add(new JobRoleSkill { JobRoleId = jobRoleId, SkillId = skill.SkillId, CreatedDate = now });
+            _dbContext.JobRoleSkills.Add(new JobRoleSkill
+            {
+                JobRoleId = link.JobRoleId,
+                SkillId = skill.SkillId,
+                RequiredLevel = link.RequiredLevel,
+                CreatedDate = now,
+            });
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -260,6 +280,7 @@ public sealed class SkillService
 
         var category = ValidateCategory(request.Category);
         var name = ValidateName(request.Name);
+        var assignmentScope = ValidateAssignmentScope(request.AssignmentScope);
 
         var duplicate = await _dbContext.Skills.AnyAsync(
             s => s.TenantId == skill.TenantId && s.Category == category && s.IsActive
@@ -270,14 +291,17 @@ public sealed class SkillService
             throw new InvalidOperationException($"A skill named \"{name}\" already exists in this category.");
         }
 
-        var jobRoleIds = await ValidateJobRoleIdsAsync(skill.TenantId, request.JobRoleIds, cancellationToken);
-
+        ValidateAudience(assignmentScope, request.ApplicableDepartmentIds, request.JobRoleLinks, request.JobRoleIds);
+        var validDepartmentIds = await ValidateDepartmentIdsAsync(skill.TenantId, request.ApplicableDepartmentIds, cancellationToken);
         var currentLinks = await _dbContext.JobRoleSkills
             .Where(jrs => jrs.SkillId == skillId)
             .ToListAsync(cancellationToken);
 
+        var roleLinks = ResolveJobRoleLinks(request);
+        var validatedRoleIds = await ValidateJobRoleIdsAsync(skill.TenantId, roleLinks.Select(l => l.JobRoleId).ToList(), cancellationToken);
+        var requestedLinks = roleLinks.Where(l => validatedRoleIds.Contains(l.JobRoleId)).ToList();
+        var requestedRoleIds = requestedLinks.Select(l => l.JobRoleId).ToHashSet();
         var currentRoleIds = currentLinks.Select(l => l.JobRoleId).ToHashSet();
-        var requestedRoleIds = jobRoleIds.ToHashSet();
 
         foreach (var link in currentLinks.Where(l => !requestedRoleIds.Contains(l.JobRoleId)))
         {
@@ -285,14 +309,30 @@ public sealed class SkillService
         }
 
         var now = DateTime.UtcNow;
-        foreach (var jobRoleId in requestedRoleIds.Where(id => !currentRoleIds.Contains(id)))
+        foreach (var link in requestedLinks)
         {
-            _dbContext.JobRoleSkills.Add(new JobRoleSkill { JobRoleId = jobRoleId, SkillId = skillId, CreatedDate = now });
+            if (currentRoleIds.Contains(link.JobRoleId))
+            {
+                var existing = currentLinks.First(l => l.JobRoleId == link.JobRoleId);
+                existing.RequiredLevel = link.RequiredLevel;
+            }
+            else
+            {
+                _dbContext.JobRoleSkills.Add(new JobRoleSkill
+                {
+                    JobRoleId = link.JobRoleId,
+                    SkillId = skillId,
+                    RequiredLevel = link.RequiredLevel,
+                    CreatedDate = now,
+                });
+            }
         }
 
         skill.Category = category;
         skill.Name = name;
         skill.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        skill.AssignmentScope = assignmentScope;
+        skill.ApplicableDepartmentIdsJson = JsonSerializer.Serialize(validDepartmentIds);
         skill.UpdatedDate = now;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -437,6 +477,7 @@ public sealed class SkillService
                 JobRoleId = jrs.JobRoleId,
                 JobRoleTitle = jrs.JobRole.Title,
                 DepartmentName = jrs.JobRole.Department.Name,
+                RequiredLevel = jrs.RequiredLevel,
             })
             .OrderBy(l => l.JobRoleTitle)
             .ToListAsync(cancellationToken);
@@ -444,6 +485,19 @@ public sealed class SkillService
         var matches = await GetMatchedCapabilitiesAsync([skill], cancellationToken);
 
         return ToResponse(skill, links, matches.GetValueOrDefault(skill.SkillId));
+    }
+
+    private static List<SkillJobRoleLinkRequest> ResolveJobRoleLinks(SaveSkillRequest request)
+    {
+        if (request.JobRoleLinks is { Count: > 0 })
+        {
+            return request.JobRoleLinks;
+        }
+
+        return (request.JobRoleIds ?? [])
+            .Distinct()
+            .Select(id => new SkillJobRoleLinkRequest { JobRoleId = id, RequiredLevel = null })
+            .ToList();
     }
 
     private async Task<List<Guid>> ValidateJobRoleIdsAsync(Guid tenantId, List<Guid>? jobRoleIds, CancellationToken cancellationToken)
@@ -476,6 +530,48 @@ public sealed class SkillService
         return category;
     }
 
+    private static string ValidateAssignmentScope(string? scope)
+    {
+        if (scope is null || !ValidAssignmentScopes.Contains(scope, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException($"AssignmentScope must be one of: {string.Join(", ", ValidAssignmentScopes)}.");
+        }
+
+        return scope;
+    }
+
+    private static void ValidateAudience(
+        string scope,
+        IReadOnlyCollection<Guid>? departmentIds,
+        IReadOnlyCollection<SkillJobRoleLinkRequest>? roleLinks,
+        IReadOnlyCollection<Guid>? roleIds)
+    {
+        var departmentCount = departmentIds?.Count ?? 0;
+        var roleCount = roleLinks?.Count ?? roleIds?.Count ?? 0;
+        if (scope == "DEPARTMENT_ESSENTIAL" && departmentCount == 0)
+            throw new InvalidOperationException("Select at least one applicable department.");
+        if (scope == "JOB_ROLE_ESSENTIAL" && roleCount == 0)
+            throw new InvalidOperationException("Select at least one applicable job role.");
+        if (scope == "RECOMMENDED_DEVELOPMENT" && departmentCount == 0 && roleCount == 0)
+            throw new InvalidOperationException("Select at least one applicable department or job role.");
+    }
+
+    private async Task<List<Guid>> ValidateDepartmentIdsAsync(Guid tenantId, List<Guid>? departmentIds, CancellationToken cancellationToken)
+    {
+        var ids = (departmentIds ?? []).Distinct().ToList();
+        if (ids.Count == 0) return ids;
+        var validCount = await _dbContext.Departments.CountAsync(d => ids.Contains(d.DepartmentId) && d.TenantId == tenantId, cancellationToken);
+        if (validCount != ids.Count) throw new InvalidOperationException("One or more departments do not belong to this tenant.");
+        return ids;
+    }
+
+    private static IReadOnlyList<Guid> DeserializeDepartmentIds(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return [];
+        try { return JsonSerializer.Deserialize<List<Guid>>(value) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
     private static string ValidateName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -496,6 +592,8 @@ public sealed class SkillService
         Category = skill.Category,
         Name = skill.Name,
         Description = skill.Description,
+        AssignmentScope = skill.AssignmentScope ?? (jobRoles.Count > 0 ? "JOB_ROLE_ESSENTIAL" : "RECOMMENDED_DEVELOPMENT"),
+        ApplicableDepartmentIds = DeserializeDepartmentIds(skill.ApplicableDepartmentIdsJson),
         IsActive = skill.IsActive,
         DocumentStoragePath = skill.DocumentStoragePath,
         DocumentFileName = skill.DocumentFileName,

@@ -148,7 +148,17 @@ public sealed class StructuredLearningWorkplaceApplicationAgent
         var firstName = !string.IsNullOrWhiteSpace(context.StudentName) ? context.StudentName.Trim().Split(' ')[0] : "Student";
         sb.AppendLine($"- First Name: {firstName}");
         sb.AppendLine($"- Full Name: {context.StudentName}");
-        if (!string.IsNullOrWhiteSpace(context.RoleTitle))
+        if (context.IsStudent)
+        {
+            sb.AppendLine("- IMPORTANT: this is a real Tecnológico de Monterrey STUDENT, NOT a HumanOS employee — they have no real job/employer.");
+            sb.AppendLine($"- Their real academic program: {context.RoleTitle}");
+            if (!string.IsNullOrWhiteSpace(context.StudentAcademicProfileSummary))
+            {
+                sb.AppendLine($"- Academic record: {context.StudentAcademicProfileSummary}");
+            }
+            sb.AppendLine("- Frame the whole scenario around applying this engram to their STUDIES/CAREER PREPARATION (e.g. a class project, thesis, internship prep, or a realistic entry-level scenario for their field) — NEVER invent a company, job title, team, or workplace objectives for them.");
+        }
+        else if (!string.IsNullOrWhiteSpace(context.RoleTitle))
         {
             sb.AppendLine($"- Current Role: {context.RoleTitle}");
         }

@@ -9,9 +9,10 @@ namespace HumanOS.Storage;
 /// Same "resolve reference in SQL (PersonProfile.ProfilePhotoUrl), stream
 /// blob separately" split as <see cref="ProgramLogoStorageService"/>, own
 /// fixed container so profile photos never mix with other assets. Blob
-/// path uses the PersonId only:
+/// path is scoped by tenant and person, always a single fixed file name
+/// per person (a fresh upload overwrites it, never accumulates files):
 ///
-///   {personId}/photo.{ext}
+///   {tenantId}/{personId}/picture/mypicture.{ext}
 /// </summary>
 public sealed class PersonProfilePhotoStorageService
 {
@@ -32,8 +33,13 @@ public sealed class PersonProfilePhotoStorageService
 
     /// <summary>Uploads a person's profile photo and returns its blob
     /// StoragePath (to be saved on PersonProfile.ProfilePhotoUrl).
-    /// Overwrites any existing photo for this person.</summary>
+    /// Always writes to the SAME fixed blob path for this person
+    /// (tenantId/personId/picture/mypicture.ext) — a fresh upload
+    /// overwrites any existing photo instead of accumulating files, and a
+    /// changed extension (e.g. png → jpg) explicitly deletes the old blob
+    /// first so exactly one file ever exists per person.</summary>
     public async Task<string> UploadPhotoAsync(
+        Guid tenantId,
         Guid personId,
         Stream imageContent,
         string contentType,
@@ -57,7 +63,15 @@ public sealed class PersonProfilePhotoStorageService
             _ => "png",
         };
 
-        var blobPath = $"{personId:D}/photo.{extension}";
+        // Remove any previously uploaded photo for this person (possibly
+        // with a different extension) so exactly one file remains.
+        await foreach (var existingBlob in containerClient.GetBlobsAsync(
+            prefix: $"{tenantId:D}/{personId:D}/picture/", cancellationToken: cancellationToken))
+        {
+            await containerClient.DeleteBlobIfExistsAsync(existingBlob.Name, cancellationToken: cancellationToken);
+        }
+
+        var blobPath = $"{tenantId:D}/{personId:D}/picture/mypicture.{extension}";
         var blobClient = containerClient.GetBlobClient(blobPath);
 
         await blobClient.UploadAsync(

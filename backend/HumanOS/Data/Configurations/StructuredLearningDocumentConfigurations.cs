@@ -53,6 +53,9 @@ public sealed class StructuredLearningDocumentConfiguration
         builder.Property(x => x.PedagogicalAudience)
             .HasMaxLength(30);
 
+        builder.Property(x => x.CourseLevel)
+            .HasMaxLength(10);
+
         builder.Property(x => x.PromptVersion)
             .HasMaxLength(200);
 

@@ -5,11 +5,20 @@ import { apiClient } from '@/api/index';
 /// The 4 career-plan tracks — same categories used throughout JobRoleDto's
 /// technicalSkills/softSkills/departmentProcesses/hrProcesses fields.
 export type SkillCategory = 'job-skills' | 'soft-skills' | 'department-processes' | 'hr-processes';
+export type SkillAssignmentScope =
+  | 'COMPANY_WIDE_ESSENTIAL'
+  | 'DEPARTMENT_ESSENTIAL'
+  | 'JOB_ROLE_ESSENTIAL'
+  | 'RECOMMENDED_DEVELOPMENT'
+  | 'EXPLORATORY';
 
 export interface SkillJobRoleLinkDto {
   jobRoleId: string;
   jobRoleTitle: string;
   departmentName: string;
+  /** "L100" | "L200" | "L300", or null — content depth this role
+   * requires for this skill (same skill can be L100 for Jr, L300 for Sr). */
+  requiredLevel: string | null;
 }
 
 export interface SkillDto {
@@ -18,6 +27,8 @@ export interface SkillDto {
   category: SkillCategory;
   name: string;
   description: string | null;
+  assignmentScope?: SkillAssignmentScope;
+  applicableDepartmentIds: string[];
   isActive: boolean;
   documentStoragePath?: string | null;
   documentFileName?: string | null;
@@ -34,11 +45,18 @@ export interface SkillDto {
   matchedCourseType?: 'structured-learning' | 'graph' | null;
 }
 
+export interface SkillJobRoleLinkRequest {
+  jobRoleId: string;
+  requiredLevel?: string | null;
+}
+
 export interface SaveSkillRequest {
   category: SkillCategory;
   name: string;
   description?: string | null;
-  jobRoleIds?: string[];
+  assignmentScope?: SkillAssignmentScope;
+  applicableDepartmentIds?: string[];
+  jobRoleLinks?: SkillJobRoleLinkRequest[];
 }
 
 export async function getSkills(tenantId: string, category?: SkillCategory): Promise<SkillDto[]> {

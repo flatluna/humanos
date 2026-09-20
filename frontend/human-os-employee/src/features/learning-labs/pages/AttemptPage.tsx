@@ -24,9 +24,12 @@ import { getJobRole } from '@/features/profile/api/jobRoleApi';
 import { getMyResume } from '@/features/profile/api/resumeApi';
 import {
   getRunnableScenario,
+  listPublishedLabs,
+  getLabVersion,
   startAttempt,
   getAttempt,
   getAttemptVoiceSession,
+  getAttemptCommitteeNextSpeakerVoiceSession,
   createConversationTurn,
   completeAttempt,
   pauseAttempt,
@@ -37,6 +40,8 @@ import {
   type AttemptItem,
   type AttemptEvaluationResponse,
   type ConversationTurnItem,
+  type AttemptVoiceSessionActor,
+  type AttemptVoiceEmployeeProfilePayload,
 } from '../api/learningLabsApi';
 
 type Stage = 'conversation' | 'evaluation' | 'results';
@@ -52,6 +57,17 @@ const STAGES: { key: Stage; icon: typeof MessagesSquare }[] = [
 // (e.g. differing only by a comma) are still recognized as the same turn for dedupe purposes.
 function normalizeForDedupe(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function areNearDuplicateParticipantTurns(previous: string, current: string): boolean {
+  const previousWords = new Set(normalizeForDedupe(previous).split(' ').filter(Boolean));
+  const currentWords = new Set(normalizeForDedupe(current).split(' ').filter(Boolean));
+  if (previousWords.size < 8 || currentWords.size < 8) return false;
+  const intersection = [...previousWords].filter((word) => currentWords.has(word)).length;
+  const union = new Set([...previousWords, ...currentWords]).size;
+  const similarity = union === 0 ? 0 : intersection / union;
+  const lengthRatio = Math.min(previousWords.size, currentWords.size) / Math.max(previousWords.size, currentWords.size);
+  return similarity >= 0.65 && lengthRatio >= 0.75;
 }
 
 /**
@@ -83,33 +99,70 @@ export function AttemptPage() {
   const [transcript, setTranscript] = useState<ConversationTurnItem[]>([]);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
+  const [simulationTitle, setSimulationTitle] = useState<string | null>(null);
+  const [simulationObjective, setSimulationObjective] = useState<string | null>(null);
 
   const attemptRef = useRef<AttemptItem | null>(null);
   const startIdempotencyKeyRef = useRef<string | null>(null);
   const actorIdRef = useRef<string | null>(null);
-  const lastParticipantTextRef = useRef<string | null>(null);
-  const lastActorTextRef = useRef<string | null>(null);
+  const seenParticipantTextsRef = useRef<Set<string>>(new Set());
+  const seenActorTextsRef = useRef<Set<string>>(new Set());
   const gotResponseRef = useRef(false);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  // Academic Defense committee: sinodales take turns sequentially over the SAME shared
+  // peerConnectionRef/dataChannelRef used by single-actor Labs (see runCommitteeTurn below) —
+  // empty for every other Lab archetype.
+  const committeeRef = useRef<AttemptVoiceSessionActor[]>([]);
+  const committeeIndexRef = useRef(0);
+  // Saved so each committee handoff can mint a FRESH per-actor session grounded in the real
+  // transcript so far, instead of reusing a stale session minted before the call started.
+  const employeeProfileRef = useRef<AttemptVoiceEmployeeProfilePayload | undefined>(undefined);
+  // Transcript-complete ('...transcript.done') only means the MODEL finished generating text —
+  // the audio for it can still be playing for several more seconds. Switching sinodales right away
+  // cut actors off mid-sentence. Instead, arm this once the transcript is done, then only actually
+  // fire the handoff once the remote audio level (below) goes quiet — real end of speech.
+  const pendingTurnCompleteRef = useRef<(() => void) | null>(null);
+  const turnSilenceFramesRef = useRef(0);
+  const turnCompleteFallbackTimerRef = useRef<number | null>(null);
+  // Stops the PREVIOUS committee member's audio-level monitor loop before starting a new one —
+  // otherwise each handoff leaves an extra rAF loop running forever on the old (now-closed) stream.
+  const stopAudioMonitorRef = useRef<() => void>(() => undefined);
 
   const teardown = useCallback(() => {
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
+    dataChannelRef.current?.close();
+    dataChannelRef.current = null;
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
+    committeeRef.current = [];
+    committeeIndexRef.current = 0;
+    pendingTurnCompleteRef.current = null;
+    turnSilenceFramesRef.current = 0;
+    if (turnCompleteFallbackTimerRef.current !== null) {
+      window.clearTimeout(turnCompleteFallbackTimerRef.current);
+      turnCompleteFallbackTimerRef.current = null;
+    }
+    stopAudioMonitorRef.current();
   }, []);
 
   const monitorRemoteAudioLevel = useCallback((stream: MediaStream) => {
+    stopAudioMonitorRef.current();
+    let stopped = false;
+    stopAudioMonitorRef.current = () => {
+      stopped = true;
+    };
     const audioContext = new AudioContext();
     audioContextRef.current = audioContext;
     const source = audioContext.createMediaStreamSource(stream);
@@ -119,6 +172,7 @@ export function AttemptPage() {
 
     const buffer = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
+      if (stopped) return;
       analyser.getByteFrequencyData(buffer);
       let sum = 0;
       for (let i = 0; i < buffer.length; i += 1) sum += buffer[i];
@@ -135,10 +189,310 @@ export function AttemptPage() {
         if (current === 'connecting' || current === 'error') return current;
         return isAgentSpeaking ? 'speaking' : 'listening';
       });
+      // Committee handoff: only fire once the FULL response is done AND the audio has stayed
+      // quiet for ~1.1s (65 frames @ 60fps) — long enough to tell a real end-of-turn apart from a
+      // normal mid-sentence breathing pause, which was still triggering premature handoffs at 400ms.
+      if (pendingTurnCompleteRef.current) {
+        if (isAgentSpeaking) {
+          turnSilenceFramesRef.current = 0;
+        } else {
+          turnSilenceFramesRef.current += 1;
+          if (turnSilenceFramesRef.current >= 48) {
+            const complete = pendingTurnCompleteRef.current;
+            pendingTurnCompleteRef.current = null;
+            turnSilenceFramesRef.current = 0;
+            if (turnCompleteFallbackTimerRef.current !== null) {
+              window.clearTimeout(turnCompleteFallbackTimerRef.current);
+              turnCompleteFallbackTimerRef.current = null;
+            }
+            complete();
+          }
+        }
+      }
       animationFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
   }, []);
+
+  const updateActorLabel = useCallback((nombre?: string | null, rol?: string | null) => {
+    if (!nombre) return;
+    const actorName = nombre.trim();
+    const actorRole = rol?.trim();
+    const normalizedName = normalizeForDedupe(actorName);
+    const normalizedRole = actorRole ? normalizeForDedupe(actorRole) : '';
+    const repeated = Boolean(normalizedRole) && (normalizedName.includes(normalizedRole) || normalizedRole.includes(normalizedName));
+    setActorLabel(repeated || !actorRole ? actorName : `${actorName} — ${actorRole}`);
+  }, []);
+
+  // Negotiates ONE realtime session (single actor, or one committee member at a time) over the
+  // shared mic stream. `onActorTurnComplete` is only used by the committee round-robin — the
+  // single-actor path passes a no-op so ordinary Labs behave exactly as before.
+  // `waitForParticipantAnswer`: true for real Q&A turns (hand off only after Sofia answers this
+  // sinodal's question); false for pure self-introduction turns (hand off as soon as THIS sinodal
+  // stops talking — there's no question to answer yet).
+  const openRealtimeSession = useCallback(
+    async (
+      session: { ClientSecret: string; RealtimeCallsUrl: string },
+      onActorTurnComplete: () => void,
+      waitForParticipantAnswer: boolean = true,
+    ) => {
+      gotResponseRef.current = false;
+      // Committee handoff must wait for SOFIA'S ANSWER, not just for the sinodal to finish asking —
+      // otherwise sinodales rotate through their own questions back-to-back and never let the
+      // student speak. Armed true once this sinodal finishes a turn (asked something out loud);
+      // only once the student's answer transcript then arrives do we actually hand off.
+      const actorHasAskedRef = { current: false };
+      // Continuity: don't hand off to the next sinodal after EVERY single answer — that felt like
+      // "jumping between professors" with no follow-up. Let the SAME sinodal ask up to this many
+      // follow-up questions (server auto-continues in the same voice/session, no reconnect needed)
+      // before actually handing off to the next committee member.
+      const answersWithThisSinodalRef = { current: 0 };
+      const ANSWERS_BEFORE_HANDOFF = 2;
+      const micStream = localStreamRef.current ?? (await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }));
+      localStreamRef.current = micStream;
+      // Introduction-only turns never expect Sofia to speak — keeping the mic hot lets ambient
+      // noise/echo false-trigger the server's own VAD (interrupt_response:true), which truncates
+      // the sinodal mid-sentence and then auto-regenerates a new response (looks exactly like
+      // "gets interrupted, pauses, repeats"). Locally mute the track for those turns only; real
+      // Q&A turns re-enable it so genuine barge-in still works.
+      micStream.getTracks().forEach((track) => { track.enabled = waitForParticipantAnswer; });
+
+      const peerConnection = new RTCPeerConnection();
+      peerConnectionRef.current = peerConnection;
+      micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
+
+      peerConnection.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (audioElementRef.current) audioElementRef.current.srcObject = remoteStream;
+        monitorRemoteAudioLevel(remoteStream);
+      };
+
+      const dataChannel = peerConnection.createDataChannel('oai-events');
+      dataChannelRef.current = dataChannel;
+      dataChannel.onopen = () => {
+        // Matches VoiceTutorAgent.tsx (courses) exactly: the ephemeral session's own
+        // turn_detection (set at creation in LabRealtimeVoiceSessionService) is not reliably
+        // honored by the actual /realtime/calls negotiation on its own — without ALSO pushing it
+        // here via session.update, the server falls back to a much more trigger-happy default VAD
+        // sensitivity, so the agent's own voice bleeding into the mic (no headphones) gets
+        // misread as the student interrupting after only a few words. This was happening on every
+        // single Lab (never on courses, which already send this) — this fixes that root cause.
+        dataChannel.send(JSON.stringify({
+          type: 'session.update',
+          session: {
+            audio: {
+              input: {
+                turn_detection: {
+                  type: 'server_vad',
+                  threshold: 0.85,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 700,
+                  create_response: true,
+                  interrupt_response: true,
+                },
+                noise_reduction: { type: 'near_field' },
+              },
+            },
+          },
+        }));
+        dataChannel.send(JSON.stringify({ type: 'response.create' }));
+        // NO resend/safety-net timer here (2026-09-17 fix) — matches VoiceTutorAgent.tsx (courses,
+        // which has never had this problem) exactly. The previous 8s "nudge if nothing started"
+        // resend was almost certainly the actual cause of every Lab's opening line getting spoken
+        // TWICE with different wording: `gotResponseRef` only flips true on a real 'response.created'
+        // event, and if that event arrived late/was misread even once, this fired a SECOND, fully
+        // independent response.create on top of the first one already in flight — the model then
+        // dutifully generated a brand new, differently-worded greeting. Removing the resend removes
+        // the only code path that could ever create two independent responses for one turn.
+      };
+      dataChannel.onmessage = async (event) => {
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(event.data as string);
+        } catch {
+          return;
+        }
+
+        const attemptId = attemptRef.current?.IdAttempt;
+        if (import.meta.env.DEV) console.debug('[realtime]', payload.type);
+        if (payload.type === 'response.created') {
+          gotResponseRef.current = true;
+        }
+        if (payload.type === 'input_audio_buffer.speech_started') {
+          audioElementRef.current?.pause();
+        } else if (
+          payload.type === 'response.audio_transcript.delta' ||
+          payload.type === 'response.output_audio_transcript.delta' ||
+          payload.type === 'response.created'
+        ) {
+          if (audioElementRef.current?.paused) audioElementRef.current.play().catch(() => undefined);
+        } else if (payload.type === 'conversation.item.input_audio_transcription.completed' && attemptId) {
+          const transcript = (payload.transcript as string | undefined)?.trim();
+          const normalizedTranscript = transcript ? normalizeForDedupe(transcript) : '';
+          if (normalizedTranscript && !seenParticipantTextsRef.current.has(normalizedTranscript)) {
+            seenParticipantTextsRef.current.add(normalizedTranscript);
+            // AWAITED (not fire-and-forget): the committee handoff below mints the next sinodal's
+            // session by reading the transcript straight from the DB — if this write hasn't landed
+            // yet (each ConversationTurn_Create call took 2-3s in practice), the next sinodal reads
+            // a STALE transcript missing Sofia's last answer and re-asks the same question.
+            await createConversationTurn(attemptId, orgTenantId, 'PARTICIPANT', transcript!).catch(() => undefined);
+          }
+          // Sofia just answered this sinodal's question. Let the SAME sinodal ask a couple of
+          // follow-ups (server auto-continues via create_response:true) before actually handing
+          // off to the next committee member — real continuity instead of jumping every turn.
+          if (waitForParticipantAnswer && actorHasAskedRef.current) {
+            actorHasAskedRef.current = false;
+            answersWithThisSinodalRef.current += 1;
+            if (answersWithThisSinodalRef.current < ANSWERS_BEFORE_HANDOFF) {
+              // Let the server's own turn_detection (create_response:true) generate this same
+              // sinodal's next follow-up automatically — no cancel, no handoff.
+              if (turnCompleteFallbackTimerRef.current !== null) {
+                window.clearTimeout(turnCompleteFallbackTimerRef.current);
+                turnCompleteFallbackTimerRef.current = null;
+              }
+              return;
+            }
+            answersWithThisSinodalRef.current = 0;
+            if (turnCompleteFallbackTimerRef.current !== null) {
+              window.clearTimeout(turnCompleteFallbackTimerRef.current);
+              turnCompleteFallbackTimerRef.current = null;
+            }
+            if (dataChannel.readyState === 'open') {
+              dataChannel.send(JSON.stringify({ type: 'response.cancel' }));
+            }
+            window.setTimeout(() => onActorTurnComplete(), 200);
+          }
+        } else if (
+          (payload.type === 'response.audio_transcript.done' || payload.type === 'response.output_audio_transcript.done') &&
+          attemptId
+        ) {
+          const transcript = (payload.transcript as string | undefined)?.trim();
+          const normalizedTranscript = transcript ? normalizeForDedupe(transcript) : '';
+          if (normalizedTranscript && !seenActorTextsRef.current.has(normalizedTranscript)) {
+            seenActorTextsRef.current.add(normalizedTranscript);
+            // Awaited for the same reason as the participant turn above — the NEXT sinodal's
+            // handoff mint reads the transcript from the DB and must see this question too.
+            await createConversationTurn(attemptId, orgTenantId, 'SIMULATED_ACTOR', transcript!, actorIdRef.current ?? undefined).catch(
+              () => undefined,
+            );
+          }
+        } else if (payload.type === 'response.done') {
+          if (!waitForParticipantAnswer) {
+            // Introduction-only turn: hand off as soon as THIS sinodal's audio actually stops (real
+            // silence, not just text-generation-done) — no answer to wait for.
+            turnSilenceFramesRef.current = 0;
+            pendingTurnCompleteRef.current = onActorTurnComplete;
+            if (turnCompleteFallbackTimerRef.current !== null) window.clearTimeout(turnCompleteFallbackTimerRef.current);
+            turnCompleteFallbackTimerRef.current = window.setTimeout(() => {
+              const complete = pendingTurnCompleteRef.current;
+              pendingTurnCompleteRef.current = null;
+              turnCompleteFallbackTimerRef.current = null;
+              complete?.();
+            }, 12000);
+            return;
+          }
+          // The sinodal just finished asking/speaking. Arm the "waiting for Sofia's answer" flag
+          // instead of handing off immediately. Fallback timeout only protects against Sofia never
+          // answering out loud at all (e.g. silence/mic issue) so the committee never stalls forever.
+          actorHasAskedRef.current = true;
+          if (turnCompleteFallbackTimerRef.current !== null) window.clearTimeout(turnCompleteFallbackTimerRef.current);
+          turnCompleteFallbackTimerRef.current = window.setTimeout(() => {
+            actorHasAskedRef.current = false;
+            turnCompleteFallbackTimerRef.current = null;
+            onActorTurnComplete();
+          }, 25000);
+        }
+      };
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      const sdpResponse = await fetch(session.RealtimeCallsUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.ClientSecret}`, 'Content-Type': 'application/sdp' },
+        body: offer.sdp,
+      });
+      if (!sdpResponse.ok) throw new Error(`No se pudo negociar la sesión de voz (${sdpResponse.status}).`);
+      const answerSdp = await sdpResponse.text();
+      await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+      setVoiceState('connected');
+    },
+    [monitorRemoteAudioLevel, orgTenantId],
+  );
+
+  // Committee round-robin (SEQUENTIAL, single connection at a time) — replaces the previous
+  // EXPERIMENTAL dual-persistent-connection design, whose "reactivate this same connection to
+  // speak again" calls kept the sinodal's ORIGINAL frozen instructions (from when the session was
+  // minted), so re-activating the president to ask his real first question just replayed his
+  // introduction instead. Fix: never reuse a connection for a new kind of turn — every handoff
+  // closes the current peer connection and mints a FRESH session via Attempt_CommitteeNextSpeaker
+  // (grounded in the real transcript so far + an explicit IsIntroductionOnlyTurn flag), then opens
+  // it with the existing single-actor `openRealtimeSession` (whose own ANSWERS_BEFORE_HANDOFF logic
+  // already lets one sinodal ask a couple of follow-ups before this callback fires). Costs ~1-2s of
+  // silence per handoff, but every session's instructions always match exactly what that turn needs.
+  const closeCurrentConnection = useCallback(() => {
+    dataChannelRef.current?.close();
+    dataChannelRef.current = null;
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+  }, []);
+
+  const runCommitteeTurn = useCallback(
+    async (memberIndex: number, kind: 'intro' | 'question') => {
+      const member = committeeRef.current[memberIndex];
+      const attempt = attemptRef.current;
+      if (!member || !attempt) return;
+
+      committeeIndexRef.current = memberIndex;
+      actorIdRef.current = member.ActorId;
+      updateActorLabel(member.ActorNombre, member.ActorRol);
+
+      const session = await getAttemptCommitteeNextSpeakerVoiceSession(
+        attempt.IdAttempt,
+        orgTenantId,
+        member.ActorId!,
+        employeeProfileRef.current,
+        { isFirstCommitteeSpeaker: memberIndex === 0, isIntroductionOnlyTurn: kind === 'intro' },
+      );
+
+      closeCurrentConnection();
+
+      const onActorTurnComplete = () => {
+        if (kind === 'intro') {
+          const nextIndex = memberIndex + 1;
+          if (nextIndex < committeeRef.current.length) {
+            void runCommitteeTurn(nextIndex, 'intro');
+          } else {
+            // Both sinodales have introduced themselves — the president (index 0) now asks the
+            // REAL first question, as a brand-new session (never a reused "speak again" call).
+            void runCommitteeTurn(0, 'question');
+          }
+          return;
+        }
+        // This sinodal's question-and-answer round is done — hand off to the other sinodal.
+        const nextIndex = (memberIndex + 1) % committeeRef.current.length;
+        void runCommitteeTurn(nextIndex, 'question');
+      };
+
+      await openRealtimeSession(session, onActorTurnComplete, kind === 'question');
+    },
+    [orgTenantId, updateActorLabel, closeCurrentConnection, openRealtimeSession],
+  );
+
+  // Entry point: kicks off the round-robin with the president's introduction. Each subsequent
+  // turn is scheduled by runCommitteeTurn's own onActorTurnComplete callback above — this only
+  // ever fires once per attempt.
+  const startCommitteeFlow = useCallback(
+    async (members: AttemptVoiceSessionActor[]) => {
+      committeeRef.current = members;
+      await runCommitteeTurn(0, 'intro');
+    },
+    [runCommitteeTurn],
+  );
+
 
   const connectVoice = useCallback(
     async (attempt: AttemptItem) => {
@@ -155,7 +509,15 @@ export function AttemptPage() {
         if (resume?.workExperience?.length) resumeParts.push(`Experience: ${resume.workExperience.join('; ')}`);
         if (resume?.education?.length) resumeParts.push(`Education: ${resume.education.join('; ')}`);
         if (resume?.skills?.length) resumeParts.push(`Skills: ${resume.skills.join(', ')}`);
-        const session = await getAttemptVoiceSession(attempt.IdAttempt, orgTenantId, {
+        const academicProfile = resume?.studentAcademicProfile;
+        const academicParts = academicProfile ? [
+          academicProfile.institution,
+          academicProfile.degree,
+          academicProfile.academicStage,
+          academicProfile.cumulativeAverage == null ? undefined : `Average: ${academicProfile.cumulativeAverage}/${academicProfile.averageScale ?? 100}`,
+          academicProfile.semesters?.map((semester) => `${semester.name ?? 'Semester'}: ${semester.average ?? 'N/A'}`).join('; '),
+        ].filter(Boolean) : [];
+        const employeeProfile: AttemptVoiceEmployeeProfilePayload = {
           EmployeeName: user?.name,
           CompanyName: user?.tenantName ?? undefined,
           JobRoleTitle: jobRole?.title,
@@ -163,99 +525,36 @@ export function AttemptPage() {
           RequiredTechnicalSkills: jobRole?.technicalSkills ?? [],
           RequiredSoftSkills: jobRole?.softSkills ?? [],
           ResumeSummary: resumeParts.length > 0 ? resumeParts.join(' | ') : undefined,
-        });
+          ProfessionalObjective: resume?.professionalObjective ?? undefined,
+          AcademicProfileSummary: academicParts.length > 0 ? academicParts.join(' | ') : undefined,
+        };
+        employeeProfileRef.current = employeeProfile;
+        const session = await getAttemptVoiceSession(attempt.IdAttempt, orgTenantId, employeeProfile);
+
+        if (session.Committee && session.Committee.length >= 2) {
+          committeeRef.current = session.Committee;
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          localStreamRef.current = micStream;
+          await startCommitteeFlow(session.Committee);
+          return;
+        }
+
         actorIdRef.current = session.ActorId;
-        if (session.ActorNombre) setActorLabel(`${session.ActorNombre}${session.ActorRol ? ` — ${session.ActorRol}` : ''}`);
+        updateActorLabel(session.ActorNombre, session.ActorRol);
 
         const micStream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         });
         localStreamRef.current = micStream;
-
-        const peerConnection = new RTCPeerConnection();
-        peerConnectionRef.current = peerConnection;
-        micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
-
-        peerConnection.ontrack = (event) => {
-          const [remoteStream] = event.streams;
-          if (audioElementRef.current) audioElementRef.current.srcObject = remoteStream;
-          monitorRemoteAudioLevel(remoteStream);
-        };
-
-        const dataChannel = peerConnection.createDataChannel('oai-events');
-        dataChannel.onopen = () => {
-          dataChannel.send(JSON.stringify({ type: 'response.create' }));
-          // Safety net: the actor is instructed to speak first, but if nothing starts within a
-          // while (e.g. the very first response.create raced the session finishing setup), nudge it
-          // again once rather than leaving the student staring at silence. Window is generous (8s)
-          // because a too-short window can race the real response.created event and cause the model
-          // to generate two independent greetings back to back.
-          window.setTimeout(() => {
-            if (!gotResponseRef.current && dataChannel.readyState === 'open') {
-              dataChannel.send(JSON.stringify({ type: 'response.create' }));
-            }
-          }, 8000);
-        };
-        dataChannel.onmessage = (event) => {
-          let payload: Record<string, unknown>;
-          try {
-            payload = JSON.parse(event.data as string);
-          } catch {
-            return;
-          }
-
-          const attemptId = attemptRef.current?.IdAttempt;
-          if (import.meta.env.DEV) console.debug('[realtime]', payload.type);
-          if (payload.type === 'response.created') {
-            gotResponseRef.current = true;
-          }
-          if (payload.type === 'input_audio_buffer.speech_started') {
-            audioElementRef.current?.pause();
-          } else if (
-            payload.type === 'response.audio_transcript.delta' ||
-            payload.type === 'response.output_audio_transcript.delta' ||
-            payload.type === 'response.created'
-          ) {
-            if (audioElementRef.current?.paused) audioElementRef.current.play().catch(() => undefined);
-          } else if (payload.type === 'conversation.item.input_audio_transcription.completed' && attemptId) {
-            const transcript = (payload.transcript as string | undefined)?.trim();
-            if (transcript && normalizeForDedupe(transcript) !== lastParticipantTextRef.current) {
-              lastParticipantTextRef.current = normalizeForDedupe(transcript);
-              createConversationTurn(attemptId, orgTenantId, 'PARTICIPANT', transcript).catch(() => undefined);
-            }
-          } else if (
-            (payload.type === 'response.audio_transcript.done' || payload.type === 'response.output_audio_transcript.done') &&
-            attemptId
-          ) {
-            const transcript = (payload.transcript as string | undefined)?.trim();
-            if (transcript && normalizeForDedupe(transcript) !== lastActorTextRef.current) {
-              lastActorTextRef.current = normalizeForDedupe(transcript);
-              createConversationTurn(attemptId, orgTenantId, 'SIMULATED_ACTOR', transcript, actorIdRef.current ?? undefined).catch(
-                () => undefined,
-              );
-            }
-          }
-        };
-
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-
-        const sdpResponse = await fetch(session.RealtimeCallsUrl, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${session.ClientSecret}`, 'Content-Type': 'application/sdp' },
-          body: offer.sdp,
-        });
-        if (!sdpResponse.ok) throw new Error(`No se pudo negociar la sesión de voz (${sdpResponse.status}).`);
-        const answerSdp = await sdpResponse.text();
-        await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-
-        setVoiceState('connected');
+        await openRealtimeSession(session, () => undefined);
       } catch (err) {
         setErrorMessage(err instanceof Error ? err.message : String(err));
         setVoiceState('error');
       }
     },
-    [orgTenantId, monitorRemoteAudioLevel, user],
+    [orgTenantId, user, openRealtimeSession, updateActorLabel, startCommitteeFlow],
   );
 
   useEffect(() => {
@@ -265,12 +564,18 @@ export function AttemptPage() {
 
     async function boot() {
       try {
+        if (idLab) {
+          const lab = (await listPublishedLabs(orgTenantId)).find((item) => item.IdLab === idLab);
+          if (lab) setSimulationTitle(lab.Nombre);
+        }
         let attempt: AttemptItem;
         if (idAttemptParam) {
           attempt = await getAttempt(idAttemptParam, orgTenantId);
         } else {
           const scenario = await getRunnableScenario(idLab!, orgTenantId);
           if (!scenario) throw new Error(isEn ? 'This Lab has no runnable scenario yet.' : 'Este Lab todavía no tiene un escenario para correr.');
+          const version = await getLabVersion(scenario.idVersion, orgTenantId);
+          setSimulationObjective(version.ObjetivoGeneral);
           // Stable per-mount key so React StrictMode's dev-only double-invoke of this effect (or a
           // fast double-navigation) replays the SAME cached attempt server-side instead of racing a
           // second insert into a unique (tenant, scenario, participant, attempt#) index.
@@ -281,6 +586,11 @@ export function AttemptPage() {
         }
         if (cancelled) return;
         attemptRef.current = attempt;
+        if (!simulationObjective && attempt.IdVersion) {
+          getLabVersion(attempt.IdVersion, orgTenantId)
+            .then((version) => { if (!cancelled) setSimulationObjective(version.ObjetivoGeneral); })
+            .catch(() => undefined);
+        }
 
         if (attempt.Estatus === 'COMPLETED') {
           const existingEvaluation = await getAttemptEvaluation(attempt.IdAttempt, orgTenantId).catch(() => null);
@@ -379,8 +689,8 @@ export function AttemptPage() {
     setErrorMessage(null);
     teardown();
     gotResponseRef.current = false;
-    lastParticipantTextRef.current = null;
-    lastActorTextRef.current = null;
+    seenParticipantTextsRef.current.clear();
+    seenActorTextsRef.current.clear();
     setVoiceState('connecting');
     try {
       await connectVoice(attempt);
@@ -497,7 +807,13 @@ export function AttemptPage() {
             <Mic className={`h-10 w-10 ${voiceState === 'error' ? 'text-red-400' : 'text-teal-500 dark:text-teal-200'}`} />
           </div>
 
-          <h2 className="mt-5 text-lg font-semibold text-slate-900 dark:text-white">{isEn ? 'Live Interview' : 'Entrevista en vivo'}</h2>
+          {simulationTitle && <h1 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">{simulationTitle}</h1>}
+          {simulationObjective && (
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+              <span className="font-semibold">{isEn ? 'Objective:' : 'Objetivo:'}</span> {simulationObjective}
+            </p>
+          )}
+          <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">{isEn ? 'Live Interview' : 'Entrevista en vivo'}</h2>
           {actorLabel && <p className="mt-1 text-sm text-teal-600 dark:text-teal-300">{actorLabel}</p>}
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{errorMessage ?? voiceStateLabel[voiceState]}</p>
 
@@ -756,6 +1072,12 @@ function TranscriptPanel({
   show: boolean;
   onToggle: () => void;
 }) {
+  const visibleTranscript = transcript.filter((turn, index) => {
+    if (index === 0 || turn.SpeakerType !== 'PARTICIPANT') return true;
+    const previous = transcript[index - 1];
+    return previous.SpeakerType !== 'PARTICIPANT' || !areNearDuplicateParticipantTurns(previous.Texto, turn.Texto);
+  });
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
       <button
@@ -766,17 +1088,17 @@ function TranscriptPanel({
         <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
           <MessagesSquare className="h-4 w-4 text-teal-600 dark:text-teal-300" />
           {isEn ? 'Full conversation transcript' : 'Transcripción completa de la conversación'}
-          <span className="text-xs font-normal text-slate-400">({transcript.length})</span>
+          <span className="text-xs font-normal text-slate-400">({visibleTranscript.length})</span>
         </span>
         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${show ? 'rotate-180' : ''}`} />
       </button>
       {show && (
         <div className="max-h-96 space-y-2 overflow-y-auto border-t border-slate-200 p-4 dark:border-white/10">
           {error && <p className="text-sm text-red-500">{error}</p>}
-          {!error && transcript.length === 0 && (
+          {!error && visibleTranscript.length === 0 && (
             <p className="text-sm text-slate-400">{isEn ? 'No turns recorded yet.' : 'Aún no hay turnos registrados.'}</p>
           )}
-          {transcript.map((t) => (
+          {visibleTranscript.map((t) => (
             <div
               key={t.IdTurn}
               className={`flex gap-2 rounded-lg p-2.5 text-sm ${

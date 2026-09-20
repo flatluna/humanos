@@ -430,6 +430,17 @@ export function BrainPage() {
             )}
           </div>
 
+          {view === 'grid' && (
+            <div className="mt-4">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
+                {t('brain.engramsGridTitle')}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {t('brain.engramsGridSubtitle')}
+              </p>
+            </div>
+          )}
+
           <div className="relative mt-4 h-[560px] w-full overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(ellipse_at_center,_#1e1b4b_0%,_#0f172a_55%,_#020617_100%)] shadow-2xl sm:h-[680px]">
             {view === 'grid' ? (
               <BrainRecallGrid rootGroups={filteredRootGroups} query={query} onSelectNeuron={handleSelectNode} />

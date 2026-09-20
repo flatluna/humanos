@@ -1,4 +1,5 @@
 using HumanOS.Data;
+using HumanOS.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,12 @@ namespace HumanOS.AzureFunctions.Api;
 public sealed class GetStudentStructuredLearningDocumentsFunction
 {
     private readonly HumanOsDbContext _dbContext;
+    private readonly PersonService _personService;
 
-    public GetStudentStructuredLearningDocumentsFunction(HumanOsDbContext dbContext)
+    public GetStudentStructuredLearningDocumentsFunction(HumanOsDbContext dbContext, PersonService personService)
     {
         _dbContext = dbContext;
+        _personService = personService;
     }
 
     [Function("GetStudentStructuredLearningDocuments")]
@@ -29,6 +32,17 @@ public sealed class GetStudentStructuredLearningDocumentsFunction
             Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId)
                 ? studioTenantId
                 : null;
+
+        if (callerTenantId is null &&
+            request.Headers.TryGetValues("X-Azure-OID", out var oidValues) &&
+            request.Headers.TryGetValues("X-Azure-TID", out var tidValues) &&
+            !string.IsNullOrWhiteSpace(oidValues.FirstOrDefault()) &&
+            !string.IsNullOrWhiteSpace(tidValues.FirstOrDefault()))
+        {
+            var callerPerson = await _personService.GetByAzureIdentityAsync(
+                oidValues.First(), tidValues.First(), cancellationToken);
+            callerTenantId = callerPerson?.TenantId;
+        }
 
         var documents = await _dbContext.StructuredLearningDocuments
             .AsNoTracking()

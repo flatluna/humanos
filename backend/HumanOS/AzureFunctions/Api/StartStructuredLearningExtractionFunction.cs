@@ -81,6 +81,10 @@ public sealed class StartStructuredLearningExtractionFunction
 
         public string? PedagogicalAudience { get; set; }
 
+        /// <summary>"L100"/"L200"/"L300" content depth — see
+        /// StructuredLearningDocument.CourseLevel's own doc comment.</summary>
+        public string? CourseLevel { get; set; }
+
         public int? MaxDeepDiveCardsPerNode { get; set; }
 
         public bool? IncludeProductionStep { get; set; }
@@ -176,6 +180,7 @@ public sealed class StartStructuredLearningExtractionFunction
             Category = string.IsNullOrWhiteSpace(body.Category) ? null : body.Category,
             TargetSkill = string.IsNullOrWhiteSpace(body.TargetSkill) ? null : body.TargetSkill,
             PedagogicalAudience = string.IsNullOrWhiteSpace(body.PedagogicalAudience) ? null : body.PedagogicalAudience,
+            CourseLevel = string.IsNullOrWhiteSpace(body.CourseLevel) ? null : body.CourseLevel,
             MaxDeepDiveCardsPerNode = body.MaxDeepDiveCardsPerNode,
             IncludeProductionStep = body.IncludeProductionStep,
             IncludeRecallStep = body.IncludeRecallStep,

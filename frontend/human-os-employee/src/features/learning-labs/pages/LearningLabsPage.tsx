@@ -64,6 +64,11 @@ export function LearningLabsPage() {
   const [activeTab, setActiveTab] = useState<LabsTab>('catalog');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [attemptPendingDelete, setAttemptPendingDelete] = useState<AttemptHistoryItem | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orgTenantId) return;
@@ -133,6 +138,51 @@ export function LearningLabsPage() {
       setDeletingId(null);
       setAttemptPendingDelete(null);
     }
+  }
+
+  function toggleSelected(idAttempt: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(idAttempt)) next.delete(idAttempt);
+      else next.add(idAttempt);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => (prev.size === attempts.length ? new Set() : new Set(attempts.map((a) => a.IdAttempt))));
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    if (bulkDeleting || selectedIds.size === 0 || !orgTenantId) return;
+    setBulkDeleting(true);
+    setBulkDeleteError(null);
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(ids.map((id) => deleteAttempt(id, orgTenantId)));
+    const deletedIds = ids.filter((_, i) => results[i].status === 'fulfilled');
+    const failedCount = ids.length - deletedIds.length;
+    setAttempts((prev) => prev.filter((a) => !deletedIds.includes(a.IdAttempt)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      deletedIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    if (failedCount > 0) {
+      setBulkDeleteError(
+        isEn
+          ? `${failedCount} attempt(s) could not be deleted.`
+          : `${failedCount} intento(s) no se pudieron eliminar.`,
+      );
+    } else {
+      setBulkDeleteConfirm(false);
+      setSelectMode(false);
+    }
+    setBulkDeleting(false);
   }
 
   const filteredLabs = useMemo(() => {
@@ -348,16 +398,73 @@ export function LearningLabsPage() {
 
       {activeTab === 'history' && attempts.length > 0 && (
         <div className="space-y-3">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
-            <History className="h-5 w-5 text-teal-600 dark:text-teal-300" />
-            {isEn ? 'My Attempts' : 'Mis Intentos'}
-          </h2>          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+              <History className="h-5 w-5 text-teal-600 dark:text-teal-300" />
+              {isEn ? 'My Attempts' : 'Mis Intentos'}
+            </h2>
+            {!selectMode ? (
+              <button
+                type="button"
+                onClick={() => setSelectMode(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+              >
+                {isEn ? 'Select' : 'Seleccionar'}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {selectedIds.size} {isEn ? 'selected' : 'seleccionados'}
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+                >
+                  {selectedIds.size === attempts.length ? (isEn ? 'Deselect all' : 'Deseleccionar todo') : (isEn ? 'Select all' : 'Seleccionar todo')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkDeleteConfirm(true)}
+                  disabled={selectedIds.size === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {isEn ? 'Delete' : 'Eliminar'} ({selectedIds.size})
+                </button>
+                <button
+                  type="button"
+                  onClick={exitSelectMode}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+          {bulkDeleteError && (
+            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+              <AlertCircle className="h-4 w-4 flex-none" />
+              {bulkDeleteError}
+            </div>
+          )}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
             <ul className="divide-y divide-slate-200 dark:divide-white/10">
               {attempts.map((a) => (
                 <li key={a.IdAttempt} className="flex items-center">
+                  {selectMode && (
+                    <label className="flex items-center px-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(a.IdAttempt)}
+                        onChange={() => toggleSelected(a.IdAttempt)}
+                        className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 dark:border-white/20"
+                      />
+                    </label>
+                  )}
                   <button
                     type="button"
-                    onClick={() => navigate(`/learning-labs/attempts/${a.IdAttempt}`)}
+                    onClick={() => (selectMode ? toggleSelected(a.IdAttempt) : navigate(`/learning-labs/attempts/${a.IdAttempt}`))}
                     className="flex flex-1 items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-white/[0.04]"
                   >
                     <div>
@@ -389,19 +496,21 @@ export function LearningLabsPage() {
                       </span>
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setAttemptPendingDelete(a)}
-                    disabled={deletingId === a.IdAttempt}
-                    title={isEn ? 'Delete attempt' : 'Eliminar intento'}
-                    className="mr-3 inline-flex items-center justify-center rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60 dark:hover:bg-red-500/10 dark:hover:text-red-400"
-                  >
-                    {deletingId === a.IdAttempt ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
+                  {!selectMode && (
+                    <button
+                      type="button"
+                      onClick={() => setAttemptPendingDelete(a)}
+                      disabled={deletingId === a.IdAttempt}
+                      title={isEn ? 'Delete attempt' : 'Eliminar intento'}
+                      className="mr-3 inline-flex items-center justify-center rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-60 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                    >
+                      {deletingId === a.IdAttempt ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -467,6 +576,63 @@ export function LearningLabsPage() {
                 ) : (
                   <Trash2 className="h-4 w-4" />
                 )}
+                {isEn ? 'Delete' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+          onClick={() => (bulkDeleting ? undefined : setBulkDeleteConfirm(false))}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkDeleteConfirm(false)}
+                disabled={bulkDeleting}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-white">
+              {isEn ? `Delete ${selectedIds.size} attempt(s)?` : `¿Eliminar ${selectedIds.size} intento(s)?`}
+            </h3>
+            <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
+              {isEn
+                ? 'This permanently removes every selected attempt and all of its recorded conversation turns, actions, artifacts, and evaluation. This cannot be undone.'
+                : 'Esto elimina permanentemente cada intento seleccionado y todos sus turnos de conversación, acciones, artefactos y evaluación registrados. Esta acción no se puede deshacer.'}
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkDeleteConfirm(false)}
+                disabled={bulkDeleting}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/10"
+              >
+                {isEn ? 'Cancel' : 'Cancelar'}
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-500 disabled:opacity-60"
+              >
+                {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 {isEn ? 'Delete' : 'Eliminar'}
               </button>
             </div>

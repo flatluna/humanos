@@ -128,6 +128,7 @@ public sealed class GetMeFunction
                 PersonId = person.PersonId,
                 TenantId = person.TenantId,
                 TenantName = tenant?.Name,
+                IsAcademicTenant = string.Equals(tenant?.OrgType, "Academic", StringComparison.OrdinalIgnoreCase),
                 Email = person.Email,
                 PreferredLanguage = profile?.PreferredLanguage,
                 OrgRole = person.OrgRole.ToString(),

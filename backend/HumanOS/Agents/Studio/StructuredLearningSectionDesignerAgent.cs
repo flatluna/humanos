@@ -220,6 +220,17 @@ public sealed class StructuredLearningSectionDesignerAgent
         sections, never the whole document — and must build every step from
         it alone.
 
+        LANGUAGE HARD RULE (read this first): the request will tell you the
+        "Language for all content" (e.g. 'en' or 'es'). EVERY field you
+        output — Capability, Statements, every step's Content, every
+        IllustrationPrompt, every Title — MUST be written entirely in that
+        requested language, REGARDLESS of what language the section's own
+        source text is written in. If the source text is in Spanish but the
+        requested language is English, TRANSLATE and re-express the content
+        in English — never copy/quote the source verbatim in its original
+        language and never mix languages. Only proper nouns, brand names, or
+        terms with no real translation may stay in their original form.
+
         BEFORE generating the steps, determine the core capability this
         engram is creating for the learner. Use the chapter title as the
         schema/category bucket and write a single sentence in the output
@@ -656,7 +667,10 @@ public sealed class StructuredLearningSectionDesignerAgent
           the source-fidelity rules above.
         - Write in the requested language — this is the language the user
           chose for this course, independent of whatever language the
-          section's own source text happens to be in.
+          section's own source text happens to be in. This is a HARD rule
+          (see LANGUAGE HARD RULE at the top): translate/re-express the
+          source content, never leave any field in the source's own
+          language when it differs from the requested one.
         - NEVER invent facts, numbers, or examples beyond what this
           section's own text actually states. When in doubt, say less
           rather than add something not in the source.
@@ -712,7 +726,8 @@ public sealed class StructuredLearningSectionDesignerAgent
         CancellationToken cancellationToken = default,
         string? illustrationGuidance = null,
         IReadOnlyList<StructuredLearningPedagogyKnowledgeFactDto>? knowledgeFacts = null,
-        string? perplexityFindings = null)
+        string? perplexityFindings = null,
+        string? courseLevel = null)
     {
         if (_agent is null)
         {
@@ -729,12 +744,27 @@ public sealed class StructuredLearningSectionDesignerAgent
         if (includeProductionStep) includedSteps.Add("Production");
         if (includeAssessmentStep) includedSteps.Add("Assessment");
 
+        var levelInstruction = (courseLevel ?? "L100") switch
+        {
+            "L300" => "CONTENT DEPTH: L300 (advanced). Assume the learner has already mastered L100/L200 " +
+                      "fundamentals for this topic — do NOT re-explain basic definitions. Focus on trade-offs, " +
+                      "edge cases, architecture-level decisions, and nuanced judgment calls a senior/principal " +
+                      "practitioner would face. Examples should be realistic, non-trivial scenarios.",
+            "L200" => "CONTENT DEPTH: L200 (intermediate). Assume basic fundamentals are already understood — " +
+                      "keep foundational definitions brief, spend most of the content on practical, worked " +
+                      "examples and real-world application rather than re-teaching basics.",
+            _ => "CONTENT DEPTH: L100 (foundational). Assume zero prior knowledge of this topic — explain every " +
+                 "core concept before using it, avoid unexplained jargon, and prioritize clarity over depth.",
+        };
+
         var prompt = $"""
             ContractVersion: {SourceFaithfulContractVersion}
             Chapter: {chapterTitle}
             Section: {subchapterTitle}
             Language for all content: {languageCode}
+            HARD RULE: every output field (Capability, Statements, all step Content, all IllustrationPrompts, all Titles) MUST be written entirely in '{languageCode}', even though the section text below may be written in a different language. Translate/re-express, do not copy the source's own language.
             Audience/tone: {pedagogicalAudience ?? "Standard"}
+            {levelInstruction}
             Steps to include, IN THIS EXACT ORDER: {string.Join(" -> ", includedSteps)}
             {(includeDeepDiveStep ? $"Max DeepDive cards: {maxDeepDiveCards ?? 3}" : "")}
             {(string.IsNullOrWhiteSpace(illustrationGuidance) ? "" : $"""

@@ -2536,6 +2536,11 @@ function VideoGenerationBox({
       const dataUrl = reader.result as string;
       const base64 = dataUrl.split(',')[1] ?? '';
       setWizardImage({ base64, contentType: file.type || 'image/png', previewUrl: dataUrl });
+      // A freshly selected image must always become the active anchor —
+      // otherwise a stale wizardChainImage (set the last time "Generate
+      // prompts" ran) keeps overriding it everywhere (preview, download,
+      // clip generation) until prompts are regenerated (2026-09-19 fix).
+      setWizardChainImage(null);
     };
     reader.readAsDataURL(file);
   }
@@ -2551,6 +2556,9 @@ function VideoGenerationBox({
         contentType: result.ContentType,
         previewUrl: `data:${result.ContentType};base64,${result.ImageBase64}`,
       });
+      // Same fix as handleWizardImageUpload — a newly generated/edited image
+      // must replace any stale chained anchor immediately.
+      setWizardChainImage(null);
     } catch (err) {
       setWizardError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2561,6 +2569,10 @@ function VideoGenerationBox({
   async function handleSelectWizardImageMode(mode: 'engram' | 'upload' | 'ai' | 'edit' | 'none') {
     setWizardImageMode(mode);
     setWizardError(null);
+    // Switching modes always invalidates whatever anchor "Generate prompts"
+    // last locked in — otherwise the previous mode's image keeps being used
+    // (2026-09-19 fix, same root cause as handleWizardImageUpload).
+    setWizardChainImage(null);
     if (mode === 'engram') {
       if (lessonIllustrationId) {
         setLoadingLessonImage(true);
@@ -2689,8 +2701,15 @@ function VideoGenerationBox({
         try {
           const lastFrame = await getStructuredLearningVideoLastFrame(current.IllustrationId);
           setWizardChainImage({ base64: lastFrame.Base64, contentType: lastFrame.ContentType });
-        } catch {
-          // continuity is best-effort — the next clip can still be generated without it
+        } catch (frameErr) {
+          // Surfaced (2026-09-19 fix) instead of silently swallowed — a failed
+          // extraction previously left wizardChainImage untouched, so the NEXT
+          // clip silently fell back to the original starting image instead of
+          // this clip's last frame, looking like a random continuity break
+          // with no visible error at all.
+          setWizardError(
+            `Video created, but continuity to the next clip failed (could not extract its last frame): ${frameErr instanceof Error ? frameErr.message : String(frameErr)}`,
+          );
         }
       }
       setWizardActiveClip(index + 1);
@@ -2732,8 +2751,12 @@ function VideoGenerationBox({
                 contentType: lastFrame.ContentType,
                 previewUrl: `data:${lastFrame.ContentType};base64,${lastFrame.Base64}`,
               });
-            } catch {
-              // continuity is best-effort — the next clip can still be generated without it
+            } catch (frameErr) {
+              // Surfaced (2026-09-19 fix) instead of silently swallowed — see the
+              // wizard's own handleWizardCreateClip fix for the same root cause.
+              setError(
+                `Video created, but continuity to the next manual video failed (could not extract its last frame): ${frameErr instanceof Error ? frameErr.message : String(frameErr)}`,
+              );
             }
           }
         }
@@ -3375,8 +3398,13 @@ function VideoGenerationBox({
                     Anchor image for this clip:{' '}
                     {anchor ? (
                       <>
-                        <img src={anchorPreviewUrl!} alt="Anchor" className="h-6 w-6 rounded object-cover" />
-                        {wizardChainImage ? 'previous clip\'s last frame' : 'your uploaded/generated starting image'}
+                        <img
+                          src={anchorPreviewUrl!}
+                          alt="Anchor"
+                          onClick={() => setLightboxSrc(anchorPreviewUrl!)}
+                          className="h-10 w-10 cursor-zoom-in rounded object-cover hover:ring-2 hover:ring-violet-400"
+                        />
+                        {wizardChainImage ? 'previous clip\'s last frame (click to zoom in and verify)' : 'your uploaded/generated starting image (click to zoom in)'}
                       </>
                     ) : (
                       <span className="text-amber-400">none — Veo will invent its own scene from the text prompt alone</span>

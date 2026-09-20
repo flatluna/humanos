@@ -217,7 +217,7 @@ export function RoadmapsPage() {
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                      Skills requeridas por el puesto
+                      Capabilities requeridas por el puesto
                     </h3>
                     <p className="mt-1 text-xs text-slate-400 dark:text-white/40">
                       Fuente: puesto asignado del empleado.
@@ -226,7 +226,7 @@ export function RoadmapsPage() {
                     <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">Técnicas</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {requiredTechnicalSkills.length === 0 && (
-                        <span className="text-sm text-slate-400">Sin skills técnicas definidas.</span>
+                        <span className="text-sm text-slate-400">Sin capabilities técnicas definidas.</span>
                       )}
                       {requiredTechnicalSkills.map((skill) => (
                         <span
@@ -238,10 +238,10 @@ export function RoadmapsPage() {
                       ))}
                     </div>
 
-                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">Soft skills</p>
+                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">Soft capabilities</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {requiredSoftSkills.length === 0 && (
-                        <span className="text-sm text-slate-400">Sin soft skills definidos.</span>
+                        <span className="text-sm text-slate-400">Sin capabilities blandas definidas.</span>
                       )}
                       {requiredSoftSkills.map((skill) => (
                         <span
@@ -254,17 +254,17 @@ export function RoadmapsPage() {
                     </div>
 
                     {requiredTechnicalSkills.length === 0 && requiredSoftSkills.length === 0 && (
-                      <p className="mt-2 text-sm text-slate-400">Sin skills definidas para este puesto.</p>
+                      <p className="mt-2 text-sm text-slate-400">Sin capabilities definidas para este puesto.</p>
                     )}
                   </div>
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                      Skills actuales del empleado
+                      Capabilities actuales del empleado
                     </h3>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {currentSkills.length === 0 && (
                         <span className="text-sm text-slate-400">
-                          Sin skills registradas (agrégalas desde su ficha).
+                          Sin capabilities registradas (agrégalas desde su ficha).
                         </span>
                       )}
                       {currentSkills.map((skill) => (

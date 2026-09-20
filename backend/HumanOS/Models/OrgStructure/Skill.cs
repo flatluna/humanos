@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace HumanOS.Models.OrgStructure;
 
 /// <summary>
@@ -30,6 +32,15 @@ public sealed class Skill
     public string Name { get; set; } = null!;
 
     public string? Description { get; set; }
+
+    /// <summary>How this skill is assigned in the employee learning journey.
+    /// Null is retained for legacy rows and resolved by SkillService.</summary>
+    public string? AssignmentScope { get; set; }
+
+    /// <summary>Department IDs stored as references only; department master
+    /// data remains in Department.</summary>
+    [NotMapped]
+    public string? ApplicableDepartmentIdsJson { get; set; }
 
     public bool IsActive { get; set; } = true;
 

@@ -24,6 +24,15 @@ function relativeLabel(lastCompletedDate: string | undefined, lang: 'en' | 'es')
   return rtf.format(-Math.round(days / 365), 'year');
 }
 
+/** Prefers the leading section number ("1.1", "3.2") so the badge tells you
+ *  where you are in the course; falls back to the first letter for titles
+ *  without one ("Introduction to AI", "Module Application Activity"). */
+function nodeBadge(name: string): string {
+  const numberMatch = name.match(/^\d+(\.\d+)?/);
+  if (numberMatch) return numberMatch[0];
+  return name.charAt(0).toUpperCase();
+}
+
 export interface BrainRecallGridProps {
   rootGroups: RootGroup[];
   query: string;
@@ -64,7 +73,13 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
               .sort((a, b) => {
                 const aR = getRetrievability(a.lastCompletedDate, a.reviewCount ?? 1) ?? -1;
                 const bR = getRetrievability(b.lastCompletedDate, b.reviewCount ?? 1) ?? -1;
-                return aR - bR;
+                // Compare by the rounded percent actually shown on the card (not the raw
+                // float) so cards displaying the same "72%"/"99%" tie and fall through to
+                // the alphabetical/numeric tie-break below, matching what the user sees.
+                const aPercent = Math.round(aR * 100);
+                const bPercent = Math.round(bR * 100);
+                if (aPercent !== bPercent) return aPercent - bPercent;
+                return a.name.localeCompare(b.name, undefined, { numeric: true });
               });
             return { cluster, nodes };
           })
@@ -152,11 +167,11 @@ export function BrainRecallGrid({ rootGroups, query, onSelectNeuron }: BrainReca
                           <div className="flex items-center justify-between">
                             <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
                               <motion.div
-                                className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-[11px] font-bold ${isFading ? 'animate-pulse' : ''}`}
+                                className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-[10px] font-bold leading-none ${isFading ? 'animate-pulse' : ''}`}
                                 animate={{ background: memoryColor, color: memoryTextColor }}
                                 transition={{ duration: 1, ease: 'easeOut' }}
                               >
-                                {node.name.charAt(0).toUpperCase()}
+                                {nodeBadge(node.name)}
                               </motion.div>
                             </div>
                             {percent !== null && (

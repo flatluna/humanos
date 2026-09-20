@@ -18,7 +18,7 @@ import {
   PlayCircle,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
-import { getJobRoles } from '@/api/orgStructureApi';
+import { getDepartments, getJobRoles } from '@/api/orgStructureApi';
 import {
   createSkill,
   getSkills,
@@ -27,6 +27,7 @@ import {
   deleteSkillDocument,
   type SaveSkillRequest,
   type SkillCategory,
+  type SkillAssignmentScope,
   type SkillDto,
 } from '@/api/skillsApi';
 
@@ -40,6 +41,12 @@ const CATEGORY_OPTIONS: { id: SkillCategory; labelKey: string; icon: typeof Grad
 const inputClass =
   'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white';
 const labelClass = 'block text-xs font-medium text-slate-500 dark:text-white/50';
+
+const ASSIGNMENT_SCOPE_OPTIONS: { value: SkillAssignmentScope; label: string; description: string }[] = [
+  { value: 'COMPANY_WIDE_ESSENTIAL', label: 'HR & Compliance Essentials', description: 'Required for all employees.' },
+  { value: 'DEPARTMENT_ESSENTIAL', label: 'Human Capabilities Essentials', description: 'Required for employees in selected departments.' },
+  { value: 'JOB_ROLE_ESSENTIAL', label: 'Role Essentials', description: 'Required for employees in selected job roles.' },
+];
 
 export function SkillDetailPage() {
   const { t } = useTranslation();
@@ -56,7 +63,13 @@ export function SkillDetailPage() {
   const [category, setCategory] = useState<SkillCategory>(initialCategory);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [assignmentScope, setAssignmentScope] = useState<SkillAssignmentScope>('COMPANY_WIDE_ESSENTIAL');
+  const [departmentIds, setDepartmentIds] = useState<string[]>([]);
+  const [departmentSearch, setDepartmentSearch] = useState('');
   const [jobRoleIds, setJobRoleIds] = useState<string[]>([]);
+  // Content depth ("L100"/"L200"/"L300") required for THIS skill by each
+  // selected role — e.g. "Python Programming" can be L100 for Jr, L300 for Sr.
+  const [jobRoleLevels, setJobRoleLevels] = useState<Record<string, string>>({});
   const [currentSkill, setCurrentSkill] = useState<SkillDto | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -75,6 +88,10 @@ export function SkillDetailPage() {
     queryKey: ['job-roles', tenantId],
     queryFn: () => getJobRoles(tenantId),
   });
+  const departmentsQuery = useQuery({
+    queryKey: ['departments', tenantId],
+    queryFn: () => getDepartments(tenantId),
+  });
 
   useEffect(() => {
     if (skillId && skillsQuery.data) {
@@ -84,7 +101,18 @@ export function SkillDetailPage() {
         setCategory(skill.category);
         setName(skill.name);
         setDescription(skill.description ?? '');
+        setAssignmentScope(
+          skill.assignmentScope === 'DEPARTMENT_ESSENTIAL' || skill.assignmentScope === 'JOB_ROLE_ESSENTIAL'
+            ? skill.assignmentScope
+            : skill.jobRoles.length > 0
+              ? 'JOB_ROLE_ESSENTIAL'
+              : 'COMPANY_WIDE_ESSENTIAL',
+        );
+        setDepartmentIds(skill.applicableDepartmentIds ?? []);
         setJobRoleIds(skill.jobRoles.map((r) => r.jobRoleId));
+        setJobRoleLevels(
+          Object.fromEntries(skill.jobRoles.filter((r) => r.requiredLevel).map((r) => [r.jobRoleId, r.requiredLevel as string])),
+        );
       }
     }
   }, [skillId, skillsQuery.data]);
@@ -160,6 +188,10 @@ export function SkillDetailPage() {
     );
   }
 
+  function setJobRoleLevel(jobRoleId: string, level: string) {
+    setJobRoleLevels((prev) => ({ ...prev, [jobRoleId]: level }));
+  }
+
   function toggleSelectAllJobRoles() {
     const allIds = (jobRolesQuery.data ?? []).map((r) => r.jobRoleId);
     const allSelected = allIds.length > 0 && allIds.every((id) => jobRoleIds.includes(id));
@@ -169,17 +201,36 @@ export function SkillDetailPage() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) return;
+    if (assignmentScope === 'DEPARTMENT_ESSENTIAL' && departmentIds.length === 0) {
+      setErrorMessage('Select at least one applicable department.');
+      return;
+    }
+    if (assignmentScope === 'JOB_ROLE_ESSENTIAL' && jobRoleIds.length === 0) {
+      setErrorMessage('Select at least one applicable job role.');
+      return;
+    }
+    setErrorMessage(null);
 
     saveMutation.mutate({
       category,
       name: name.trim(),
       description: description.trim() || null,
-      jobRoleIds,
+      assignmentScope,
+      applicableDepartmentIds: departmentIds,
+      jobRoleLinks: jobRoleIds.map((jobRoleId) => ({
+        jobRoleId,
+        requiredLevel: jobRoleLevels[jobRoleId] || null,
+      })),
     });
   }
 
   const allJobRoles = jobRolesQuery.data ?? [];
   const allSelected = allJobRoles.length > 0 && allJobRoles.every((r) => jobRoleIds.includes(r.jobRoleId));
+  const filteredDepartments = (departmentsQuery.data ?? []).filter((department) =>
+    department.name.toLowerCase().includes(departmentSearch.trim().toLowerCase()),
+  );
+  const showDepartments = assignmentScope !== 'COMPANY_WIDE_ESSENTIAL';
+  const showJobRoles = assignmentScope !== 'COMPANY_WIDE_ESSENTIAL' && assignmentScope !== 'DEPARTMENT_ESSENTIAL';
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -300,6 +351,54 @@ export function SkillDetailPage() {
           />
         </div>
 
+        <div>
+          <label className={labelClass}>Assignment Scope</label>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">Defines who should develop this skill and where it appears in the employee learning journey.</p>
+          <select
+            className={inputClass}
+            value={assignmentScope}
+            onChange={(event) => setAssignmentScope(event.target.value as SkillAssignmentScope)}
+          >
+            {ASSIGNMENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-slate-500 dark:text-white/50">
+            {ASSIGNMENT_SCOPE_OPTIONS.find((option) => option.value === assignmentScope)?.description}
+          </p>
+        </div>
+
+        {showDepartments ? (
+          <div>
+            <label className={labelClass}>Applicable Departments</label>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
+              {assignmentScope === 'EXPLORATORY'
+                ? 'Leave both empty to make this skill available for exploration across the organization, or select an audience to limit its visibility.'
+                : 'Select the departments whose employees require or should be recommended this skill.'}
+            </p>
+            <input
+              className={inputClass}
+              value={departmentSearch}
+              onChange={(event) => setDepartmentSearch(event.target.value)}
+              placeholder="Search departments"
+            />
+            <div className="mt-2 max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-3 dark:border-white/10">
+              {filteredDepartments.map((department) => (
+                <label key={department.departmentId} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/70 dark:hover:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={departmentIds.includes(department.departmentId)}
+                    onChange={() => setDepartmentIds((current) => current.includes(department.departmentId) ? current.filter((id) => id !== department.departmentId) : [...current, department.departmentId])}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span>{department.name}</span>
+                </label>
+              ))}
+              {filteredDepartments.length === 0 && <p className="text-xs text-slate-400">No departments found.</p>}
+            </div>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-white/60">This skill applies to all employees.</p>
+        )}
+
         {/* PDF Document Attachment Section */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-white/5">
           <div className="flex items-center justify-between">
@@ -370,9 +469,12 @@ export function SkillDetailPage() {
           )}
         </div>
 
-        <div>
+        {showJobRoles && <div>
           <div className="flex items-center justify-between">
-            <label className={labelClass}>{t('skills.linkedRolesLabel')}</label>
+            <div>
+              <label className={labelClass}>Applicable Job Roles</label>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">Select the job roles for which this skill is required, recommended, or available, based on the selected assignment scope.</p>
+            </div>
             <button
               type="button"
               onClick={toggleSelectAllJobRoles}
@@ -396,13 +498,27 @@ export function SkillDetailPage() {
                   onChange={() => toggleJobRole(role.jobRoleId)}
                   className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
-                <span>
+                <span className="flex-1">
                   {role.title} <span className="text-xs text-slate-400">· {role.departmentName}</span>
                 </span>
+                {jobRoleIds.includes(role.jobRoleId) && (
+                  <select
+                    value={jobRoleLevels[role.jobRoleId] ?? ''}
+                    onChange={(e) => setJobRoleLevel(role.jobRoleId, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-white/70"
+                    title="Nivel de contenido requerido para este rol"
+                  >
+                    <option value="">Sin nivel</option>
+                    <option value="L100">L100 · Fundacional</option>
+                    <option value="L200">L200 · Intermedio</option>
+                    <option value="L300">L300 · Avanzado</option>
+                  </select>
+                )}
               </label>
             ))}
           </div>
-        </div>
+        </div>}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-white/10">
           <button

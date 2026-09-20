@@ -1159,7 +1159,7 @@ export function ObjectivesPage() {
               <p className="mt-1 text-xl font-bold text-violet-600 dark:text-violet-400">{softCount}</p>
             </Card>
             <Card className="p-4">
-              <span className="text-xs text-slate-500 dark:text-white/50">{isEn ? 'Milestones Mastered' : 'Hitos Completados'}</span>
+              <span className="text-xs text-slate-500 dark:text-white/50">{isEn ? 'Milestones Mastered' : 'Logros Completados'}</span>
               <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">
                 {completedActionsCount}/{allActionItems.length}
               </p>
@@ -1384,7 +1384,7 @@ export function ObjectivesPage() {
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.02] space-y-3">
                           <div className="flex items-center justify-between">
                             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-white/80">
-                              {isEn ? 'Measurable Action Milestones & Deliverables' : 'Hitos de Acción y Entregables Medibles'}
+                              {isEn ? 'Measurable Action Milestones & Deliverables' : 'Logros de Acción y Entregables Medibles'}
                             </h4>
                             <span className="text-xs font-semibold text-slate-500">
                               {rec.actionItems.filter((a) => a.completed).length} / {rec.actionItems.length} {isEn ? 'Done' : 'Listos'}
@@ -2569,7 +2569,7 @@ export function ObjectivesPage() {
               {/* 6. Action Items (one per line) */}
               <div>
                 <label className={labelClass}>
-                  {isEn ? 'Action Milestones & Deliverables (one per line)' : 'Hitos de Acción y Entregables (uno por línea)'}
+                  {isEn ? 'Action Milestones & Deliverables (one per line)' : 'Logros de Acción y Entregables (uno por línea)'}
                 </label>
                 <textarea
                   rows={3}

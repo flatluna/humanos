@@ -60,6 +60,13 @@ public sealed class EmployeeScoringProfile
     /// Skills claimed / stated on the CV by the employee (kept separate from company-assigned skills).
     /// </summary>
     public List<string> ResumeSkills { get; set; } = [];
+
+    /// <summary>
+    /// Set only when this person has a real Tec de Monterrey student academic profile on file
+    /// (institution/degree/grades) — signals this is a STUDENT, not a HumanOS employee, so callers
+    /// (e.g. LearnerContextBuilder) can skip job-role/objectives framing entirely for them.
+    /// </summary>
+    public string? StudentAcademicProfileSummary { get; set; }
 }
 
 /// <summary>

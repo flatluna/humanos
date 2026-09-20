@@ -110,6 +110,12 @@ public sealed class StructuredLearningPedagogyService
     /// after an agent prompt/instructions change, so already-succeeded
     /// sections pick up the new behavior instead of being skipped as
     /// already-done.</param>
+    /// <param name="fromEngramNumber">Optional 1-based inclusive start position
+    /// (by SortOrder) — lets a designer restart/regenerate only a specific
+    /// range of engrams (e.g. "1 to 10") instead of the whole document.
+    /// Null means from the first engram.</param>
+    /// <param name="toEngramNumber">Optional 1-based inclusive end position
+    /// (by SortOrder). Null means through the last engram.</param>
     public async Task<StructuredLearningPedagogyResult> RunAsync(
         Guid documentId,
         string languageCode,
@@ -120,7 +126,9 @@ public sealed class StructuredLearningPedagogyService
         string? uploadedImageContentType = null,
         string? referenceImageUsageInstruction = null,
         SectionIllustrationOverride? illustrationOverride = null,
-        bool? usePerplexitySearch = null)
+        bool? usePerplexitySearch = null,
+        int? fromEngramNumber = null,
+        int? toEngramNumber = null)
     {
         StructuredLearningDocument document;
         List<StructuredLearningDocumentSection> pendingSections;
@@ -137,9 +145,29 @@ public sealed class StructuredLearningPedagogyService
                 sectionsQuery = sectionsQuery.Where(s => s.PedagogyStatus != StructuredLearningPedagogyStatus.Completed);
             }
 
-            pendingSections = await sectionsQuery
+            var orderedSections = await sectionsQuery
                 .OrderBy(s => s.SortOrder)
                 .ToListAsync(cancellationToken);
+
+            // Engram range filter (2026-09-19) applies AFTER ordering, using the
+            // section's 1-based position in the document's own SortOrder
+            // sequence — not the raw SortOrder value itself, since SortOrder can
+            // start at any base or have gaps. "Engram 1 to 10" always means the
+            // first ten engrams in the document, regardless of forceRegenerateAll.
+            if (fromEngramNumber is > 0 || toEngramNumber is > 0)
+            {
+                var from = fromEngramNumber is > 0 ? fromEngramNumber.Value : 1;
+                var to = toEngramNumber is > 0 ? toEngramNumber.Value : orderedSections.Count;
+                pendingSections = orderedSections
+                    .Select((section, index) => (section, position: index + 1))
+                    .Where(x => x.position >= from && x.position <= to)
+                    .Select(x => x.section)
+                    .ToList();
+            }
+            else
+            {
+                pendingSections = orderedSections;
+            }
         }
 
         var effectiveUsePerplexitySearch = usePerplexitySearch ?? ReadUsePerplexitySearch(document.ConfigSnapshotJson);
@@ -264,6 +292,31 @@ public sealed class StructuredLearningPedagogyService
 
         var includeDeepDiveStep = document.MaxDeepDiveCardsPerNode is > 0;
         var includeHypothesisStep = ReadIncludeHypothesisStep(document.ConfigSnapshotJson);
+
+        // Snapshot every existing engram artifact BEFORE regenerating
+        // anything (2026-09-19 "atomic restart" fix) — a restart must wipe
+        // ALL of a section's prior generated content (cards/steps,
+        // illustrations, hypothesis answers, assessment/recall history),
+        // not just Steps, so nothing stale survives a regeneration. Ids are
+        // captured now (not deleted yet) so old content stays intact if the
+        // AI generation below fails — the actual delete-old+insert-new swap
+        // happens together, atomically, in one transaction near the end.
+        var oldIllustrationIds = await dbContext.StructuredLearningIllustrations
+            .Where(i => i.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+            .Select(i => i.StructuredLearningIllustrationId)
+            .ToListAsync(cancellationToken);
+        var oldHypothesisResponseIds = await dbContext.StructuredLearningHypothesisResponses
+            .Where(h => h.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+            .Select(h => h.StructuredLearningHypothesisResponseId)
+            .ToListAsync(cancellationToken);
+        var oldAssessmentRoundIds = await dbContext.StructuredLearningAssessmentRounds
+            .Where(r => r.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+            .Select(r => r.StructuredLearningAssessmentRoundId)
+            .ToListAsync(cancellationToken);
+        var oldRecallAttemptIds = await dbContext.StructuredLearningRecallAttempts
+            .Where(r => r.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+            .Select(r => r.StructuredLearningRecallAttemptId)
+            .ToListAsync(cancellationToken);
 
         var sectionOverride = illustrationOverride?.SectionId == section.StructuredLearningDocumentSectionId ? illustrationOverride : null;
         var illustrationGuidance = sectionOverride?.Mode == "AiGeneratedFromUpload" ? sectionOverride.ReferenceImageUsageInstruction : null;
@@ -390,7 +443,8 @@ public sealed class StructuredLearningPedagogyService
                         cancellationToken,
                         illustrationGuidance,
                         knowledgeFacts,
-                        perplexityFindings);
+                        perplexityFindings,
+                        document.CourseLevel);
                     return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, includeHypothesisStep, section.Text, attemptDesign.Response.Capability));
                 }
                 catch (JsonException ex)
@@ -468,9 +522,42 @@ public sealed class StructuredLearningPedagogyService
             await GenerateProfessorLectureAndSpeechAsync(
                 dbContext, document, section, steps, languageCode, cancellationToken);
 
-            // A "retry"/regenerate on a section that already has old steps
-            // persisted (e.g. it succeeded once under an earlier prompt
-            // version) must overwrite, not accumulate duplicates.
+            // ATOMIC SWAP (2026-09-19): a "retry"/regenerate on a section that
+            // already has old content persisted (steps/cards, illustrations,
+            // hypothesis answers, assessment/recall history) must delete ALL of
+            // it and insert the freshly generated replacement together, as one
+            // transaction — either the whole old->new swap commits, or (on any
+            // failure) nothing changes and the section keeps its previous
+            // content instead of being left half-empty.
+            await using var swapTransaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            if (oldAssessmentRoundIds.Count > 0)
+            {
+                await dbContext.StructuredLearningAssessmentQuestionAttempts
+                    .Where(a => oldAssessmentRoundIds.Contains(a.StructuredLearningAssessmentRoundId))
+                    .ExecuteDeleteAsync(cancellationToken);
+                await dbContext.StructuredLearningAssessmentRounds
+                    .Where(r => oldAssessmentRoundIds.Contains(r.StructuredLearningAssessmentRoundId))
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            if (oldRecallAttemptIds.Count > 0)
+            {
+                await dbContext.StructuredLearningRecallAttempts
+                    .Where(r => oldRecallAttemptIds.Contains(r.StructuredLearningRecallAttemptId))
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            if (oldHypothesisResponseIds.Count > 0)
+            {
+                await dbContext.StructuredLearningHypothesisResponses
+                    .Where(h => oldHypothesisResponseIds.Contains(h.StructuredLearningHypothesisResponseId))
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            if (oldIllustrationIds.Count > 0)
+            {
+                await dbContext.StructuredLearningIllustrations
+                    .Where(i => oldIllustrationIds.Contains(i.StructuredLearningIllustrationId))
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
             await dbContext.StructuredLearningSectionSteps
                 .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
                 .ExecuteDeleteAsync(cancellationToken);
@@ -565,6 +652,7 @@ public sealed class StructuredLearningPedagogyService
                     cancellationToken);
 
             await dbContext.SaveChangesAsync(cancellationToken);
+            await swapTransaction.CommitAsync(cancellationToken);
 
             return (true, design.TokenUsage.InputTokens, design.TokenUsage.OutputTokens);
         }

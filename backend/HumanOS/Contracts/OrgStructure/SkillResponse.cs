@@ -15,6 +15,10 @@ public sealed class SkillResponse
 
     public string? Description { get; set; }
 
+    public string AssignmentScope { get; set; } = null!;
+
+    public IReadOnlyList<Guid> ApplicableDepartmentIds { get; set; } = [];
+
     public bool IsActive { get; set; }
 
     public string? DocumentStoragePath { get; set; }
@@ -52,6 +56,10 @@ public sealed class SkillJobRoleLinkResponse
     public string JobRoleTitle { get; set; } = null!;
 
     public string DepartmentName { get; set; } = null!;
+
+    /// <summary>"L100" | "L200" | "L300", or null — content depth this
+    /// specific role requires for this Skill (see JobRoleSkill.RequiredLevel).</summary>
+    public string? RequiredLevel { get; set; }
 }
 
 /// <summary>Lightweight projection of <see cref="SkillResponse"/> for

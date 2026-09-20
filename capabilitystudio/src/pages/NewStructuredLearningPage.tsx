@@ -101,6 +101,9 @@ export default function NewStructuredLearningPage() {
   const [topics, setTopics] = useState<StructuredLearningTopic[]>([]);
   const [topicId, setTopicId] = useState<string>('');
   const [pedagogicalAudience, setPedagogicalAudience] = useState<'Standard' | 'YoungLearner'>('Standard');
+  // Content depth (2026-09-18) — L100 (foundational) / L200 (intermediate) /
+  // L300 (advanced), same convention Microsoft Learn uses for course levels.
+  const [courseLevel, setCourseLevel] = useState<'L100' | 'L200' | 'L300'>('L100');
   const [maxDeepDiveCardsPerNode, setMaxDeepDiveCardsPerNode] = useState<number>(3);
   const [includeProductionStep, setIncludeProductionStep] = useState(true);
   const [includeHypothesisStep, setIncludeHypothesisStep] = useState(true);
@@ -407,6 +410,7 @@ export default function NewStructuredLearningPage() {
         category: courseType === 'enterprise' ? (careerCategory || null) : null,
         targetSkill: courseType === 'enterprise' ? (targetSkill.trim() || null) : null,
         pedagogicalAudience,
+        courseLevel,
         maxDeepDiveCardsPerNode: Math.max(1, Math.min(10, maxDeepDiveCardsPerNode)),
         includeProductionStep,
         includeHypothesisStep,
@@ -753,6 +757,33 @@ export default function NewStructuredLearningPage() {
               <span className="font-semibold text-white">Audiencia pedagógica:</span> Estándar (Adultos / Profesional). <span className="text-slate-400 font-normal">Young Learners (K-1/K-2) no aplica para cursos corporativos.</span>
             </div>
           )}
+
+          <Field label="Nivel de contenido" hint="Ajusta la profundidad del contenido según la seniority del puesto — no cambia el tono, solo qué tanto se explica desde cero vs. cuánto se asume ya dominado.">
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 'L100' as const, label: 'L100 · Fundacional', hint: 'Sin conocimiento previo' },
+                { value: 'L200' as const, label: 'L200 · Intermedio', hint: 'Más ejemplos aplicados' },
+                { value: 'L300' as const, label: 'L300 · Avanzado', hint: 'Trade-offs y arquitectura' },
+              ].map((option) => {
+                const active = courseLevel === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setCourseLevel(option.value)}
+                    className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                    }`}
+                  >
+                    <div>{option.label}</div>
+                    <div className="mt-0.5 text-[11px] font-normal text-slate-400">{option.hint}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
 
           <Field label={t('newCapability.maxDeepDiveCardsLabel')} hint={t('newCapability.maxDeepDiveCardsHint')}>
             <input

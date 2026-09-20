@@ -1901,6 +1901,10 @@ namespace HumanOS.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("CourseLevel")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<string>("CreatedByEmail")
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
@@ -4816,6 +4820,10 @@ namespace HumanOS.Migrations
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("RequiredLevel")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.HasKey("JobRoleId", "SkillId")
                         .HasName("PK_JobRoleSkill");
 
@@ -4889,6 +4897,14 @@ namespace HumanOS.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("ApplicableDepartmentIdsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("AssignmentScope")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
 
                     b.Property<string>("Category")
                         .IsRequired()
@@ -6356,6 +6372,13 @@ namespace HumanOS.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("OrgType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Corporate");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(50)

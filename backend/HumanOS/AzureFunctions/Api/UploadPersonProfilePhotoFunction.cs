@@ -48,11 +48,22 @@ public sealed class UploadPersonProfilePhotoFunction
                 $"No profile found for person {personId}.", cancellationToken);
         }
 
+        var tenantId = await _dbContext.People
+            .Where(p => p.PersonId == personId)
+            .Select(p => (Guid?)p.TenantId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (tenantId is null || tenantId == Guid.Empty)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.NotFound, "PersonNotFound",
+                $"No person found for {personId}.", cancellationToken);
+        }
+
         var contentType = request.Headers.TryGetValues("Content-Type", out var values)
             ? values.First()
             : "image/png";
 
-        var storagePath = await _photoStorage.UploadPhotoAsync(personId, request.Body, contentType, cancellationToken);
+        var storagePath = await _photoStorage.UploadPhotoAsync(tenantId.Value, personId, request.Body, contentType, cancellationToken);
 
         // PersonProfile.ProfilePhotoUrl holds the raw blob StoragePath (same
         // convention as Program.LogoStoragePath) — the frontend never reads

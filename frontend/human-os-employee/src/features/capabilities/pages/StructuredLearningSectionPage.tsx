@@ -43,6 +43,7 @@ import {
   listStructuredLearningSectionVideos,
   getStructuredLearningWorkplaceApplication,
   postStructuredLearningWorkplaceChat,
+  getStructuredLearningSectionSummary,
   type WorkplaceApplicationDto,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
@@ -288,6 +289,9 @@ export default function StructuredLearningSectionPage() {
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [maxReachedIndex, setMaxReachedIndex] = useState(0);
+  // Already-completed (Assessment previously Passed) sections open in a free-review
+  // mode: every step is browsable immediately, no re-answering required.
+  const [isSectionCompleted, setIsSectionCompleted] = useState(false);
   const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(false);
   const [knowledgeGraphInitialView, setKnowledgeGraphInitialView] = useState<'graph' | 'facts'>('graph');
 
@@ -319,7 +323,15 @@ export default function StructuredLearningSectionPage() {
   useEffect(() => {
     setStepIndex(0);
     setMaxReachedIndex(0);
+    setIsSectionCompleted(false);
   }, [sectionId]);
+
+  useEffect(() => {
+    if (!sectionId || !personId) return;
+    getStructuredLearningSectionSummary(sectionId, personId)
+      .then((summary) => setIsSectionCompleted((summary.AttemptCount ?? 0) > 0))
+      .catch(() => setIsSectionCompleted(false));
+  }, [sectionId, personId]);
 
   const sections = document?.Sections ?? [];
   const currentIndex = sections.findIndex((s) => s.StructuredLearningDocumentSectionId === sectionId);
@@ -375,10 +387,10 @@ export default function StructuredLearningSectionPage() {
     setMaxReachedIndex((m) => Math.max(m, stepIndex + 1));
   }, [stepIndex]);
 
-  const canAdvancePastCurrentStep = stepIndex < maxReachedIndex;
+  const canAdvancePastCurrentStep = isSectionCompleted || stepIndex < maxReachedIndex;
 
   function goToStep(index: number) {
-    if (index > maxReachedIndex) return;
+    if (!isSectionCompleted && index > maxReachedIndex) return;
     setStepIndex(index);
   }
 
@@ -846,7 +858,7 @@ export default function StructuredLearningSectionPage() {
           steps={steps}
           currentIndex={stepIndex}
           maxReachedIndex={maxReachedIndex}
-          freeNavigation={false}
+          freeNavigation={isSectionCompleted}
           onSelectStep={goToStep}
           isEn={isEn}
         />
@@ -981,13 +993,12 @@ function StepContent({
   onNext?: () => void;
   isEn: boolean;
 }) {
-  const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('listen');
+  const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('videos');
   const [isAudioFinished, setIsAudioFinished] = useState(false);
   const [audioProgressPercent, setAudioProgressPercent] = useState(0);
 
   const [publishedVideos, setPublishedVideos] = useState<StructuredLearningSectionVideo[]>([]);
   const [watchedVideoIds, setWatchedVideoIds] = useState<Set<string>>(new Set());
-  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1013,8 +1024,10 @@ function StepContent({
     step.StepDataJson && (step.StepDataJson.includes('SpeechStoragePath') || step.StepDataJson.includes('ProfessorLecture'))
   );
 
-  const canGoToVideos = !hasAudio || isAudioFinished;
-  const canGoToQa = canGoToVideos && areVideosFinished;
+  const canGoToListen = areVideosFinished;
+  // Q&A unlocks as soon as the recorded lecture tab is reached — no need
+  // to wait for the audio to finish playing.
+  const canGoToQa = canGoToListen;
 
   useEffect(() => {
     if (step.StepType !== 'Teaching') return;
@@ -1032,42 +1045,42 @@ function StepContent({
     <div className="space-y-4">
       {step.StepType === 'Teaching' && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-1.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
-          <button
-            type="button"
-            onClick={() => setTeachingSubStep('listen')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
-              teachingSubStep === 'listen'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/25'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
-            }`}
-          >
-            <Headphones className="h-4 w-4" />
-            <span>{isEn ? '1. Recorded Lecture & Whiteboard' : '1. Clase Grabada y Pizarra'}</span>
-            {hasAudio && isAudioFinished && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 ml-1" />}
-          </button>
-
           {hasVideos && (
             <button
               type="button"
-              disabled={!canGoToVideos}
-              onClick={() => {
-                if (!canGoToVideos) return;
-                setTeachingSubStep('videos');
-              }}
-              title={!canGoToVideos ? (isEn ? 'Listen to the audio first to unlock videos' : 'Escucha el audio primero para desbloquear los videos') : undefined}
+              onClick={() => setTeachingSubStep('videos')}
               className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
                 teachingSubStep === 'videos'
                   ? 'bg-gradient-to-r from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/25'
-                  : !canGoToVideos
-                  ? 'cursor-not-allowed opacity-40 text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.02]'
                   : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
               }`}
             >
-              {!canGoToVideos ? <Lock className="h-4 w-4 text-amber-500" /> : <Video className="h-4 w-4 text-sky-400" />}
-              <span>{isEn ? `2. Videos (${watchedVideoIds.size}/${publishedVideos.length})` : `2. Videos (${watchedVideoIds.size}/${publishedVideos.length})`}</span>
+              <Video className="h-4 w-4 text-sky-400" />
+              <span>{isEn ? `1. Videos (${watchedVideoIds.size}/${publishedVideos.length})` : `1. Videos (${watchedVideoIds.size}/${publishedVideos.length})`}</span>
               {areVideosFinished && <CheckCircle2 className="h-3.5 w-3.5 text-sky-400 ml-1" />}
             </button>
           )}
+
+          <button
+            type="button"
+            disabled={!canGoToListen}
+            onClick={() => {
+              if (!canGoToListen) return;
+              setTeachingSubStep('listen');
+            }}
+            title={!canGoToListen ? (isEn ? 'Watch all videos first' : 'Mira todos los videos primero') : undefined}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+              teachingSubStep === 'listen'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/25'
+                : !canGoToListen
+                ? 'cursor-not-allowed opacity-40 text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.02]'
+                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
+            }`}
+          >
+            {!canGoToListen ? <Lock className="h-4 w-4 text-amber-500" /> : <Headphones className="h-4 w-4" />}
+            <span>{isEn ? (hasVideos ? '2. Recorded Lecture & Whiteboard' : '1. Recorded Lecture & Whiteboard') : (hasVideos ? '2. Clase Grabada y Pizarra' : '1. Clase Grabada y Pizarra')}</span>
+            {hasAudio && isAudioFinished && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 ml-1" />}
+          </button>
 
           <button
             type="button"
@@ -1076,13 +1089,7 @@ function StepContent({
               if (!canGoToQa) return;
               setTeachingSubStep('qa');
             }}
-            title={
-              !canGoToVideos
-                ? (isEn ? 'Listen to the audio first' : 'Escucha el audio primero')
-                : !areVideosFinished
-                ? (isEn ? 'Watch all videos first' : 'Mira todos los videos primero')
-                : undefined
-            }
+            title={!canGoToQa ? (isEn ? 'Watch all videos first' : 'Mira todos los videos primero') : undefined}
             className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
               teachingSubStep === 'qa'
                 ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/25'
@@ -1145,11 +1152,11 @@ function StepContent({
           <div className="flex items-center justify-between pt-1">
             <button
               type="button"
-              onClick={() => setTeachingSubStep(hasVideos ? 'videos' : 'listen')}
+              onClick={() => setTeachingSubStep('listen')}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span>{hasVideos ? (isEn ? 'Back to Videos' : 'Volver a Videos') : (isEn ? 'Back to Lecture' : 'Volver a Clase')}</span>
+              <span>{isEn ? 'Back to Lecture' : 'Volver a Clase'}</span>
             </button>
 
             <button
@@ -1194,104 +1201,80 @@ function StepContent({
               </div>
             </div>
 
-            {/* Video Selector Tabs */}
-            <div className="flex flex-wrap gap-2 mb-4">
+            {/* Video cards — all clips shown at once so it's clear there's more than one. */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {publishedVideos.map((v, i) => {
                 const isWatched = watchedVideoIds.has(v.IllustrationId);
-                const isSelected = i === selectedVideoIndex;
                 return (
-                  <button
+                  <div
                     key={v.IllustrationId}
-                    type="button"
-                    onClick={() => setSelectedVideoIndex(i)}
-                    className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold border transition-all ${
-                      isSelected
-                        ? 'border-sky-500 bg-sky-100 text-sky-800 dark:border-sky-400 dark:bg-sky-500/20 dark:text-sky-200 shadow-sm'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400 dark:hover:border-white/20 dark:hover:text-white'
+                    className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-slate-900/60 ${
+                      isWatched ? 'border-emerald-300 dark:border-emerald-500/40' : 'border-slate-200 dark:border-white/10'
                     }`}
                   >
-                    <Video className="h-3.5 w-3.5" />
-                    <span>{isEn ? `Clip ${i + 1}` : `Clip ${i + 1}`}</span>
-                    {isWatched && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-1" />}
-                  </button>
+                    <div className="overflow-hidden bg-black">
+                      <video
+                        src={apiImageUrl(`/illustrations/structured-learning/${v.IllustrationId}/image`)}
+                        controls
+                        autoPlay={i === 0}
+                        muted={i === 0}
+                        playsInline
+                        className="w-full max-h-[320px] object-contain bg-black"
+                        onPlay={(e) => {
+                          // Browsers only allow autoplay when muted; unmute right
+                          // after playback actually starts so there's sound.
+                          if (i === 0) e.currentTarget.muted = false;
+                        }}
+                        onEnded={() => setWatchedVideoIds((prev) => new Set([...prev, v.IllustrationId]))}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 p-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-white">{isEn ? `Clip ${i + 1}` : `Clip ${i + 1}`}</p>
+                        <p className="line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{v.Prompt}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setWatchedVideoIds((prev) => new Set([...prev, v.IllustrationId]))}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition-colors ${
+                          isWatched
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/[0.05] dark:text-slate-200 dark:hover:bg-white/10'
+                        }`}
+                      >
+                        {isWatched ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" />
+                            <span>{isEn ? 'Watched' : 'Visto'}</span>
+                          </>
+                        ) : (
+                          <span>{isEn ? 'Mark as watched' : 'Marcar como visto'}</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
-            {/* Current Video Player */}
-            {publishedVideos[selectedVideoIndex] && (
-              <div className="space-y-3">
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-black dark:border-white/10">
-                  <video
-                    key={publishedVideos[selectedVideoIndex].IllustrationId}
-                    src={apiImageUrl(`/illustrations/structured-learning/${publishedVideos[selectedVideoIndex].IllustrationId}/image`)}
-                    controls
-                    className="w-full max-h-[460px] object-contain bg-black"
-                    onEnded={() => {
-                      const curId = publishedVideos[selectedVideoIndex].IllustrationId;
-                      setWatchedVideoIds((prev) => new Set([...prev, curId]));
-                    }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                  <p className="line-clamp-2 max-w-xl text-slate-700 dark:text-slate-300">
-                    {publishedVideos[selectedVideoIndex].Prompt}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const curId = publishedVideos[selectedVideoIndex].IllustrationId;
-                      setWatchedVideoIds((prev) => new Set([...prev, curId]));
-                    }}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                      watchedVideoIds.has(publishedVideos[selectedVideoIndex].IllustrationId)
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:bg-white/[0.05] dark:text-slate-200 dark:hover:bg-white/10'
-                    }`}
-                  >
-                    {watchedVideoIds.has(publishedVideos[selectedVideoIndex].IllustrationId) ? (
-                      <>
-                        <Check className="h-3.5 w-3.5" />
-                        <span>{isEn ? 'Watched' : 'Visto'}</span>
-                      </>
-                    ) : (
-                      <span>{isEn ? 'Mark as watched' : 'Marcar como visto'}</span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Bottom Actions */}
-            <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-slate-200 dark:border-white/10 pt-4">
+            <div className="mt-6 flex items-center justify-end border-t border-slate-200 dark:border-white/10 pt-4">
               <button
                 type="button"
-                onClick={() => setTeachingSubStep('listen')}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                disabled={!areVideosFinished}
+                onClick={() => {
+                  if (!areVideosFinished) return;
+                  setTeachingSubStep('listen');
+                }}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-md transition-all ${
+                  areVideosFinished
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-500/25 hover:scale-[1.02]'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50 dark:bg-slate-800 dark:text-slate-500'
+                }`}
               >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>{isEn ? 'Back to Audio Lecture' : 'Volver al Audio'}</span>
+                {!areVideosFinished ? <Lock className="h-4 w-4" /> : <Headphones className="h-4 w-4" />}
+                <span>{isEn ? 'Continue to Recorded Lecture' : 'Continuar a la Clase Grabada'}</span>
               </button>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  disabled={!areVideosFinished}
-                  onClick={() => {
-                    if (!areVideosFinished) return;
-                    setTeachingSubStep('qa');
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-md transition-all ${
-                    areVideosFinished
-                      ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-indigo-500/25 hover:scale-[1.02]'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50 dark:bg-slate-800 dark:text-slate-500'
-                  }`}
-                >
-                  {!areVideosFinished ? <Lock className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-                  <span>{isEn ? 'Continue to Q&A with Professor' : 'Ir a Q&A con el Profesor'}</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1341,27 +1324,19 @@ function StepContent({
               <div className="flex items-center justify-between pt-1 text-xs text-slate-500 dark:text-slate-400 border-t border-emerald-200 dark:border-emerald-500/20">
                 {isAudioFinished ? (
                   <span className="text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-1">
-                    <Check className="h-3.5 w-3.5" /> {isEn ? 'Lecture completed — you can now advance' : 'Clase terminada — ahora puedes avanzar'}
+                    <Check className="h-3.5 w-3.5" /> {isEn ? 'Lecture completed' : 'Clase terminada'}
                   </span>
                 ) : (
-                  <span className="text-amber-700 dark:text-amber-300/90 flex items-center gap-1">
-                    <Lock className="h-3.5 w-3.5" /> {isEn ? 'Listen to the full lecture to unlock the next part' : 'Escucha la clase completa para desbloquear la siguiente parte'}
+                  <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    {isEn ? 'You can move on whenever you like' : 'Puedes avanzar cuando quieras'}
                   </span>
                 )}
                 <button
                   type="button"
-                  disabled={!isAudioFinished}
-                  onClick={() => {
-                    if (!isAudioFinished) return;
-                    setTeachingSubStep(hasVideos ? 'videos' : 'qa');
-                  }}
-                  className={`inline-flex items-center gap-1 font-semibold transition-colors ${
-                    isAudioFinished
-                      ? 'text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer'
-                      : 'text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
-                  }`}
+                  onClick={() => setTeachingSubStep('qa')}
+                  className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
                 >
-                  <span>{hasVideos ? (isEn ? 'Go to Videos' : 'Ir a Videos') : (isEn ? 'Go to Q&A' : 'Ir a Q&A')}</span>
+                  <span>{isEn ? 'Go to Q&A' : 'Ir a Q&A'}</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -1390,27 +1365,15 @@ function StepContent({
                   <RichStepContent content={step.Content} />
                   <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/5 dark:bg-white/[0.02]">
                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {!canGoToVideos
-                        ? (isEn ? 'Listen to the audio lecture above to continue' : 'Escucha la clase en audio arriba para continuar')
-                        : !areVideosFinished
-                        ? (isEn ? 'Watch the video clips to continue' : 'Mira los clips de video para continuar')
-                        : (isEn ? 'Lecture step completed' : 'Paso de clase completado')}
+                      {isEn ? 'You can move on whenever you like' : 'Puedes avanzar cuando quieras'}
                     </span>
                     <button
                       type="button"
-                      disabled={!canGoToVideos}
-                      onClick={() => {
-                        if (!canGoToVideos) return;
-                        setTeachingSubStep(hasVideos ? 'videos' : 'qa');
-                      }}
-                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-md transition-all ${
-                        !canGoToVideos
-                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50 dark:bg-slate-800 dark:text-slate-500'
-                          : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98]'
-                      }`}
+                      onClick={() => setTeachingSubStep('qa')}
+                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      {!canGoToVideos ? <Lock className="h-4 w-4" /> : hasVideos ? <Video className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-                      <span>{hasVideos ? (isEn ? 'Continue to Videos' : 'Continuar a Videos') : (isEn ? 'Ask Professor (Q&A)' : 'Preguntar al Profesor')}</span>
+                      <MessageSquareText className="h-4 w-4" />
+                      <span>{isEn ? 'Ask Professor (Q&A)' : 'Preguntar al Profesor'}</span>
                     </button>
                   </div>
                 </>

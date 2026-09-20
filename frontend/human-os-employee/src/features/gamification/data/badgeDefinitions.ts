@@ -120,7 +120,7 @@ export const BADGE_DEFINITIONS: Record<string, BadgeDetailInfo> = {
     },
     neuroscienceExplanation: {
       en: 'The critical halfway milestone. Triggers high intrinsic motivation as the finish line transitions from abstract to concrete.',
-      es: 'El hito clave de medio camino. Activa una alta motivación intrínseca al percibir la meta final tangible y alcanzable.',
+      es: 'El logro clave de medio camino. Activa una alta motivación intrínseca al percibir la meta final tangible y alcanzable.',
     },
     howToEarn: {
       en: 'Complete half of all available and assigned knowledge nodes in your curriculum.',
@@ -533,7 +533,7 @@ export const BADGE_DEFINITIONS: Record<string, BadgeDetailInfo> = {
     },
     howToEarn: {
       en: 'Reach the centennial milestone of 100 days of active learning.',
-      es: 'Alcanza el hito centenario de 100 días de aprendizaje activo.',
+      es: 'Alcanza el logro centenario de 100 días de aprendizaje activo.',
     },
   },
   automatic_pilot: {

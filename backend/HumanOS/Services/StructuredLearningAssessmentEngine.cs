@@ -119,6 +119,7 @@ public sealed class StructuredLearningAssessmentEngine
         public string TeachingContent { get; set; } = string.Empty;
         public StructuredLearningAssessmentQuestionType QuestionType { get; set; }
         public int QuestionsPerRound { get; set; } = DefaultQuestionsPerRound;
+        public string LanguageCode { get; set; } = "es";
     }
 
     /// <summary>Starts a brand-new round and generates its first question.
@@ -417,6 +418,7 @@ public sealed class StructuredLearningAssessmentEngine
     {
         var builder = new StringBuilder();
         builder.AppendLine("TASK: Generate a new assessment question (do NOT grade anything).");
+        builder.AppendLine($"TARGET LANGUAGE (HARD RULE, NEVER BREAK IT): '{context.LanguageCode}' — write the QuestionText and every Option entirely in this language, regardless of what language any other text around it happens to be in.");
         builder.AppendLine("RULE: This is a POST-TEACHING assessment. The student has already seen the teaching for this section.");
         builder.AppendLine("RULE: do not ask literal recall or text-search questions. Never use direct source-reference wording or sentence-lookup phrasing.");
         builder.AppendLine("RULE: The question must test understanding/application after teaching, not read-back comprehension or source-text lookup.");
@@ -432,6 +434,7 @@ public sealed class StructuredLearningAssessmentEngine
         if (context.QuestionType == StructuredLearningAssessmentQuestionType.MultipleChoice)
         {
             builder.AppendLine("MCQ REQUIREMENTS: produce questions that check understanding of the taught idea, not sentence recall. Each question must have 4 options and exactly one correct answer. Avoid answer choices that are just copied verbatim phrases from the teaching text.");
+            builder.AppendLine("CORRECTNESS QUALITY BAR (CRITICAL): the CorrectOptionIndex option must be the single MOST COMPLETE and MOST ACCURATE answer supported by the section content — if the section describes a multi-step process/workflow, the correct option must capture ALL of its key steps, not just one step or a partial subset. Every other (incorrect) option must be clearly and unambiguously wrong or incomplete when compared line-by-line against the section content — never write two options that could both be reasonably defended as correct, and never make the correct option the shortest/vaguest one when a fuller, equally plausible-sounding option exists. Before finalizing, re-check that no other option also satisfies the question.");
             builder.AppendLine("If this is the first question in the round, make it a clear, high-quality post-teaching check. If the student has already answered earlier questions in this round, avoid repeating the same angle and focus on a different application or implication.");
         }
 
@@ -463,6 +466,7 @@ public sealed class StructuredLearningAssessmentEngine
     {
         var builder = new StringBuilder();
         builder.AppendLine("TASK: Grade the student's answer to the question below (do NOT generate a new question).");
+        builder.AppendLine($"TARGET LANGUAGE (HARD RULE, NEVER BREAK IT): '{context.LanguageCode}' — write Feedback and ObservedError entirely in this language.");
         builder.AppendLine();
         builder.AppendLine($"Chapter: {context.ChapterTitle}");
         builder.AppendLine($"Section: {context.SubchapterTitle}");
@@ -510,7 +514,48 @@ public sealed class StructuredLearningAssessmentEngine
             SubchapterTitle = section.SubchapterTitle,
             TeachingContent = teachingStep?.Content ?? section.Text,
             QuestionType = document.AssessmentQuestionType,
-            QuestionsPerRound = questionsPerRound
+            QuestionsPerRound = questionsPerRound,
+            LanguageCode = ResolveLanguageCode(document.ConfigSnapshotJson, teachingStep?.Content ?? section.Text)
         };
+    }
+
+    /// <summary>Resolves the language to generate/grade Assessment questions
+    /// in — previously this agent had NO explicit language directive at all
+    /// and relied purely on the model inferring it from the teaching content
+    /// text, which could drift (2026-09-19 fix, same pattern used by
+    /// StructuredLearningProfessorLectureService/WorkplaceApplicationService).
+    /// Prefers the document's own persisted LanguageCode; falls back to a
+    /// cheap word-frequency heuristic on the teaching content only if that's
+    /// missing.</summary>
+    private static string ResolveLanguageCode(string? configSnapshotJson, string sampleText)
+    {
+        if (!string.IsNullOrWhiteSpace(configSnapshotJson))
+        {
+            try
+            {
+                var snapshot = JsonSerializer.Deserialize<JsonElement>(configSnapshotJson);
+                foreach (var prop in snapshot.EnumerateObject())
+                {
+                    if (string.Equals(prop.Name, "LanguageCode", StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var code = prop.Value.GetString();
+                        if (!string.IsNullOrWhiteSpace(code))
+                        {
+                            return code.Trim().ToLowerInvariant().StartsWith("es") ? "es" : "en";
+                        }
+                    }
+                }
+            }
+            catch (JsonException) { }
+        }
+
+        if (string.IsNullOrWhiteSpace(sampleText)) return "es";
+        var padded = $" {sampleText.ToLowerInvariant()} ";
+        string[] englishWords = [" the ", " and ", " you ", " is ", " to ", " your ", " with ", " that ", " this "];
+        string[] spanishWords = [" el ", " la ", " de ", " que ", " los ", " las ", " para ", " con ", " es ", " tu "];
+        var englishHits = englishWords.Count(w => padded.Contains(w));
+        var spanishHits = spanishWords.Count(w => padded.Contains(w));
+        return englishHits > spanishHits ? "en" : "es";
     }
 }

@@ -108,6 +108,15 @@ public sealed class StructuredLearningDocument
     /// as <see cref="HumanOS.Models.Capabilities.Capability.PedagogicalAudience"/>.</summary>
     public string? PedagogicalAudience { get; set; }
 
+    /// <summary>Content depth/seniority level (2026-09-18) — "L100"
+    /// (foundational, assumes no prior knowledge), "L200" (assumes
+    /// fundamentals, more worked examples/application), or "L300"
+    /// (assumes L100/L200 mastery, focuses on trade-offs/edge cases/
+    /// architecture). Null defaults to "L100" for backward compatibility
+    /// with documents created before this field existed. Orthogonal to
+    /// <see cref="PedagogicalAudience"/> (that's tone/age; this is depth).</summary>
+    public string? CourseLevel { get; set; }
+
     /// <summary>Version of the prompt/contract under which this document's
     /// structured-learning run was generated.</summary>
     public string? PromptVersion { get; set; }

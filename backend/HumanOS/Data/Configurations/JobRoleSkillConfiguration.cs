@@ -16,6 +16,9 @@ public sealed class JobRoleSkillConfiguration : IEntityTypeConfiguration<JobRole
         builder.Property(x => x.CreatedDate)
             .IsRequired();
 
+        builder.Property(x => x.RequiredLevel)
+            .HasMaxLength(10);
+
         builder.HasOne(x => x.JobRole)
             .WithMany()
             .HasForeignKey(x => x.JobRoleId)

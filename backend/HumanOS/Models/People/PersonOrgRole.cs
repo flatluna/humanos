@@ -30,4 +30,9 @@ public enum PersonOrgRole
     /// (later phases) manage Role↔Capability training requirements and
     /// create private capabilities via Capability Studio.</summary>
     HRAdmin = 2,
+
+    /// <summary>Student — same permission level as Employee (no org
+    /// structure management), used to tag people whose business role is
+    /// academic/student rather than a regular employee.</summary>
+    Student = 3,
 }

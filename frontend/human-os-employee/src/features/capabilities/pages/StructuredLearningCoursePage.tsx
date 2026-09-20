@@ -61,14 +61,15 @@ const STATE_STYLES: Record<
   },
 };
 
-const LEVEL_ACCENTS = [
-  { text: 'text-indigo-600 dark:text-indigo-400', dot: 'bg-indigo-600 dark:bg-indigo-400', border: 'border-indigo-200 dark:border-indigo-400/50 bg-indigo-50/40 dark:bg-white/[0.02]' },
-  { text: 'text-sky-600 dark:text-sky-400', dot: 'bg-sky-600 dark:bg-sky-400', border: 'border-sky-200 dark:border-sky-400/50 bg-sky-50/40 dark:bg-white/[0.02]' },
-  { text: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-600 dark:bg-emerald-400', border: 'border-emerald-200 dark:border-emerald-400/50 bg-emerald-50/40 dark:bg-white/[0.02]' },
-  { text: 'text-amber-600 dark:text-amber-400', dot: 'bg-amber-600 dark:bg-amber-400', border: 'border-amber-200 dark:border-amber-400/50 bg-amber-50/40 dark:bg-white/[0.02]' },
-  { text: 'text-fuchsia-600 dark:text-fuchsia-400', dot: 'bg-fuchsia-600 dark:bg-fuchsia-400', border: 'border-fuchsia-200 dark:border-fuchsia-400/50 bg-fuchsia-50/40 dark:bg-white/[0.02]' },
-  { text: 'text-rose-600 dark:text-rose-400', dot: 'bg-rose-600 dark:bg-rose-400', border: 'border-rose-200 dark:border-rose-400/50 bg-rose-50/40 dark:bg-white/[0.02]' },
-];
+// Single calm, neutral card style for every chapter group — a different
+// color per chapter (previously cycling through 6 hues) made the sidebar
+// feel like a rainbow instead of a readable table of contents.
+const LEVEL_ACCENT = {
+  text: 'text-slate-500 dark:text-slate-400',
+  dot: 'bg-indigo-500 dark:bg-indigo-400',
+  border: 'border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]',
+};
+
 
 export default function StructuredLearningCoursePage() {
   const { documentId } = useParams<{ documentId: string }>();
@@ -825,7 +826,7 @@ export default function StructuredLearningCoursePage() {
                   <p className="px-1 text-xs text-slate-500">{isEn ? 'No sections found.' : 'No se encontraron secciones.'}</p>
                 )}
                 {filteredLevels.map(([chapterTitle, list], levelIndex) => {
-                  const accent = LEVEL_ACCENTS[levelIndex % LEVEL_ACCENTS.length];
+                  const accent = LEVEL_ACCENT;
                   return (
                     <div key={chapterTitle} className={`rounded-xl border p-2.5 ${accent.border}`}>
                       <button

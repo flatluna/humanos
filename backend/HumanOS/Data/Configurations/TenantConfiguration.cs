@@ -49,6 +49,11 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             .HasDefaultValue("UTC")
             .IsRequired();
 
+        builder.Property(x => x.OrgType)
+            .HasMaxLength(20)
+            .HasDefaultValue("Corporate")
+            .IsRequired();
+
         builder.Property(x => x.AzureTenantId)
             .HasMaxLength(100);
 

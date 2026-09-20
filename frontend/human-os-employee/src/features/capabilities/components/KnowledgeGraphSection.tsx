@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw, X, CheckCircle2 } from 'lucide-react';
@@ -53,11 +53,11 @@ function getNodeKind(entityType: string): NodeKind {
 }
 
 const NODE_KIND_STYLES: Record<NodeKind, string> = {
-  Document: 'border-sky-400/50 bg-sky-500/10 text-sky-100',
-  Rule: 'border-violet-400/50 bg-violet-500/10 text-violet-100',
-  Action: 'border-emerald-400/50 bg-emerald-500/10 text-emerald-100',
-  Value: 'border-orange-400/50 bg-orange-500/10 text-orange-100',
-  Entity: 'border-indigo-400/30 bg-slate-950/40 text-slate-100',
+  Document: 'border-sky-400/50 bg-sky-50 dark:bg-sky-500/10 text-sky-900 dark:text-sky-100',
+  Rule: 'border-violet-400/50 bg-violet-50 dark:bg-violet-500/10 text-violet-900 dark:text-violet-100',
+  Action: 'border-emerald-400/50 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-100',
+  Value: 'border-orange-400/50 bg-orange-50 dark:bg-orange-500/10 text-orange-900 dark:text-orange-100',
+  Entity: 'border-indigo-400/30 bg-slate-100 dark:bg-slate-950/40 text-slate-800 dark:text-slate-100',
 };
 
 function isSecondaryEdge(status: StructuredLearningConnection['EpistemicStatus']): boolean {
@@ -128,21 +128,21 @@ function TreeNode({
         } ${
           isMastered
             ? 'shadow-md ring-1 ring-emerald-400/40 shadow-emerald-950/20 brightness-110'
-            : 'opacity-60 contrast-75 border-slate-700/60'
+            : 'border-slate-300 dark:border-white/10'
         }`}
         style={isMastered && memColor ? { borderColor: memColor } : undefined}
       >
         <div className="font-medium">{node.entity.CanonicalName}</div>
-        <div className={`opacity-70 ${large ? 'text-xs' : 'text-[10px]'}`}>{node.entity.EntityType}</div>
+        <div className={`text-slate-600 dark:text-slate-300 ${large ? 'text-xs' : 'text-[10px]'}`}>{node.entity.EntityType}</div>
         {node.entity.OntologicalClass && (
-          <div className={`italic opacity-60 ${large ? 'text-[11px]' : 'text-[9px]'}`}>Class: {node.entity.OntologicalClass}</div>
+          <div className={`italic text-slate-500 dark:text-slate-400 ${large ? 'text-[11px]' : 'text-[9px]'}`}>Class: {node.entity.OntologicalClass}</div>
         )}
       </div>
 
       {node.edges.length > 0 && (
         <div
           className={`relative mt-1 flex items-start ${large ? 'gap-10 pt-4' : 'gap-6 pt-3'} ${
-            isMastered ? 'border-t border-emerald-500/40' : 'border-t border-slate-700/40'
+            isMastered ? 'border-t border-emerald-500/40' : 'border-t border-slate-300 dark:border-slate-700/40'
           }`}
         >
           {node.edges.map((edge, i) => (
@@ -150,10 +150,10 @@ function TreeNode({
               <span
                 className={`mb-0.5 whitespace-nowrap ${large ? 'text-sm' : 'text-[10px]'} ${
                   isSecondaryEdge(edge.epistemicStatus)
-                    ? 'italic text-slate-500'
+                    ? 'italic text-slate-500 dark:text-slate-400'
                     : isMastered
                     ? 'text-emerald-300 dark:text-emerald-200 font-semibold drop-shadow-xs'
-                    : 'text-slate-500'
+                    : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
                 {edge.label}
@@ -161,10 +161,10 @@ function TreeNode({
               <ArrowDown
                 className={`mb-1 shrink-0 ${large ? 'h-5 w-5' : 'h-3 w-3'} ${
                   isSecondaryEdge(edge.epistemicStatus)
-                    ? 'text-slate-600'
+                    ? 'text-slate-500 dark:text-slate-500'
                     : isMastered
                     ? 'text-emerald-400 dark:text-emerald-300 drop-shadow-xs'
-                    : 'text-slate-600'
+                    : 'text-slate-500 dark:text-slate-400'
                 }`}
               />
               <TreeNode node={edge.target} large={large} isMastered={isMastered} memColor={memColor} />
@@ -190,7 +190,7 @@ export function KnowledgeFactsPanel({
   onToggleEvidence: (key: string) => void;
 }) {
   return (
-    <section className="space-y-3 rounded-xl border border-indigo-400/20 bg-indigo-500/[0.04] p-3" aria-label="Knowledge Facts">
+    <section className="space-y-3 rounded-xl border border-indigo-400/20 bg-indigo-50 dark:bg-indigo-500/[0.04] p-3" aria-label="Knowledge Facts">
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
         {[
           ['Total Facts', data.TotalFacts],
@@ -199,36 +199,36 @@ export function KnowledgeFactsPanel({
           ['Atomic Facts', data.AtomicFacts],
           ['Composite Facts', data.CompositeFacts],
         ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-lg border border-white/10 bg-slate-950/30 p-2 text-center">
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-            <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+          <div key={String(label)} className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/30 p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{value}</div>
           </div>
         ))}
       </div>
       {data.KnowledgeFacts.length === 0 ? (
-        <p className="text-xs text-slate-400">No Knowledge Facts extracted for this Engram.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">No Knowledge Facts extracted for this Engram.</p>
       ) : (
         data.KnowledgeFacts.map((fact) => (
-          <article key={fact.KnowledgeFactId} className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
-            <div className="flex flex-wrap gap-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-              <span className={fact.Importance === 'Core' ? 'text-amber-300' : 'text-slate-300'}>{fact.Importance}</span>
+          <article key={fact.KnowledgeFactId} className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/30 p-3">
+            <div className="flex flex-wrap gap-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span className={fact.Importance === 'Core' ? 'text-amber-600 dark:text-amber-300' : 'text-slate-600 dark:text-slate-300'}>{fact.Importance}</span>
               <span>·</span>
               <span>{fact.FactType}</span>
             </div>
-            <h4 className="mt-1 text-sm font-semibold leading-6 text-white">{fact.Statement}</h4>
-            <p className="mt-1 text-[11px] text-slate-400">
+            <h4 className="mt-1 text-sm font-semibold leading-6 text-slate-900 dark:text-white">{fact.Statement}</h4>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
               {fact.DerivationType} · {fact.EpistemicStatus} · {Math.round(fact.Confidence * 100)}% Confidence
             </p>
             <div className="mt-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Graph Path</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Graph Path</div>
               {fact.GraphPath.length === 0 ? (
                 <p className="mt-1 text-xs text-slate-500">-</p>
               ) : (
-                <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-200">
+                <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-700 dark:text-slate-200">
                   {fact.GraphPath.sort((a, b) => a.StepOrder - b.StepOrder).flatMap((step, index) => [
                     index > 0 ? <span key={`${step.ConnectionId}-arrow`} aria-hidden="true">→</span> : null,
                     <span key={`${step.ConnectionId}-source`}>{step.SourceEntityName}</span>,
-                    <span key={`${step.ConnectionId}-label`} className="text-amber-300">→ {step.RelationshipLabel} →</span>,
+                    <span key={`${step.ConnectionId}-label`} className="text-amber-600 dark:text-amber-300">→ {step.RelationshipLabel} →</span>,
                     <span key={`${step.ConnectionId}-target`}>{step.TargetEntityName}</span>,
                   ].filter((item): item is ReactElement => item !== null))}
                 </div>
@@ -238,14 +238,14 @@ export function KnowledgeFactsPanel({
               <div className="mt-3">
                 <button
                   type="button"
-                  className="text-xs text-indigo-300 underline focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="text-xs text-indigo-700 dark:text-indigo-300 underline focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   aria-expanded={!!expandedEvidence[fact.KnowledgeFactId]}
                   onClick={() => onToggleEvidence(fact.KnowledgeFactId)}
                 >
                   {expandedEvidence[fact.KnowledgeFactId] ? 'Hide Evidence' : 'View Evidence'}
                 </button>
                 {expandedEvidence[fact.KnowledgeFactId] && (
-                  <div className="mt-2 space-y-2 border-l border-indigo-400/30 pl-3 text-xs leading-5 text-slate-300">
+                  <div className="mt-2 space-y-2 border-l border-indigo-400/30 pl-3 text-xs leading-5 text-slate-600 dark:text-slate-300">
                     {fact.GraphPath.filter((step) => step.Evidence).map((step) => (
                       <p key={`${fact.KnowledgeFactId}-${step.StepOrder}`}>{step.Evidence}</p>
                     ))}
@@ -399,7 +399,15 @@ export default function KnowledgeGraphSection({
     };
   }, [documentId, sectionId, initialView, effectivePersonId]);
 
-  const totalEntities = engramGraphs?.reduce((sum, g) => sum + g.entities.length, 0) ?? 0;
+  // Unique concepts across the whole document — `rawEntities` has one row
+  // PER SECTION an entity appears in, so summing per-section array lengths
+  // (the old `totalEntities`) double/triple-counted shared concepts and
+  // could show absurd totals like "1028 entities". Dedup by canonical
+  // name instead, matching the same merge CourseGalaxy3DGraph does.
+  const totalEntities = useMemo(() => {
+    const names = new Set(rawEntities.map((e) => e.CanonicalName.trim().toLowerCase()));
+    return names.size;
+  }, [rawEntities]);
   const totalConnections = engramGraphs?.reduce((sum, g) => sum + g.connections.length, 0) ?? 0;
   const masteredSections = engramGraphs?.filter((g) => sectionRounds[g.section.StructuredLearningDocumentSectionId]?.status === 'Passed') ?? [];
   const masteredCount = masteredSections.length;
@@ -571,7 +579,7 @@ export default function KnowledgeGraphSection({
               {expanded && (
                 <div className="space-y-3 border-t border-slate-200 dark:border-white/10 px-3 py-3">
                   {entities.length === 0 && connections.length === 0 && (
-                    <p className="text-xs text-slate-400">{t('knowledgeGraph.emptyEngram')}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{t('knowledgeGraph.emptyEngram')}</p>
                   )}
 
                   {(() => {
@@ -604,7 +612,7 @@ export default function KnowledgeGraphSection({
                         <button
                           type="button"
                           onClick={() => setShowGraphBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showGraph }))}
-                          className="rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                          className="rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-900 dark:hover:text-slate-200"
                         >
                           {showGraph ? t('knowledgeGraph.hideGraph') : t('knowledgeGraph.showGraph')}
                         </button>
@@ -612,7 +620,7 @@ export default function KnowledgeGraphSection({
                           <button
                             type="button"
                             onClick={() => setFullscreenGraphSectionId(section.StructuredLearningDocumentSectionId)}
-                            className="rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                            className="rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-900 dark:hover:text-slate-200"
                           >
                             {t('knowledgeGraph.expandGraph')}
                           </button>
@@ -622,7 +630,7 @@ export default function KnowledgeGraphSection({
                             type="button"
                             onClick={() => regenerateFacts(section.StructuredLearningDocumentSectionId)}
                             disabled={factsRegenerating[section.StructuredLearningDocumentSectionId] ?? false}
-                            className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-500/20 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <RefreshCw className={`h-3 w-3 ${factsRegenerating[section.StructuredLearningDocumentSectionId] ? 'animate-spin' : ''}`} />
                             {factsRegenerating[section.StructuredLearningDocumentSectionId] ? t('knowledgeGraph.regenerating') : t('knowledgeGraph.regenerateGraph')}
@@ -632,7 +640,7 @@ export default function KnowledgeGraphSection({
                           <button
                             type="button"
                             onClick={() => setShowSecondaryBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showSecondary }))}
-                            className="rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                            className="rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-900 dark:hover:text-slate-200"
                           >
                             {showSecondary
                               ? t('knowledgeGraph.hideSecondary', { count: secondaryCount })
@@ -642,7 +650,7 @@ export default function KnowledgeGraphSection({
                         <button
                           type="button"
                           onClick={() => setShowJsonBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showJson }))}
-                          className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                          className="flex items-center gap-1 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-900 dark:hover:text-slate-200"
                         >
                           <Code2 className="h-3 w-3" /> {showJson ? t('knowledgeGraph.hideJson') : t('knowledgeGraph.viewJson')}
                         </button>
@@ -651,12 +659,12 @@ export default function KnowledgeGraphSection({
                   })()}
 
                   {factsLoading[section.StructuredLearningDocumentSectionId] && (
-                    <p className="rounded-lg border border-white/10 bg-slate-950/30 p-3 text-xs text-slate-400" role="status">
+                    <p className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/30 p-3 text-xs text-slate-500 dark:text-slate-400" role="status">
                       {t('knowledgeGraph.loadingFacts')}
                     </p>
                   )}
                   {factsError[section.StructuredLearningDocumentSectionId] && (
-                    <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-200" role="alert">
+                    <div className="rounded-lg border border-red-300 dark:border-red-400/30 bg-red-50 dark:bg-red-500/10 p-3 text-xs text-red-700 dark:text-red-200" role="alert">
                       <p>{t('knowledgeGraph.errorLoadingFacts')}</p>
                       <button type="button" className="mt-2 underline focus:outline-none focus:ring-2 focus:ring-red-300" onClick={() => loadFacts(section.StructuredLearningDocumentSectionId)}>
                         {t('knowledgeGraph.retry')}
@@ -672,7 +680,7 @@ export default function KnowledgeGraphSection({
                   )}
 
                   {(showJsonBySection[section.StructuredLearningDocumentSectionId] ?? false) && (
-                    <pre className="max-h-96 overflow-auto rounded-lg border border-white/10 bg-slate-950/60 p-3 text-[11px] text-slate-300">
+                    <pre className="max-h-96 overflow-auto rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 p-3 text-[11px] text-slate-700 dark:text-slate-300">
                       {JSON.stringify({ section: { title: section.SubchapterTitle || section.ChapterTitle, rootEntityName: section.KnowledgeGraphRootEntityName }, entities, connections }, null, 2)}
                     </pre>
                   )}
@@ -692,8 +700,8 @@ export default function KnowledgeGraphSection({
                                 large ? 'px-8 py-4 text-xl' : 'px-5 py-3 text-base'
                               } ${
                                 isMastered
-                                  ? 'border-emerald-400/80 bg-emerald-500/15 text-emerald-100 shadow-emerald-950/30'
-                                  : 'border-slate-700/60 bg-slate-900/40 text-slate-400'
+                                  ? 'border-emerald-400/80 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-100 shadow-emerald-950/30'
+                                  : 'border-slate-300 dark:border-slate-700/60 bg-slate-100 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400'
                               }`}
                               style={isMastered && memColor ? { borderColor: memColor } : undefined}
                             >
@@ -714,7 +722,7 @@ export default function KnowledgeGraphSection({
                               className={`relative mt-1 flex flex-wrap items-start justify-center overflow-x-auto pt-3 ${
                                 large ? 'gap-14' : 'gap-8'
                               } ${
-                                isMastered ? 'border-t border-emerald-400/50' : 'border-t border-slate-700/50'
+                                isMastered ? 'border-t border-emerald-400/50' : 'border-t border-slate-300 dark:border-slate-700/50'
                               }`}
                             >
                               {trees.map((tree) => (
@@ -723,7 +731,7 @@ export default function KnowledgeGraphSection({
                                     className={`mb-1 shrink-0 ${
                                       large ? 'h-5 w-5' : 'h-3 w-3'
                                     } ${
-                                      isMastered ? 'text-emerald-400 drop-shadow-xs' : 'text-slate-600'
+                                      isMastered ? 'text-emerald-500 dark:text-emerald-400 drop-shadow-xs' : 'text-slate-500 dark:text-slate-600'
                                     }`}
                                   />
                                   <TreeNode node={tree} large={large} isMastered={isMastered} memColor={memColor} />
@@ -738,17 +746,17 @@ export default function KnowledgeGraphSection({
                             {orphans.map((entity) => (
                               <span
                                 key={entity.EntityId}
-                                className={`rounded-full border text-slate-300 ${
+                                className={`rounded-full border text-slate-700 dark:text-slate-300 ${
                                   large ? 'px-3.5 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'
                                 } ${
                                   isMastered
-                                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                                    : 'border-white/10 bg-white/[0.03] text-slate-400 opacity-60'
+                                    ? 'border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
+                                    : 'border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] text-slate-500 dark:text-slate-400 opacity-80 dark:opacity-60'
                                 }`}
                                 title={entity.Description ?? undefined}
                               >
                                 {entity.CanonicalName}
-                                <span className={`ml-1.5 text-slate-400 ${large ? 'text-xs' : 'text-[10px]'}`}>{entity.EntityType}</span>
+                                <span className={`ml-1.5 text-slate-500 dark:text-slate-400 ${large ? 'text-xs' : 'text-[10px]'}`}>{entity.EntityType}</span>
                               </span>
                             ))}
                           </div>
@@ -760,13 +768,13 @@ export default function KnowledgeGraphSection({
                       <>
                         {renderTrees(false)}
                         {isFullscreen && (
-                          <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 p-6">
+                          <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-slate-950 p-6">
                             <div className="mb-4 flex shrink-0 items-center justify-between">
-                              <h4 className="text-lg font-semibold text-white">{section.SubchapterTitle || section.ChapterTitle}</h4>
+                              <h4 className="text-lg font-semibold text-slate-900 dark:text-white">{section.SubchapterTitle || section.ChapterTitle}</h4>
                               <button
                                 type="button"
                                 onClick={() => setFullscreenGraphSectionId(null)}
-                                className="rounded-lg border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-medium text-white hover:bg-white/10"
+                                className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.05] px-4 py-2 text-sm font-medium text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-white/10"
                               >
                                 {t('knowledgeGraph.close')}
                               </button>
@@ -787,13 +795,13 @@ export default function KnowledgeGraphSection({
       </div>
       )}
       {showAllFacts && engramGraphs && (
-        <section className="mt-4 space-y-2 border-t border-white/10 pt-4" aria-label="All Knowledge Facts">
+        <section className="mt-4 space-y-2 border-t border-slate-200 dark:border-white/10 pt-4" aria-label="All Knowledge Facts">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-white">All Knowledge Facts</h4>
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white">All Knowledge Facts</h4>
             <button
               type="button"
               onClick={() => setShowAllFacts(false)}
-              className="ml-auto rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="ml-auto rounded-full p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
               aria-label="Hide All"
             >
               <X className="h-3.5 w-3.5" />
@@ -804,7 +812,7 @@ export default function KnowledgeGraphSection({
             if (!facts) return null;
             const isOpen = !!expandedFactsSectionIds[section.StructuredLearningDocumentSectionId];
             return (
-              <div key={section.StructuredLearningDocumentSectionId} className="rounded-lg border border-white/10">
+              <div key={section.StructuredLearningDocumentSectionId} className="rounded-lg border border-slate-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() =>
@@ -813,14 +821,14 @@ export default function KnowledgeGraphSection({
                       [section.StructuredLearningDocumentSectionId]: !previous[section.StructuredLearningDocumentSectionId],
                     }))
                   }
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-white hover:bg-white/[0.03]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-white/[0.03]"
                 >
                   {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                   {section.SortOrder + 1}. {section.SubchapterTitle || section.ChapterTitle}
-                  <span className="ml-auto text-xs font-normal text-slate-400">{facts.TotalFacts}</span>
+                  <span className="ml-auto text-xs font-normal text-slate-500 dark:text-slate-400">{facts.TotalFacts}</span>
                 </button>
                 {isOpen && (
-                  <div className="border-t border-white/10 p-3">
+                  <div className="border-t border-slate-200 dark:border-white/10 p-3">
                     <KnowledgeFactsPanel data={facts} expandedEvidence={expandedEvidence} onToggleEvidence={(key) => setExpandedEvidence((previous) => ({ ...previous, [key]: !previous[key] }))} />
                   </div>
                 )}

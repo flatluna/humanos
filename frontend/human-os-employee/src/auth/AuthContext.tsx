@@ -15,6 +15,11 @@ export interface EmployeePortalUser {
   personId: string;
   tenantId: string;
   tenantName: string | null;
+  /** True when the Tenant is an academic institution (Tenant.OrgType ==
+   *  "Academic", e.g. Tecnológico de Monterrey) rather than a corporate
+   *  employer — drives branding/presentation (logo, header copy, whether
+   *  the student-only "Tec Contigo" section is reachable). */
+  isAcademicTenant: boolean;
   /** Person.OrgRole from /api/me. Unlike human-os-enterprise, this app does
    *  NOT gate access by role — Employee/Manager/HRAdmin can all log in here
    *  to take their own assigned courses; it's purely informational. */
@@ -77,6 +82,7 @@ interface MeResponse {
   personId: string;
   tenantId: string | null;
   tenantName: string | null;
+  isAcademicTenant: boolean;
   email: string | null;
   preferredLanguage: string | null;
   orgRole: string;
@@ -169,6 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           personId: data.personId,
           tenantId: data.tenantId,
           tenantName: data.tenantName,
+          isAcademicTenant: data.isAcademicTenant,
           orgRole: (data.orgRole as OrgRole) ?? 'Employee',
           departmentId: data.departmentId,
           departmentName: data.departmentName,

@@ -88,7 +88,9 @@ public sealed class StructuredLearningPedagogyOrchestrator
         byte[]? uploadedImageBytes = null,
         string? uploadedImageContentType = null,
         string? referenceImageUsageInstruction = null,
-        bool? usePerplexitySearch = null)
+        bool? usePerplexitySearch = null,
+        int? fromEngramNumber = null,
+        int? toEngramNumber = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -147,7 +149,9 @@ public sealed class StructuredLearningPedagogyOrchestrator
                     uploadedImageContentType,
                     referenceImageUsageInstruction,
                     illustrationOverride: null,
-                    usePerplexitySearch: usePerplexitySearch);
+                    usePerplexitySearch: usePerplexitySearch,
+                    fromEngramNumber: fromEngramNumber,
+                    toEngramNumber: toEngramNumber);
 
                 session.UpdateStatus(StructuredLearningPedagogyRunStatus.Completed(runId, documentId, result));
             }

@@ -55,6 +55,18 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return handleResponse<T>(response);
 }
 
+/** Uploads a raw file as the request body (no multipart), matching the
+ * backend's "read Content-Type header + raw body stream" upload endpoints
+ * (e.g. profile photo). */
+export async function apiPostFile<T>(path: string, file: File): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream', ...getIdentityHeaders() },
+    body: file,
+  });
+  return handleResponse<T>(response);
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;

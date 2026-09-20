@@ -74,6 +74,21 @@ export interface StructuredLearningDocumentDetail {
   Sections: StructuredLearningSectionDetail[];
 }
 
+export interface StructuredLearningDocumentSummary {
+  structuredLearningDocumentId: string;
+  documentName: string;
+  executiveSummary?: string | null;
+  sectionCount: number;
+  createdDate: string;
+  coverIllustrationId?: string | null;
+  category?: string | null;
+  targetSkill?: string | null;
+}
+
+export function getStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {
+  return apiGet<StructuredLearningDocumentSummary[]>('/catalog/structured-learning');
+}
+
 export interface StructuredLearningSectionSummaryDto {
   StructuredLearningDocumentSectionId: string;
   StructuredLearningDocumentId: string;

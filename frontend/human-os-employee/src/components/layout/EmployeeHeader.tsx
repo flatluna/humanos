@@ -61,10 +61,19 @@ export function EmployeeHeader() {
           <Menu className="h-5 w-5" />
         </button>
 
-        <img src="/engramslogo.png?v=2" alt="Engram" className="h-11 w-11 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/15" />
+        <img src="/HumanOSLogo.png" alt="Human OS" className="h-11 w-auto max-w-[9rem] object-contain object-left" />
+        {user?.isAcademicTenant ? (
+          <img src="/TecMOnterreyLogo.png" alt="Tecnológico de Monterrey" className="h-10 w-auto max-w-[9rem] object-contain object-left" />
+        ) : (
+          user?.tenantName && (
+            <span className="rounded-md bg-brand-500/10 px-2.5 py-1 text-sm font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
+              {user.tenantName}
+            </span>
+          )
+        )}
         <div>
-          <p className="text-sm font-semibold text-slate-900 dark:text-white">Engram</p>
-          <p className="text-xs text-slate-500 dark:text-white/50">{user?.tenantName ?? 'Mis Cursos'}</p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">Human OS</p>
+          <p className="text-xs text-slate-500 dark:text-white/50">Aprendizaje basado en ciencia de la memoria: repetición espaciada y curva del olvido</p>
         </div>
       </div>
 

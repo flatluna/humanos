@@ -13,5 +13,10 @@ public sealed class JobRoleSkill
 
     public Skill Skill { get; set; } = null!;
 
+    /// <summary>"L100" | "L200" | "L300", or null when no depth preference
+    /// was set — the same Skill can require L100 for a Jr role and L300 for
+    /// a Sr role, so the level lives on this link, not on Skill/JobRole.</summary>
+    public string? RequiredLevel { get; set; }
+
     public DateTime CreatedDate { get; set; }
 }

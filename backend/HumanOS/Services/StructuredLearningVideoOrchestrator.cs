@@ -30,7 +30,8 @@ public sealed class StructuredLearningVideoRunStatus
 
 /// <summary>
 /// Owns Google Veo video generation for Structured Learning "Learn"
-/// sections (2026-08-21) — one 8-second video per Hypothesis/Teaching/
+/// sections (2026-08-21) — one ~10-second video (Veo/Omni's own default
+/// duration — never explicitly requested here) per Hypothesis/Teaching/
 /// Production step or DeepDive card, hard-capped at
 /// <see cref="MaxVideosPerSection"/> per section/chapter (a real cost:
 /// each Veo call is billed, so this is a deliberate spend guard, not just a

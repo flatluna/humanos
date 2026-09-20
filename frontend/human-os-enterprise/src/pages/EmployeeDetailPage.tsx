@@ -680,6 +680,7 @@ export function EmployeeDetailPage() {
                 <option value="Employee">{t('roles.Employee')}</option>
                 <option value="Manager">{t('roles.Manager')}</option>
                 <option value="HRAdmin">{t('roles.HRAdmin')}</option>
+                <option value="Student">{t('roles.Student')}</option>
               </select>
             </div>
           </div>

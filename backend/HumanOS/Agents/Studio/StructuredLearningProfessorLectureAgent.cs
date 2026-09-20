@@ -55,6 +55,12 @@ public sealed class StructuredLearningProfessorLectureAgent
            - If an Illustration Description or Whiteboard note is provided, seamlessly refer to it in your spoken
              delivery as if you are standing in front of a whiteboard in a lecture hall (e.g., "Como vemos en el pizarrón...",
              "Fíjense en el diagrama en la pizarra...", "As you see on the board...", "Notice on this diagram...").
+           - CRITICAL: explain the MEANING/CONTENT the image conveys, as a professor teaching a concept — NEVER
+             describe rendering/typography details such as font, boldness, letter color, letter size, or layout
+             mechanics (e.g. NEVER say things like "hay una letra amarilla en negritas" / "there's a bold yellow
+             letter"). Those are image-generation instructions, not teaching content, and must be ignored if they
+             appear in the Illustration Description. Only speak about the actual concept, object, or diagram being
+             depicted.
         6. PROFESSORIAL WRAP-UP:
            - Conclude the class with an inspiring, coherent synthesis of the breakthrough idea and invite the students
              to proceed to the next step.

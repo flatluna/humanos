@@ -22,10 +22,11 @@ internal static class Mp4LastFrame
                 StartInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "ffmpeg",
-                    // -sseof -0.5 seeks 0.5s before end-of-file (avoids a
-                    // black/faded final frame some clips have), then grabs
-                    // exactly 1 frame from there.
-                    Arguments = $"-y -sseof -0.5 -i \"{inputPath}\" -frames:v 1 -q:v 2 \"{outputPath}\"",
+                    // -sseof -0.1 seeks 0.1s before end-of-file (2026-09-19:
+                    // narrowed from -0.5, which was landing noticeably before
+                    // the true last frame on ~10s clips — visibly grabbing a
+                    // mid-clip frame instead of the actual ending one).
+                    Arguments = $"-y -sseof -0.1 -i \"{inputPath}\" -frames:v 1 -q:v 2 \"{outputPath}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

@@ -124,6 +124,21 @@ public sealed class StructuredLearningWorkplaceApplicationService
         var studentName = !string.IsNullOrWhiteSpace(profile?.EmployeeName)
             ? profile.EmployeeName.Trim()
             : "Alejandro Díaz";
+        // A raw email (no PersonProfile display name on file) is a poor fallback for the AI
+        // greeting/on-screen name — derive a readable "Sofia Ruiz"-style name from it instead.
+        if (studentName.Contains('@'))
+        {
+            var localPart = studentName[..studentName.IndexOf('@')];
+            studentName = string.Join(' ', localPart.Split(['.', '_', '-'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Length > 0 ? char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant() : part));
+        }
+
+        var isStudent = !string.IsNullOrWhiteSpace(profile?.StudentAcademicProfileSummary);
+        // Never fabricate a workplace job role for a real student — this whole step frames itself
+        // as "apply this at your job", which doesn't apply to someone with no real employer.
+        var effectiveRoleTitle = isStudent
+            ? "Estudiante de Ingeniería en Sistemas Computacionales, Tecnológico de Monterrey"
+            : (profile?.RoleTitle ?? "Software Engineering");
 
         var activeObjectivesList = profile?.ActiveObjectives
             .Take(2)
@@ -148,13 +163,15 @@ public sealed class StructuredLearningWorkplaceApplicationService
 
             StudentId = studentId,
             StudentName = studentName,
-            RoleTitle = profile?.RoleTitle ?? "Software Engineering",
-            RoleMission = profile?.RolePurpose ?? string.Empty,
-            YearsOfExperience = profile?.YearsOfExperience,
-            ToolsAndTechnologies = keyTools,
-            ActiveObjectives = activeObjectivesList,
-            Kpis = profile?.Kpis?.Take(2).ToList() ?? [],
-            TechnicalSkills = profile?.TechnicalSkills?.Take(3).ToList() ?? []
+            RoleTitle = effectiveRoleTitle,
+            RoleMission = isStudent ? string.Empty : (profile?.RolePurpose ?? string.Empty),
+            YearsOfExperience = isStudent ? null : profile?.YearsOfExperience,
+            ToolsAndTechnologies = isStudent ? [] : keyTools,
+            ActiveObjectives = isStudent ? [] : activeObjectivesList,
+            Kpis = isStudent ? [] : (profile?.Kpis?.Take(2).ToList() ?? []),
+            TechnicalSkills = isStudent ? [] : (profile?.TechnicalSkills?.Take(3).ToList() ?? []),
+            IsStudent = isStudent,
+            StudentAcademicProfileSummary = profile?.StudentAcademicProfileSummary
         };
 
         // 3. Generate scenario with agent
@@ -197,9 +214,9 @@ public sealed class StructuredLearningWorkplaceApplicationService
             SectionId = sectionId,
             PersonId = studentId,
             StudentName = studentName,
-            RoleTitle = profile?.RoleTitle ?? "Software Engineering",
-            Tools = profile?.Tools ?? [],
-            TargetObjective = activeObjectivesList.FirstOrDefault(),
+            RoleTitle = effectiveRoleTitle,
+            Tools = isStudent ? [] : (profile?.Tools ?? []),
+            TargetObjective = isStudent ? null : activeObjectivesList.FirstOrDefault(),
             ScenarioTitle = scenario.ScenarioTitle,
             ScenarioText = textToSpeakAndDisplay,
             PracticalActions = scenario.PracticalActions,
