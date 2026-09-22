@@ -282,6 +282,10 @@ export interface StructuredLearningPedagogyRunStatus {
   ActiveSectionTitles: string[] | null;
   ErrorMessage: string | null;
   Result: StructuredLearningPedagogyResult | null;
+  /** 1-based inclusive engram range this run was scoped to, when the
+   * designer chose "redo engrams X to Y" instead of the whole document. */
+  FromEngramNumber: number | null;
+  ToEngramNumber: number | null;
 }
 
 export function startStructuredLearningPedagogy(

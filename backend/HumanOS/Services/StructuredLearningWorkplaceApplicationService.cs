@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using HumanOS.Agents.Studio;
 using HumanOS.Contracts.EmployeeScoring;
@@ -12,29 +13,50 @@ namespace HumanOS.Services;
 
 public sealed class StructuredLearningWorkplaceApplicationService
 {
+    // Bump this whenever the CQI-aware agent's output rules change materially (e.g. numbering,
+    // bullet grounding) so all previously cached non-student responses regenerate exactly once.
+    // v3 (2026-09-22): added CqiLeadingPatternType/CqiExampleImageUrls (Type 6 reveal modal).
+    // v4 (2026-09-22): removed the reveal modal in favor of inline CQI content; audio now narrates
+    // the full application (practical actions, why this matters, reflection, growth, connections,
+    // and CQI worked-example explanations) instead of only the intro paragraph.
+    // v5 (2026-09-22): tightened ExampleImageExplanations grounding — must depict only what the
+    // engram itself literally describes, never invented technical scenarios loosely tied by label words.
+    // v6 (2026-09-22): forbid naming the employee's own specific real project/system as the depicted
+    // action unless the engram itself is literally about that kind of system.
+    private const int CurrentSchemaVersion = 6;
+
     private readonly HumanOsDbContext _dbContext;
     private readonly EmployeeScoringProfileService _profileService;
+    private readonly PersonCqiProfileService _cqiProfileService;
     private readonly StructuredLearningWorkplaceApplicationAgent _agent;
+    private readonly StructuredLearningWorkplaceApplicationCqiAgent _cqiAgent;
     private readonly StructuredLearningWorkplaceMentorAgent _mentorAgent;
     private readonly AzureSpeechService _speechService;
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
+    private readonly HumanOS.Agents.Studio.GraphIllustrationImageService _imageService;
     private readonly ILogger<StructuredLearningWorkplaceApplicationService> _logger;
 
     public StructuredLearningWorkplaceApplicationService(
         HumanOsDbContext dbContext,
         EmployeeScoringProfileService profileService,
+        PersonCqiProfileService cqiProfileService,
         StructuredLearningWorkplaceApplicationAgent agent,
+        StructuredLearningWorkplaceApplicationCqiAgent cqiAgent,
         StructuredLearningWorkplaceMentorAgent mentorAgent,
         AzureSpeechService speechService,
         CapabilityGraphIllustrationStorageService illustrationStorage,
+        HumanOS.Agents.Studio.GraphIllustrationImageService imageService,
         ILogger<StructuredLearningWorkplaceApplicationService> logger)
     {
         _dbContext = dbContext;
         _profileService = profileService;
+        _cqiProfileService = cqiProfileService;
         _agent = agent;
+        _cqiAgent = cqiAgent;
         _mentorAgent = mentorAgent;
         _speechService = speechService;
         _illustrationStorage = illustrationStorage;
+        _imageService = imageService;
         _logger = logger;
     }
 
@@ -61,6 +83,20 @@ public sealed class StructuredLearningWorkplaceApplicationService
 
         var resolvedLanguage = ResolveLanguage(targetLanguage, section.Document?.ConfigSnapshotJson, section.ConfigSnapshotJson, teachingContent);
 
+        // Build profile/isStudent up front so the cache check below can invalidate stale
+        // pre-CQI-sections cached responses for non-student (business/employee) tenants.
+        EmployeeScoringProfile? profile = null;
+        try
+        {
+            profile = await _profileService.BuildProfileAsync(studentId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to build employee profile for {StudentId}", studentId);
+        }
+
+        var isStudent = !string.IsNullOrWhiteSpace(profile?.StudentAcademicProfileSummary);
+
         // 1. Check Data Lake cache (skip if forceRegenerate requested)
         if (!forceRegenerate && _illustrationStorage.IsConfigured)
         {
@@ -76,15 +112,23 @@ public sealed class StructuredLearningWorkplaceApplicationService
                     if (cached is not null)
                     {
                         var cachedLang = cached.LanguageCode?.Trim().ToLowerInvariant().StartsWith("es") == true ? "es" : "en";
-                        if (cachedLang == resolvedLanguage)
+                        // Non-student cached responses generated before the CQI-aware sections existed,
+                        // or before a schema-affecting prompt fix (numbering, bullet grounding, etc.),
+                        // are treated as stale and regenerated.
+                        var isStaleNonStudentCache = !isStudent
+                            && (cached.SchemaVersion < CurrentSchemaVersion
+                                || string.IsNullOrWhiteSpace(cached.WhyThisMatters)
+                                || cached.ReflectionQuestions is null
+                                || cached.ReflectionQuestions.Count == 0);
+                        if (cachedLang == resolvedLanguage && !isStaleNonStudentCache)
                         {
                             cached.AudioUrl = BuildAudioUrl(sectionId, studentId);
                             return cached;
                         }
 
                         _logger.LogInformation(
-                            "Cached workplace application for section {SectionId} has language '{CachedLang}', but resolved language is '{ResolvedLanguage}'. Invalidating stale cache.",
-                            sectionId, cachedLang, resolvedLanguage);
+                            "Cached workplace application for section {SectionId} is stale (language mismatch, missing CQI sections, or outdated schema version). Invalidating cache.",
+                            sectionId);
                     }
                 }
             }
@@ -94,33 +138,32 @@ public sealed class StructuredLearningWorkplaceApplicationService
             }
         }
 
-        // When regenerating (forced or stale/mismatched cache), clear previous audio
+        // When regenerating (forced or stale/mismatched cache), purge EVERYTHING from the previous
+        // run — audio, cached JSON, and both CQI example images — so no stale artifact from an old
+        // engram/content version can ever be served again, even if this run's generation fails partway.
         if (_illustrationStorage.IsConfigured)
         {
-            try
+            var pathsToPurge = new[]
             {
-                // Explicitly delete any old audio and old cached json so recreate starts completely clean
-                await _illustrationStorage.DeleteIllustrationAsync(
-                    _illustrationStorage.GetWorkplaceAudioStoragePath(section.TenantId, section.StructuredLearningDocumentId, sectionId, studentId),
-                    cancellationToken);
-            }
-            catch (Exception ex)
+                _illustrationStorage.GetWorkplaceAudioStoragePath(section.TenantId, section.StructuredLearningDocumentId, sectionId, studentId),
+                _illustrationStorage.GetWorkplaceJsonStoragePath(section.TenantId, section.StructuredLearningDocumentId, sectionId, studentId),
+                _illustrationStorage.GetWorkplaceExampleImageStoragePath(section.TenantId, section.StructuredLearningDocumentId, sectionId, studentId, 1),
+                _illustrationStorage.GetWorkplaceExampleImageStoragePath(section.TenantId, section.StructuredLearningDocumentId, sectionId, studentId, 2),
+            };
+            foreach (var path in pathsToPurge)
             {
-                _logger.LogWarning(ex, "Failed to delete old workplace audio before regeneration for section {SectionId}", sectionId);
+                try
+                {
+                    await _illustrationStorage.DeleteIllustrationAsync(path, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete old workplace artifact {Path} before regeneration for section {SectionId}", path, sectionId);
+                }
             }
         }
 
-        // 2. Build profile and student context
-        EmployeeScoringProfile? profile = null;
-        try
-        {
-            profile = await _profileService.BuildProfileAsync(studentId, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to build employee profile for {StudentId}", studentId);
-        }
-
+        // 2. Build student context (profile already resolved above)
         var studentName = !string.IsNullOrWhiteSpace(profile?.EmployeeName)
             ? profile.EmployeeName.Trim()
             : "Alejandro Díaz";
@@ -133,7 +176,6 @@ public sealed class StructuredLearningWorkplaceApplicationService
                 .Select(part => part.Length > 0 ? char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant() : part));
         }
 
-        var isStudent = !string.IsNullOrWhiteSpace(profile?.StudentAcademicProfileSummary);
         // Never fabricate a workplace job role for a real student — this whole step frames itself
         // as "apply this at your job", which doesn't apply to someone with no real employer.
         var effectiveRoleTitle = isStudent
@@ -149,6 +191,21 @@ public sealed class StructuredLearningWorkplaceApplicationService
         var keyTools = profile?.Tools != null && profile.Tools.Count > 0
             ? profile.Tools.Take(3).ToList()
             : new List<string>();
+
+        // CQI Workspace profile only applies to business/employee tenants, never students.
+        HumanOS.Contracts.People.CqiProfileData? cqiProfile = null;
+        if (!isStudent)
+        {
+            try
+            {
+                var cqiResponse = await _cqiProfileService.GetByPersonIdAsync(studentId, cancellationToken);
+                cqiProfile = cqiResponse.Profile;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load CQI profile for {StudentId}", studentId);
+            }
+        }
 
         var context = new StructuredLearningWorkplaceApplicationContext
         {
@@ -171,27 +228,58 @@ public sealed class StructuredLearningWorkplaceApplicationService
             Kpis = isStudent ? [] : (profile?.Kpis?.Take(2).ToList() ?? []),
             TechnicalSkills = isStudent ? [] : (profile?.TechnicalSkills?.Take(3).ToList() ?? []),
             IsStudent = isStudent,
-            StudentAcademicProfileSummary = profile?.StudentAcademicProfileSummary
+            StudentAcademicProfileSummary = profile?.StudentAcademicProfileSummary,
+            CqiProfile = cqiProfile
         };
 
-        // 3. Generate scenario with agent
+        // 3. Generate scenario with agent — students always use the plain agent; business/employee
+        // tenants use the CQI-aware agent (works fine even when the employee has no CQI profile yet).
         _logger.LogInformation("Generating workplace application scenario for section {SectionId} and student {StudentName}", sectionId, studentName);
-        var scenario = await _agent.GenerateScenarioAsync(context, cancellationToken);
+        var scenario = isStudent
+            ? await _agent.GenerateScenarioAsync(context, cancellationToken)
+            : await _cqiAgent.GenerateScenarioAsync(context, cancellationToken);
 
         // Ensure 100% exact verbatim match between the on-screen text and what is spoken by Azure Speech
         var textToSpeakAndDisplay = !string.IsNullOrWhiteSpace(scenario.SpokenAudioScript)
             ? scenario.SpokenAudioScript.Trim()
             : scenario.ScenarioDescription.Trim();
 
-        // 4. Synthesize spoken audio with Azure Speech and upload to Data Lake
-        if (_speechService.IsConfigured && _illustrationStorage.IsConfigured && !string.IsNullOrWhiteSpace(textToSpeakAndDisplay))
+        // 3b. CQI Type 6 ("The Verifier") recognition — employees/business tenants only, never students.
+        // Generated BEFORE audio synthesis so the two worked-example explanations can also be narrated.
+        string? cqiTypeLabel = null;
+        var cqiExampleImageUrls = new List<string>();
+        var cqiExampleImageExplanations = new List<string>();
+        if (!isStudent && cqiProfile is not null &&
+            cqiProfile.LeadingPatternType.Contains('6', StringComparison.Ordinal))
+        {
+            cqiTypeLabel = $"{cqiProfile.LeadingPatternType}: {cqiProfile.LeadingPatternName}";
+            cqiExampleImageExplanations = scenario.ExampleImageExplanations;
+            cqiExampleImageUrls = await GenerateCqiExampleImagesAsync(
+                section.TenantId, section.StructuredLearningDocumentId, sectionId, studentId,
+                effectiveRoleTitle, cqiExampleImageExplanations, resolvedLanguage, cancellationToken);
+        }
+
+        // 4. Synthesize spoken audio with Azure Speech and upload to Data Lake — narrates the FULL
+        // application (scenario, practical actions, why this matters, reflection, growth, knowledge
+        // connections, and the CQI worked-example explanations when present), not just the intro.
+        var isEnglishNarration = resolvedLanguage.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+        var fullNarrationScript = BuildFullNarrationScript(
+            textToSpeakAndDisplay,
+            scenario.PracticalActions,
+            scenario.WhyThisMatters,
+            scenario.ReflectionQuestions,
+            scenario.GrowthOpportunity,
+            scenario.KnowledgeConnections,
+            cqiExampleImageExplanations,
+            isEs: !isEnglishNarration);
+
+        if (_speechService.IsConfigured && _illustrationStorage.IsConfigured && !string.IsNullOrWhiteSpace(fullNarrationScript))
         {
             try
             {
-                var isEnglish = resolvedLanguage.StartsWith("en", StringComparison.OrdinalIgnoreCase);
-                var voiceName = isEnglish ? "en-US-AndrewNeural" : "es-MX-CecilioNeural";
+                var voiceName = isEnglishNarration ? "en-US-AndrewNeural" : "es-MX-CecilioNeural";
 
-                var audioBytes = await _speechService.SynthesizeAsync(textToSpeakAndDisplay, voiceName, cancellationToken);
+                var audioBytes = await _speechService.SynthesizeAsync(fullNarrationScript, voiceName, cancellationToken);
                 using var audioStream = new MemoryStream(audioBytes);
 
                 await _illustrationStorage.UploadWorkplaceAudioAsync(
@@ -221,7 +309,18 @@ public sealed class StructuredLearningWorkplaceApplicationService
             ScenarioText = textToSpeakAndDisplay,
             PracticalActions = scenario.PracticalActions,
             AudioUrl = BuildAudioUrl(sectionId, studentId),
-            LanguageCode = resolvedLanguage
+            LanguageCode = resolvedLanguage,
+            WhyThisMatters = scenario.WhyThisMatters,
+            ReflectionQuestions = scenario.ReflectionQuestions,
+            GrowthOpportunity = scenario.GrowthOpportunity,
+            KnowledgeConnections = scenario.KnowledgeConnections,
+            SchemaVersion = CurrentSchemaVersion,
+            CqiLeadingPatternType = cqiProfile?.LeadingPatternType,
+            CqiLeadingPatternName = cqiProfile?.LeadingPatternName,
+            CqiTypeLabel = cqiTypeLabel,
+            CqiLearningAndWorkingPreferences = cqiTypeLabel is not null ? cqiProfile?.LearningAndWorkingPreferences : null,
+            CqiExampleImageUrls = cqiExampleImageUrls,
+            CqiExampleImageExplanations = cqiExampleImageExplanations
         };
 
         // 5. Cache response JSON in Data Lake
@@ -338,6 +437,122 @@ public sealed class StructuredLearningWorkplaceApplicationService
 
     private static string BuildAudioUrl(Guid sectionId, Guid studentId) =>
         $"http://localhost:7071/api/studio/structured-learning/sections/{sectionId:D}/workplace-application/audio?personId={studentId:D}";
+
+    private static string BuildCqiExampleImageUrl(Guid sectionId, Guid studentId, int imageIndex) =>
+        $"http://localhost:7071/api/studio/structured-learning/sections/{sectionId:D}/workplace-application/cqi-example-image/{imageIndex}?personId={studentId:D}";
+
+    /// <summary>Generates 2 additional example illustrations (concrete depictions of this engram
+    /// applied to the employee's own job role) for CQI Type 6 ("The Verifier") employees, one per
+    /// grounded explanation paragraph the CQI agent already wrote (so the image and its caption
+    /// always match). Best-effort: any failure just leaves that image URL out, never fails the request.</summary>
+    private async Task<List<string>> GenerateCqiExampleImagesAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid sectionId,
+        Guid studentId,
+        string roleTitle,
+        List<string> explanations,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var urls = new List<string>();
+
+        if (!_imageService.IsConfigured || !_illustrationStorage.IsConfigured || explanations.Count == 0)
+        {
+            return urls;
+        }
+
+        var isEs = targetLanguage.StartsWith("es", StringComparison.OrdinalIgnoreCase);
+
+        for (var i = 0; i < explanations.Count; i++)
+        {
+            var prompt = isEs
+                ? $"Ilustraci\u00f3n realista y concreta para el rol de {roleTitle} que represente exactamente esta escena de trabajo (sin texto ni pizarrones): {explanations[i]}"
+                : $"Realistic, concrete illustration for the role of {roleTitle} depicting exactly this workplace scene (no text or blackboards): {explanations[i]}";
+
+            try
+            {
+                var generated = await _imageService.GenerateAsync(prompt, cancellationToken: cancellationToken);
+                using var imageStream = generated.ImageBytes.ToStream();
+                await _illustrationStorage.UploadWorkplaceExampleImageAsync(
+                    tenantId, capabilityId, sectionId, studentId, imageIndex: i + 1, imageStream, cancellationToken: cancellationToken);
+                urls.Add(BuildCqiExampleImageUrl(sectionId, studentId, i + 1));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate CQI Type 6 example image {Index} for section {SectionId}", i + 1, sectionId);
+            }
+        }
+
+        return urls;
+    }
+
+    /// <summary>Builds the full audio narration script: the greeting/scenario paragraph PLUS every
+    /// other section (practical actions, why this matters, reflection questions, growth opportunity,
+    /// knowledge connections, and — for CQI Type 6 — the two worked-example explanations) read aloud
+    /// as natural prose, so the recorded voice covers everything on the page, not just the intro.</summary>
+    private static string BuildFullNarrationScript(
+        string scenarioParagraph,
+        List<string> practicalActions,
+        string whyThisMatters,
+        List<string> reflectionQuestions,
+        string growthOpportunity,
+        List<string> knowledgeConnections,
+        List<string> cqiExampleExplanations,
+        bool isEs)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(scenarioParagraph.Trim());
+
+        static IEnumerable<string> StripBullets(string block) =>
+            block.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(line => line.TrimStart('-', ' ').Trim())
+                .Where(line => line.Length > 0);
+
+        if (practicalActions.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine(isEs ? "Acciones pr\u00e1cticas sugeridas en tus proyectos:" : "Suggested practical actions in your projects:");
+            foreach (var action in practicalActions) sb.AppendLine(action.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(whyThisMatters))
+        {
+            sb.AppendLine();
+            sb.AppendLine(isEs ? "Por qu\u00e9 esto importa:" : "Why this matters:");
+            foreach (var line in StripBullets(whyThisMatters)) sb.AppendLine(line);
+        }
+
+        if (reflectionQuestions.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine(isEs ? "Reflexi\u00f3n personalizada:" : "Personalized reflection:");
+            foreach (var question in reflectionQuestions) sb.AppendLine(question.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(growthOpportunity))
+        {
+            sb.AppendLine();
+            sb.AppendLine(isEs ? "Oportunidad de crecimiento:" : "Growth opportunity:");
+            foreach (var line in StripBullets(growthOpportunity)) sb.AppendLine(line);
+        }
+
+        if (knowledgeConnections.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine(isEs ? "Conexiones de conocimiento: " + string.Join(", ", knowledgeConnections) + "."
+                : "Knowledge connections: " + string.Join(", ", knowledgeConnections) + ".");
+        }
+
+        if (cqiExampleExplanations.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine(isEs ? "Dos ejemplos pr\u00e1cticos adicionales para tu puesto:" : "Two additional practical examples for your role:");
+            foreach (var explanation in cqiExampleExplanations) sb.AppendLine(explanation.Trim());
+        }
+
+        return sb.ToString().Trim();
+    }
 
     private static string ResolveLanguage(
         string? requestedLanguage,

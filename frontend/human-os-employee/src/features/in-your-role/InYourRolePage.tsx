@@ -1,0 +1,353 @@
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, Briefcase, CheckCircle2, ChevronRight, Clock3, Cpu, Handshake, ShieldCheck, Sparkles, X, type LucideIcon } from 'lucide-react';
+import { Link } from 'react-router';
+import { useAuth } from '@/auth/AuthContext';
+import { Card } from '@/components/ui/Card';
+import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
+import { useI18n } from '@/features/capabilities/i18n/useI18n';
+import { getSkills } from '@/features/capabilities/api/skillsApi';
+import { getEnrolledCapabilities } from '@/features/capabilities/api/enrolledCapabilitiesApi';
+import { getJobRole } from '@/features/profile/api/jobRoleApi';
+
+/** Company policy/compliance skills folded into "Soft Capabilities" here —
+ * these DO exist as COMPANY_WIDE_ESSENTIAL skills in the catalog, matched
+ * by name against getSkills() the same way StartInYourRolePage matches its
+ * requiredTraining list, so real capability/engram progress links through
+ * automatically. Card 1 (Start in Your Role) already covers these under
+ * its own "Get to know the company"/"Required training" cards — they're
+ * repeated here only because the role's own Soft Skills catalog list
+ * (JobRole.SoftSkillsJson) legitimately includes them. */
+const POLICY_SKILL_NAMES = [
+  'Get to Know How We Work',
+  'Data Privacy and Protection',
+  'Workplace Health and Safety',
+  'Responsible Use of AI',
+  'Information Security',
+];
+
+export function InYourRolePage() {
+  const { user } = useAuth();
+  const { language } = useI18n();
+  const isEn = language === 'en';
+  const personId = user?.personId ?? '';
+  const [activeRequirement, setActiveRequirement] = useState<{ title: string; description: string; href?: string; external?: boolean; available?: boolean; engramProgress?: { mastered: number; total: number } } | null>(null);
+
+  const jobRoleQuery = useQuery({
+    queryKey: ['job-role-in-your-role', user?.jobRoleId],
+    queryFn: () => getJobRole(user!.jobRoleId!),
+    enabled: Boolean(user?.jobRoleId),
+  });
+  const skillsQuery = useQuery({
+    queryKey: ['skills', user?.tenantId, 'in-your-role'],
+    queryFn: () => getSkills(user!.tenantId!),
+    enabled: Boolean(user?.tenantId),
+  });
+  const enrolledQuery = useQuery({
+    queryKey: ['enrolled-capabilities', personId, 'in-your-role'],
+    queryFn: () => getEnrolledCapabilities(personId),
+    enabled: Boolean(personId),
+  });
+
+  /** Matches a required-skill name (from the job role's own catalog list)
+   * against the tenant's Skill catalog for its real description, a
+   * capability link, and engram progress, falling back to a plain
+   * "Coming soon" entry when no Skill row exists yet for that name. */
+  const matchRequirement = useMemo(() => {
+    const enrolledByCapabilityId = new Map((enrolledQuery.data ?? []).map((item) => [item.capabilityId, item]));
+    const skillsByLowerName = new Map((skillsQuery.data ?? []).map((skill) => [skill.name.trim().toLowerCase(), skill]));
+    return (name: string) => {
+      const skill = skillsByLowerName.get(name.trim().toLowerCase());
+      const enrolled = skill?.matchedCapabilityId ? enrolledByCapabilityId.get(skill.matchedCapabilityId) : undefined;
+      return {
+        name,
+        description: skill?.description ?? null,
+        matchedCapabilityId: skill?.matchedCapabilityId ?? null,
+        matchedCourseType: skill?.matchedCourseType ?? null,
+        status: enrolled?.status,
+        engramProgress: enrolled ? { mastered: enrolled.masteredNodes, total: enrolled.totalNodes } : undefined,
+      };
+    };
+  }, [enrolledQuery.data, skillsQuery.data]);
+
+  const technicalCapabilities = useMemo(
+    () => (jobRoleQuery.data?.technicalSkills ?? []).map(matchRequirement),
+    [jobRoleQuery.data?.technicalSkills, matchRequirement]
+  );
+  const softCapabilities = useMemo(() => {
+    const combined = [...(jobRoleQuery.data?.softSkills ?? []), ...POLICY_SKILL_NAMES];
+    const seen = new Set<string>();
+    const deduped = combined.filter((name) => {
+      const key = name.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return deduped.map(matchRequirement);
+  }, [jobRoleQuery.data?.softSkills, matchRequirement]);
+
+  if (jobRoleQuery.isLoading || skillsQuery.isLoading) {
+    return <LoadingBackdrop title={isEn ? 'Loading your role capabilities...' : 'Cargando las capacidades de tu puesto...'} description={isEn ? 'Loading required skills for your role.' : 'Cargando las habilidades requeridas para tu puesto.'} />;
+  }
+
+  const metrics: { label: string; value: string; icon: LucideIcon }[] = [
+    { label: isEn ? 'Technical capabilities' : 'Capacidades técnicas', value: String(technicalCapabilities.length), icon: Cpu },
+    { label: isEn ? 'Soft capabilities' : 'Capacidades blandas', value: String(softCapabilities.length), icon: Handshake },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#f5f7fb] pb-16 dark:bg-[#05060a]">
+      <main className="mx-auto max-w-6xl px-6 pt-8 sm:pt-12">
+        <Link to="/" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-600 dark:text-white/60 dark:hover:text-blue-300">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          {isEn ? 'Back to your journey' : 'Volver a tu recorrido'}
+        </Link>
+
+        <section className="mt-6 overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-7 text-white shadow-xl shadow-blue-900/20 sm:p-10">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-sm font-semibold text-blue-100">
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                {isEn ? 'Every day' : 'Cada día'}
+              </div>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">{isEn ? 'In Your Role' : 'En tu puesto'}</h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-blue-50 sm:text-lg">
+                {isEn
+                  ? 'Grow in your day-to-day: assigned courses, real objectives, and evidence of your progress.'
+                  : 'Crece en tu día a día: cursos asignados, objetivos reales y evidencia de tu progreso.'}
+              </p>
+            </div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
+              <Briefcase className="h-8 w-8" aria-hidden="true" />
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6 grid gap-4 sm:grid-cols-2">
+          {metrics.map(({ label, value, icon: MetricIcon }) => (
+            <Card key={String(label)} className="border-slate-200/80 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+              <MetricIcon className="h-5 w-5 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/45">{label}</p>
+              <p className="mt-2 text-lg font-bold text-slate-950 dark:text-white">{value}</p>
+            </Card>
+          ))}
+        </section>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <section className="flex flex-col overflow-hidden rounded-2xl border border-sky-200/70 bg-white shadow-sm shadow-sky-900/5 dark:border-sky-400/20 dark:bg-white/[0.04]" aria-labelledby="technical-capabilities-title">
+            <div className="flex items-center gap-3 border-b border-sky-100 bg-sky-50/60 px-5 py-4 dark:border-white/5 dark:bg-sky-500/10">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm">
+                <Cpu className="h-4.5 w-4.5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-600 dark:text-sky-300">
+                  {isEn ? 'Role Capabilities' : 'Capacidades del Puesto'}
+                </p>
+                <h2 id="technical-capabilities-title" className="truncate text-sm font-bold text-slate-950 dark:text-white">
+                  {isEn ? 'Technical Capabilities' : 'Capacidades Técnicas'}
+                </h2>
+              </div>
+            </div>
+            <div className="flex-1 space-y-2 p-4">
+              {technicalCapabilities.length === 0 ? (
+                <p className="text-sm font-medium text-slate-500 dark:text-white/60">
+                  {isEn ? 'No technical capabilities have been assigned yet.' : 'Aún no se han asignado capacidades técnicas.'}
+                </p>
+              ) : (
+                technicalCapabilities.map((requirement) => (
+                  <RequirementRow key={requirement.name} requirement={requirement} isEn={isEn} accent="sky" onSelect={setActiveRequirement} />
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="flex flex-col overflow-hidden rounded-2xl border border-violet-200/70 bg-white shadow-sm shadow-violet-900/5 dark:border-violet-400/20 dark:bg-white/[0.04]" aria-labelledby="soft-capabilities-title">
+            <div className="flex items-center gap-3 border-b border-violet-100 bg-violet-50/60 px-5 py-4 dark:border-white/5 dark:bg-violet-500/10">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm">
+                <Handshake className="h-4.5 w-4.5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-600 dark:text-violet-300">
+                  {isEn ? 'Role Capabilities' : 'Capacidades del Puesto'}
+                </p>
+                <h2 id="soft-capabilities-title" className="truncate text-sm font-bold text-slate-950 dark:text-white">
+                  {isEn ? 'Soft Capabilities' : 'Capacidades Blandas'}
+                </h2>
+              </div>
+            </div>
+            <div className="flex-1 space-y-2 p-4">
+              {softCapabilities.length === 0 ? (
+                <p className="text-sm font-medium text-slate-500 dark:text-white/60">
+                  {isEn ? 'No soft capabilities have been assigned yet.' : 'Aún no se han asignado capacidades blandas.'}
+                </p>
+              ) : (
+                softCapabilities.map((requirement) => (
+                  <RequirementRow key={requirement.name} requirement={requirement} isEn={isEn} accent="violet" onSelect={setActiveRequirement} />
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+      </main>
+
+      {activeRequirement && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="requirement-modal-title"
+          onClick={() => setActiveRequirement(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 sm:p-8"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <h3 id="requirement-modal-title" className="text-xl font-bold text-slate-950 dark:text-white">
+                {activeRequirement.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveRequirement(null)}
+                aria-label={isEn ? 'Close' : 'Cerrar'}
+                className="shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-white/70">{activeRequirement.description}</p>
+            <div className="mt-5 flex items-center gap-2 text-xs font-semibold">
+              {activeRequirement.available ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {isEn ? 'Available' : 'Disponible'}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300">
+                  <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {isEn ? 'Coming soon' : 'Próximamente'}
+                </span>
+              )}
+              <span className="text-slate-400 dark:text-white/40">{isEn ? 'Ongoing, every day' : 'En curso, cada día'}</span>
+            </div>
+            {activeRequirement.engramProgress && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-white/55">
+                  <span>{isEn ? 'Engrams mastered (tracked in Brain)' : 'Engramas dominados (registrado en Brain)'}</span>
+                  <span>{activeRequirement.engramProgress.mastered}/{activeRequirement.engramProgress.total}</span>
+                </div>
+                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-600"
+                    style={{ width: `${activeRequirement.engramProgress.total > 0 ? Math.round((activeRequirement.engramProgress.mastered / activeRequirement.engramProgress.total) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {activeRequirement.available && activeRequirement.href ? (
+              activeRequirement.external ? (
+                <a
+                  href={activeRequirement.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+                >
+                  {isEn ? 'Go to class' : 'Ir a la clase'}
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </a>
+              ) : (
+                <Link
+                  to={activeRequirement.href}
+                  onClick={() => setActiveRequirement(null)}
+                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+                >
+                  {isEn ? 'Go to class' : 'Ir a la clase'}
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              )
+            ) : (
+              <a
+                href="#"
+                onClick={(event) => event.preventDefault()}
+                aria-disabled="true"
+                className="mt-6 inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-200 px-5 py-3 text-sm font-semibold text-slate-500 dark:bg-white/10 dark:text-white/50"
+              >
+                {isEn ? 'Go to class · Coming soon' : 'Ir a la clase · Próximamente'}
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface RequirementMatch {
+  name: string;
+  description: string | null;
+  matchedCapabilityId: string | null;
+  matchedCourseType?: 'structured-learning' | 'graph' | null;
+  status?: 'NotStarted' | 'InProgress' | 'Completed';
+  engramProgress?: { mastered: number; total: number };
+}
+
+/** One row in the Technical/Soft Capabilities lists — matches
+ * StartInYourRolePage's requiredTraining row styling exactly, parameterized
+ * by accent color since the two cards use different color families. */
+function RequirementRow({
+  requirement,
+  isEn,
+  accent,
+  onSelect,
+}: {
+  requirement: RequirementMatch;
+  isEn: boolean;
+  accent: 'sky' | 'violet';
+  onSelect: (requirement: { title: string; description: string; href?: string; available?: boolean; engramProgress?: { mastered: number; total: number } }) => void;
+}) {
+  const { name, description, matchedCapabilityId, matchedCourseType, status, engramProgress } = requirement;
+  const statusLabel = status === 'Completed'
+    ? (isEn ? 'Completed' : 'Completado')
+    : status === 'InProgress'
+      ? (isEn ? 'In progress' : 'En progreso')
+      : matchedCapabilityId
+        ? (isEn ? 'Not started' : 'Sin empezar')
+        : (isEn ? 'Coming soon' : 'Próximamente');
+  const isDone = status === 'Completed';
+  const engramLabel = engramProgress
+    ? (isEn ? `${engramProgress.mastered}/${engramProgress.total} engrams` : `${engramProgress.mastered}/${engramProgress.total} engramas`)
+    : null;
+  const hoverBorder = accent === 'sky' ? 'hover:border-sky-300 dark:hover:border-sky-400/40' : 'hover:border-violet-300 dark:hover:border-violet-400/40';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect({
+        title: name,
+        description: description
+          ?? (isEn
+            ? `Understand the practices and standards covered by ${name}.`
+            : `Comprende las prácticas y estándares cubiertos por ${name}.`),
+        href: matchedCapabilityId
+          ? (matchedCourseType === 'graph' ? `/capabilities/${matchedCapabilityId}` : `/structured-learning/${matchedCapabilityId}`)
+          : undefined,
+        available: Boolean(matchedCapabilityId),
+        engramProgress,
+      })}
+      className={`flex w-full items-center gap-3 rounded-xl border border-slate-200/70 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-white/[0.03] ${hoverBorder}`}
+    >
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isDone ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300' : matchedCapabilityId ? 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/70' : 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300'}`}>
+        {isDone ? <CheckCircle2 className="h-4.5 w-4.5" aria-hidden="true" /> : matchedCapabilityId ? <ShieldCheck className="h-4.5 w-4.5" aria-hidden="true" /> : <Clock3 className="h-4.5 w-4.5" aria-hidden="true" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{name}</span>
+        <span className={`mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold ${isDone ? 'text-emerald-700 dark:text-emerald-300' : matchedCapabilityId ? 'text-slate-500 dark:text-white/55' : 'text-amber-700 dark:text-amber-300'}`}>
+          {statusLabel}
+          {engramLabel && <span className="text-slate-400 dark:text-white/40">· {engramLabel}</span>}
+        </span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+    </button>
+  );
+}

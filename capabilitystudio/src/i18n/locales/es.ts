@@ -901,6 +901,7 @@ const es = {
     extracting: 'Extrayendo secciones...',
     startingPipeline: 'Iniciando extracción...',
     sectionProgress: 'Sección {{completed}}/{{total}}',
+    redoRangeProgress: 'Rehaciendo engramas {{from}} a {{to}}… {{completed}}/{{total}} listos',
     failed: 'La extracción falló',
     unexpectedError: 'Ocurrió un error inesperado.',
     tryAgain: 'Intentar de nuevo',

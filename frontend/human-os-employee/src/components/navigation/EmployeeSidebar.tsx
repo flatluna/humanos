@@ -1,4 +1,4 @@
-import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot, Network, Trophy, FlaskConical } from 'lucide-react';
+import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot, Network, Trophy, FlaskConical, BrainCircuit } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
@@ -22,6 +22,7 @@ export function EmployeeSidebar() {
     programAgents: t('nav.programAgents', { defaultValue: 'Agentes de Programa' }),
     aiAgents: t('nav.aiAgents', { defaultValue: 'Agentes de Curso' }),
     brain: t('nav.brain'),
+    cqiWorkspace: t('nav.cqiWorkspace', { defaultValue: 'CQI Workspace' }),
     evolution: t('nav.evolution'),
     achievements: t('nav.achievements', { defaultValue: 'Mis Logros' }),
     profile: t('nav.profile'),
@@ -42,6 +43,7 @@ export function EmployeeSidebar() {
     { to: '/available-courses', end: false, icon: BookCheck, label: labels.availableCourses, iconColor: 'text-emerald-500 dark:text-emerald-400' },
     { to: '/ai-agents', end: false, icon: Bot, label: labels.aiAgents, iconColor: 'text-cyan-500 dark:text-cyan-400' },
     { to: '/objectives', end: false, icon: Target, label: labels.objectives, iconColor: 'text-rose-500 dark:text-rose-400' },
+    { to: '/cqi-workspace', end: false, icon: BrainCircuit, label: labels.cqiWorkspace, iconColor: 'text-violet-500 dark:text-violet-400' },
     { to: '/brain', end: false, icon: Brain, label: labels.brain, iconColor: 'text-fuchsia-500 dark:text-fuchsia-400' },
     { to: '/my-evolution', end: false, icon: TrendingUp, label: labels.evolution, iconColor: 'text-amber-500 dark:text-amber-400' },
     { to: '/achievements', end: false, icon: Trophy, label: labels.achievements, iconColor: 'text-yellow-500 dark:text-yellow-400' },

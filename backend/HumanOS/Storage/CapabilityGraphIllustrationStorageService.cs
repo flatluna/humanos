@@ -253,6 +253,45 @@ public sealed class CapabilityGraphIllustrationStorageService
     public string GetWorkplaceAudioStoragePath(Guid tenantId, Guid capabilityId, Guid nodeId, Guid personId) =>
         $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/application.mp3";
 
+    public string GetWorkplaceJsonStoragePath(Guid tenantId, Guid capabilityId, Guid nodeId, Guid personId) =>
+        $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/application.json";
+
+    /// <summary>Uploads one CQI Type 6 ("The Verifier") extra example illustration tied to the
+    /// employee's own job role — path {tenantId}/{capabilityId}/{nodeId}/workplace/{personId}/cqi-example-{NN}.png.
+    /// Distinct from the per-node illustrations so it never collides with the Studio pipeline's images.</summary>
+    public async Task<string> UploadWorkplaceExampleImageAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        Guid personId,
+        int imageIndex,
+        Stream imageContent,
+        string contentType = "image/png",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException("Data Lake storage is not configured.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = GetWorkplaceExampleImageStoragePath(tenantId, capabilityId, nodeId, personId, imageIndex);
+        var blobClient = containerClient.GetBlobClient(blobPath);
+        await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+
+        await blobClient.UploadAsync(
+            imageContent,
+            new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = contentType } },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    public string GetWorkplaceExampleImageStoragePath(Guid tenantId, Guid capabilityId, Guid nodeId, Guid personId, int imageIndex) =>
+        $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/workplace/{personId:D}/cqi-example-{imageIndex:D2}.png";
+
     /// <summary>Overwrites an EXISTING video blob at a known StoragePath in
     /// place (2026-08-22) — used for in-place edits like trimming, where
     /// the illustration row/id/path must stay the same, only the bytes

@@ -38,12 +38,21 @@ public sealed class StructuredLearningPedagogyRunStatus
     /// one at a time.</summary>
     public IReadOnlyList<string>? ActiveSectionTitles { get; set; }
 
+    /// <summary>1-based inclusive engram range this run was scoped to, if the
+    /// designer chose "redo engrams X to Y" instead of the whole document —
+    /// lets the UI say "Redoing engrams X to Y" instead of a misleading
+    /// "0/Total remaining sections done" (2026-09-20).</summary>
+    public int? FromEngramNumber { get; set; }
+
+    public int? ToEngramNumber { get; set; }
+
     public string? ErrorMessage { get; set; }
 
     public StructuredLearningPedagogyResult? Result { get; set; }
 
     public static StructuredLearningPedagogyRunStatus Running(
-        Guid runId, Guid documentId, string? documentName, string step, int? totalSections, int? completedSections, IReadOnlyList<string>? activeSectionTitles) => new()
+        Guid runId, Guid documentId, string? documentName, string step, int? totalSections, int? completedSections, IReadOnlyList<string>? activeSectionTitles,
+        int? fromEngramNumber = null, int? toEngramNumber = null) => new()
     {
         RunId = runId,
         DocumentId = documentId,
@@ -52,7 +61,9 @@ public sealed class StructuredLearningPedagogyRunStatus
         CurrentStepDescription = step,
         TotalSections = totalSections,
         CompletedSections = completedSections,
-        ActiveSectionTitles = activeSectionTitles
+        ActiveSectionTitles = activeSectionTitles,
+        FromEngramNumber = fromEngramNumber,
+        ToEngramNumber = toEngramNumber
     };
 
     public static StructuredLearningPedagogyRunStatus Failed(Guid runId, Guid documentId, string error) => new()

@@ -43,7 +43,12 @@ public sealed class StructuredLearningWorkplaceApplicationFunction
         try
         {
             var result = await _service.GetOrCreateAsync(sectionId, personId, language, force, cancellationToken);
-            return await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);
+            var response = await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);
+            // Never let the browser (or any intermediary) reuse a stale cached copy of this
+            // response — this endpoint has its own Data Lake caching layer already, and a
+            // browser-level HTTP cache hit on "Regenerate" would silently defeat force=true.
+            response.Headers.Add("Cache-Control", "no-store, no-cache, must-revalidate");
+            return response;
         }
         catch (KeyNotFoundException ex)
         {

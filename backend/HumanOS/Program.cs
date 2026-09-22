@@ -188,6 +188,13 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.ResumeExtractionAgent>();
         services.AddScoped<PersonResumeService>();
 
+        // "CQI Workspace" (HermanScience) — extracts structured cognitive/
+        // behavioral profiling insights from an uploaded CQI assessment
+        // report PDF. Singleton, same rationale as every other
+        // Studio/agent-framework agent (no per-request state).
+        services.AddSingleton<HumanOS.Agents.CqiReportExtractionAgent>();
+        services.AddScoped<PersonCqiProfileService>();
+
         // Enterprise console "Rutas de Carrera" — per-employee AI career
         // development plan (2026-08-01): compares a person's résumé skills
         // against their JobRole's required skills and recommends real
@@ -463,6 +470,9 @@ var host = new HostBuilder()
         // Workplace Application Agent (2026-09-06) — generates a personalized real-world
         // workplace case and pre-recorded neural audio tailored to the student's role and SMART objectives.
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationAgent>();
+        // CQI-aware variant (2026-09-21) — used for business/employee tenants (not students);
+        // lets the employee's CQI Workspace profile subtly influence tone/reflection/growth text.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationCqiAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceMentorAgent>();
         services.AddScoped<HumanOS.Services.StructuredLearningWorkplaceApplicationService>();
 

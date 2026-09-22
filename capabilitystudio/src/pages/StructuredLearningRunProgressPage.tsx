@@ -472,10 +472,17 @@ function PedagogySection({ documentId }: { documentId: string }) {
         </div>
         {pedagogyStatus?.TotalSections != null && pedagogyStatus?.CompletedSections != null && (
           <p className="text-xs text-slate-500">
-            {t('structuredLearningRunProgress.sectionProgress', {
-              completed: pedagogyStatus.CompletedSections,
-              total: pedagogyStatus.TotalSections,
-            })}
+            {pedagogyStatus.FromEngramNumber != null || pedagogyStatus.ToEngramNumber != null
+              ? t('structuredLearningRunProgress.redoRangeProgress', {
+                  from: pedagogyStatus.FromEngramNumber ?? 1,
+                  to: pedagogyStatus.ToEngramNumber ?? pedagogyStatus.TotalSections,
+                  completed: pedagogyStatus.CompletedSections,
+                  total: pedagogyStatus.TotalSections,
+                })
+              : t('structuredLearningRunProgress.sectionProgress', {
+                  completed: pedagogyStatus.CompletedSections,
+                  total: pedagogyStatus.TotalSections,
+                })}
           </p>
         )}
         {pedagogyStatus?.ActiveSectionTitles && pedagogyStatus.ActiveSectionTitles.length > 0 && (

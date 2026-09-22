@@ -904,6 +904,7 @@ const en: StudioTranslations = {
     extracting: 'Extracting sections...',
     startingPipeline: 'Starting extraction...',
     sectionProgress: 'Section {{completed}}/{{total}}',
+    redoRangeProgress: 'Redoing engrams {{from}} to {{to}}… {{completed}}/{{total}} done',
     failed: 'Extraction failed',
     unexpectedError: 'An unexpected error occurred.',
     tryAgain: 'Try again',

@@ -57,6 +57,18 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/start-in-your-role').then((m) => ({ Component: m.StartInYourRolePage })),
       },
       {
+        path: 'in-your-role',
+        lazy: () => import('@/features/in-your-role').then((m) => ({ Component: m.InYourRolePage })),
+      },
+      {
+        path: 'advance-your-knowledge',
+        lazy: () => import('@/features/advance-your-knowledge').then((m) => ({ Component: m.AdvanceYourKnowledgePage })),
+      },
+      {
+        path: 'master-your-job',
+        lazy: () => import('@/features/master-your-job').then((m) => ({ Component: m.MasterYourJobPage })),
+      },
+      {
         path: 'tec-contigo',
         lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecContigoIndexPage) })),
       },
@@ -212,6 +224,12 @@ export const router = createBrowserRouter([
       {
         path: 'ai-agents/:documentId',
         lazy: () => import('@/features/ai-agents').then((m) => ({ Component: m.AiAgentCoursePage })),
+      },
+      {
+        // "CQI Workspace" (HermanScience, 2026-09-21) — upload a CQI
+        // assessment report PDF and view the AI-extracted structured profile.
+        path: 'cqi-workspace',
+        lazy: () => import('@/features/cqi-workspace').then((m) => ({ Component: m.CqiWorkspacePage })),
       },
       {
         path: 'capabilities',

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
-import { UserPlus, Briefcase, Camera, RefreshCw, Users, Calendar, type LucideIcon } from 'lucide-react';
+import { UserPlus, Briefcase, Camera, RefreshCw, Users, GraduationCap, Calendar, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { getEnrolledCapabilities, type EnrolledCapability } from '@/features/capabilities/api/enrolledCapabilitiesApi';
 import { getMyProfile, getProfilePhotoUrl, uploadProfilePhoto, type PersonProfileDto } from '@/features/profile/api/personProfileApi';
@@ -148,6 +148,7 @@ function CompanyLifecycleNavigation({ tenantName, isEn }: { tenantName: string; 
       moment: isEn ? 'Every day' : 'Cada día',
       momentColor: 'text-blue-700 dark:text-blue-300',
       icon: Briefcase,
+      href: '/in-your-role',
     },
     {
       title: isEn ? 'Stay current' : 'Mantente vigente',
@@ -158,6 +159,18 @@ function CompanyLifecycleNavigation({ tenantName, isEn }: { tenantName: string; 
       moment: isEn ? 'Always' : 'Siempre',
       momentColor: 'text-amber-700 dark:text-amber-300',
       icon: RefreshCw,
+      href: '/advance-your-knowledge',
+    },
+    {
+      title: isEn ? 'Master your job' : 'Domina tu puesto',
+      description: isEn
+        ? 'Reach peak performance in your role and prepare for leadership or specialization.'
+        : 'Alcanza el máximo desempeño en tu puesto y prepárate para el liderazgo o la especialización.',
+      status: isEn ? 'Before your next chapter' : 'Antes de tu siguiente etapa',
+      moment: isEn ? 'Seniority & Mastery' : 'Madurez y Dominio',
+      momentColor: 'text-cyan-700 dark:text-cyan-300',
+      icon: GraduationCap,
+      href: '/master-your-job',
     },
     {
       title: isEn ? `After ${tenantName}` : `Después de ${tenantName}`,
@@ -176,7 +189,7 @@ function CompanyLifecycleNavigation({ tenantName, isEn }: { tenantName: string; 
       <h3 id="company-lifecycle-title" className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60">
         {isEn ? `Your journey with ${tenantName}` : `Tu vida con ${tenantName}`}
       </h3>
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {stages.map((stage, index) => {
           const Icon = stage.icon;
           return (
@@ -465,6 +478,56 @@ export function TodayPage() {
         <section className="mx-auto max-w-6xl px-6 pt-8">
           <LearningExecutiveSummary />
         </section>
+
+        {/* Mia Buddy Card */}
+        <section className="mx-auto max-w-6xl px-6 pt-8">
+          <Card className="overflow-hidden border border-blue-200/80 bg-gradient-to-br from-white via-blue-50/40 to-indigo-50/60 p-6 shadow-md dark:border-blue-500/20 dark:from-slate-900 dark:via-slate-900/90 dark:to-blue-950/40 sm:p-8">
+            <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-8">
+              <div className="relative shrink-0">
+                <div className="h-32 w-32 overflow-hidden rounded-3xl border-2 border-white bg-white shadow-lg ring-4 ring-blue-500/20 dark:border-slate-800 dark:ring-blue-400/20 sm:h-36 sm:w-36">
+                  <img
+                    src="/Mia.png"
+                    alt="Mia - Tu buddy"
+                    className="h-full w-full object-cover object-top"
+                  />
+                </div>
+                <span className="absolute -bottom-2 -right-2 rounded-full bg-emerald-500 px-2.5 py-0.5 text-[11px] font-bold text-white shadow">
+                  Online
+                </span>
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <div className="inline-flex items-center gap-2 rounded-full bg-blue-100/80 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-400/10 dark:text-blue-300">
+                  <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                  {language === 'es' ? 'Tu acompañante y buddy de aprendizaje' : 'Your learning buddy & guide'}
+                </div>
+                <h3 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+                  Mia, your buddy
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-white/75 sm:text-base">
+                  {language === 'es'
+                    ? 'Mia es tu Buddy, está aquí para ayudarte a aprender sobre HermanScience y que te sientas increíble trabajando con nosotros.'
+                    : 'Mia is your Buddy, is here to help you learn about HermanScience and feel great to work for us.'}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                  <Link
+                    to="/learning-labs/6296d4d9-b689-4001-ad20-1a67c75629d9/attempts"
+                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-700"
+                  >
+                    <span>{language === 'es' ? 'Habla con Mia' : 'Talk to Mia'}</span>
+                    <span aria-hidden="true">&rarr;</span>
+                  </Link>
+                  <Link
+                    to="/learning-labs"
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+                  >
+                    {language === 'es' ? 'Explorar todos los Labs' : 'Explore all Labs'}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </section>
+
         {user?.isAcademicTenant ? (
           <TecContigoHub />
         ) : (

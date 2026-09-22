@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft,
@@ -26,7 +26,6 @@ import {
   Bot,
   Lock,
   MessageSquareText,
-  Trash2,
   ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
@@ -41,10 +40,7 @@ import {
   getActiveStructuredLearningAssessmentRound,
   submitStructuredLearningAssessmentAnswer,
   listStructuredLearningSectionVideos,
-  getStructuredLearningWorkplaceApplication,
-  postStructuredLearningWorkplaceChat,
   getStructuredLearningSectionSummary,
-  type WorkplaceApplicationDto,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
@@ -59,6 +55,7 @@ import {
 import { apiImageUrl } from '../api/httpClient';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
+import { WorkplaceApplicationStep } from '../components/WorkplaceApplicationPanel';
 import { RewardCelebration } from '@/features/gamification/components/RewardCelebration';
 import { ReflectionPause } from '@/features/gamification/components/ReflectionPause';
 import type { GamificationRewardBundleDto } from '@/features/gamification/types';
@@ -69,11 +66,11 @@ const RECALL_MAX_ATTEMPTS = 5;
 
 const STEP_META: Record<string, { labelEn: string; labelEs: string; Icon: typeof Lightbulb }> = {
   Hypothesis: { labelEn: 'Before you start', labelEs: 'Antes de iniciar', Icon: Lightbulb },
-  Teaching: { labelEn: 'Learn', labelEs: 'Enseñanza', Icon: BookOpenText },
-  DeepDive: { labelEn: 'Deep dive', labelEs: 'Profundización', Icon: Layers },
+  Teaching: { labelEn: 'Learn', labelEs: 'EnseÃ±anza', Icon: BookOpenText },
+  DeepDive: { labelEn: 'Deep dive', labelEs: 'ProfundizaciÃ³n', Icon: Layers },
   Production: { labelEn: 'In your role', labelEs: 'En tu puesto', Icon: Sparkles },
-  Recall: { labelEn: 'Recall', labelEs: 'Evocación', Icon: Brain },
-  Assessment: { labelEn: 'Assessment', labelEs: 'Evaluación', Icon: ClipboardCheck },
+  Recall: { labelEn: 'Recall', labelEs: 'EvocaciÃ³n', Icon: Brain },
+  Assessment: { labelEn: 'Assessment', labelEs: 'EvaluaciÃ³n', Icon: ClipboardCheck },
 };
 
 type HypothesisQuestion = {
@@ -268,7 +265,7 @@ function HypothesisQuestionCard({
               onClick={handleSave}
               className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {saving ? (isEn ? 'Saving…' : 'Guardando…') : (isEn ? 'Save responses' : 'Guardar respuestas')}
+              {saving ? (isEn ? 'Savingâ€¦' : 'Guardandoâ€¦') : (isEn ? 'Save responses' : 'Guardar respuestas')}
             </button>
           </div>
         </div>
@@ -467,7 +464,7 @@ export default function StructuredLearningSectionPage() {
               {currentEngramScore.tier === 'Critical' && <Flame className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400 animate-pulse" />}
               {currentEngramScore.tier === 'Important' && <Zap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
               {currentEngramScore.tier === 'Refresher' && <RefreshCw className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />}
-              <span>{currentEngramScore.score}/100 — {currentEngramScore.tier} {isEn ? 'Impact' : 'Impacto'}</span>
+              <span>{currentEngramScore.score}/100 â€” {currentEngramScore.tier} {isEn ? 'Impact' : 'Impacto'}</span>
               <span className="text-[10px] opacity-75 font-normal">({currentEngramScore.primarySignal})</span>
             </button>
 
@@ -520,14 +517,14 @@ export default function StructuredLearningSectionPage() {
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <span>
                     {isEn
-                      ? `🎯 Personalized for you${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`
-                      : `🎯 Personalizado para ti${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`}
+                      ? `ðŸŽ¯ Personalized for you${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`
+                      : `ðŸŽ¯ Personalizado para ti${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`}
                   </span>
                 </h3>
                 {learnerProfile?.roleTitle && (
                   <p className="text-[11px] text-indigo-700 dark:text-indigo-300/80 font-medium">
                     {learnerProfile.roleTitle}
-                    {learnerProfile.yearsOfExperience ? ` · ${learnerProfile.yearsOfExperience}+ ${isEn ? 'years exp' : 'años exp'}` : ''}
+                    {learnerProfile.yearsOfExperience ? ` Â· ${learnerProfile.yearsOfExperience}+ ${isEn ? 'years exp' : 'aÃ±os exp'}` : ''}
                   </p>
                 )}
               </div>
@@ -566,8 +563,8 @@ export default function StructuredLearningSectionPage() {
               {currentEngramScore.tier === 'Refresher' || currentEngramScore.score < 55 ? (
                 <p className="mt-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300/90">
                   {isEn
-                    ? '💡 You already demonstrated foundation in this area — the tutor will move fast and focus on team alignment.'
-                    : '💡 Ya dominas la base de este tema según tu perfil — el tutor avanzará con agilidad para alinear con los estándares del equipo.'}
+                    ? 'ðŸ’¡ You already demonstrated foundation in this area â€” the tutor will move fast and focus on team alignment.'
+                    : 'ðŸ’¡ Ya dominas la base de este tema segÃºn tu perfil â€” el tutor avanzarÃ¡ con agilidad para alinear con los estÃ¡ndares del equipo.'}
                 </p>
               ) : null}
             </div>
@@ -580,7 +577,7 @@ export default function StructuredLearningSectionPage() {
               <span>
                 {isEn
                   ? `AI Tutor is personalized for your ${learnerProfile.roleTitle ? `${learnerProfile.roleTitle} ` : ''}role and experience level.`
-                  : `El Tutor IA está personalizado para tu rol ${learnerProfile.roleTitle ? `de ${learnerProfile.roleTitle} ` : ''}y nivel de experiencia.`}
+                  : `El Tutor IA estÃ¡ personalizado para tu rol ${learnerProfile.roleTitle ? `de ${learnerProfile.roleTitle} ` : ''}y nivel de experiencia.`}
               </span>
             </div>
           )}
@@ -606,7 +603,7 @@ export default function StructuredLearningSectionPage() {
 
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>{isEn ? 'AI Personalization Rationale & Score Composition' : 'Justificación y Composición del Score con IA'}</span>
+              <span>{isEn ? 'AI Personalization Rationale & Score Composition' : 'JustificaciÃ³n y ComposiciÃ³n del Score con IA'}</span>
             </div>
 
             <h3 className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
@@ -628,7 +625,7 @@ export default function StructuredLearningSectionPage() {
                 {currentEngramScore.tier === 'Critical' && <Flame className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />}
                 {currentEngramScore.tier === 'Important' && <Zap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
                 {currentEngramScore.tier === 'Refresher' && <RefreshCw className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />}
-                {currentEngramScore.score}/100 — {currentEngramScore.tier} {isEn ? 'Impact' : 'Impacto'}
+                {currentEngramScore.score}/100 â€” {currentEngramScore.tier} {isEn ? 'Impact' : 'Impacto'}
               </span>
 
               <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500/30 dark:text-indigo-300">
@@ -642,7 +639,7 @@ export default function StructuredLearningSectionPage() {
             {/* AI Personalization Reason Narrative */}
             <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm text-slate-800 dark:border-indigo-500/20 dark:bg-indigo-950/30 dark:text-slate-200 leading-relaxed">
               <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1">
-                {isEn ? 'Why this score was assigned to you:' : 'Por qué se te asignó este puntaje:'}
+                {isEn ? 'Why this score was assigned to you:' : 'Por quÃ© se te asignÃ³ este puntaje:'}
               </div>
               <p className="italic">"{currentEngramScore.reason}"</p>
             </div>
@@ -651,7 +648,7 @@ export default function StructuredLearningSectionPage() {
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs space-y-2.5 dark:border-slate-700/60 dark:bg-slate-950/40">
               <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                 <Target className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>{isEn ? `Why ${currentEngramScore.score}/100 vs higher scores?` : `¿Por qué ${currentEngramScore.score}/100 vs puntajes más altos?`}</span>
+                <span>{isEn ? `Why ${currentEngramScore.score}/100 vs higher scores?` : `Â¿Por quÃ© ${currentEngramScore.score}/100 vs puntajes mÃ¡s altos?`}</span>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-700 dark:text-slate-300">
@@ -663,19 +660,19 @@ export default function StructuredLearningSectionPage() {
                   <p className="text-slate-600 dark:text-slate-300 leading-snug">
                     {isEn
                       ? 'Required for your role, but your resume already demonstrates foundational knowledge in this area. It serves as a quick alignment refresher.'
-                      : 'Exigido para tu rol, pero tu CV ya demuestra conocimientos en esta área. Sirve como repaso de alineación.'}
+                      : 'Exigido para tu rol, pero tu CV ya demuestra conocimientos en esta Ã¡rea. Sirve como repaso de alineaciÃ³n.'}
                   </p>
                 </div>
 
                 <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 space-y-1 dark:bg-rose-950/30 dark:border-rose-500/20">
                   <div className="font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1">
                     <Flame className="h-3 w-3" />
-                    <span>{isEn ? 'Higher Scores (80–100 Critical):' : 'Puntajes Más Altos (80–100 Crítico):'}</span>
+                    <span>{isEn ? 'Higher Scores (80â€“100 Critical):' : 'Puntajes MÃ¡s Altos (80â€“100 CrÃ­tico):'}</span>
                   </div>
                   <p className="text-slate-600 dark:text-slate-300 leading-snug">
                     {isEn
                       ? 'Target unverified skill gaps directly tied to your active Q4 SMART objectives and promotion milestones that you have not yet proven.'
-                      : 'Apuntan a brechas no verificadas directamente ligadas a tus objetivos SMART Q4 y metas de ascenso aún no demostradas.'}
+                      : 'Apuntan a brechas no verificadas directamente ligadas a tus objetivos SMART Q4 y metas de ascenso aÃºn no demostradas.'}
                   </p>
                 </div>
               </div>
@@ -684,7 +681,7 @@ export default function StructuredLearningSectionPage() {
             {/* Score Composition & Signal Breakdown */}
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-white/[0.02]">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">
-                {isEn ? 'Scoring Signals & Weighting Framework' : 'Ponderación y Señales del Score'}
+                {isEn ? 'Scoring Signals & Weighting Framework' : 'PonderaciÃ³n y SeÃ±ales del Score'}
               </div>
 
               <div className="space-y-2">
@@ -698,7 +695,7 @@ export default function StructuredLearningSectionPage() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-sky-500" />
-                    <span>{isEn ? '1. Job Description / Role' : '1. Descripción de Puesto / Rol'}</span>
+                    <span>{isEn ? '1. Job Description / Role' : '1. DescripciÃ³n de Puesto / Rol'}</span>
                     <span className="text-[10px] text-slate-500">({isEn ? 'what role demands' : 'lo que el puesto exige'})</span>
                     {currentEngramScore.primarySignal === 'Role' && (
                       <span className="rounded bg-indigo-600 px-1.5 py-0.2 text-[9px] font-bold text-white uppercase">
@@ -783,7 +780,7 @@ export default function StructuredLearningSectionPage() {
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     <span>{isEn ? '5. Assigned Skills & Tools' : '5. Habilidades Asignadas y Herramientas'}</span>
-                    <span className="text-[10px] text-slate-500">({isEn ? 'supporting signal' : 'señal de apoyo'})</span>
+                    <span className="text-[10px] text-slate-500">({isEn ? 'supporting signal' : 'seÃ±al de apoyo'})</span>
                     {currentEngramScore.primarySignal === 'Skill' && (
                       <span className="rounded bg-indigo-600 px-1.5 py-0.2 text-[9px] font-bold text-white uppercase">
                         {isEn ? 'Primary Driver' : 'Impulsor Principal'}
@@ -798,11 +795,11 @@ export default function StructuredLearningSectionPage() {
             {/* Core Purpose Rule */}
             <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs text-indigo-900 dark:border-indigo-500/20 dark:bg-indigo-950/20 dark:text-indigo-300">
               <span className="font-bold text-indigo-950 dark:text-indigo-200">
-                {isEn ? '📌 Progression Note: ' : '📌 Nota de Progreso: '}
+                {isEn ? 'ðŸ“Œ Progression Note: ' : 'ðŸ“Œ Nota de Progreso: '}
               </span>
               {isEn
                 ? 'All engrams in this course must be completed in order. This score highlights where your mastery produces the highest strategic value for your career.'
-                : 'Todos los engramas de este curso deben completarse en orden. Este puntaje resalta dónde tu maestría genera el mayor valor estratégico para tu carrera.'}
+                : 'Todos los engramas de este curso deben completarse en orden. Este puntaje resalta dÃ³nde tu maestrÃ­a genera el mayor valor estratÃ©gico para tu carrera.'}
             </div>
 
             <div className="mt-6 flex justify-end">
@@ -879,9 +876,10 @@ export default function StructuredLearningSectionPage() {
             onComplete={handleStepComplete}
             onNext={() => goNext(true)}
             isEn={isEn}
+            isStudent={learnerProfile?.isStudent ?? false}
           />
         ) : (
-          <p className="text-sm text-slate-500">{isEn ? 'No steps yet.' : 'No hay pasos aún.'}</p>
+          <p className="text-sm text-slate-500">{isEn ? 'No steps yet.' : 'No hay pasos aÃºn.'}</p>
         )}
       </div>
 
@@ -901,7 +899,7 @@ export default function StructuredLearningSectionPage() {
           className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isLastStep && !nextSection
-            ? (isEn ? 'Finish Lesson' : 'Finalizar Lección')
+            ? (isEn ? 'Finish Lesson' : 'Finalizar LecciÃ³n')
             : (isEn ? 'Next' : 'Siguiente')}{' '}
           <ArrowLeft className="h-4 w-4 rotate-180" />
         </button>
@@ -980,6 +978,7 @@ function StepContent({
   onComplete,
   onNext,
   isEn,
+  isStudent,
 }: {
   step: StructuredLearningStepDetail;
   allSteps?: StructuredLearningStepDetail[];
@@ -992,6 +991,7 @@ function StepContent({
   onComplete: () => void;
   onNext?: () => void;
   isEn: boolean;
+  isStudent: boolean;
 }) {
   const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('videos');
   const [isAudioFinished, setIsAudioFinished] = useState(false);
@@ -1025,7 +1025,7 @@ function StepContent({
   );
 
   const canGoToListen = areVideosFinished;
-  // Q&A unlocks as soon as the recorded lecture tab is reached — no need
+  // Q&A unlocks as soon as the recorded lecture tab is reached â€” no need
   // to wait for the audio to finish playing.
   const canGoToQa = canGoToListen;
 
@@ -1133,7 +1133,7 @@ function StepContent({
 
             <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/[0.05]">
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                {isEn ? 'No more questions? You can continue directly to the next step.' : '¿Sin preguntas? Puedes continuar directamente al siguiente paso.'}
+                {isEn ? 'No more questions? You can continue directly to the next step.' : 'Â¿Sin preguntas? Puedes continuar directamente al siguiente paso.'}
               </p>
               <button
                 type="button"
@@ -1182,10 +1182,10 @@ function StepContent({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    {isEn ? 'Lesson Video Clips' : 'Clips de Video de la Lección'}
+                    {isEn ? 'Lesson Video Clips' : 'Clips de Video de la LecciÃ³n'}
                   </h3>
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {isEn ? 'Watch the generated pedagogical videos in order.' : 'Mira los videos pedagógicos en orden.'}
+                    {isEn ? 'Watch the generated pedagogical videos in order.' : 'Mira los videos pedagÃ³gicos en orden.'}
                   </p>
                 </div>
               </div>
@@ -1201,7 +1201,7 @@ function StepContent({
               </div>
             </div>
 
-            {/* Video cards — all clips shown at once so it's clear there's more than one. */}
+            {/* Video cards â€” all clips shown at once so it's clear there's more than one. */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {publishedVideos.map((v, i) => {
                 const isWatched = watchedVideoIds.has(v.IllustrationId);
@@ -1319,7 +1319,7 @@ function StepContent({
                   setAudioProgressPercent(100);
                 }}
               >
-                {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducción de audio.'}
+                {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducciÃ³n de audio.'}
               </audio>
               <div className="flex items-center justify-between pt-1 text-xs text-slate-500 dark:text-slate-400 border-t border-emerald-200 dark:border-emerald-500/20">
                 {isAudioFinished ? (
@@ -1397,6 +1397,7 @@ function StepContent({
                   courseLanguage={courseLanguage}
                   onComplete={onComplete}
                   isEn={isEn}
+                  isStudent={isStudent}
                 />
               )}
 
@@ -1482,7 +1483,7 @@ function cleanEngramContent(raw: string): string {
   if (!raw) return '';
   return raw
     .replace(/^ContractVersion:\s*[^\n]+\s*/i, '')
-    .replace(/\[(?:Descripci[óo]n\s+de\s+imagen|Image\s+description)[^\]]*\]/gi, '')
+    .replace(/\[(?:Descripci[Ã³o]n\s+de\s+imagen|Image\s+description)[^\]]*\]/gi, '')
     .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?[\s\S]*?(?=(?:\n#{1,6}\s+[^\n]+|\n\[(?:Descripci|Image)|$))/gi, '')
     .replace(/(?:^|\n)#{0,6}\s*(?:\d+\.\s*)?VERBATIM\s+TRANSCRIPTION:?\s*/gi, '\n')
     .replace(/#{0,6}\s*(?:\d+\.\s*)?D?ETAILED\s+DESCRIPTION:?\s*/gi, '')
@@ -1493,7 +1494,7 @@ function normalizeRichBlocks(content: string): string[] {
   const cleaned = cleanEngramContent(content);
   const normalized = cleaned
     .replace(/\r\n/g, '\n')
-    .replace(/\s+•\s+/g, '\n• ')
+    .replace(/\s+â€¢\s+/g, '\nâ€¢ ')
     .replace(/\s+(Why this matters)\s+/gi, '\n\n$1\n')
     .replace(/\s+(Next, connect)\s+/gi, '\n\n$1 ')
     .replace(/\s+(Foundations of AI:|What is generative AI\?|AI value also comes from other capabilities:|Responsible AI means)/g, '\n\n$1');
@@ -1564,6 +1565,8 @@ async function downloadImageFile(url: string, filename = 'lesson-illustration.pn
   }
 }
 
+/** Like ZoomableIllustration but for images served by an arbitrary absolute URL
+ * (e.g. the CQI Type 6 example images), not an internal illustrationId. */
 function ZoomableIllustration({ illustrationId, alt, className }: { illustrationId: string; alt: string; className: string }) {
   const [open, setOpen] = useState(false);
 
@@ -1702,7 +1705,7 @@ function DeepDiveQuiz({
               <div key={id} className="space-y-1">
                 <ZoomableIllustration
                   illustrationId={id}
-                  alt={`${freeCard.Title} — step ${i + 1}`}
+                  alt={`${freeCard.Title} â€” step ${i + 1}`}
                   className="h-auto max-h-48 w-full rounded-xl object-contain bg-slate-100 dark:bg-black/20"
                 />
                 <p className="text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">Step {i + 1}</p>
@@ -1834,7 +1837,7 @@ function RecallPractice({
   if (complete) {
     return (
       <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-        <CheckCircle2 className="h-4 w-4" /> {isEn ? 'Recall completed! Great work.' : '¡Evocación completada! Excelente trabajo.'}
+        <CheckCircle2 className="h-4 w-4" /> {isEn ? 'Recall completed! Great work.' : 'Â¡EvocaciÃ³n completada! Excelente trabajo.'}
       </div>
     );
   }
@@ -1842,7 +1845,7 @@ function RecallPractice({
   if (!question) {
     return (
       <div className="flex items-center gap-2 p-4 text-xs text-slate-400">
-        <Loader2 className="h-4 w-4 animate-spin" /> {isEn ? 'Preparing active recall question...' : 'Preparando pregunta de evocación...'}
+        <Loader2 className="h-4 w-4 animate-spin" /> {isEn ? 'Preparing active recall question...' : 'Preparando pregunta de evocaciÃ³n...'}
       </div>
     );
   }
@@ -1864,7 +1867,7 @@ function RecallPractice({
         </span>
       </div>
       {lastMastered === true && (
-        <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{isEn ? '✓ Great explanation!' : '✓ ¡Excelente explicación!'}</p>
+        <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{isEn ? 'âœ“ Great explanation!' : 'âœ“ Â¡Excelente explicaciÃ³n!'}</p>
       )}
       <p className="text-sm font-medium leading-relaxed text-slate-800 dark:text-slate-200">{question}</p>
       <textarea
@@ -1881,7 +1884,7 @@ function RecallPractice({
         className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-pink-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-fuchsia-500/20 transition hover:brightness-110 disabled:opacity-50"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        {isEn ? 'Submit Explanation' : 'Enviar Explicación'}
+        {isEn ? 'Submit Explanation' : 'Enviar ExplicaciÃ³n'}
       </button>
     </div>
   );
@@ -2009,7 +2012,7 @@ function AssessmentPractice({
   if (round === undefined) {
     return (
       <div className="flex items-center gap-2 p-4 text-xs text-slate-400">
-        <Loader2 className="h-4 w-4 animate-spin" /> {isEn ? 'Loading assessment...' : 'Cargando evaluación...'}
+        <Loader2 className="h-4 w-4 animate-spin" /> {isEn ? 'Loading assessment...' : 'Cargando evaluaciÃ³n...'}
       </div>
     );
   }
@@ -2023,7 +2026,7 @@ function AssessmentPractice({
         className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
-        {isEn ? 'Start Assessment' : 'Iniciar Evaluación'}
+        {isEn ? 'Start Assessment' : 'Iniciar EvaluaciÃ³n'}
       </button>
     );
   }
@@ -2037,17 +2040,17 @@ function AssessmentPractice({
       >
         <p className="font-semibold">
           {passed
-            ? (isEn ? 'Assessment Passed! Engram Mastered.' : '¡Evaluación Aprobada! Engrama Dominado.')
-            : (isEn ? 'Assessment not passed. You can retry.' : 'Evaluación no aprobada. Puedes intentarlo de nuevo.')}
+            ? (isEn ? 'Assessment Passed! Engram Mastered.' : 'Â¡EvaluaciÃ³n Aprobada! Engrama Dominado.')
+            : (isEn ? 'Assessment not passed. You can retry.' : 'EvaluaciÃ³n no aprobada. Puedes intentarlo de nuevo.')}
         </p>
         {(roundResult?.FinalScore ?? round.FinalScore) != null && (
           <p className="mt-0.5 text-xs">
-            {isEn ? 'Final Score' : 'Puntuación Final'}: {roundResult?.FinalScore ?? round.FinalScore}%
+            {isEn ? 'Final Score' : 'PuntuaciÃ³n Final'}: {roundResult?.FinalScore ?? round.FinalScore}%
           </p>
         )}
         {passed && (
           <button type="button" onClick={handleStart} className="mt-2 text-xs font-medium underline">
-            {isEn ? 'Retake Assessment' : 'Repetir Evaluación'}
+            {isEn ? 'Retake Assessment' : 'Repetir EvaluaciÃ³n'}
           </button>
         )}
 
@@ -2131,513 +2134,3 @@ function AssessmentPractice({
   );
 }
 
-function formatMentorInline(text: string): ReactNode {
-  const codeParts = text.split(/(`[^`]+`)/g);
-  return codeParts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-      return (
-        <code
-          key={i}
-          className="rounded bg-teal-950/80 border border-teal-500/30 px-1.5 py-0.5 text-teal-200 font-mono text-[11px]"
-        >
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
-    const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
-    return boldParts.map((bPart, j) => {
-      if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length >= 4) {
-        return (
-          <strong key={`${i}-${j}`} className="font-semibold text-slate-900 dark:text-white">
-            {bPart.slice(2, -2)}
-          </strong>
-        );
-      }
-      if (bPart.includes(' → ') || bPart.includes(' -> ')) {
-        const arrowTokens = bPart.split(/\s*(?:→|->)\s*/);
-        return arrowTokens.map((tok, k) => (
-          <span key={`${i}-${j}-${k}`}>
-            {tok}
-            {k < arrowTokens.length - 1 && (
-              <span className="inline-flex items-center justify-center mx-1.5 px-1.5 py-0.5 text-[10px] rounded-md bg-teal-500/20 text-teal-700 dark:text-teal-300 font-mono border border-teal-500/30 shadow-xs">
-                →
-              </span>
-            )}
-          </span>
-        ));
-      }
-      return bPart;
-    });
-  });
-}
-
-function MentorMessageContent({
-  text,
-  onPromptClick,
-  isEn,
-}: {
-  text: string;
-  onPromptClick?: (prompt: string) => void;
-  isEn: boolean;
-}) {
-  const codeBlocks = text.split(/(```[\s\S]*?```)/g);
-
-  return (
-    <div className="space-y-3 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
-      {codeBlocks.map((block, bIdx) => {
-        if (block.startsWith('```') && block.endsWith('```')) {
-          const lines = block.slice(3, -3).trim().split('\n');
-          const firstLine = lines[0]?.trim();
-          const isLangHeader = /^[a-z0-9_-]+$/i.test(firstLine);
-          const codeLines = isLangHeader ? lines.slice(1) : lines;
-          return (
-            <pre
-              key={bIdx}
-              className="my-3 rounded-xl bg-slate-950 p-3.5 border border-teal-500/30 font-mono text-[11px] text-teal-200 overflow-x-auto shadow-inner"
-            >
-              <code>{codeLines.join('\n')}</code>
-            </pre>
-          );
-        }
-
-        const paragraphs = block.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-
-        return paragraphs.map((para, pIdx) => {
-          const lines = para.split('\n').map((l) => l.trim()).filter(Boolean);
-          const isListGroup = lines.length > 0 && lines.every((l) => /^[-*•]\s+|\d+[.)]\s+/.test(l));
-
-          if (isListGroup) {
-            return (
-              <ul key={`${bIdx}-${pIdx}`} className="space-y-2.5 my-3">
-                {lines.map((line, lIdx) => {
-                  const cleaned = line.replace(/^[-*•]\s+|\d+[.)]\s+/, '');
-                  const colonIndex = cleaned.indexOf(':');
-                  const hasTitle = colonIndex > 0 && colonIndex < 40;
-                  const title = hasTitle ? cleaned.slice(0, colonIndex + 1) : '';
-                  const body = hasTitle ? cleaned.slice(colonIndex + 1) : cleaned;
-
-                  return (
-                    <li
-                      key={lIdx}
-                      className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/[0.025] hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-colors shadow-xs"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-teal-500 mt-1.5 shrink-0 ring-4 ring-teal-400/20" />
-                      <div className="flex-1 text-slate-700 dark:text-slate-300 leading-relaxed">
-                        {hasTitle && (
-                          <span className="font-semibold text-teal-700 dark:text-teal-200 block sm:inline sm:mr-1.5">
-                            {formatMentorInline(title)}
-                          </span>
-                        )}
-                        {formatMentorInline(body)}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-          }
-
-          const isEndingQuestion =
-            para.endsWith('?') ||
-            /^(would you like|do you want|shall we|¿te gustaría|deseas|quieres)/i.test(para);
-
-          if (isEndingQuestion) {
-            return (
-              <div
-                key={`${bIdx}-${pIdx}`}
-                className="mt-3.5 rounded-2xl border border-teal-500/30 bg-gradient-to-r from-teal-50/80 via-white to-emerald-50/80 dark:from-teal-500/15 dark:via-slate-950 dark:to-emerald-500/15 p-3.5 shadow-md space-y-2"
-              >
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-300">
-                  <Sparkles className="h-3.5 w-3.5 text-teal-500 dark:text-teal-400" />
-                  <span>{isEn ? 'Suggested Next Step' : 'Siguiente paso sugerido'}</span>
-                </div>
-                <p className="text-teal-900 dark:text-teal-100 font-medium leading-relaxed">
-                  {formatMentorInline(para)}
-                </p>
-                {onPromptClick && (
-                  <button
-                    type="button"
-                    onClick={() => onPromptClick(para)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-400/30 bg-teal-500/10 hover:bg-teal-500/20 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 px-2.5 py-1 text-[11px] font-semibold text-teal-700 dark:text-teal-200 hover:text-teal-900 dark:hover:text-white transition-colors cursor-pointer"
-                  >
-                    <span>{isEn ? 'Send' : 'Enviar'}</span>
-                    <ArrowRight className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            );
-          }
-
-          return (
-            <p key={`${bIdx}-${pIdx}`} className="text-slate-700 dark:text-slate-200 leading-relaxed">
-              {formatMentorInline(para)}
-            </p>
-          );
-        });
-      })}
-    </div>
-  );
-}
-
-function WorkplaceApplicationStep({
-  sectionId,
-  personId,
-  courseLanguage,
-  onComplete,
-  isEn,
-}: {
-  sectionId: string;
-  personId?: string;
-  courseLanguage?: 'es' | 'en';
-  onComplete: () => void;
-  isEn: boolean;
-}) {
-  const [data, setData] = useState<WorkplaceApplicationDto | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [audioTimestamp, setAudioTimestamp] = useState<number>(Date.now());
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-
-  const activeLanguage = courseLanguage || (isEn ? 'en' : 'es');
-
-  const sendChatMessage = useCallback(async (textToSend?: string) => {
-    const msg = (textToSend ?? chatInput).trim();
-    if (!msg || chatLoading) return;
-
-    setChatMessages((prev) => [...prev, { role: 'user', text: msg }]);
-    if (!textToSend) setChatInput('');
-    setChatLoading(true);
-
-    try {
-      const res = await postStructuredLearningWorkplaceChat(
-        sectionId,
-        msg,
-        chatSessionId || undefined,
-        personId || undefined,
-        activeLanguage
-      );
-      if (res.SessionId) setChatSessionId(res.SessionId);
-      setChatMessages((prev) => [...prev, { role: 'assistant', text: res.Reply }]);
-    } catch (err) {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: err instanceof Error ? `Error: ${err.message}` : String(err),
-        },
-      ]);
-    } finally {
-      setChatLoading(false);
-    }
-  }, [chatInput, chatLoading, sectionId, chatSessionId, personId, activeLanguage]);
-
-  const clearChat = useCallback(() => {
-    setChatMessages([]);
-    setChatInput('');
-    setChatSessionId(null);
-  }, []);
-
-  const fetchApplication = useCallback(async (force = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await getStructuredLearningWorkplaceApplication(
-        sectionId,
-        personId || undefined,
-        activeLanguage,
-        force
-      );
-      setData(res);
-      setAudioTimestamp(Date.now());
-      setHasLoaded(true);
-      onComplete();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [sectionId, personId, activeLanguage, onComplete]);
-
-  return (
-    <div className="space-y-6 animate-fade-in mt-4">
-      {!hasLoaded && !loading && (
-        <div className="rounded-3xl border border-teal-300 bg-gradient-to-br from-teal-50 via-white to-emerald-50 p-8 text-center shadow-lg dark:border-teal-500/30 dark:bg-gradient-to-br dark:from-teal-500/10 dark:via-slate-950/60 dark:to-emerald-500/10">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-300 mb-4">
-            <Sparkles className="h-7 w-7" />
-          </div>
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {isEn ? 'Workplace Application in Your Role' : 'Caso Práctico en tu Puesto'}
-          </h3>
-          <p className="max-w-xl mx-auto text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
-            {isEn
-              ? 'Generate a real workplace application tailored to your role, tools, and SMART objectives. You will listen to a pre-recorded audio explanation created specifically for you and see how to apply this engram in your daily work.'
-              : 'Genera un caso de aplicación real personalizado a tu rol, tecnologías y objetivos SMART. Escucharás un audio pre-grabado creado exclusivamente para ti y verás cómo aplicar este engrama en tu trabajo diario.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => fetchApplication(false)}
-            disabled={loading}
-            className="inline-flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-          >
-            <Headphones className="h-4 w-4" />
-            <span>{isEn ? 'Generate and listen to workplace scenario for my role' : 'Generar y escuchar caso práctico para mi puesto'}</span>
-          </button>
-        </div>
-      )}
-
-      {loading && (
-        <div className="rounded-3xl border border-teal-200 bg-slate-50 p-8 text-center dark:border-teal-500/20 dark:bg-slate-950/60">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-teal-500 dark:text-teal-400 mb-3" />
-          <p className="text-sm font-medium text-slate-900 dark:text-white">
-            {isEn ? 'Generating personalized workplace scenario and synthesizing audio...' : 'Generando caso práctico personalizado y sintetizando audio...'}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {isEn ? 'Connecting your SMART objectives and technologies with this engram.' : 'Conectando tus objetivos SMART y tecnologías con este engrama.'}
-          </p>
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 text-center">
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={() => fetchApplication(false)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-100 dark:bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-800 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-500/30"
-          >
-            {isEn ? 'Retry' : 'Reintentar'}
-          </button>
-        </div>
-      )}
-
-      {data && (
-        <div className="rounded-3xl border border-teal-200 bg-gradient-to-br from-teal-50/60 via-white to-emerald-50/60 p-6 sm:p-8 shadow-xl dark:border-teal-500/30 dark:bg-gradient-to-br dark:from-teal-500/10 dark:via-slate-950 dark:to-emerald-500/10 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-white/10 pb-4">
-            <div>
-              <span className="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-100/80 px-3 py-1 text-[11px] font-semibold text-teal-800 dark:border-teal-400/40 dark:bg-teal-500/15 dark:text-teal-200">
-                <Sparkles className="h-3 w-3" /> {isEn ? 'Workplace Application' : 'Caso Práctico en tu Puesto'}
-              </span>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-2">{data.ScenarioTitle}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-300 mt-0.5">
-                {isEn ? `Personalized for ${data.StudentName} · ${data.RoleTitle}` : `Personalizado para ${data.StudentName} · ${data.RoleTitle}`}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {data.Tools.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 max-w-sm">
-                  {data.Tools.slice(0, 3).map((tool, i) => (
-                    <span key={i} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
-                      {tool}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => fetchApplication(true)}
-                disabled={loading}
-                title={isEn ? 'Regenerate workplace scenario' : 'Regenerar caso práctico'}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-              >
-                <Sparkles className="h-3 w-3 text-teal-600 dark:text-teal-300" />
-                <span>{isEn ? 'Regenerate workplace scenario' : 'Regenerar caso práctico'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Full-width Chat with Professor Button right above the Audio Player */}
-          <button
-            type="button"
-            onClick={() => setIsChatOpen(true)}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-teal-300 bg-gradient-to-r from-teal-500/10 via-slate-50 to-emerald-500/10 hover:from-teal-500/20 hover:to-emerald-500/20 dark:border-teal-500/40 dark:bg-gradient-to-r dark:from-teal-500/20 dark:via-slate-900 dark:to-emerald-500/20 dark:hover:from-teal-500/30 dark:hover:to-emerald-500/30 px-5 py-3 text-sm font-semibold text-teal-800 dark:text-teal-200 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-md"
-          >
-            <MessageSquareText className="h-4 w-4 text-teal-600 dark:text-teal-300" />
-            <span>{isEn ? 'Chat with Professor' : 'Preguntar al Profesor'}</span>
-          </button>
-
-          {/* Audio Player */}
-          {data.AudioUrl && (
-            <div className="rounded-2xl border border-teal-200 bg-slate-50 p-4 dark:border-teal-500/20 dark:bg-slate-900/80">
-              <div className="flex items-center gap-2 mb-2">
-                <Headphones className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                <span className="text-xs font-semibold text-teal-800 dark:text-teal-200">
-                  {isEn ? '🎙️ Workplace Application Audio (Explanation for you)' : '🎙️ Audio del Caso Práctico (Explicación para ti)'}
-                </span>
-              </div>
-              <audio
-                key={audioTimestamp}
-                controls
-                src={`${data.AudioUrl}${data.AudioUrl.includes('?') ? '&' : '?'}t=${audioTimestamp}`}
-                className="w-full"
-                onEnded={onComplete}
-              >
-                {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta el reproductor de audio.'}
-              </audio>
-            </div>
-          )}
-
-          {/* Text Scenario */}
-          <div className="space-y-4 text-sm leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
-            <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-              {isEn ? 'Scenario in your work environment' : 'Escenario en tu entorno laboral'}
-            </h4>
-            <p className="text-slate-700 dark:text-slate-300">{data.ScenarioText}</p>
-          </div>
-
-          {data.PracticalActions.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-2 dark:border-white/10 dark:bg-white/[0.03]">
-              <h4 className="font-semibold text-xs uppercase tracking-wide text-teal-700 dark:text-teal-300">
-                {isEn ? 'Suggested practical actions in your projects' : 'Acciones prácticas sugeridas en tus proyectos'}
-              </h4>
-              <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                {data.PracticalActions.map((action, i) => (
-                  <li key={i}>{action}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Slide-over Side Drawer for Q&A with Professor */}
-      {isChatOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/70 backdrop-blur-sm animate-fade-in flex justify-end">
-          <div className="w-full max-w-xl sm:max-w-2xl bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-teal-500/30 shadow-2xl flex flex-col h-full transform transition-transform duration-300 ease-out">
-            {/* Header */}
-            <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-300">
-                  <Bot className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
-                    {isEn ? 'Q&A with Professor' : 'Q&A con el Profesor'}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
-                    {data?.StudentName ? `Professor for ${data.StudentName}` : 'Personalized AI Professor'} · gpt-5-mini
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {chatMessages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearChat}
-                    title={isEn ? 'Clear chat' : 'Limpiar chat'}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-300 dark:border-white/10 dark:bg-white/5 dark:hover:bg-red-500/15 dark:hover:border-red-500/30 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-red-700 dark:text-slate-300 dark:hover:text-red-200 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    <span>{isEn ? 'Clear' : 'Limpiar'}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setIsChatOpen(false)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Message Thread */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-              {chatMessages.length === 0 ? (
-                <div className="space-y-4 my-auto pt-6 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-600 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
-                    <MessageSquareText className="h-6 w-6" />
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto leading-relaxed">
-                    {isEn
-                      ? 'Have questions about how to adapt this scenario to your tech stack, mitigate edge cases, or execute these actions? Ask your professor below.'
-                      : '¿Tienes dudas sobre cómo adaptar este caso a tu stack, riesgos a evitar o cómo ejecutar las acciones? Pregúntale a tu profesor aquí.'}
-                  </p>
-
-                  <div className="pt-2 flex flex-col gap-2 text-left">
-                    <button
-                      type="button"
-                      onClick={() => sendChatMessage(isEn ? 'How do I adapt this scenario to my current stack and constraints?' : '¿Cómo adapto este escenario a las restricciones de mi stack actual?')}
-                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
-                    >
-                      💡 {isEn ? 'How do I adapt this scenario to my current stack and constraints?' : '¿Cómo adapto este escenario a las restricciones de mi stack actual?'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => sendChatMessage(isEn ? 'What potential edge cases or risks should I watch out for?' : '¿Qué casos extremos o riesgos de seguridad debo prever?')}
-                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
-                    >
-                      🛡️ {isEn ? 'What potential edge cases or risks should I watch out for?' : '¿Qué casos extremos o riesgos de seguridad debo prever?'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => sendChatMessage(isEn ? 'Can you give me a step-by-step checklist to start this week?' : '¿Puedes darme una lista de pasos concretos para arrancar esta semana?')}
-                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
-                    >
-                      📋 {isEn ? 'Can you give me a step-by-step checklist to start this week?' : '¿Puedes darme una lista de pasos concretos para arrancar esta semana?'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                chatMessages.map((m, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
-                  >
-                    {m.role === 'user' ? (
-                      <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed bg-teal-600 text-white rounded-br-none shadow-md">
-                        {m.text}
-                      </div>
-                    ) : (
-                      <div className="w-full max-w-[96%] rounded-2xl p-4 text-xs leading-relaxed bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 text-slate-800 dark:text-slate-200 rounded-bl-none shadow-md">
-                        <MentorMessageContent text={m.text} onPromptClick={(opt) => sendChatMessage(opt)} isEn={isEn} />
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-
-              {chatLoading && (
-                <div className="flex items-center gap-2 text-xs text-teal-600 dark:text-teal-300 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-teal-500 dark:text-teal-400" />
-                  <span>Thinking...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Input Bar */}
-            <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/70">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  sendChatMessage();
-                }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder={isEn ? 'Ask a question about this scenario or implementation...' : 'Pregunta sobre la implementación, riesgos o pasos concretos...'}
-                  disabled={chatLoading}
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-teal-400"
-                />
-                <button
-                  type="submit"
-                  disabled={chatLoading || !chatInput.trim()}
-                  className="inline-flex items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 p-2.5 text-white shadow-md transition-colors cursor-pointer"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

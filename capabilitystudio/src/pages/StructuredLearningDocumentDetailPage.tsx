@@ -626,12 +626,17 @@ export default function StructuredLearningDocumentDetailPage() {
           if (isRunningHere) {
             const targetCount = pedagogyRun?.TotalSections ?? (pendingSections > 0 ? pendingSections : totalSections);
             const doneCount = pedagogyRun?.CompletedSections ?? 0;
+            const isRangeRedo = pedagogyRun?.FromEngramNumber != null || pedagogyRun?.ToEngramNumber != null;
+            const rangeFrom = pedagogyRun?.FromEngramNumber ?? 1;
+            const rangeTo = pedagogyRun?.ToEngramNumber ?? totalSections;
             return (
               <div className="mt-8 flex items-center gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
                 <Loader2 className="h-4 w-4 flex-none animate-spin text-emerald-400" />
                 <div className="min-w-0 flex-1">
                   <span>
-                    Generating pedagogy… {doneCount}/{targetCount} remaining sections done
+                    {isRangeRedo
+                      ? `Redoing engrams ${rangeFrom} to ${rangeTo}… ${doneCount}/${targetCount} done`
+                      : `Generating pedagogy… ${doneCount}/${targetCount} remaining sections done`}
                   </span>
                   {pedagogyRun?.ActiveSectionTitles && pedagogyRun.ActiveSectionTitles.length > 0 && (
                     <p className="mt-0.5 truncate text-xs text-emerald-300/80">

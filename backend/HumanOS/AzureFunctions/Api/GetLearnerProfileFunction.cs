@@ -31,6 +31,8 @@ public sealed class LearnerProfileSummaryDto
     public List<string> TopSkills { get; set; } = [];
 
     public List<string> ActiveObjectiveTitles { get; set; } = [];
+
+    public bool IsStudent { get; set; }
 }
 
 /// <summary>
@@ -112,7 +114,8 @@ public sealed class GetLearnerProfileFunction
                 ExperienceLevel = expLevel,
                 PrimaryTools = tools,
                 TopSkills = profile.TechnicalSkills.Take(5).ToList(),
-                ActiveObjectiveTitles = profile.ActiveObjectives.Select(o => o.Title).Take(2).ToList()
+                ActiveObjectiveTitles = profile.ActiveObjectives.Select(o => o.Title).Take(2).ToList(),
+                IsStudent = !string.IsNullOrWhiteSpace(profile.StudentAcademicProfileSummary)
             };
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, dto, cancellationToken: cancellationToken);

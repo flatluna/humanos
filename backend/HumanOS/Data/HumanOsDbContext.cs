@@ -43,6 +43,12 @@ public sealed class HumanOsDbContext : DbContext
     /// text — see <see cref="PersonResume"/>.</summary>
     public DbSet<PersonResume> PersonResumes => Set<PersonResume>();
 
+    /// <summary>Per-Person CQI Workspace profile (HermanScience CQI
+    /// assessment report insights), extracted by
+    /// <see cref="HumanOS.Agents.CqiReportExtractionAgent"/> from an
+    /// uploaded PDF — see <see cref="PersonCqiProfile"/>.</summary>
+    public DbSet<PersonCqiProfile> PersonCqiProfiles => Set<PersonCqiProfile>();
+
     /// <summary>The latest AI-generated career development plan (skill
     /// gap vs. JobRole + recommended catalog Programs) for a Person — see
     /// <see cref="PersonCareerPlan"/> and

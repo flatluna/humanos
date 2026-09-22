@@ -35,8 +35,10 @@ import {
   type StructuredLearningSectionDetail,
 } from '@/features/capabilities/api/structuredLearningRuntimeApi';
 import { API_BASE_URL } from '@/features/capabilities/api/httpClient';
+import { getLearnerProfile } from '@/features/capabilities/api/engramImpactApi';
 import EngramReviewAgent from '@/features/capabilities/components/EngramReviewAgent';
 import VoiceTutorAgent from '@/features/capabilities/components/VoiceTutorAgent';
+import { WorkplaceApplicationStep } from '@/features/capabilities/components/WorkplaceApplicationPanel';
 import { KnowledgeFactsPanel } from '@/features/capabilities/components/KnowledgeGraphSection';
 import { getRetrievability } from './memoryScience';
 import type { SelectedNeuron } from './types';
@@ -191,6 +193,12 @@ async function downloadImageFile(url: string, filename = 'lesson-illustration.pn
     document.body.removeChild(link);
   }
 }
+
+type HypothesisQuestion = {
+  question: string;
+  options: string[];
+  correctIndex: number;
+};
 
 type DeepDiveCardView = {
   index: number;
@@ -356,10 +364,20 @@ export function EngramDetailPanel({
   const [chapterEngrams, setChapterEngrams] = useState<StructuredLearningSectionDetail[]>([]);
   const [slSectionText, setSlSectionText] = useState<string | null>(null);
   const [slTeachingContent, setSlTeachingContent] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'learn' | 'memory' | 'rewards' | 'cards' | 'facts'>('learn');
+  const [slHypothesisQuestions, setSlHypothesisQuestions] = useState<HypothesisQuestion[]>([]);
+  const [slRecallContent, setSlRecallContent] = useState<string | null>(null);
+  const [slProductionContent, setSlProductionContent] = useState<string | null>(null);
+  const [isStudent, setIsStudent] = useState(false);
+  const [activeTab, setActiveTab] = useState<'learn' | 'memory' | 'rewards' | 'role' | 'cards' | 'facts' | 'practice'>('learn');
   const [engramOpen, setEngramOpen] = useState(false);
   const [cardModalIndex, setCardModalIndex] = useState<number | null>(null);
   const [cardAgentActive, setCardAgentActive] = useState(false);
+
+  useEffect(() => {
+    getLearnerProfile(personId)
+      .then((profile) => setIsStudent(profile.isStudent))
+      .catch(() => setIsStudent(false));
+  }, [personId]);
 
   useEffect(() => {
     setCardModalIndex(null);
@@ -376,6 +394,9 @@ export function EngramDetailPanel({
       setSlTeachingIllustrationId(null);
       setSlSectionText(null);
       setSlTeachingContent(null);
+      setSlHypothesisQuestions([]);
+      setSlRecallContent(null);
+      setSlProductionContent(null);
       setSlVideos([]);
       setSlKnowledgeFacts(null);
       setExpandedFactEvidence({});
@@ -405,11 +426,23 @@ export function EngramDetailPanel({
           }
           const deepDiveStep = section?.Steps.find((s) => s.StepType === 'DeepDive');
           const teachingStep = section?.Steps.find((s) => s.StepType === 'Teaching');
+          const hypothesisStep = section?.Steps.find((s) => s.StepType === 'Hypothesis');
+          const recallStep = section?.Steps.find((s) => s.StepType === 'Recall');
+          const productionStep = section?.Steps.find((s) => s.StepType === 'Production');
           setSlTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
           setSlDeepDiveStepId(deepDiveStep?.StructuredLearningSectionStepId ?? null);
           if (teachingStep?.Content) {
             setSlTeachingContent(teachingStep.Content);
           }
+          if (hypothesisStep?.StepDataJson) {
+            try {
+              setSlHypothesisQuestions(JSON.parse(hypothesisStep.StepDataJson) as HypothesisQuestion[]);
+            } catch {
+              setSlHypothesisQuestions([]);
+            }
+          }
+          setSlRecallContent(recallStep?.Content || null);
+          setSlProductionContent(productionStep?.Content || null);
           if (teachingStep?.StepDataJson) {
             try {
               setSlTeachingIllustrationId((JSON.parse(teachingStep.StepDataJson) as { IllustrationId?: string | null }).IllustrationId ?? null);
@@ -543,7 +576,7 @@ export function EngramDetailPanel({
   const selectedIsFading = selectedRetrievability !== null && selectedRetrievability < FADING_THRESHOLD;
 
   const engramText = neuron.isStructuredLearning
-    ? (slSectionText || slTeachingContent || initialEngramText || neuron.description || '')
+    ? (slTeachingContent || slSectionText || initialEngramText || neuron.description || '')
     : (summary?.Steps.find((s) => s.StepType === 'Teaching')?.Content || initialEngramText || neuron.description || '');
 
   return (
@@ -557,7 +590,7 @@ export function EngramDetailPanel({
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 400, opacity: 0 }}
           transition={{ type: 'tween', duration: 0.25 }}
-          className="fixed right-0 top-0 z-50 h-full w-full overflow-y-auto bg-slate-900 p-6 shadow-2xl sm:w-[34rem]"
+          className="fixed right-0 top-0 z-50 h-full w-full overflow-y-auto bg-slate-900 p-6 shadow-2xl sm:w-[46rem]"
         >
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fuchsia-300">
@@ -587,8 +620,10 @@ export function EngramDetailPanel({
                 ['learn', t('brain.tabs.learn')],
                 ['memory', t('brain.tabs.memory')],
                 ['rewards', t('brain.tabs.rewards')],
+                ['role', t('brain.tabs.role')],
                 ['cards', t('brain.tabs.cards')],
                 ['facts', t('brain.tabs.facts')],
+                ...(neuron.isStructuredLearning ? ([['practice', t('brain.tabs.practice')]] as const) : []),
               ] as const
             ).map(([key, label]) => (
               <button
@@ -751,7 +786,22 @@ export function EngramDetailPanel({
                 </div>
               )}
 
-              {activeImpact && (
+            </div>
+          )}
+
+          {activeTab === 'role' && (
+            <div className="mt-4 space-y-3">
+              {neuron.isStructuredLearning ? (
+                <WorkplaceApplicationStep
+                  key={neuron.structuredLearningSectionId}
+                  sectionId={neuron.structuredLearningSectionId}
+                  personId={personId}
+                  courseLanguage={language}
+                  onComplete={() => undefined}
+                  isEn={language === 'en'}
+                  isStudent={isStudent}
+                />
+              ) : activeImpact ? (
                 <div className="overflow-hidden rounded-2xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/10 via-indigo-500/[0.03] to-white/[0.02] p-3.5 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-indigo-400">
@@ -768,6 +818,8 @@ export function EngramDetailPanel({
                   </div>
                   {activeImpact.Reason && <p className="mt-2 text-xs leading-relaxed text-slate-300 dark:text-white/80 bg-black/20 rounded-xl p-2.5 border border-white/5">{activeImpact.Reason}</p>}
                 </div>
+              ) : (
+                <p className="text-sm text-white/50">{t('brain.roleImpactEmpty')}</p>
               )}
             </div>
           )}
@@ -825,6 +877,60 @@ export function EngramDetailPanel({
 
           {activeTab === 'facts' && neuron.isStructuredLearning && (!slKnowledgeFacts || slKnowledgeFacts.KnowledgeFacts.length === 0) && (
             <p className="mt-4 text-sm text-white/50">{language === 'en' ? 'No facts extracted for this engram yet.' : 'Aún no hay datos extraídos para este engram.'}</p>
+          )}
+
+          {activeTab === 'practice' && neuron.isStructuredLearning && (
+            <div className="mt-4 space-y-5">
+              {slHypothesisQuestions.length > 0 && (
+                <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/[0.04] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-300">{t('brain.practice.predictTitle')}</p>
+                  <div className="mt-3 space-y-4">
+                    {slHypothesisQuestions.map((q, qIndex) => (
+                      <div key={qIndex}>
+                        <p className="text-sm font-medium text-white/90">{q.question}</p>
+                        <div className="mt-2 space-y-1.5">
+                          {q.options.map((option, optIndex) => (
+                            <div
+                              key={optIndex}
+                              className={`rounded-lg border px-3 py-1.5 text-xs ${
+                                optIndex === q.correctIndex
+                                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-semibold'
+                                  : 'border-white/10 bg-white/[0.02] text-white/60'
+                              }`}
+                            >
+                              {option}
+                              {optIndex === q.correctIndex && <span className="ml-1.5 text-[10px] uppercase tracking-wide">({t('brain.practice.correctAnswer')})</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {slRecallContent && (
+                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-300">{t('brain.practice.recallTitle')}</p>
+                  <div className="mt-2">
+                    <RichEngramText content={slRecallContent} />
+                  </div>
+                </div>
+              )}
+
+              {slProductionContent && (
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">{t('brain.practice.productionTitle')}</p>
+                  <div className="mt-2">
+                    <RichEngramText content={slProductionContent} />
+                  </div>
+                </div>
+              )}
+
+              {slHypothesisQuestions.length === 0 && !slRecallContent && !slProductionContent && (
+                <p className="text-sm text-white/50">{t('brain.practice.empty')}</p>
+              )}
+            </div>
           )}
 
           {activeTab === 'cards' && slVideos.length > 0 && (

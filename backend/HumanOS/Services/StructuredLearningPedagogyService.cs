@@ -529,40 +529,51 @@ public sealed class StructuredLearningPedagogyService
             // transaction — either the whole old->new swap commits, or (on any
             // failure) nothing changes and the section keeps its previous
             // content instead of being left half-empty.
-            await using var swapTransaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-            if (oldAssessmentRoundIds.Count > 0)
-            {
-                await dbContext.StructuredLearningAssessmentQuestionAttempts
-                    .Where(a => oldAssessmentRoundIds.Contains(a.StructuredLearningAssessmentRoundId))
-                    .ExecuteDeleteAsync(cancellationToken);
-                await dbContext.StructuredLearningAssessmentRounds
-                    .Where(r => oldAssessmentRoundIds.Contains(r.StructuredLearningAssessmentRoundId))
-                    .ExecuteDeleteAsync(cancellationToken);
-            }
-            if (oldRecallAttemptIds.Count > 0)
-            {
-                await dbContext.StructuredLearningRecallAttempts
-                    .Where(r => oldRecallAttemptIds.Contains(r.StructuredLearningRecallAttemptId))
-                    .ExecuteDeleteAsync(cancellationToken);
-            }
-            if (oldHypothesisResponseIds.Count > 0)
-            {
-                await dbContext.StructuredLearningHypothesisResponses
-                    .Where(h => oldHypothesisResponseIds.Contains(h.StructuredLearningHypothesisResponseId))
-                    .ExecuteDeleteAsync(cancellationToken);
-            }
-            if (oldIllustrationIds.Count > 0)
-            {
-                await dbContext.StructuredLearningIllustrations
-                    .Where(i => oldIllustrationIds.Contains(i.StructuredLearningIllustrationId))
-                    .ExecuteDeleteAsync(cancellationToken);
-            }
-            await dbContext.StructuredLearningSectionSteps
-                .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
-                .ExecuteDeleteAsync(cancellationToken);
-
+            //
+            // Wrapped in the DbContext's own retrying execution strategy
+            // (2026-09-20 fix): SqlServer's retrying strategy refuses plain
+            // user-initiated BeginTransactionAsync calls ("does not support
+            // user-initiated transactions"), which was silently failing
+            // EVERY section (0 tokens, immediate exception) — regenerate
+            // via CreateExecutionStrategy().ExecuteAsync so the transaction
+            // participates in the same retry-safe execution the rest of
+            // this DbContext uses.
+            var strategy = dbContext.Database.CreateExecutionStrategy();
             var processVersion = "structured-learning-pedagogy-v1";
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var swapTransaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+                if (oldAssessmentRoundIds.Count > 0)
+                {
+                    await dbContext.StructuredLearningAssessmentQuestionAttempts
+                        .Where(a => oldAssessmentRoundIds.Contains(a.StructuredLearningAssessmentRoundId))
+                        .ExecuteDeleteAsync(cancellationToken);
+                    await dbContext.StructuredLearningAssessmentRounds
+                        .Where(r => oldAssessmentRoundIds.Contains(r.StructuredLearningAssessmentRoundId))
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+                if (oldRecallAttemptIds.Count > 0)
+                {
+                    await dbContext.StructuredLearningRecallAttempts
+                        .Where(r => oldRecallAttemptIds.Contains(r.StructuredLearningRecallAttemptId))
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+                if (oldHypothesisResponseIds.Count > 0)
+                {
+                    await dbContext.StructuredLearningHypothesisResponses
+                        .Where(h => oldHypothesisResponseIds.Contains(h.StructuredLearningHypothesisResponseId))
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+                if (oldIllustrationIds.Count > 0)
+                {
+                    await dbContext.StructuredLearningIllustrations
+                        .Where(i => oldIllustrationIds.Contains(i.StructuredLearningIllustrationId))
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+                await dbContext.StructuredLearningSectionSteps
+                    .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+                    .ExecuteDeleteAsync(cancellationToken);
             var promptVersion = StructuredLearningSectionDesignerAgent.SourceFaithfulContractVersion;
             var modelName = design.TokenUsage.ModelName;
             var configSnapshot = JsonSerializer.Serialize(new
@@ -651,8 +662,9 @@ public sealed class StructuredLearningPedagogyService
                           .SetProperty(x => x.PedagogyErrorMessage, (string?)null),
                     cancellationToken);
 
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await swapTransaction.CommitAsync(cancellationToken);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await swapTransaction.CommitAsync(cancellationToken);
+            });
 
             return (true, design.TokenUsage.InputTokens, design.TokenUsage.OutputTokens);
         }

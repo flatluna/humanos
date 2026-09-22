@@ -415,6 +415,16 @@ export interface WorkplaceApplicationDto {
   PracticalActions: string[];
   AudioUrl: string;
   LanguageCode: string;
+  WhyThisMatters?: string;
+  ReflectionQuestions?: string[];
+  GrowthOpportunity?: string;
+  KnowledgeConnections?: string[];
+  CqiLeadingPatternType?: string | null;
+  CqiLeadingPatternName?: string | null;
+  CqiTypeLabel?: string | null;
+  CqiLearningAndWorkingPreferences?: string | null;
+  CqiExampleImageUrls?: string[];
+  CqiExampleImageExplanations?: string[];
 }
 
 export function getStructuredLearningWorkplaceApplication(

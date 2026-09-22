@@ -105,11 +105,36 @@ public sealed class StructuredLearningPedagogyOrchestrator
                 .Select(d => new
                 {
                     d.DocumentName,
-                    PendingCount = d.Sections.Count(s => forceRegenerateAll || s.PedagogyStatus != StructuredLearningPedagogyStatus.Completed)
+                    OrderedStatuses = d.Sections.OrderBy(s => s.SortOrder).Select(s => s.PedagogyStatus).ToList()
                 })
                 .FirstOrDefault();
             initialDocName = docSummary?.DocumentName;
-            initialPendingCount = docSummary?.PendingCount;
+
+            if (docSummary is not null)
+            {
+                // Mirror StructuredLearningPedagogyService.RunAsync's own range
+                // filtering exactly: filter by PedagogyStatus first (unless
+                // forceRegenerateAll), THEN assign 1-based position within
+                // that filtered list, THEN apply the from/to range — so the
+                // initial "Starting" estimate matches the real total the run
+                // will report instead of showing the whole document's pending
+                // count when a designer only asked to redo a small engram
+                // range (2026-09-20).
+                var filtered = forceRegenerateAll
+                    ? docSummary.OrderedStatuses
+                    : docSummary.OrderedStatuses.Where(s => s != StructuredLearningPedagogyStatus.Completed).ToList();
+
+                var positioned = filtered.Select((status, index) => (status, position: index + 1)).AsEnumerable();
+
+                if (fromEngramNumber is > 0 || toEngramNumber is > 0)
+                {
+                    var from = fromEngramNumber is > 0 ? fromEngramNumber.Value : 1;
+                    var to = toEngramNumber is > 0 ? toEngramNumber.Value : filtered.Count;
+                    positioned = positioned.Where(x => x.position >= from && x.position <= to);
+                }
+
+                initialPendingCount = positioned.Count();
+            }
         }
         catch
         {
@@ -118,7 +143,7 @@ public sealed class StructuredLearningPedagogyOrchestrator
 
         var session = new RunSession();
         _runs[runId] = session;
-        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, initialDocName, "Starting", initialPendingCount, 0, null));
+        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, initialDocName, "Starting", initialPendingCount, 0, null, fromEngramNumber, toEngramNumber));
 
         session.BackgroundTask = Task.Run(async () =>
         {
@@ -142,7 +167,7 @@ public sealed class StructuredLearningPedagogyOrchestrator
                     documentId,
                     languageCode,
                     (step, completed, total, activeTitles) =>
-                        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, documentName, step, total, completed, activeTitles)),
+                        session.UpdateStatus(StructuredLearningPedagogyRunStatus.Running(runId, documentId, documentName, step, total, completed, activeTitles, fromEngramNumber, toEngramNumber)),
                     CancellationToken.None,
                     forceRegenerateAll,
                     uploadedImageBytes,

@@ -19,6 +19,7 @@ export interface LearnerProfileSummaryDto {
   primaryTools: string[];
   topSkills: string[];
   activeObjectiveTitles: string[];
+  isStudent: boolean;
 }
 
 /**

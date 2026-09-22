@@ -4898,10 +4898,6 @@ namespace HumanOS.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<string>("ApplicableDepartmentIdsJson")
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
                     b.Property<string>("AssignmentScope")
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
@@ -5258,6 +5254,61 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("UX_PersonCareerPlan_PersonId");
 
                     b.ToTable("PersonCareerPlan", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonCqiProfile", b =>
+                {
+                    b.Property<Guid>("PersonCqiProfileId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<DateTime?>("ExtractedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExtractionModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LeadingPatternName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("LeadingPatternType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProfileJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("{}");
+
+                    b.Property<string>("SourceFileName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("PersonCqiProfileId")
+                        .HasName("PK_PersonCqiProfile");
+
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PersonCqiProfile_PersonId");
+
+                    b.ToTable("PersonCqiProfile", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonCurrentSituation", b =>
@@ -7865,6 +7916,18 @@ namespace HumanOS.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_PersonCareerPlan_Person");
+
+                    b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonCqiProfile", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_PersonCqiProfile_Person");
 
                     b.Navigation("Person");
                 });
