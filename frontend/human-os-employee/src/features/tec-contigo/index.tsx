@@ -8,6 +8,7 @@ import {
   Calendar,
   CheckCircle2,
   Compass,
+  Dumbbell,
   Eye,
   HeartHandshake,
   Lightbulb,
@@ -32,7 +33,10 @@ import {
 import { Card } from "@/components/ui/Card";
 import { LoadingBackdrop } from "@/components/ui/LoadingBackdrop";
 import { useBrainGraph } from "@/features/brain/useBrainGraph";
-import { getRetrievability } from "@/features/brain/memoryScience";
+import { useKnowledgeNetwork } from "@/features/brain/useKnowledgeNetwork";
+import { EngramDetailPanel } from "@/features/brain/EngramDetailPanel";
+import type { SelectedNeuron } from "@/features/brain/types";
+import { getRetrievability, getMemoryColor, getMemoryTextColor, isAutomatic } from "@/features/brain/memoryScience";
 import { getEnrolledStructuredLearningDocuments } from "@/features/capabilities/api/enrolledStructuredLearningApi";
 import { getGamificationProfile } from "@/features/gamification/api/gamificationApi";
 import {
@@ -47,6 +51,8 @@ import {
   getThesisStatus,
   uploadThesis,
 } from "./thesisApi";
+import { TecContigoAgentChat } from "./TecContigoAgentChat";
+import { TecMileniumLearningExperiencePanel } from "./TecMileniumLearningExperiencePanel";
 
 type PageKey =
   "semestre" | "industria" | "objetivo" | "conocimientos" | "humanas";
@@ -216,6 +222,16 @@ const tec360StageLinks: Tec360StageLink[] = [
     icon: RefreshCw,
   },
   {
+    path: "/tec-contigo/practica-y-refuerza",
+    title: "Practica y refuerza",
+    description:
+      "Repasa lo que ya aprendiste y aplica tus cursos terminados con práctica real generada por IA.",
+    status: "Continuo",
+    year: "Siempre",
+    yearColor: "text-rose-700 dark:text-rose-300",
+    icon: Dumbbell,
+  },
+  {
     path: "/tec-contigo/conecta-y-contribuye",
     title: "Conecta y contribuye",
     description:
@@ -232,11 +248,11 @@ function Tec360StageNavigation() {
     <section aria-labelledby="tec360-stage-title">
       <h3
         id="tec360-stage-title"
-        className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60"
+        className="text-2xl font-bold tracking-tight text-blue-600 dark:text-amber-400"
       >
-        Tu vida con el Tec
+        Momentos de vida
       </h3>
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {tec360StageLinks.map((stage, index) => {
           const Icon = stage.icon;
           return (
@@ -272,6 +288,7 @@ function Tec360StageNavigation() {
                 {stage.status}
               </span>
               {(stage.title === "Mantente vigente" ||
+                stage.title === "Practica y refuerza" ||
                 stage.title === "Conecta y contribuye") && (
                 <span className="mt-3 flex items-center gap-2 text-sm font-semibold text-blue-600 dark:text-blue-300">
                   Explorar esta etapa <ArrowRight className="h-4 w-4" />
@@ -350,6 +367,7 @@ export function TecContigoHub() {
         )}
       </Card>
       <Tec360StageNavigation />
+      <TecContigoAgentChat />
       <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-white shadow-lg dark:border-white/10 dark:bg-slate-900/90">
         <h3 className="text-xl font-semibold">
           El Tec continúa contigo y tu experiencia continúa con la comunidad
@@ -475,6 +493,7 @@ function TecPage({
     <div className="mx-auto max-w-5xl">
       <TecHeader title={title} description={description} />
       {children}
+      <TecContigoAgentChat />
     </div>
   );
 }
@@ -895,6 +914,7 @@ export function TecMientrasEstudiasPage() {
         </Card>
         <LearningExecutiveSummary />
         <Tec360StageSummary resume={resume} />
+        <TecMileniumLearningExperiencePanel />
         <TecContigoExperienceCards resume={resume} />
         <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-white shadow-lg dark:border-white/10 dark:bg-slate-900/90">
           <h2 className="text-xl font-semibold">
@@ -2064,6 +2084,369 @@ function ContributionPanel({
         </p>
       </div>
     </div>
+  );
+}
+
+interface RealCompletedCourse {
+  capabilityId: string;
+  name: string;
+  averageScore?: number | null;
+}
+
+function TecPracticeTab({ personId }: { personId: string }) {
+  const [enrolledQuery, setEnrolledQuery] = useState<{
+    loading: boolean;
+    items: RealCompletedCourse[];
+  }>({ loading: true, items: [] });
+  const [selectedCapabilityId, setSelectedCapabilityId] = useState<string | null>(null);
+  const [session, setSession] = useState<import("./api/tecPracticeApi").TecPracticeSessionView | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Consultando tus cursos terminados...");
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      import("@/features/capabilities/api/enrolledCapabilitiesApi").then(({ getEnrolledCapabilities }) => getEnrolledCapabilities(personId)),
+      import("@/features/capabilities/api/enrolledStructuredLearningApi").then(({ getEnrolledStructuredLearningDocuments }) =>
+        getEnrolledStructuredLearningDocuments(personId),
+      ),
+    ]).then(([capabilities, documents]) => {
+      if (cancelled) return;
+      // Real completed courses can live in either data model — a standalone Capability
+      // (Completed when masteredNodes === totalNodes) or a Structured Learning document
+      // (Completed when completedSectionCount === sectionCount, e.g. Sofia's "Inteligencia
+      // Emocional y Mindfulness"). No fabricated/local content — only what the real APIs return.
+      const completedCapabilities: RealCompletedCourse[] = capabilities
+        .filter((c) => c.status === "Completed")
+        .map((c) => ({ capabilityId: c.capabilityId, name: c.name, averageScore: c.averageScore }));
+      const completedDocuments: RealCompletedCourse[] = documents
+        .filter((d) => d.sectionCount > 0 && d.completedSectionCount === d.sectionCount)
+        .map((d) => ({ capabilityId: d.structuredLearningDocumentId, name: d.documentName }));
+      setEnrolledQuery({ loading: false, items: [...completedCapabilities, ...completedDocuments] });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [personId]);
+
+  async function openCourse(capabilityId: string) {
+    setSelectedCapabilityId(capabilityId);
+    setSession(null);
+    setAnswers({});
+    setSessionError(null);
+    setLoadingMessage("Buscando la práctica guardada para este curso...");
+    setSessionLoading(true);
+    try {
+      const { getTecPracticeSession } = await import("./api/tecPracticeApi");
+      const existing = await getTecPracticeSession(personId, capabilityId);
+      setSession(existing);
+    } catch {
+      setSessionError("No pudimos cargar la práctica de este curso. Intenta de nuevo.");
+    } finally {
+      setSessionLoading(false);
+    }
+  }
+
+  async function generate(capabilityId: string) {
+    setSessionError(null);
+    setLoadingMessage("La IA está preparando ejercicios personalizados...");
+    setSessionLoading(true);
+    try {
+      const { generateTecPracticeSession } = await import("./api/tecPracticeApi");
+      const generated = await generateTecPracticeSession(personId, capabilityId);
+      setSession(generated);
+      setAnswers({});
+    } catch {
+      setSessionError("No pudimos generar la práctica con IA para este curso. Intenta de nuevo.");
+    } finally {
+      setSessionLoading(false);
+    }
+  }
+
+  async function submitAnswer(exerciseIndex: number) {
+    if (!session) return;
+    const answer = answers[exerciseIndex]?.trim();
+    if (!answer) return;
+    setSubmittingIndex(exerciseIndex);
+    const { submitTecPracticeAnswer } = await import("./api/tecPracticeApi");
+    const graded = await submitTecPracticeAnswer(personId, session.practiceSessionId, exerciseIndex, answer);
+    setSession((prev) =>
+      prev
+        ? { ...prev, exercises: prev.exercises.map((e) => (e.index === exerciseIndex ? graded : e)) }
+        : prev,
+    );
+    setSubmittingIndex(null);
+  }
+
+  if (enrolledQuery.loading) {
+    return (
+      <PracticeLoadingModal message="Consultando tus cursos terminados..." />
+    );
+  }
+
+  if (enrolledQuery.items.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-white/10">
+        <p className="text-sm font-medium text-slate-600 dark:text-white/70">
+          Aún no tienes cursos terminados — cuando completes uno, aquí podrás practicar con
+          ejercicios generados por IA.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {sessionLoading && <PracticeLoadingModal message={loadingMessage} />}
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+      <div className="space-y-2">
+        {enrolledQuery.items.map((course) => (
+          <button
+            key={course.capabilityId}
+            type="button"
+            onClick={() => openCourse(course.capabilityId)}
+            className={`w-full rounded-xl border p-3 text-left text-sm font-semibold transition ${
+              selectedCapabilityId === course.capabilityId
+                ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200"
+                : "border-slate-200 bg-white text-slate-700 hover:border-rose-200 dark:border-white/10 dark:bg-white/[0.03] dark:text-white/75"
+            }`}
+          >
+            {course.name}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        {!selectedCapabilityId ? (
+          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-white/10">
+            <p className="text-sm text-slate-500 dark:text-white/60">
+              Elige un curso terminado para ver o generar tu práctica.
+            </p>
+          </div>
+        ) : sessionLoading ? (
+          <div className="py-8 text-center text-sm text-slate-500 dark:text-white/60">Cargando...</div>
+        ) : sessionError ? (
+          <div className="rounded-xl border border-dashed border-rose-200 p-8 text-center dark:border-rose-400/20">
+            <p className="text-sm font-medium text-rose-700 dark:text-rose-300">{sessionError}</p>
+            <button
+              type="button"
+              onClick={() => openCourse(selectedCapabilityId)}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-rose-700"
+            >
+              Reintentar
+            </button>
+          </div>
+        ) : !session ? (
+          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-white/10">
+            <p className="text-sm text-slate-600 dark:text-white/70">
+              Aún no has generado práctica para este curso.
+            </p>
+            <button
+              type="button"
+              onClick={() => generate(selectedCapabilityId)}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-rose-700"
+            >
+              <Dumbbell className="h-4 w-4" /> Generar práctica con IA
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-950 dark:text-white">{session.capabilityName}</h3>
+              <button
+                type="button"
+                onClick={() => generate(selectedCapabilityId)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 hover:underline dark:text-rose-300"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Regenerar
+              </button>
+            </div>
+            {session.exercises.map((exercise) => (
+              <Card key={exercise.index} className="border-slate-200/80 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+                <h4 className="text-sm font-bold text-slate-950 dark:text-white">{exercise.title}</h4>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-white/70">{exercise.instructions}</p>
+                {exercise.score != null ? (
+                  <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm dark:bg-emerald-400/10">
+                    <p className="font-semibold text-emerald-800 dark:text-emerald-200">
+                      Puntaje: {exercise.score}/100
+                    </p>
+                    <p className="mt-1 text-emerald-900 dark:text-emerald-100">{exercise.feedback}</p>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={answers[exercise.index] ?? ""}
+                      onChange={(e) => setAnswers((prev) => ({ ...prev, [exercise.index]: e.target.value }))}
+                      rows={3}
+                      placeholder="Escribe tu respuesta..."
+                      className="w-full rounded-xl border border-slate-200 p-3 text-sm dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      disabled={submittingIndex === exercise.index}
+                      onClick={() => submitAnswer(exercise.index)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                    >
+                      {submittingIndex === exercise.index ? "Calificando..." : "Enviar respuesta"}
+                    </button>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
+    </>
+  );
+}
+
+function PracticeLoadingModal({ message }: { message: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" role="status" aria-live="polite">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+        <div className="flex items-center gap-3">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-rose-200 border-t-rose-600" />
+          <h3 className="text-base font-bold text-slate-950 dark:text-white">Preparando tu experiencia</h3>
+        </div>
+        <p className="mt-4 text-sm font-medium text-slate-700 dark:text-white/80">{message}</p>
+        <ol className="mt-5 space-y-3 text-sm text-slate-500 dark:text-white/60">
+          <li>1. Revisamos tu avance académico.</li>
+          <li>2. Identificamos el curso que quieres reforzar.</li>
+          <li>3. Organizamos ejercicios para practicar.</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+const TEC_PRACTICE_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "hace X días/meses" relative label for a stale engram's completion date —
+ * same convention as BrainRecallGrid's own relativeLabel. */
+function tecPracticeRelativeLabel(completedDate: string | undefined): string {
+  if (!completedDate) return "—";
+  const days = Math.floor((Date.now() - new Date(completedDate).getTime()) / TEC_PRACTICE_DAY_MS);
+  const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
+  if (days < 1) return rtf.format(0, "day");
+  if (days < 30) return rtf.format(-days, "day");
+  if (days < 365) return rtf.format(-Math.round(days / 30), "month");
+  return rtf.format(-Math.round(days / 365), "year");
+}
+
+export function TecPracticaYRefuerzaPage() {
+  const { user } = useAuth();
+  const personId = user?.personId ?? "";
+  const [tab, setTab] = useState<"stale" | "practice">("stale");
+  const knowledgeNetworkQuery = useKnowledgeNetwork(personId);
+  const STALE_ENGRAM_DAYS = 30;
+  const staleEngrams = useMemo(() => {
+    const cutoff = Date.now() - STALE_ENGRAM_DAYS * 24 * 60 * 60 * 1000;
+    return (knowledgeNetworkQuery.data?.masteredEngrams ?? [])
+      .filter((engram) => engram.completedDate && new Date(engram.completedDate).getTime() <= cutoff)
+      // Weakest memory (lowest retrievability %) first — same convention as
+      // BrainRecallGrid. Sorting by raw date alone isn't monotonic with %
+      // since retrievability also depends on reviewCount/stability.
+      .sort((a, b) => {
+        const aR = getRetrievability(a.completedDate, a.reviewCount ?? 1) ?? -1;
+        const bR = getRetrievability(b.completedDate, b.reviewCount ?? 1) ?? -1;
+        return aR - bR;
+      });
+  }, [knowledgeNetworkQuery.data]);
+  const [openNeuron, setOpenNeuron] = useState<SelectedNeuron | null>(null);
+
+  return (
+    <TecPage
+      title="Practica y refuerza"
+      description="Repasa lo que ya aprendiste y aplica tus cursos terminados con práctica real, generada por IA para tu momento actual."
+    >
+      <div className="space-y-6">
+        <nav aria-label="Breadcrumb" className="-mt-5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+          <Link to="/tec-contigo" className="hover:text-blue-600 font-medium">
+            Tec Contigo
+          </Link>
+          <span>/</span>
+          <span>Practica y refuerza</span>
+        </nav>
+
+        <div className="flex gap-2 border-b border-slate-200 dark:border-white/10">
+          <button
+            type="button"
+            onClick={() => setTab("stale")}
+            className={`px-4 py-2 text-sm font-semibold ${tab === "stale" ? "border-b-2 border-rose-600 text-rose-700 dark:text-rose-300" : "text-slate-500 dark:text-white/55"}`}
+          >
+            Engramas para repasar
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("practice")}
+            className={`px-4 py-2 text-sm font-semibold ${tab === "practice" ? "border-b-2 border-rose-600 text-rose-700 dark:text-rose-300" : "text-slate-500 dark:text-white/55"}`}
+          >
+            Cursos terminados
+          </button>
+        </div>
+
+        {tab === "stale" ? (
+          knowledgeNetworkQuery.isLoading ? (
+            <div className="py-8 text-center text-sm text-slate-500 dark:text-white/60">
+              Revisando tus engramas dominados...
+            </div>
+          ) : staleEngrams.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-white/10">
+              <p className="text-sm font-medium text-slate-600 dark:text-white/70">
+                No tienes engramas con más de {STALE_ENGRAM_DAYS} días sin repasar — ¡tu conocimiento está al día!
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-4">
+              {staleEngrams.map((engram) => {
+                const retrievability = getRetrievability(engram.completedDate, engram.reviewCount ?? 1);
+                const memoryColor = getMemoryColor(retrievability);
+                const memoryTextColor = getMemoryTextColor(retrievability);
+                const percent = retrievability === null ? null : Math.round(retrievability * 100);
+                const automatic = isAutomatic(engram.reviewCount ?? 0);
+                return (
+                  <button
+                    key={engram.sectionId}
+                    type="button"
+                    onClick={() => setOpenNeuron(engram.neuron)}
+                    title={engram.title}
+                    className="group flex w-24 flex-col items-center gap-1.5 text-center transition hover:-translate-y-0.5 focus:outline-none"
+                  >
+                    <span
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-xs font-bold leading-none shadow-md transition group-hover:scale-105"
+                      style={{ background: memoryColor, color: memoryTextColor }}
+                    >
+                      {engram.title.charAt(0).toUpperCase()}
+                    </span>
+                    {percent !== null && (
+                      <span className="text-[11px] font-bold" style={{ color: automatic ? undefined : memoryColor }}>
+                        {automatic ? "Auto" : `${percent}%`}
+                      </span>
+                    )}
+                    <span className="line-clamp-2 text-[10px] font-medium leading-tight text-slate-600 dark:text-white/60">
+                      {engram.title}
+                    </span>
+                    <span className="text-[9px] font-medium text-slate-400 dark:text-white/40">
+                      {tecPracticeRelativeLabel(engram.completedDate)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          <TecPracticeTab personId={personId} />
+        )}
+      </div>
+
+      {openNeuron && (
+        <EngramDetailPanel personId={personId} neuron={openNeuron} onClose={() => setOpenNeuron(null)} onSelectNeuron={setOpenNeuron} />
+      )}
+    </TecPage>
   );
 }
 

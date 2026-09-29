@@ -280,8 +280,8 @@ export function ProgramsPage() {
                       {percent === 100 ? (isEn ? 'Completed' : 'Completado') : (isEn ? 'Enrolled' : 'Inscrito')}
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 rounded-full bg-black/45 backdrop-blur-md px-2.5 py-1 text-xs font-semibold text-white">
-                      <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/90 backdrop-blur-md px-2.5 py-1 text-xs font-semibold text-white shadow-xs">
+                      <Sparkles className="h-3.5 w-3.5" />
                       {isEn ? 'Available' : 'Disponible'}
                     </span>
                   )}

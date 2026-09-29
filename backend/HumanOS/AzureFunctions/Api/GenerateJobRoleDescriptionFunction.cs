@@ -97,6 +97,7 @@ public sealed class GenerateJobRoleDescriptionFunction
 
         var context = new JobRoleDescriptionGenerationContext
         {
+            LanguageCode = string.Equals(body.LanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "es",
             TenantId = tenantId,
             Mode = hasAnyExistingContent ? JobRoleDescriptionMode.ImproveExisting : JobRoleDescriptionMode.CreateFromScratch,
             ExcludeJobRoleId = body.JobRoleId,

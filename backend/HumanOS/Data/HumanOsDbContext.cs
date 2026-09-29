@@ -49,11 +49,25 @@ public sealed class HumanOsDbContext : DbContext
     /// uploaded PDF — see <see cref="PersonCqiProfile"/>.</summary>
     public DbSet<PersonCqiProfile> PersonCqiProfiles => Set<PersonCqiProfile>();
 
+    /// <summary>Latest academic interests and learning preferences captured
+    /// for each person.</summary>
+    public DbSet<PersonAcademicPreferences> PersonAcademicPreferences => Set<PersonAcademicPreferences>();
+
     /// <summary>The latest AI-generated career development plan (skill
     /// gap vs. JobRole + recommended catalog Programs) for a Person — see
     /// <see cref="PersonCareerPlan"/> and
     /// <see cref="HumanOS.Agents.CareerDevelopmentPlanAgent"/>.</summary>
     public DbSet<PersonCareerPlan> PersonCareerPlans => Set<PersonCareerPlan>();
+
+    /// <summary>Saved "Grow With Us" searches (2026-09-28) — history of
+    /// generated growth plans, one row per generation.</summary>
+    public DbSet<GrowWithUsSavedSearch> GrowWithUsSavedSearches => Set<GrowWithUsSavedSearch>();
+
+    /// <summary>"Practica y refuerza" (2026-09-28) — AI-generated reinforcement
+    /// exercises for an already-completed course, cached per (Person, Capability).</summary>
+    public DbSet<HumanOS.Models.Learning.PracticeSession> PracticeSessions => Set<HumanOS.Models.Learning.PracticeSession>();
+
+    public DbSet<HumanOS.Models.Learning.PracticeAttempt> PracticeAttempts => Set<HumanOS.Models.Learning.PracticeAttempt>();
 
     public DbSet<HumanProfile> HumanProfiles => Set<HumanProfile>();
 
@@ -463,6 +477,14 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<Models.Capabilities.Studio.FilmScene> FilmScenes =>
         Set<Models.Capabilities.Studio.FilmScene>();
+
+    /// <summary>Standalone "Video Productions" wizard (2026-09-23) — see
+    /// <see cref="Models.Capabilities.Studio.VideoProduction"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.VideoProduction> VideoProductions =>
+        Set<Models.Capabilities.Studio.VideoProduction>();
+
+    public DbSet<Models.Capabilities.Studio.VideoProductionClip> VideoProductionClips =>
+        Set<Models.Capabilities.Studio.VideoProductionClip>();
 
     /// <summary>Gamification: Immutable record of each earned reward/points entry —
     /// see <see cref="RewardLedgerEntry"/>.</summary>

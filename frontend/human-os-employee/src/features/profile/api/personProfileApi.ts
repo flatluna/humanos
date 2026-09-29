@@ -97,6 +97,14 @@ export function updateMyProfile(personId: string, body: UpsertPersonProfileReque
   return apiPut<PersonProfileDto>(`/people/${personId}/profile`, body);
 }
 
+export interface UpdatePersonOrgRoleRequest {
+  orgRole: string;
+}
+
+export function updatePersonOrgRole(personId: string, orgRole: string): Promise<PersonDto> {
+  return apiPut<PersonDto>(`/people/${personId}/org-assignment`, { orgRole });
+}
+
 /** Uploads a new profile photo (overwrites any existing one — the backend
  *  always writes it to a single `{personId}/photo.{ext}` blob path). */
 export function uploadProfilePhoto(personId: string, file: File): Promise<{ personId: string; photoUrl: string }> {

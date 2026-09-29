@@ -38,6 +38,14 @@ public sealed class StructuredLearningCostService
         return 0m;
     }
 
+    private decimal ReadImageRate()
+    {
+        var raw = _configuration["AgentPricing:PerImage"];
+        return decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0.04m;
+    }
+
     public async Task<IReadOnlyList<StructuredLearningCostSummaryResponse>> GetSummariesAsync(
         Guid? tenantId = null,
         CancellationToken cancellationToken = default)
@@ -244,5 +252,122 @@ public sealed class StructuredLearningCostService
             VideoCostUsd = videoCostUsd,
             EstimatedCostUsd = Math.Round(estimate.TotalCostUsd + videoCostUsd, 4),
         };
+    }
+
+    /// <summary>Per-engram breakdown for one document — everything billed to
+    /// each individual section: initial design generation (Extraction/
+    /// KnowledgeGraph/Pedagogy) AND every later edit (manual or AI both
+    /// trigger real "Edit"/"KnowledgeGraph"/"KnowledgeFacts" LLM calls, see
+    /// StructuredLearningReviewService), plus that engram's own images/
+    /// videos. Lets a designer answer "what did THIS engram really cost"
+    /// for client billing, instead of only a whole-document total.</summary>
+    public async Task<IReadOnlyList<StructuredLearningEngramCostResponse>> GetPerEngramAsync(
+        Guid documentId, Guid? onlySectionId = null, CancellationToken cancellationToken = default)
+    {
+        var sectionsQuery = _dbContext.StructuredLearningDocumentSections
+            .AsNoTracking()
+            .Where(s => s.StructuredLearningDocumentId == documentId);
+        if (onlySectionId is Guid sectionId)
+        {
+            sectionsQuery = sectionsQuery.Where(s => s.StructuredLearningDocumentSectionId == sectionId);
+        }
+        var sections = await sectionsQuery
+            .OrderBy(s => s.SortOrder)
+            .Select(s => new { s.StructuredLearningDocumentSectionId, s.ChapterTitle, s.SubchapterTitle })
+            .ToListAsync(cancellationToken);
+
+        var usageRows = await _dbContext.StructuredLearningGenerationUsages
+            .AsNoTracking()
+            .Where(u => u.StructuredLearningDocumentId == documentId && u.StructuredLearningDocumentSectionId != null)
+            .ToListAsync(cancellationToken);
+
+        var illustrations = await _dbContext.StructuredLearningIllustrations
+            .AsNoTracking()
+            .Where(i => i.StructuredLearningDocumentSectionId != null)
+            .Join(
+                _dbContext.StructuredLearningDocumentSections.AsNoTracking().Where(s => s.StructuredLearningDocumentId == documentId),
+                illustration => illustration.StructuredLearningDocumentSectionId,
+                section => section.StructuredLearningDocumentSectionId,
+                (illustration, section) => new { section.StructuredLearningDocumentSectionId, illustration.MediaType, illustration.ImageModel })
+            .ToListAsync(cancellationToken);
+
+        var results = new List<StructuredLearningEngramCostResponse>(sections.Count);
+        foreach (var section in sections)
+        {
+            var rows = usageRows.Where(u => u.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId).ToList();
+            var sectionIllustrations = illustrations.Where(i => i.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId).ToList();
+            var imagesGeneratedCount = sectionIllustrations.Count(i => i.MediaType != "Video");
+            var videosGeneratedCount = sectionIllustrations.Count(i => i.MediaType == "Video");
+            var videoCostUsd = Math.Round(sectionIllustrations.Where(i => i.MediaType == "Video").Sum(i => VideoCostForModel(i.ImageModel)), 4);
+
+            if (rows.Count == 0 && imagesGeneratedCount == 0 && videosGeneratedCount == 0)
+            {
+                continue;
+            }
+
+            var tokenUsage = rows
+                .Select(u => new AgentTokenUsage
+                {
+                    AgentName = u.AgentName,
+                    ModelName = u.ModelName ?? string.Empty,
+                    InputTokens = u.InputTokens,
+                    OutputTokens = u.OutputTokens,
+                    CachedInputTokens = u.CachedInputTokens,
+                })
+                .ToList();
+            var estimate = TokenCostEstimator.Estimate(tokenUsage, imagesGeneratedCount, _configuration);
+            var modelBreakdown = TokenCostEstimator.EstimateByModel(tokenUsage, _configuration)
+                .Select(m => new StructuredLearningEngramModelCostResponse
+                {
+                    ModelName = m.ModelName,
+                    CallCount = m.CallCount,
+                    InputTokens = m.BillableInputTokens + m.CachedInputTokens,
+                    CachedInputTokens = m.CachedInputTokens,
+                    OutputTokens = m.OutputTokens,
+                    InputRatePerMillionTokens = m.InputRatePerMillionTokens,
+                    CachedInputRatePerMillionTokens = m.CachedInputRatePerMillionTokens,
+                    OutputRatePerMillionTokens = m.OutputRatePerMillionTokens,
+                    InputCostUsd = m.InputCostUsd,
+                    CachedInputCostUsd = m.CachedInputCostUsd,
+                    OutputCostUsd = m.OutputCostUsd,
+                    TotalCostUsd = m.TotalCostUsd,
+                })
+                .ToList();
+            var imageRate = ReadImageRate();
+            var videoModelBreakdown = sectionIllustrations
+                .Where(i => i.MediaType == "Video")
+                .GroupBy(i => string.IsNullOrWhiteSpace(i.ImageModel) ? "(unknown model)" : i.ImageModel!)
+                .Select(g => new StructuredLearningEngramVideoModelCostResponse
+                {
+                    ModelName = g.Key,
+                    VideoCount = g.Count(),
+                    RatePerVideoUsd = VideoCostForModel(g.Key),
+                    TotalCostUsd = Math.Round(g.Count() * VideoCostForModel(g.Key), 4),
+                })
+                .ToList();
+
+            results.Add(new StructuredLearningEngramCostResponse
+            {
+                StructuredLearningDocumentSectionId = section.StructuredLearningDocumentSectionId,
+                ChapterTitle = section.ChapterTitle,
+                SubchapterTitle = section.SubchapterTitle,
+                Steps = string.Join(", ", rows.Select(u => u.StepName).Distinct()),
+                CallCount = rows.Count,
+                InputTokens = rows.Sum(u => (long)u.InputTokens),
+                OutputTokens = rows.Sum(u => (long)u.OutputTokens),
+                CachedInputTokens = rows.Sum(u => (long)u.CachedInputTokens),
+                ModelBreakdown = modelBreakdown,
+                LlmCostUsd = Math.Round(estimate.TotalCostUsd - estimate.ImageCostUsd, 4),
+                ImagesGeneratedCount = imagesGeneratedCount,
+                ImageRatePerImageUsd = imageRate,
+                ImageCostUsd = estimate.ImageCostUsd,
+                VideosGeneratedCount = videosGeneratedCount,
+                VideoModelBreakdown = videoModelBreakdown,
+                VideoCostUsd = videoCostUsd,
+                TotalCostUsd = Math.Round(estimate.TotalCostUsd + videoCostUsd, 4),
+            });
+        }
+
+        return results;
     }
 }

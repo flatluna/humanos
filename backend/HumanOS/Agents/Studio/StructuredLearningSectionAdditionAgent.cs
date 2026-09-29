@@ -94,6 +94,11 @@ public sealed class StructuredLearningSectionAdditionAgent
         4. Never duplicate the knowledge already covered by the chapter's OTHER subchapters
            (given to you) — this must be a genuinely new, distinct topic within the chapter.
         5. LANGUAGE: match the language the OTHER subchapter titles/document are written in.
+        6. WEB SEARCH FINDINGS: if real-time web search findings are provided below, treat them as
+           verified, up-to-date source material and weave their concrete facts/examples into the
+           text instead of relying solely on your own training knowledge — but keep the same
+           length/scope/voice discipline above; the findings inform the content, they don't excuse
+           padding it out longer than the instruction implies.
         """;
 
     private readonly AIAgent? _agent;
@@ -127,7 +132,8 @@ public sealed class StructuredLearningSectionAdditionAgent
         IReadOnlyList<string> existingSubchapterTitles,
         string instruction,
         string? pedagogicalAudience,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? webSearchFindings = null)
     {
         if (_agent is null)
         {
@@ -141,6 +147,7 @@ public sealed class StructuredLearningSectionAdditionAgent
             {string.Join("\n", existingSubchapterTitles.Select(t => $"- {t}"))}
             {(string.IsNullOrWhiteSpace(pedagogicalAudience) ? "" : $"Intended audience: {pedagogicalAudience}\n")}
             Professor's instruction for the new section: {instruction}
+            {(string.IsNullOrWhiteSpace(webSearchFindings) ? "" : $"\nReal-time web search findings (use to ground/complement the text):\n{webSearchFindings}\n")}
             """;
 
         var response = await _agent.RunAsync<StructuredLearningSectionAdditionResponse>(prompt, cancellationToken: cancellationToken);

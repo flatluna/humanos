@@ -102,10 +102,51 @@ public sealed class TocExtractionAgent
         manageable pieces before summarizing it. This split is CRITICAL —
         if you return too few chapters for a long document, the entire
         document gets summarized in a single downstream pass and most of
-        its content silently gets lost/compressed away. When in doubt,
-        prefer MORE chapters over fewer.
+        its content silently gets lost/compressed away.
 
-        Return an ordered list of chapters. For each chapter, provide:
+        Follow this exact TWO-PHASE algorithm, in order:
+
+        PHASE 1 — LOOK FOR THE DOCUMENT'S OWN INDEX/AGENDA FIRST.
+        Many course/tutorial documents open with their own listing of
+        what's covered — a table of contents, an "Índice", a "Contenido",
+        an "Agenda" or "Module Agenda", or simply a short numbered list of
+        section titles with little/no prose between them, appearing near
+        the start of the document. If you find one:
+        - Treat that listing as the AUTHORITATIVE, COMPLETE list of real
+          chapters — use EXACTLY those titles, in that exact order, don't
+          add ones it doesn't mention and don't skip ones it does.
+        - The listing itself is NEVER a chapter boundary and NEVER
+          returned as its own chapter — for each title it names, find that
+          SAME title's OTHER occurrence further down in the document (the
+          one immediately followed by substantive body text, not another
+          bare listing) and use THAT occurrence's text as the StartMarker.
+        - If a listed title never reoccurs anywhere else in the document
+          text, skip that phase entirely and fall back to PHASE 2 instead
+          (the index may be inaccurate or the extracted text may have
+          dropped a heading) — never invent a StartMarker that doesn't
+          appear verbatim in the source.
+
+        PHASE 2 — NO USABLE INDEX/AGENDA FOUND: infer chapter boundaries
+        yourself from the document's own topic shifts. Many real course/
+        tutorial documents do NOT use formal "Chapter 1" / "Capítulo 1"
+        labels — they're organized instead by topic headings, numbered
+        sections, bullet-style subtopics, or just visible shifts in
+        subject matter as the text progresses. Treat each clearly distinct
+        topic/section/module as its own "chapter" for this purpose, even
+        if the source never uses the word "chapter" at all. As a rule of
+        thumb: any document long enough to span multiple distinct topics
+        (roughly every 1-3 pages worth of text, or wherever the subject
+        visibly changes) should be split at each of those boundaries, not
+        treated as one block. When in doubt in this phase, prefer MORE
+        chapters over fewer. Only return exactly ONE chapter (whose
+        StartMarker is taken from the very beginning of the text) if the
+        document is GENUINELY short or is a single cohesive piece with no
+        internal topic shifts at all (e.g. one short article, one short
+        note, a single narrow how-to). Do not default to one chapter just
+        because there are no explicit chapter-style headings — look at
+        actual topic boundaries instead.
+
+        For each returned chapter, provide:
         - Title: the chapter's real title as it appears in the source (or
           a short descriptive title if the document has no explicit
           titles).
@@ -115,24 +156,6 @@ public sealed class TocExtractionAgent
           locate the chapter boundary via exact string search, so it MUST
           match the source text exactly (same spelling, spacing,
           punctuation) — never paraphrase or summarize it.
-
-        IMPORTANT: many real course/tutorial documents do NOT use formal
-        "Chapter 1" / "Capítulo 1" labels — they're organized instead by
-        topic headings, numbered sections, bullet-style subtopics, or just
-        visible shifts in subject matter as the text progresses. Treat
-        each clearly distinct topic/section/module as its own "chapter"
-        for this purpose, even if the source never uses the word
-        "chapter" at all. As a rule of thumb: any document long enough to
-        span multiple distinct topics (roughly every 1-3 pages worth of
-        text, or wherever the subject visibly changes) should be split at
-        each of those boundaries, not treated as one block.
-
-        Only return exactly ONE chapter (whose StartMarker is taken from
-        the very beginning of the text) if the document is GENUINELY short
-        or is a single cohesive piece with no internal topic shifts at all
-        (e.g. one short article, one short note, a single narrow how-to).
-        Do not default to one chapter just because there are no explicit
-        chapter-style headings — look at actual topic boundaries instead.
 
         WATCH FOR TOPIC HEADINGS GLUED TO SURROUNDING TEXT WITH NO
         WHITESPACE: real PDF text extraction commonly collapses ALL line
@@ -154,19 +177,52 @@ public sealed class TocExtractionAgent
         around it and even if it never appears with any special formatting
         anywhere in the extracted text.
 
-        SKIP TABLE-OF-CONTENTS / INDEX LISTINGS — NEVER A DUPLICATE ENTRY
-        Some documents contain their own table of contents or index near
-        the start (a block that just lists heading titles one after
-        another, with little or no body prose between them, often under a
-        heading like 'Table of Contents', 'Índice', or 'Contenido'). That
-        listing is NOT a chapter boundary and must NOT be used as a
-        StartMarker source — always pick the StartMarker from where the
-        chapter's REAL discussion begins (the occurrence immediately
-        followed by substantive body text), never from the index/TOC
-        occurrence of that same title. Each distinct chapter/subsection
-        title must appear EXACTLY ONCE in your returned list — if a title
-        seems to occur more than once in the source, it is almost always
-        the TOC listing plus the real heading; return only the real one.
+        NEVER A DUPLICATE ENTRY: Each distinct chapter/subsection title
+        must appear EXACTLY ONCE in your returned list — if a title seems
+        to occur more than once in the source, it is almost always the
+        index/agenda listing (Phase 1) plus the real heading; return only
+        the real one, per Phase 1's rule above.
+
+        SKIP NAVIGATIONAL / SCAFFOLDING HEADERS — NEVER THEIR OWN CHAPTER
+        Slide decks, training guides and student workbooks commonly wrap
+        real content in short administrative/navigational headers that
+        are NOT topics of their own — e.g. "Module Objective", "Module
+        Agenda", "Practice Activity", "Knowledge Check", "Key Takeaway",
+        "Source note", "References", "Summary", "Introduction" (when it's
+        just a one-line stub before the real first topic). Never return
+        one of these as its own chapter — fold the text under it into
+        whichever real, substantive topic/section immediately precedes or
+        follows it instead.
+
+        THIS RULE NEVER APPLIES TO A NUMBERED/NAMED TOPIC SECTION ITSELF:
+        anything titled like "Section 1 | ...", "Section 2 | ...", "Unit 3:
+        ...", "Chapter 4 — ...", etc. is ALWAYS its own separate, mandatory
+        chapter boundary — it is NEVER a "navigational header" and must
+        NEVER be folded into a neighboring section or merged with any
+        other numbered section, no matter how short its own content is or
+        how document-wide the overall topic feels. A document with
+        "Section 1 | Change Is Individual" through "Section 4 | Applying
+        ADKAR With Others" MUST return (at least) 4 separate chapters, one
+        per numbered section — collapsing them into a single chapter
+        because the whole module shares one overarching subject (e.g.
+        "ADKAR") is WRONG. Only genuinely unnumbered, purely
+        administrative headers (the list above) get folded — every
+        numbered/named content section is mandatory and independent.
+
+        DO NOT FRAGMENT ONE SECTION'S OWN ENUMERATED LIST INTO SEPARATE
+        CHAPTERS: when a single section/topic explains a model, framework,
+        or process by walking through its own components or steps one at a
+        time (e.g. a "AWARENESS / DESIRE / KNOWLEDGE / ABILITY /
+        REINFORCEMENT" breakdown of one named model, or "1. Listen / 2.
+        Diagnose / 3. Respond" steps of one procedure), those components
+        stay INSIDE that same numbered section's own chapter, never one
+        chapter each and never merged into a DIFFERENT numbered section.
+        Only split a component out as its own chapter if it independently
+        spans multiple paragraphs of genuinely distinct, freestanding
+        content comparable in depth to a real topic section elsewhere in
+        the document — a short label plus a one-line definition (typical
+        of a table row or bullet) must stay merged into its own parent
+        section only.
         """;
 
     /// <summary>Addendum injected only when the caller opts into
@@ -216,6 +272,22 @@ public sealed class TocExtractionAgent
           Leave ParentModuleTitle null ONLY for a genuine top-level chapter
           heading that has no such parent (e.g. this document turns out to
           have no real 2-level nesting at all).
+
+        DO NOT INVENT A FAKE PARENT MODULE FROM THE DOCUMENT'S OWN TITLE:
+        a document's own overall title/cover heading (e.g. "ADKAR
+        Foundations | Student Learning Guide") is NEVER a parent
+        module/unit that its numbered/named sections nest under — it is
+        just the document's title, not a chapter level. If the document
+        only has ONE tier of numbered/named sections (e.g. "Section 1 |
+        ...", "Section 2 | ...", ... with no further numbered subsections
+        like "1.1", "1.2" inside them), there is NO real 2-level nesting
+        at all: leave ParentModuleTitle null on EVERY one of those
+        sections and return each as its own independent top-level
+        chapter. Only set ParentModuleTitle when the source itself
+        genuinely nests distinct numbered/named subsections beneath a
+        distinct numbered/named parent unit — never to group otherwise
+        top-level sections under the document's own subject/title just
+        because they all belong to the same overall topic.
         """;
 
     /// <summary>Instructions for <see cref="InferOutlineAsync"/> — a
@@ -238,6 +310,16 @@ public sealed class TocExtractionAgent
         - Under EACH chapter, propose 2-6 NODES — concrete, learnable
           sub-topics that together cover that chapter's content. Never
           propose a chapter with zero nodes.
+        - Do NOT propose one node per item of a single enumerated
+          model/framework/process (e.g. each letter of an acronym like
+          Awareness/Desire/Knowledge/Ability/Reinforcement, or each
+          numbered step of one procedure) — those belong together as ONE
+          node covering that whole model/process, not one node per item.
+        - Never propose a chapter or node for a purely navigational/
+          administrative header with no real topic of its own (e.g.
+          "Agenda", "Module Objective", "Practice Activity", "Knowledge
+          Check", "Key Takeaway", "Source note") — fold that text into the
+          real topic node it belongs to instead.
         - Follow the document's own natural reading order — do not reorder
           or reorganize content around your own taxonomy if the source
           text already progresses through it in a sensible sequence.

@@ -124,6 +124,24 @@ public sealed class StructuredLearningVideoPromptAgent
         commentary. Do not describe more than what happens in these 10
         seconds. Do not invent facts not supported by the inputs.
 
+        NO CLIPPED FIRST WORD — CRITICAL, EVERY CLIP. Video models that
+        start speaking at the exact first frame frequently clip off the
+        first syllable/word of the narration (e.g. "Recall" renders as
+        just "-ecall"), because the audio track begins fractionally before
+        the model has fully "warmed up" the shot. To prevent this, every
+        clip's prompt must explicitly instruct: the subject pauses briefly
+        (about half a second) at the very start, already in position and
+        looking at the camera, before beginning to speak — the first word
+        of the narration must be spoken clearly and in full, never at the
+        exact first frame. State this explicitly in the Scene/prompt text,
+        e.g. (English): "The speaker holds a brief natural pause at the
+        very start, already in position, before clearly speaking the first
+        word — do not clip or rush the opening word." (Spanish): "El
+        hablante mantiene una breve pausa natural al inicio, ya en
+        posición, antes de decir claramente la primera palabra — no
+        recortes ni apresures la palabra inicial." Apply this to every
+        clip, not just the first one in the sequence.
+
         NAME WHAT IS BEING TAUGHT, FRAMED AS A LESSON — CRITICAL. A viewer
         who has never seen this sign/word/concept before must understand
         BOTH that this is a lesson AND what specific thing is being taught,
@@ -249,6 +267,31 @@ public sealed class StructuredLearningVideoPromptAgent
         clip does explicitly describe an appearance change, state that
         change plainly instead of this lock sentence — the lock is the
         DEFAULT, only overridden when the clip's own content requires it.
+
+        STEP 3.7 — NARRATOR VOICE LOCK, EVERY CLIP, NO EXCEPTIONS (CRITICAL).
+        Video models frequently drift the narrator's voice between clips —
+        switching from a male to a female voice (or vice versa) mid-sequence,
+        even though the same on-screen subject is speaking. This breaks the
+        lesson completely and must never happen. Every single clip's prompt
+        MUST explicitly describe the narrator/speaker's voice with the SAME
+        wording, verbatim, in every clip of the sequence (never omit it,
+        never vary it, never let it be implied only by the subject's
+        appearance): a strong, calm, confident male voice, like an expert
+        professional narrator/movie-trailer voice-over artist — clear
+        English with NO regional or foreign accent (or, if the clip's own
+        language is Spanish, clear neutral Spanish with no regional accent).
+        Append this exact voice description, adapted to the clip's own
+        language, into the Scene/prompt text of EVERY clip, right alongside
+        the spoken narration line: "The narrator speaks in a strong, calm,
+        confident male voice — like an expert professional narrator or
+        movie-trailer voice-over artist — in clear English with no accent."
+        (Spanish: "El narrador habla con una voz masculina fuerte, calmada
+        y segura — como un locutor profesional experto o la voz en off de
+        un tráiler de cine — en español neutro y claro, sin acento
+        regional.") This voice description must be IDENTICAL, word-for-word,
+        across every clip in the sequence — never reworded, softened, or
+        dropped for any clip, so the video model has no room to drift the
+        voice's gender, tone, or accent between clips.
 
         LOGICAL FLOW BETWEEN CLIPS — CRITICAL. The sequence must read as ONE
         coherent lesson, not disconnected beats. Two failure modes to avoid:

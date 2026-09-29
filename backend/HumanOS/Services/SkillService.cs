@@ -122,9 +122,10 @@ public sealed class SkillService
                     .ToList());
 
         var matches = await GetMatchedCapabilitiesAsync(skills, cancellationToken);
+        var courseVariants = await GetMatchedCourseVariantsAsync(skills, cancellationToken);
 
         return skills
-            .Select(s => ToResponse(s, linksBySkill.GetValueOrDefault(s.SkillId, []), matches.GetValueOrDefault(s.SkillId)))
+            .Select(s => ToResponse(s, linksBySkill.GetValueOrDefault(s.SkillId, []), matches.GetValueOrDefault(s.SkillId), courseVariants.GetValueOrDefault(s.SkillId, [])))
             .ToList();
     }
 
@@ -213,6 +214,49 @@ public sealed class SkillService
         }
 
         return result;
+    }
+
+    private async Task<Dictionary<Guid, IReadOnlyList<SkillMatchedCourseResponse>>> GetMatchedCourseVariantsAsync(
+        IReadOnlyList<Skill> skills,
+        CancellationToken cancellationToken)
+    {
+        static string Normalize(string? value) => string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : System.Text.RegularExpressions.Regex.Replace(value.Trim(), @"\s+", " ");
+
+        var documents = await _dbContext.StructuredLearningDocuments
+            .AsNoTracking()
+            .Select(d => new { d.StructuredLearningDocumentId, d.DocumentName, d.TargetSkill, d.Category, d.ConfigSnapshotJson })
+            .ToListAsync(cancellationToken);
+
+        return skills.ToDictionary(
+            skill => skill.SkillId,
+            skill => (IReadOnlyList<SkillMatchedCourseResponse>)documents
+                .Where(d => (d.Category is null || d.Category == skill.Category) &&
+                    ((d.TargetSkill is not null && string.Equals(Normalize(d.TargetSkill), Normalize(skill.Name), StringComparison.OrdinalIgnoreCase)) ||
+                     string.Equals(Normalize(d.DocumentName), Normalize(skill.Name), StringComparison.OrdinalIgnoreCase)))
+                .Select(d => new SkillMatchedCourseResponse
+                {
+                    CourseId = d.StructuredLearningDocumentId,
+                    CourseName = d.DocumentName,
+                    CourseType = "structured-learning",
+                    LanguageCode = ResolveCourseLanguage(d.ConfigSnapshotJson),
+                })
+                .OrderBy(c => c.LanguageCode)
+                .ToList());
+    }
+
+    private static string ResolveCourseLanguage(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson)) return "es";
+        try
+        {
+            using var json = JsonDocument.Parse(configSnapshotJson);
+            return json.RootElement.TryGetProperty("LanguageCode", out var language)
+                ? language.GetString() ?? "es"
+                : "es";
+        }
+        catch (JsonException) { return "es"; }
     }
 
     public async Task<SkillResponse> CreateAsync(
@@ -585,7 +629,8 @@ public sealed class SkillService
     private static SkillResponse ToResponse(
         Skill skill,
         IReadOnlyList<SkillJobRoleLinkResponse> jobRoles,
-        (Guid CourseId, string CourseName, string CourseType)? matchedCapability = null) => new()
+        (Guid CourseId, string CourseName, string CourseType)? matchedCapability = null,
+        IReadOnlyList<SkillMatchedCourseResponse>? matchedCourses = null) => new()
     {
         SkillId = skill.SkillId,
         TenantId = skill.TenantId,
@@ -604,6 +649,7 @@ public sealed class SkillService
         MatchedCapabilityId = matchedCapability?.CourseId,
         MatchedCapabilityName = matchedCapability?.CourseName,
         MatchedCourseType = matchedCapability?.CourseType,
+        MatchedCourses = matchedCourses ?? [],
     };
 
     public async Task<Skill?> GetEntityByIdAsync(Guid skillId, CancellationToken cancellationToken = default)

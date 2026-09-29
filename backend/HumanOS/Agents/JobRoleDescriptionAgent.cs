@@ -125,6 +125,8 @@ public sealed class JobRoleDescriptionProposal
 /// (used verbatim in <see cref="JobRoleDescriptionMode.ImproveExisting"/> mode).</summary>
 public sealed class JobRoleDescriptionGenerationContext
 {
+    public string LanguageCode { get; init; } = "es";
+
     public required Guid TenantId { get; init; }
 
     public required JobRoleDescriptionMode Mode { get; init; }
@@ -251,8 +253,11 @@ public sealed class JobRoleDescriptionAgent
         location/travel, employment type, salary range, and benefits.
 
         LANGUAGE REQUIREMENT:
-        - You MUST generate all proposal content strictly in ENGLISH (unless the job title and all user inputs are explicitly in another language).
-        - Every responsibility, skill name, tool, certification, summary, and requirement must be in clean, professional English.
+        - The caller's prompt will include an explicit "OUTPUT LANGUAGE: English" or "OUTPUT
+          LANGUAGE: Spanish" instruction — you MUST generate every proposal field strictly in
+          THAT language, never defaulting to English regardless of the job title's own language.
+        - Every responsibility, skill name, tool, certification, summary, and requirement must be
+          in clean, professional prose in that same output language.
 
         FORMAL JOB SPECIFICATION FORMAT (NOT A RECRUITMENT AD):
         - This document is a formal, internal ORGANIZATIONAL JOB DESCRIPTION / POSITION SPECIFICATION,
@@ -541,6 +546,7 @@ public sealed class JobRoleDescriptionAgent
         {
             JobRoleDescriptionSkillLibrary.InstructionsFor(context.Mode),
             string.Empty,
+            $"OUTPUT LANGUAGE: {(context.LanguageCode.Equals("en", StringComparison.OrdinalIgnoreCase) ? "English" : "Spanish")}. Write every proposed field value in this language. Do not translate the output into another language.",
             $"COMPANY: {context.CompanyName}",
         };
 

@@ -80,6 +80,46 @@ public sealed class JobRoleConfiguration : IEntityTypeConfiguration<JobRole>
             .HasDefaultValue("[]")
             .IsRequired();
 
+        builder.Property(x => x.StartInYourRoleTechnicalSkillsJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.StartInYourRoleSoftSkillsJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.StartInYourRoleDepartmentProcessesJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.StartInYourRoleHrProcessesJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.InYourRoleTechnicalSkillsJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.InYourRoleSoftSkillsJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.InYourRoleDepartmentProcessesJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(x => x.InYourRoleHrProcessesJson)
+            .HasColumnType("nvarchar(max)")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
         builder.Property(x => x.DailyActivitiesJson)
             .HasColumnType("nvarchar(max)")
             .HasDefaultValue("[]")

@@ -55,6 +55,14 @@ export interface JobRoleDto {
   departmentProcesses: string[];
   hrProcesses: string[];
   tools: string[];
+  startInYourRoleTechnicalSkills: string[];
+  startInYourRoleSoftSkills: string[];
+  startInYourRoleDepartmentProcesses: string[];
+  startInYourRoleHrProcesses: string[];
+  inYourRoleTechnicalSkills: string[];
+  inYourRoleSoftSkills: string[];
+  inYourRoleDepartmentProcesses: string[];
+  inYourRoleHrProcesses: string[];
   dailyActivities: string[];
   performanceIndicators: string[];
   expectedOutcomes: string[];
@@ -93,6 +101,14 @@ export interface SaveJobRoleRequest {
   departmentProcesses?: string[];
   hrProcesses?: string[];
   tools?: string[];
+  startInYourRoleTechnicalSkills?: string[];
+  startInYourRoleSoftSkills?: string[];
+  startInYourRoleDepartmentProcesses?: string[];
+  startInYourRoleHrProcesses?: string[];
+  inYourRoleTechnicalSkills?: string[];
+  inYourRoleSoftSkills?: string[];
+  inYourRoleDepartmentProcesses?: string[];
+  inYourRoleHrProcesses?: string[];
   dailyActivities?: string[];
   performanceIndicators?: string[];
   expectedOutcomes?: string[];
@@ -110,6 +126,7 @@ export interface SaveJobRoleRequest {
 }
 
 export interface GenerateJobRoleDescriptionRequest {
+  languageCode?: 'es' | 'en';
   jobRoleId?: string | null;
   departmentId?: string | null;
   title: string;
@@ -322,17 +339,39 @@ export interface TenantDto {
   description: string | null;
   cultureCode: string;
   timeZone: string;
+  orgType: string;
   isActive: boolean;
 }
 
-export async function getTenant(tenantId: string): Promise<TenantDto> {
-  const { data } = await apiClient.get<TenantDto>(`/tenants/${tenantId}`);
+export async function uploadTenantLogo(tenantId: string, file: File): Promise<{ logoUrl: string }> {
+  const { data } = await apiClient.post<{ logoUrl: string }>(`/tenants/${tenantId}/logo`, file, {
+    headers: { 'Content-Type': file.type || 'image/png' },
+  });
   return data;
 }
 
+function normalizeTenant(data: TenantDto & Record<string, unknown>): TenantDto {
+  return {
+    tenantId: data.tenantId ?? (data.TenantId as string),
+    name: data.name ?? (data.Name as string),
+    slug: data.slug ?? (data.Slug as string),
+    domain: data.domain ?? (data.Domain as string | null),
+    description: data.description ?? (data.Description as string | null),
+    cultureCode: data.cultureCode ?? (data.CultureCode as string),
+    timeZone: data.timeZone ?? (data.TimeZone as string),
+    orgType: data.orgType ?? (data.OrgType as string) ?? 'Corporate',
+    isActive: data.isActive ?? (data.IsActive as boolean),
+  };
+}
+
+export async function getTenant(tenantId: string): Promise<TenantDto> {
+  const { data } = await apiClient.get<TenantDto & Record<string, unknown>>(`/tenants/${tenantId}`);
+  return normalizeTenant(data);
+}
+
 export async function updateTenant(tenantId: string, body: Partial<TenantDto>): Promise<TenantDto> {
-  const { data } = await apiClient.put<TenantDto>(`/tenants/${tenantId}`, body);
-  return data;
+  const { data } = await apiClient.put<TenantDto & Record<string, unknown>>(`/tenants/${tenantId}`, body);
+  return normalizeTenant(data);
 }
 
 // ── Departments ─────────────────────────────────────────────────────────

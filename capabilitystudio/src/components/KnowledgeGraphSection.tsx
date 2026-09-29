@@ -415,7 +415,9 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                           }`}
                         >
                           <ListFilter className="h-3 w-3" />
-                          {showEntities ? `Ocultar entidades (${entities.length})` : `Listar entidades (${entities.length})`}
+                          {showEntities
+                            ? t('structuredLearningRunProgress.hideEntities', { count: entities.length })
+                            : t('structuredLearningRunProgress.showEntities', { count: entities.length })}
                         </button>
                         <button
                           type="button"
@@ -437,7 +439,9 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                           onClick={() => setShowGraphBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showGraph }))}
                           className="rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
                         >
-                          {showGraph ? 'Ocultar grafo' : 'Mostrar grafo'}
+                          {showGraph
+                            ? t('structuredLearningRunProgress.hideGraph')
+                            : t('structuredLearningRunProgress.showGraph')}
                         </button>
                         {showGraph && (
                           <button
@@ -445,7 +449,7 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                             onClick={() => setFullscreenGraphSectionId(section.StructuredLearningDocumentSectionId)}
                             className="rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
                           >
-                            Ver grafo en grande
+                            {t('structuredLearningRunProgress.expandGraph')}
                           </button>
                         )}
                         {canRegenerateFacts && (
@@ -456,7 +460,9 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                             className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <RefreshCw className={`h-3 w-3 ${factsRegenerating[section.StructuredLearningDocumentSectionId] ? 'animate-spin' : ''}`} />
-                            {factsRegenerating[section.StructuredLearningDocumentSectionId] ? 'Regenerando…' : 'Regenerar Grafo y Knowledge Facts'}
+                            {factsRegenerating[section.StructuredLearningDocumentSectionId]
+                              ? t('structuredLearningRunProgress.regenerating')
+                              : t('structuredLearningRunProgress.regenerateGraph')}
                           </button>
                         )}
                         {secondaryCount > 0 && (
@@ -465,7 +471,9 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                             onClick={() => setShowSecondaryBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showSecondary }))}
                             className="rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
                           >
-                            {showSecondary ? `Ocultar relaciones secundarias (${secondaryCount})` : `Mostrar relaciones secundarias (${secondaryCount})`}
+                            {showSecondary
+                              ? t('structuredLearningRunProgress.hideSecondary', { count: secondaryCount })
+                              : t('structuredLearningRunProgress.showSecondary', { count: secondaryCount })}
                           </button>
                         )}
                         <button
@@ -473,14 +481,19 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                           onClick={() => setShowJsonBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showJson }))}
                           className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
                         >
-                          <Code2 className="h-3 w-3" /> {showJson ? 'Ocultar JSON' : 'Ver JSON'}
+                          <Code2 className="h-3 w-3" />{' '}
+                          {showJson
+                            ? t('structuredLearningRunProgress.hideJson')
+                            : t('structuredLearningRunProgress.viewJson')}
                         </button>
                         <button
                           type="button"
                           onClick={() => setShowTextBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !(prev[section.StructuredLearningDocumentSectionId] ?? false) }))}
                           className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[11px] text-slate-400 hover:border-white/20 hover:text-slate-200"
                         >
-                          {showTextBySection[section.StructuredLearningDocumentSectionId] ? 'Ocultar contenido' : 'Ver contenido generado'}
+                          {showTextBySection[section.StructuredLearningDocumentSectionId]
+                            ? t('structuredLearningRunProgress.hideGeneratedContent')
+                            : t('structuredLearningRunProgress.viewGeneratedContent')}
                         </button>
                       </div>
                     );
@@ -489,7 +502,10 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                   {showTextBySection[section.StructuredLearningDocumentSectionId] && (
                     <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
                       <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        Contenido generado ({section.TotalCharacters.toLocaleString()} caracteres · {section.TotalTokens.toLocaleString()} tokens)
+                        {t('structuredLearningRunProgress.generatedContent', {
+                          characters: section.TotalCharacters.toLocaleString(),
+                          tokens: section.TotalTokens.toLocaleString(),
+                        })}
                       </div>
                       <p className="max-h-96 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-300">
                         {section.Text || 'Sin contenido.'}
@@ -505,15 +521,17 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
                             {entities.length}
                           </span>
                           <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
-                            Entidades del Engram
+                            {t('structuredLearningRunProgress.engramEntities')}
                           </h4>
                         </div>
                         <span className="text-[11px] text-slate-400">
-                          {new Set(entities.map((e) => e.EntityType)).size} tipos distintos
+                          {t('structuredLearningRunProgress.entityTypes', {
+                            count: new Set(entities.map((e) => e.EntityType)).size,
+                          })}
                         </span>
                       </div>
                       {entities.length === 0 ? (
-                        <p className="text-xs text-slate-400">No hay entidades extraídas para este engrama.</p>
+                        <p className="text-xs text-slate-400">{t('structuredLearningRunProgress.noEntities')}</p>
                       ) : (
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                           {entities.map((entity) => {

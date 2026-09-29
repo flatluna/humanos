@@ -113,6 +113,15 @@ export function AttemptPage() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  // Bumped on every teardown()/new connect attempt. React StrictMode's dev-only double-invoke of
+  // the boot effect below (mount -> cleanup -> mount) used to let the FIRST connectVoice() call's
+  // still-in-flight awaits (job role/resume/session fetch, getUserMedia) finish AFTER the second
+  // boot() had already started its own connection — both then created a live RTCPeerConnection and
+  // both sent 'response.create', producing two overlapping/competing greetings ("hi... hi Brian"
+  // twice) before one of them got torn down. Every connectVoice/openRealtimeSession call now checks
+  // this epoch after each await and bails out (closing anything it created) if a newer attempt has
+  // since started.
+  const connectionEpochRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
   // Academic Defense committee: sinodales take turns sequentially over the SAME shared
   // peerConnectionRef/dataChannelRef used by single-actor Labs (see runCommitteeTurn below) —
@@ -134,6 +143,7 @@ export function AttemptPage() {
   const stopAudioMonitorRef = useRef<() => void>(() => undefined);
 
   const teardown = useCallback(() => {
+    connectionEpochRef.current += 1;
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -235,7 +245,16 @@ export function AttemptPage() {
       session: { ClientSecret: string; RealtimeCallsUrl: string },
       onActorTurnComplete: () => void,
       waitForParticipantAnswer: boolean = true,
+      // Only true for the (currently disabled) committee round-robin. BUG FIX (2026-09-22): the
+      // hand-off/response.cancel logic below used to run unconditionally for EVERY Lab attempt,
+      // including ordinary single-actor ones — every 2 student answers it sent 'response.cancel',
+      // killing the actor's in-flight response mid-sentence for no reason (there was no next
+      // actor to hand off to), then the server auto-regenerated a new one via create_response:true.
+      // That's what caused the garbled/cut-off "stutters and restarts" — the Q&A voice tutor
+      // (structured-learning) has no equivalent logic and never had this problem.
+      isCommitteeTurn: boolean = false,
     ) => {
+      const myEpoch = connectionEpochRef.current;
       gotResponseRef.current = false;
       // Committee handoff must wait for SOFIA'S ANSWER, not just for the sinodal to finish asking —
       // otherwise sinodales rotate through their own questions back-to-back and never let the
@@ -258,6 +277,10 @@ export function AttemptPage() {
       // "gets interrupted, pauses, repeats"). Locally mute the track for those turns only; real
       // Q&A turns re-enable it so genuine barge-in still works.
       micStream.getTracks().forEach((track) => { track.enabled = waitForParticipantAnswer; });
+
+      // A newer connect attempt (StrictMode double-invoke, restart, or teardown) has already
+      // superseded this one while the above awaited — do NOT create a second live peer connection.
+      if (connectionEpochRef.current !== myEpoch) return;
 
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
@@ -286,9 +309,12 @@ export function AttemptPage() {
               input: {
                 turn_detection: {
                   type: 'server_vad',
-                  threshold: 0.85,
+                  // Matches VoiceTutorAgent.tsx/RealtimeVoiceSessionService.cs's tuned value
+                  // (2026-08-27) — 0.85 was too strict to ever register a real interruption as
+                  // "the student started talking", so barge-in silently never fired.
+                  threshold: 0.65,
                   prefix_padding_ms: 300,
-                  silence_duration_ms: 700,
+                  silence_duration_ms: 650,
                   create_response: true,
                   interrupt_response: true,
                 },
@@ -342,7 +368,7 @@ export function AttemptPage() {
           // Sofia just answered this sinodal's question. Let the SAME sinodal ask a couple of
           // follow-ups (server auto-continues via create_response:true) before actually handing
           // off to the next committee member — real continuity instead of jumping every turn.
-          if (waitForParticipantAnswer && actorHasAskedRef.current) {
+          if (isCommitteeTurn && waitForParticipantAnswer && actorHasAskedRef.current) {
             actorHasAskedRef.current = false;
             answersWithThisSinodalRef.current += 1;
             if (answersWithThisSinodalRef.current < ANSWERS_BEFORE_HANDOFF) {
@@ -396,13 +422,15 @@ export function AttemptPage() {
           // The sinodal just finished asking/speaking. Arm the "waiting for Sofia's answer" flag
           // instead of handing off immediately. Fallback timeout only protects against Sofia never
           // answering out loud at all (e.g. silence/mic issue) so the committee never stalls forever.
-          actorHasAskedRef.current = true;
-          if (turnCompleteFallbackTimerRef.current !== null) window.clearTimeout(turnCompleteFallbackTimerRef.current);
-          turnCompleteFallbackTimerRef.current = window.setTimeout(() => {
-            actorHasAskedRef.current = false;
-            turnCompleteFallbackTimerRef.current = null;
-            onActorTurnComplete();
-          }, 25000);
+          if (isCommitteeTurn) {
+            actorHasAskedRef.current = true;
+            if (turnCompleteFallbackTimerRef.current !== null) window.clearTimeout(turnCompleteFallbackTimerRef.current);
+            turnCompleteFallbackTimerRef.current = window.setTimeout(() => {
+              actorHasAskedRef.current = false;
+              turnCompleteFallbackTimerRef.current = null;
+              onActorTurnComplete();
+            }, 25000);
+          }
         }
       };
 
@@ -477,7 +505,7 @@ export function AttemptPage() {
         void runCommitteeTurn(nextIndex, 'question');
       };
 
-      await openRealtimeSession(session, onActorTurnComplete, kind === 'question');
+      await openRealtimeSession(session, onActorTurnComplete, kind === 'question', true);
     },
     [orgTenantId, updateActorLabel, closeCurrentConnection, openRealtimeSession],
   );
@@ -496,6 +524,7 @@ export function AttemptPage() {
 
   const connectVoice = useCallback(
     async (attempt: AttemptItem) => {
+      const myEpoch = (connectionEpochRef.current += 1);
       try {
         // Competitive-advantage grounding: the live agent knows who it's actually talking to —
         // their real job role and résumé — so it plays its character with the participant's real
@@ -530,6 +559,9 @@ export function AttemptPage() {
         };
         employeeProfileRef.current = employeeProfile;
         const session = await getAttemptVoiceSession(attempt.IdAttempt, orgTenantId, employeeProfile);
+        // A newer connectVoice call (StrictMode double-invoke, restart/resume) has since taken
+        // over — abandon this stale attempt instead of also opening a second live connection.
+        if (connectionEpochRef.current !== myEpoch) return;
 
         if (session.Committee && session.Committee.length >= 2) {
           committeeRef.current = session.Committee;
@@ -618,8 +650,14 @@ export function AttemptPage() {
       cancelled = true;
       teardown();
     };
+    // idAttemptParam is deliberately NOT a dependency: starting a fresh attempt calls
+    // navigate(..., { replace: true }) to put the new attempt id in the URL, which used to change
+    // this exact param and re-run this whole effect — tearing down the just-opened voice session
+    // and reconnecting from scratch, so the actor greeted the student a second (or third) time
+    // with duplicated opening turns in the transcript. This effect should only re-run for a real
+    // new page load (idLab/orgTenantId changing), never because of our own internal URL rewrite.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idLab, idAttemptParam, orgTenantId]);
+  }, [idLab, orgTenantId]);
 
   const handleEndConversation = useCallback(async () => {
     if (ending) return;
@@ -914,7 +952,7 @@ export function AttemptPage() {
                 {isEn ? 'Evaluation results' : 'Resultados de la evaluación'}
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {isEn ? 'Score' : 'Puntaje'}: <span className="font-semibold text-teal-600 dark:text-teal-300">{evaluation.ScoreFinal}/10</span>{' '}
+                {isEn ? 'Score' : 'Puntaje'}: <span className="font-semibold text-teal-600 dark:text-teal-300">{evaluation.ScoreFinal}/5</span>{' '}
                 · {evaluation.Resultado}
               </p>
             </div>
@@ -962,7 +1000,7 @@ export function AttemptPage() {
                   <li key={i} className="rounded-lg border border-slate-200 p-3 dark:border-white/10">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-slate-900 dark:text-white">{c.CriterionName}</span>
-                      <span className="text-sm font-semibold text-teal-600 dark:text-teal-300">{c.Score}/10</span>
+                      <span className="text-sm font-semibold text-teal-600 dark:text-teal-300">{c.Score}/5</span>
                     </div>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{c.Evidence}</p>
                   </li>
@@ -988,14 +1026,14 @@ export function AttemptPage() {
                       </div>
                       <span
                         className={`flex-none rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          t.Score >= 7
+                          t.Score >= 4
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
-                            : t.Score >= 4
+                            : t.Score >= 3
                             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300'
                             : 'bg-red-500/15 text-red-600 dark:text-red-300'
                         }`}
                       >
-                        {t.Score}/10
+                        {t.Score}/5
                       </span>
                     </div>
                     <p className="mt-2 text-sm italic text-slate-600 dark:text-slate-300">"{t.Answer}"</p>

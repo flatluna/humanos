@@ -194,6 +194,94 @@ public sealed class StructuredLearningProfessorLectureService
         return lectureResult;
     }
 
+    /// <summary>
+    /// Re-synthesizes ONLY the audio for a section's Teaching step, using its CURRENT
+    /// Content verbatim (no rewrite via <see cref="StructuredLearningProfessorLectureAgent"/>) —
+    /// the escape hatch for when a reviewer edited the Content manually or via
+    /// StructuredLearningStepEditorAgent (e.g. translated it, fixed a mistake) and just wants
+    /// the audio to match the text now on screen, instead of the agent re-inventing a new
+    /// script from it (which could silently drift language/wording again).
+    /// </summary>
+    public async Task<string> RegenerateAudioFromCurrentContentAsync(Guid sectionId, CancellationToken cancellationToken = default)
+    {
+        if (!_speechService.IsConfigured || !_illustrationStorage.IsConfigured)
+        {
+            throw new InvalidOperationException("Audio synthesis is not configured (missing Azure Speech / storage settings).");
+        }
+
+        var section = await _dbContext.StructuredLearningDocumentSections
+            .Include(s => s.Document)
+            .Include(s => s.Steps)
+            .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Structured learning section with ID '{sectionId}' was not found.");
+
+        var teachingStep = section.Steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching)
+            ?? throw new InvalidOperationException("This section has no Teaching step yet.");
+
+        if (string.IsNullOrWhiteSpace(teachingStep.Content))
+        {
+            throw new InvalidOperationException("The Teaching step has no text to synthesize.");
+        }
+
+        var languageCode = ResolveLanguageCode(section.Document?.ConfigSnapshotJson, teachingStep.Content);
+        var voiceName = languageCode == "en" ? "en-US-AndrewNeural" : "es-MX-CecilioNeural";
+
+        var audioBytes = await _speechService.SynthesizeAsync(teachingStep.Content, voiceName, cancellationToken);
+        using var audioStream = new MemoryStream(audioBytes);
+
+        var storagePath = await _illustrationStorage.UploadLectureAudioAsync(
+            section.TenantId,
+            section.StructuredLearningDocumentId,
+            section.StructuredLearningDocumentSectionId,
+            audioStream,
+            contentType: "audio/mpeg",
+            cancellationToken: cancellationToken);
+
+        Guid? illustrationId = null;
+        List<string> existingCitations = [];
+        JsonElement? existingProfessorLecture = null;
+        if (!string.IsNullOrWhiteSpace(teachingStep.StepDataJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(teachingStep.StepDataJson);
+                if (doc.RootElement.TryGetProperty("IllustrationId", out var ilProp) && ilProp.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(ilProp.GetString(), out var parsedId))
+                {
+                    illustrationId = parsedId;
+                }
+                if (doc.RootElement.TryGetProperty("WebSearchCitations", out var citProp) && citProp.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var c in citProp.EnumerateArray())
+                    {
+                        var str = c.GetString();
+                        if (!string.IsNullOrWhiteSpace(str)) existingCitations.Add(str);
+                    }
+                }
+                if (doc.RootElement.TryGetProperty("ProfessorLecture", out var lectureProp))
+                {
+                    existingProfessorLecture = lectureProp.Clone();
+                }
+            }
+            catch (JsonException)
+            {
+                // Same graceful-skip rationale as GenerateLectureForSectionAsync's own StepDataJson parsing.
+            }
+        }
+
+        teachingStep.StepDataJson = JsonSerializer.Serialize(new
+        {
+            IllustrationId = illustrationId,
+            SpeechStoragePath = storagePath,
+            ProfessorLecture = existingProfessorLecture,
+            WebSearchCitations = existingCitations
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return storagePath;
+    }
+
     private static string ResolveLanguageCode(string? configSnapshotJson, string sampleText)
     {
         if (!string.IsNullOrWhiteSpace(configSnapshotJson))

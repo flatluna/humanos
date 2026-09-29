@@ -9,6 +9,7 @@ import {
   getMyProfile,
   getProfilePhotoUrl,
   updateMyProfile,
+  updatePersonOrgRole,
   uploadProfilePhoto,
   type PersonProfileDto,
   type UpsertPersonProfileRequest,
@@ -178,14 +179,21 @@ const labelClass = 'block text-xs font-medium text-slate-500 dark:text-white/50'
  *  /people/{personId}/profile endpoints as EmployeeDetailPage's résumé
  *  section relies on indirectly (PersonProfileService). */
 export function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { t, language } = useI18n();
   const personId = user?.personId ?? '';
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<ProfileFormState>(emptyForm);
+  const [selectedOrgRole, setSelectedOrgRole] = useState<string>(user?.orgRole ?? 'Employee');
   const [savedMessage, setSavedMessage] = useState(false);
+
+  useEffect(() => {
+    if (user?.orgRole) {
+      setSelectedOrgRole(user.orgRole);
+    }
+  }, [user?.orgRole]);
 
   const profileQuery = useQuery({
     queryKey: ['my-profile', personId],
@@ -265,9 +273,20 @@ export function ProfilePage() {
 
   const [isPhotoZoomOpen, setIsPhotoZoomOpen] = useState(false);
 
+  const orgRoleMutation = useMutation({
+    mutationFn: (newRole: string) => updatePersonOrgRole(personId, newRole),
+    onSuccess: async () => {
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ['my-profile', personId] });
+    },
+  });
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmedPhone = form.phoneNumber.trim();
+    if (selectedOrgRole !== user?.orgRole) {
+      orgRoleMutation.mutate(selectedOrgRole);
+    }
     saveMutation.mutate({
       firstName: form.firstName || null,
       lastName: form.lastName || null,
@@ -491,6 +510,18 @@ export function ProfilePage() {
                 value={form.dateOfBirth}
                 onChange={(e) => handleChange('dateOfBirth', e.target.value)}
               />
+            </label>
+            <label>
+              <span className={labelClass}>{language === 'es' ? 'Tipo de empleado / Rol' : 'Employee Type / Role'}</span>
+              <select
+                className={`${inputClass} font-medium text-brand-700 dark:text-brand-300`}
+                value={selectedOrgRole}
+                onChange={(e) => setSelectedOrgRole(e.target.value)}
+              >
+                <option value="Employee">{ORG_ROLE_LABELS[language].Employee ?? 'Empleado'}</option>
+                <option value="Manager">{ORG_ROLE_LABELS[language].Manager ?? 'Gerente'}</option>
+                <option value="HRAdmin">{ORG_ROLE_LABELS[language].HRAdmin ?? 'Administrador RRHH'}</option>
+              </select>
             </label>
             <label>
               <span className={labelClass}>{t.profileOccupation}</span>

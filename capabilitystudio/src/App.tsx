@@ -26,6 +26,8 @@ import AiAgentsDomainPage from './pages/AiAgentsDomainPage';
 import AiAgentsTopicPage from './pages/AiAgentsTopicPage';
 import AiAgentsChatPage from './pages/AiAgentsChatPage';
 import FilmProductionsPage from './pages/FilmProductionsPage';
+import VideoProductionsPage from './pages/VideoProductionsPage';
+import VideoProjectsGalleryPage from './pages/VideoProjectsGalleryPage';
 import ProgramEntitiesPage from './pages/ProgramEntitiesPage';
 import ProgramEntitiesIndexPage from './pages/ProgramEntitiesIndexPage';
 import LabsPage from './pages/LabsPage';
@@ -67,6 +69,9 @@ export default function App() {
           <Route path="/program-entities" element={<ProgramEntitiesIndexPage />} />
           <Route path="/costs" element={<CostDashboardPage />} />
           <Route path="/film-productions" element={<FilmProductionsPage />} />
+          <Route path="/video-productions" element={<VideoProjectsGalleryPage />} />
+          <Route path="/video-productions/new" element={<VideoProductionsPage />} />
+          <Route path="/video-productions/:videoProductionId" element={<VideoProductionsPage />} />
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/labs/:labId" element={<LabDetailPage />} />
           <Route path="/labs/new-ai" element={<LabBuilderPage />} />

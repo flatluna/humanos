@@ -22,6 +22,7 @@ import {
   BookOpen,
   ArrowRight,
   Download,
+  Volume2,
 } from 'lucide-react';
 import { getNodeSummary, type NodeSummaryDto } from '@/features/capabilities/api/runtimeSessionApi';
 import {
@@ -357,6 +358,7 @@ export function EngramDetailPanel({
   const [slDeepDiveStepId, setSlDeepDiveStepId] = useState<string | null>(null);
   const [slTeachingStepId, setSlTeachingStepId] = useState<string | null>(null);
   const [slTeachingIllustrationId, setSlTeachingIllustrationId] = useState<string | null>(null);
+  const [slHasTeachingAudio, setSlHasTeachingAudio] = useState(false);
   const [slVideos, setSlVideos] = useState<StructuredLearningSectionVideo[]>([]);
   const [slKnowledgeFacts, setSlKnowledgeFacts] = useState<StructuredLearningKnowledgeFactsResponse | null>(null);
   const [expandedFactEvidence, setExpandedFactEvidence] = useState<Record<string, boolean>>({});
@@ -372,6 +374,7 @@ export function EngramDetailPanel({
   const [engramOpen, setEngramOpen] = useState(false);
   const [cardModalIndex, setCardModalIndex] = useState<number | null>(null);
   const [cardAgentActive, setCardAgentActive] = useState(false);
+  const [showOriginalText, setShowOriginalText] = useState(false);
 
   useEffect(() => {
     getLearnerProfile(personId)
@@ -382,6 +385,7 @@ export function EngramDetailPanel({
   useEffect(() => {
     setCardModalIndex(null);
     setCardAgentActive(false);
+    setShowOriginalText(false);
     setRewardBreakdownOpen(false);
     setActiveTab('learn');
 
@@ -392,6 +396,7 @@ export function EngramDetailPanel({
       setSlDeepDiveStepId(null);
       setSlTeachingStepId(null);
       setSlTeachingIllustrationId(null);
+      setSlHasTeachingAudio(false);
       setSlSectionText(null);
       setSlTeachingContent(null);
       setSlHypothesisQuestions([]);
@@ -431,6 +436,9 @@ export function EngramDetailPanel({
           const productionStep = section?.Steps.find((s) => s.StepType === 'Production');
           setSlTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
           setSlDeepDiveStepId(deepDiveStep?.StructuredLearningSectionStepId ?? null);
+          setSlHasTeachingAudio(Boolean(
+            teachingStep?.StepDataJson && (teachingStep.StepDataJson.includes('SpeechStoragePath') || teachingStep.StepDataJson.includes('ProfessorLecture'))
+          ));
           if (teachingStep?.Content) {
             setSlTeachingContent(teachingStep.Content);
           }
@@ -641,6 +649,22 @@ export function EngramDetailPanel({
 
           {activeTab === 'learn' && (
             <div className="mt-4 space-y-4">
+              {neuron.isStructuredLearning && slHasTeachingAudio && (
+                <div className="flex flex-col gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] p-3.5">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-400">
+                    <Volume2 className="h-4 w-4" />
+                    <span>{language === 'en' ? 'Listen to the lecture' : 'Escucha la clase'}</span>
+                  </div>
+                  <audio
+                    key={neuron.structuredLearningSectionId}
+                    controls
+                    className="w-full h-10"
+                    src={`${API_BASE_URL}/studio/structured-learning/sections/${neuron.structuredLearningSectionId}/audio`}
+                  >
+                    {language === 'en' ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducción de audio.'}
+                  </audio>
+                </div>
+              )}
               {slTeachingIllustrationId && (
                 <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30">
                   <img
@@ -673,6 +697,21 @@ export function EngramDetailPanel({
                 <p className="text-sm text-white/50">
                   {language === 'en' ? 'No text available for this engram.' : 'No hay texto disponible para este engrama.'}
                 </p>
+              )}
+              {neuron.isStructuredLearning && slSectionText && slSectionText.trim() !== engramText.trim() && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.02]">
+                  <button
+                    type="button"
+                    onClick={() => setShowOriginalText((prev) => !prev)}
+                    className="flex w-full items-center justify-between gap-2 px-4 py-3 text-xs font-semibold text-white/60 hover:text-white"
+                  >
+                    <span>{language === 'en' ? 'Original source text' : 'Texto original de la fuente'}</span>
+                    {showOriginalText ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {showOriginalText && (
+                    <p className="whitespace-pre-wrap border-t border-white/10 px-4 py-3 text-sm text-white/70">{slSectionText}</p>
+                  )}
+                </div>
               )}
             </div>
           )}

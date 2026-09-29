@@ -68,6 +68,48 @@ select option {
   animation: loadingBar 1.4s ease-in-out infinite;
 }
 
+@keyframes buddyFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-buddyFloat {
+  animation: buddyFloat 3s ease-in-out infinite;
+}
+
+@keyframes humanOsAgentPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(250 204 21 / 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgb(250 204 21 / 0);
+  }
+}
+
+.animate-humanOsAgentPulse {
+  animation: humanOsAgentPulse 2s ease-in-out infinite;
+}
+
+@keyframes humanOsAgentArrow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+.animate-humanOsAgentArrow {
+  animation: humanOsAgentArrow 1.2s ease-in-out infinite;
+}
+
 .input {
   @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none dark:border-white/10 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-slate-500;
 }

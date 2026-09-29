@@ -19,6 +19,7 @@ import {
   BookOpen,
   X,
   Globe,
+  Clock,
 } from 'lucide-react';
 import {
   getStructuredLearningExtractionStatus,
@@ -748,6 +749,15 @@ function SectionViewer({ section }: { section: StructuredLearningDocumentDetail[
         </div>
         <div className="flex items-center gap-2">
           <span className={`rounded-lg border px-2 py-1 text-[11px] font-medium ${statusColor}`}>{section.PedagogyStatus}</span>
+          {section.PedagogyStatus === 'Completed' && typeof section.EstimatedMinutesToComplete === 'number' && (
+            <span
+              className="flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2 py-1 text-[11px] font-medium text-amber-300"
+              title="Estimated time to complete this Engram"
+            >
+              <Clock className="h-3 w-3" />
+              {section.EstimatedMinutesToComplete} min
+            </span>
+          )}
           {open ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
         </div>
       </button>

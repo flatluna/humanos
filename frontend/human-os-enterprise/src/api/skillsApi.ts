@@ -43,6 +43,12 @@ export interface SkillDto {
   matchedCapabilityId: string | null;
   matchedCapabilityName: string | null;
   matchedCourseType?: 'structured-learning' | 'graph' | null;
+  matchedCourses?: Array<{
+    courseId: string;
+    courseName: string;
+    courseType: 'structured-learning' | 'graph';
+    languageCode: 'es' | 'en';
+  }>;
 }
 
 export interface SkillJobRoleLinkRequest {

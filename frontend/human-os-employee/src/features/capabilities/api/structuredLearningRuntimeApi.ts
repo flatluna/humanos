@@ -83,6 +83,8 @@ export interface StructuredLearningDocumentSummary {
   coverIllustrationId?: string | null;
   category?: string | null;
   targetSkill?: string | null;
+  /** "es"/"en" — see StructuredLearningLanguageHeuristic (server-side). */
+  language?: string;
 }
 
 export function getStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {

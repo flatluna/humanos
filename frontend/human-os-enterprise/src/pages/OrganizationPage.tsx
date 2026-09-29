@@ -144,6 +144,14 @@ export function OrganizationPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/organizacion/editar')}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-violet-300 hover:text-violet-700 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:hover:border-violet-500/40 dark:hover:text-violet-300"
+          >
+            <Building2 className="h-4 w-4" />
+            Editar empresa
+          </button>
           <input
             ref={fileInputRef}
             type="file"

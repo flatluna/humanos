@@ -382,6 +382,21 @@ export function setStructuredLearningStepContent(
   return apiPost<StructuredLearningStepDetail>(`/studio/structured-learning/sections/${sectionId}/steps/${stepType}/content`, { content, confirmed });
 }
 
+/** Re-synthesizes the Teaching step's audio from its CURRENT Content
+ * verbatim (no AI rewrite) — run right after editing the Teaching text
+ * (manually or via editStructuredLearningStep) so the narration matches. */
+export function regenerateStructuredLearningLectureAudio(sectionId: string): Promise<{ SectionId: string; SpeechStoragePath: string }> {
+  return apiPost<{ SectionId: string; SpeechStoragePath: string }>(`/studio/structured-learning/sections/${sectionId}/professor-lecture/audio/regenerate`, {});
+}
+
+/** Manual "Regenerar entidades" trigger — replays Knowledge Graph entity
+ * extraction for one Engram, e.g. after editing its text. Must run BEFORE
+ * generateStructuredLearningConnections/generateStructuredLearningKnowledgeFacts
+ * for the freshly-edited text's entities to exist as candidates. */
+export function generateStructuredLearningEntities(sectionId: string): Promise<{ SectionId: string; LinksCreated: number }> {
+  return apiPost<{ SectionId: string; LinksCreated: number }>(`/studio/structured-learning/sections/${sectionId}/entities/generate`, {});
+}
+
 export function addStructuredLearningDeepDiveCard(sectionId: string, instruction: string): Promise<StructuredLearningStepDetail> {
   return apiPost<StructuredLearningStepDetail>(`/studio/structured-learning/sections/${sectionId}/deepdive/cards/add`, { instruction });
 }
@@ -636,7 +651,8 @@ export function addStructuredLearningSection(
   illustrationMode: string = 'AiGenerated',
   uploadedImageBase64?: string | null,
   uploadedImageContentType?: string | null,
-  referenceImageUsageInstruction?: string | null
+  referenceImageUsageInstruction?: string | null,
+  usePerplexitySearch?: boolean | null
 ): Promise<StructuredLearningSectionDetail> {
   return apiPost<StructuredLearningSectionDetail>(`/studio/structured-learning/${documentId}/sections/add`, {
     chapterTitle,
@@ -648,6 +664,7 @@ export function addStructuredLearningSection(
     uploadedImageBase64,
     uploadedImageContentType,
     referenceImageUsageInstruction,
+    usePerplexitySearch,
   });
 }
 
@@ -678,6 +695,9 @@ export interface StructuredLearningSectionDetail {
   KnowledgeGraphRootEntityName?: string | null;
   WebSearchSources?: string[] | null;
   HasApiData?: boolean;
+  /** Estimated minutes for a learner to complete this Engram — derived
+   * server-side from real input/output token usage plus illustration count. */
+  EstimatedMinutesToComplete?: number;
   Steps: StructuredLearningStepDetail[];
 }
 
@@ -691,6 +711,7 @@ export interface StructuredLearningDocumentDetail {
   Category?: string | null;
   TargetSkill?: string | null;
   ExecutiveSummary?: string | null;
+  LanguageCode?: 'es' | 'en' | null;
   CoverIllustrationId?: string | null;
   PedagogicalAudience: string | null;
   PromptVersion?: string | null;
@@ -762,6 +783,8 @@ export interface StructuredLearningDocumentSummary {
   CoverIllustrationId: string | null;
   Category?: string | null;
   TargetSkill?: string | null;
+  /** "es"/"en" — see StructuredLearningLanguageHeuristic (server-side). */
+  Language?: string;
 }
 
 export function getStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {

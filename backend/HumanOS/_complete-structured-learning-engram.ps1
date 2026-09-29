@@ -17,6 +17,14 @@ function Get-Section {
     return $doc.sections | Where-Object { $_.structuredLearningDocumentSectionId -eq $SectionId }
 }
 
+# PS5.1's Invoke-RestMethod mis-encodes non-ASCII (curly quotes, em-dash, ®) in -Body strings,
+# producing server-side "InvalidJson" 400s. Force UTF-8 bytes instead.
+function Invoke-Utf8Post($Uri, $Obj) {
+    $json = $Obj | ConvertTo-Json -Depth 5
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    return Invoke-RestMethod -Uri $Uri -Method POST -Body $bytes -ContentType "application/json; charset=utf-8"
+}
+
 $section = Get-Section
 if (-not $section) { throw "Section $SectionId not found in document $DocumentId" }
 if ($section.pedagogyStatus -ne "Completed") {
@@ -34,8 +42,7 @@ if ($hypothesisStep -and $hypothesisStep.stepDataJson) {
         if ($null -ne $correct) { $selected = $correct }
         $answers += @{ questionIndex = $i; selectedOptionIndex = $selected }
     }
-    Invoke-RestMethod -Uri "$BaseUrl/studio/structured-learning/sections/$SectionId/hypothesis/responses?personId=$PersonId" `
-        -Method POST -Body (@{ answers = $answers } | ConvertTo-Json -Depth 5) -ContentType "application/json" | Out-Null
+    Invoke-Utf8Post -Uri "$BaseUrl/studio/structured-learning/sections/$SectionId/hypothesis/responses?personId=$PersonId" -Obj @{ answers = $answers } | Out-Null
     Write-Output "[Antes de iniciar] Submitted $($answers.Count) answers."
 } else {
     Write-Output "[Antes de iniciar] No Hypothesis step/questions. Skipped."
@@ -55,8 +62,7 @@ if ($deepDiveStep -and $deepDiveStep.stepDataJson) {
         $cardIdx = [Math]::Min($state.cardIndex, $cards.Count - 1)
         $card = $cards[$cardIdx]
         $response = "$($card.Title): $($card.Text)"
-        $body = @{ studentResponse = $response; tutorPromptShown = $lastPrompt } | ConvertTo-Json -Depth 5
-        $result = Invoke-RestMethod -Uri "$BaseUrl/studio/structured-learning/sections/$SectionId/deepdive/attempt" -Method POST -Body $body -ContentType "application/json"
+        $result = Invoke-Utf8Post -Uri "$BaseUrl/studio/structured-learning/sections/$SectionId/deepdive/attempt" -Obj @{ studentResponse = $response; tutorPromptShown = $lastPrompt }
         $lastPrompt = $result.message
         $complete = $result.complete
         $cardNum = $result.cardIndex + 1
@@ -75,8 +81,7 @@ if ($recallStep) {
     $complete = $false
     $studentResponse = $null
     for ($attempt = 1; $attempt -le $MaxAttemptsPerGatedStep -and -not $complete; $attempt++) {
-        $body = @{ studentResponse = $studentResponse } | ConvertTo-Json -Depth 5
-        $result = Invoke-RestMethod -Uri "$BaseUrl/studio/structured-learning/sections/$SectionId/recall/attempt?personId=$PersonId" -Method POST -Body $body -ContentType "application/json"
+        $result = Invoke-Utf8Post -Uri "$BaseUrl/studio/structured-learning/sections/$SectionId/recall/attempt?personId=$PersonId" -Obj @{ studentResponse = $studentResponse }
         Write-Output "[Evocacion] Attempt $attempt : mastered=$($result.masteredThisAttempt) itemsMastered=$($result.itemsMastered)/$($result.itemsRequired) complete=$($result.complete)"
         $complete = $result.complete
         # Answer the question just asked (result.nextQuestion) using the section's own Teaching content as source of truth.
@@ -112,8 +117,7 @@ if ($assessmentStep) {
         } else {
             $answer = "Based on this section's teaching content: $($q.questionText)"
         }
-        $result = Invoke-RestMethod -Uri "$BaseUrl/studio/structured-learning/assessment/questions/$($q.structuredLearningAssessmentQuestionAttemptId)/answer" `
-            -Method POST -Body (@{ studentAnswer = $answer } | ConvertTo-Json) -ContentType "application/json"
+        $result = Invoke-Utf8Post -Uri "$BaseUrl/studio/structured-learning/assessment/questions/$($q.structuredLearningAssessmentQuestionAttemptId)/answer" -Obj @{ studentAnswer = $answer }
         Write-Output "[Evaluacion] Attempt $attempt : correctness=$($result.grade.correctness) roundComplete=$($result.roundComplete) passed=$($result.passed)"
         if ($result.roundComplete) {
             $passed = $result.passed

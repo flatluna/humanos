@@ -56,6 +56,7 @@ public sealed class GetTenantFunction
                 tenant.Description,
                 tenant.CultureCode,
                 tenant.TimeZone,
+                tenant.OrgType,
                 tenant.IsActive,
                 tenant.CreatedDate,
                 tenant.UpdatedDate

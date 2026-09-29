@@ -5,6 +5,9 @@ import { useMsal } from '@azure/msal-react';
 import { useAuth } from '@/auth/AuthContext';
 import { EmployeeHeader } from '@/components/layout/EmployeeHeader';
 import { EmployeeSidebar } from '@/components/navigation/EmployeeSidebar';
+import { FloatingBuddyButton } from '@/components/layout/FloatingBuddyButton';
+import { HumanOsAgentPanel } from '@/components/layout/HumanOsAgentPanel';
+import { GrowWithUsPromptModal } from '@/features/advance-your-knowledge/GrowWithUsPromptModal';
 import { AccessDenied } from '@/components/AccessDenied';
 
 const REDIRECT_GUARD_KEY = 'humanos.employee.loginRedirect.startedAt';
@@ -101,6 +104,10 @@ export function EmployeeAppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <FloatingBuddyButton />
+      <HumanOsAgentPanel />
+      <GrowWithUsPromptModal />
     </div>
   );
 }

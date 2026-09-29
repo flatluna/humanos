@@ -11,6 +11,10 @@ export const router = createBrowserRouter([
         lazy: () => import('@/pages/OrganizationPage').then((m) => ({ Component: m.OrganizationPage })),
       },
       {
+        path: 'organizacion/editar',
+        lazy: () => import('@/pages/CompanyProfilePage').then((m) => ({ Component: m.CompanyProfilePage })),
+      },
+      {
         path: 'organizacion/importar',
         lazy: () => import('@/pages/OrgChartImportPage').then((m) => ({ Component: m.OrgChartImportPage })),
       },
@@ -39,6 +43,10 @@ export const router = createBrowserRouter([
         path: 'personal/:personId/plan-capacitacion',
         lazy: () =>
           import('@/pages/EmployeeCareerPlanPage').then((m) => ({ Component: m.EmployeeCareerPlanPage })),
+      },
+      {
+        path: 'personal/:personId/intereses',
+        lazy: () => import('@/pages/EmployeeAcademicInterestsPage').then((m) => ({ Component: m.EmployeeAcademicInterestsPage })),
       },
       { path: 'roles', lazy: () => import('@/pages/RolesPage').then((m) => ({ Component: m.RolesPage })) },
       {

@@ -10,22 +10,6 @@ import { getSkills } from '@/features/capabilities/api/skillsApi';
 import { getEnrolledCapabilities } from '@/features/capabilities/api/enrolledCapabilitiesApi';
 import { getJobRole } from '@/features/profile/api/jobRoleApi';
 
-/** Company policy/compliance skills folded into "Soft Capabilities" here —
- * these DO exist as COMPANY_WIDE_ESSENTIAL skills in the catalog, matched
- * by name against getSkills() the same way StartInYourRolePage matches its
- * requiredTraining list, so real capability/engram progress links through
- * automatically. Card 1 (Start in Your Role) already covers these under
- * its own "Get to know the company"/"Required training" cards — they're
- * repeated here only because the role's own Soft Skills catalog list
- * (JobRole.SoftSkillsJson) legitimately includes them. */
-const POLICY_SKILL_NAMES = [
-  'Get to Know How We Work',
-  'Data Privacy and Protection',
-  'Workplace Health and Safety',
-  'Responsible Use of AI',
-  'Information Security',
-];
-
 export function InYourRolePage() {
   const { user } = useAuth();
   const { language } = useI18n();
@@ -49,7 +33,7 @@ export function InYourRolePage() {
     enabled: Boolean(personId),
   });
 
-  /** Matches a required-skill name (from the job role's own catalog list)
+  /** Matches a required-skill or process name (from the role's ongoing plan)
    * against the tenant's Skill catalog for its real description, a
    * capability link, and engram progress, falling back to a plain
    * "Coming soon" entry when no Skill row exists yet for that name. */
@@ -70,21 +54,31 @@ export function InYourRolePage() {
     };
   }, [enrolledQuery.data, skillsQuery.data]);
 
-  const technicalCapabilities = useMemo(
-    () => (jobRoleQuery.data?.technicalSkills ?? []).map(matchRequirement),
-    [jobRoleQuery.data?.technicalSkills, matchRequirement]
-  );
+  // Grow With Us muestra exactamente las capacidades seleccionadas por RRHH
+  // para el plan continuo del rol, no todo el catálogo general del puesto.
+  const technicalCapabilities = useMemo(() => {
+    const role = jobRoleQuery.data;
+    const rawList = role?.inYourRoleTechnicalSkills ?? [];
+    return rawList.map(matchRequirement).sort(sortReadyFirst);
+  }, [jobRoleQuery.data, matchRequirement]);
+
   const softCapabilities = useMemo(() => {
-    const combined = [...(jobRoleQuery.data?.softSkills ?? []), ...POLICY_SKILL_NAMES];
-    const seen = new Set<string>();
-    const deduped = combined.filter((name) => {
-      const key = name.trim().toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return deduped.map(matchRequirement);
-  }, [jobRoleQuery.data?.softSkills, matchRequirement]);
+    const role = jobRoleQuery.data;
+    const rawList = role?.inYourRoleSoftSkills ?? [];
+    return rawList.map(matchRequirement).sort(sortReadyFirst);
+  }, [jobRoleQuery.data, matchRequirement]);
+
+  const roleProcesses = useMemo(() => {
+    const role = jobRoleQuery.data;
+    const rawList = role?.inYourRoleDepartmentProcesses ?? [];
+    return rawList.map(matchRequirement).sort(sortReadyFirst);
+  }, [jobRoleQuery.data, matchRequirement]);
+
+  const hrProcesses = useMemo(() => {
+    const role = jobRoleQuery.data;
+    const rawList = role?.inYourRoleHrProcesses ?? [];
+    return rawList.map(matchRequirement).sort(sortReadyFirst);
+  }, [jobRoleQuery.data, matchRequirement]);
 
   if (jobRoleQuery.isLoading || skillsQuery.isLoading) {
     return <LoadingBackdrop title={isEn ? 'Loading your role capabilities...' : 'Cargando las capacidades de tu puesto...'} description={isEn ? 'Loading required skills for your role.' : 'Cargando las habilidades requeridas para tu puesto.'} />;
@@ -93,6 +87,8 @@ export function InYourRolePage() {
   const metrics: { label: string; value: string; icon: LucideIcon }[] = [
     { label: isEn ? 'Technical capabilities' : 'Capacidades técnicas', value: String(technicalCapabilities.length), icon: Cpu },
     { label: isEn ? 'Soft capabilities' : 'Capacidades blandas', value: String(softCapabilities.length), icon: Handshake },
+    { label: isEn ? 'Department processes' : 'Procesos del puesto', value: String(roleProcesses.length), icon: Briefcase },
+    { label: isEn ? 'HR & compliance' : 'Políticas y RRHH', value: String(hrProcesses.length), icon: ShieldCheck },
   ];
 
   return (
@@ -108,7 +104,7 @@ export function InYourRolePage() {
             <div className="max-w-3xl">
               <div className="flex items-center gap-2 text-sm font-semibold text-blue-100">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
-                {isEn ? 'Every day' : 'Cada día'}
+                {isEn ? 'After 90 days · Every day' : 'Después de 90 días · Cada día'}
               </div>
               <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">{isEn ? 'In Your Role' : 'En tu puesto'}</h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-blue-50 sm:text-lg">
@@ -123,32 +119,34 @@ export function InYourRolePage() {
           </div>
         </section>
 
-        <section className="mt-6 grid gap-4 sm:grid-cols-2">
+        <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {metrics.map(({ label, value, icon: MetricIcon }) => (
             <Card key={String(label)} className="border-slate-200/80 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
-              <MetricIcon className="h-5 w-5 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+              <MetricIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
               <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/45">{label}</p>
               <p className="mt-2 text-lg font-bold text-slate-950 dark:text-white">{value}</p>
             </Card>
           ))}
         </section>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <section className="flex flex-col overflow-hidden rounded-2xl border border-sky-200/70 bg-white shadow-sm shadow-sky-900/5 dark:border-sky-400/20 dark:bg-white/[0.04]" aria-labelledby="technical-capabilities-title">
-            <div className="flex items-center gap-3 border-b border-sky-100 bg-sky-50/60 px-5 py-4 dark:border-white/5 dark:bg-sky-500/10">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm">
-                <Cpu className="h-4.5 w-4.5" aria-hidden="true" />
+        {/* Bloque 1: Technical & Soft Skills */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {/* Card Habilidades Técnicas */}
+          <section className="flex flex-col overflow-hidden rounded-3xl border border-sky-200/80 bg-white shadow-md shadow-sky-900/5 dark:border-sky-400/20 dark:bg-white/[0.04]" aria-labelledby="technical-capabilities-title">
+            <div className="flex items-center gap-3 border-b border-sky-100 bg-sky-50/60 px-6 py-4 dark:border-white/5 dark:bg-sky-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm">
+                <Cpu className="h-5 w-5" aria-hidden="true" />
               </span>
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-600 dark:text-sky-300">
-                  {isEn ? 'Role Capabilities' : 'Capacidades del Puesto'}
+                  {isEn ? 'Ongoing Role Capabilities' : 'Capacidades Continuas del Puesto'}
                 </p>
                 <h2 id="technical-capabilities-title" className="truncate text-sm font-bold text-slate-950 dark:text-white">
-                  {isEn ? 'Technical Capabilities' : 'Capacidades Técnicas'}
+                  {isEn ? 'Technical Learning Plan' : 'Plan de Aprendizaje Técnico'}
                 </h2>
               </div>
             </div>
-            <div className="flex-1 space-y-2 p-4">
+            <div className="flex-1 space-y-2.5 p-5">
               {technicalCapabilities.length === 0 ? (
                 <p className="text-sm font-medium text-slate-500 dark:text-white/60">
                   {isEn ? 'No technical capabilities have been assigned yet.' : 'Aún no se han asignado capacidades técnicas.'}
@@ -161,21 +159,22 @@ export function InYourRolePage() {
             </div>
           </section>
 
-          <section className="flex flex-col overflow-hidden rounded-2xl border border-violet-200/70 bg-white shadow-sm shadow-violet-900/5 dark:border-violet-400/20 dark:bg-white/[0.04]" aria-labelledby="soft-capabilities-title">
-            <div className="flex items-center gap-3 border-b border-violet-100 bg-violet-50/60 px-5 py-4 dark:border-white/5 dark:bg-violet-500/10">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm">
-                <Handshake className="h-4.5 w-4.5" aria-hidden="true" />
+          {/* Card Habilidades Blandas */}
+          <section className="flex flex-col overflow-hidden rounded-3xl border border-violet-200/80 bg-white shadow-md shadow-violet-900/5 dark:border-violet-400/20 dark:bg-white/[0.04]" aria-labelledby="soft-capabilities-title">
+            <div className="flex items-center gap-3 border-b border-violet-100 bg-violet-50/60 px-6 py-4 dark:border-white/5 dark:bg-violet-500/10">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm">
+                <Handshake className="h-5 w-5" aria-hidden="true" />
               </span>
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-600 dark:text-violet-300">
-                  {isEn ? 'Role Capabilities' : 'Capacidades del Puesto'}
+                  {isEn ? 'Ongoing Leadership & Soft Skills' : 'Liderazgo y Habilidades Blandas'}
                 </p>
                 <h2 id="soft-capabilities-title" className="truncate text-sm font-bold text-slate-950 dark:text-white">
-                  {isEn ? 'Soft Capabilities' : 'Capacidades Blandas'}
+                  {isEn ? 'Soft Skills Learning Plan' : 'Plan de Habilidades Blandas'}
                 </h2>
               </div>
             </div>
-            <div className="flex-1 space-y-2 p-4">
+            <div className="flex-1 space-y-2.5 p-5">
               {softCapabilities.length === 0 ? (
                 <p className="text-sm font-medium text-slate-500 dark:text-white/60">
                   {isEn ? 'No soft capabilities have been assigned yet.' : 'Aún no se han asignado capacidades blandas.'}
@@ -188,6 +187,57 @@ export function InYourRolePage() {
             </div>
           </section>
         </div>
+
+        {/* Bloque 2: Department & HR Processes */}
+        {(roleProcesses.length > 0 || hrProcesses.length > 0) && (
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            {roleProcesses.length > 0 && (
+              <section className="flex flex-col overflow-hidden rounded-3xl border border-amber-200/80 bg-white shadow-md shadow-amber-900/5 dark:border-amber-400/20 dark:bg-white/[0.04]">
+                <div className="flex items-center gap-3 border-b border-amber-100 bg-amber-50/50 px-6 py-4 dark:border-white/5 dark:bg-amber-500/10">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-600 text-white shadow-sm">
+                    <Briefcase className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                      {isEn ? 'Role & Department Processes' : 'Procesos del Puesto y Departamento'}
+                    </p>
+                    <h3 className="text-sm font-bold text-slate-950 dark:text-white">
+                      {isEn ? 'Ongoing Operational Workflows' : 'Flujos de Trabajo Continuos'}
+                    </h3>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-2.5 p-5">
+                  {roleProcesses.map((requirement) => (
+                    <RequirementRow key={requirement.name} requirement={requirement} isEn={isEn} accent="amber" onSelect={setActiveRequirement} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {hrProcesses.length > 0 && (
+              <section className="flex flex-col overflow-hidden rounded-3xl border border-emerald-200/80 bg-white shadow-md shadow-emerald-900/5 dark:border-emerald-400/20 dark:bg-white/[0.04]">
+                <div className="flex items-center gap-3 border-b border-emerald-100 bg-emerald-50/50 px-6 py-4 dark:border-white/5 dark:bg-emerald-500/10">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                    <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                      {isEn ? 'HR & Corporate Policies' : 'Políticas y Procesos de RRHH'}
+                    </p>
+                    <h3 className="text-sm font-bold text-slate-950 dark:text-white">
+                      {isEn ? 'Compliance & Culture' : 'Cumplimiento y Cultura Corporativa'}
+                    </h3>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-2.5 p-5">
+                  {hrProcesses.map((requirement) => (
+                    <RequirementRow key={requirement.name} requirement={requirement} isEn={isEn} accent="emerald" onSelect={setActiveRequirement} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
       </main>
 
       {activeRequirement && (
@@ -292,6 +342,12 @@ interface RequirementMatch {
   engramProgress?: { mastered: number; total: number };
 }
 
+/** Ready-to-take lessons (a matched capability already exists) sort ahead of
+ * "Coming soon" ones, preserving each group's original relative order. */
+function sortReadyFirst(a: RequirementMatch, b: RequirementMatch): number {
+  return Number(Boolean(b.matchedCapabilityId)) - Number(Boolean(a.matchedCapabilityId));
+}
+
 /** One row in the Technical/Soft Capabilities lists — matches
  * StartInYourRolePage's requiredTraining row styling exactly, parameterized
  * by accent color since the two cards use different color families. */
@@ -303,7 +359,7 @@ function RequirementRow({
 }: {
   requirement: RequirementMatch;
   isEn: boolean;
-  accent: 'sky' | 'violet';
+  accent: 'sky' | 'violet' | 'amber' | 'emerald';
   onSelect: (requirement: { title: string; description: string; href?: string; available?: boolean; engramProgress?: { mastered: number; total: number } }) => void;
 }) {
   const { name, description, matchedCapabilityId, matchedCourseType, status, engramProgress } = requirement;
@@ -318,7 +374,14 @@ function RequirementRow({
   const engramLabel = engramProgress
     ? (isEn ? `${engramProgress.mastered}/${engramProgress.total} engrams` : `${engramProgress.mastered}/${engramProgress.total} engramas`)
     : null;
-  const hoverBorder = accent === 'sky' ? 'hover:border-sky-300 dark:hover:border-sky-400/40' : 'hover:border-violet-300 dark:hover:border-violet-400/40';
+  const hoverBorder =
+    accent === 'sky'
+      ? 'hover:border-sky-300 dark:hover:border-sky-400/40'
+      : accent === 'violet'
+        ? 'hover:border-violet-300 dark:hover:border-violet-400/40'
+        : accent === 'amber'
+          ? 'hover:border-amber-300 dark:hover:border-amber-400/40'
+          : 'hover:border-emerald-300 dark:hover:border-emerald-400/40';
 
   return (
     <button
@@ -341,7 +404,19 @@ function RequirementRow({
         {isDone ? <CheckCircle2 className="h-4.5 w-4.5" aria-hidden="true" /> : matchedCapabilityId ? <ShieldCheck className="h-4.5 w-4.5" aria-hidden="true" /> : <Clock3 className="h-4.5 w-4.5" aria-hidden="true" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{name}</span>
+        <span
+          className={`block truncate text-sm font-semibold ${
+            isDone
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : matchedCapabilityId
+                ? accent === 'sky'
+                  ? 'text-sky-700 dark:text-sky-300'
+                  : 'text-violet-700 dark:text-violet-300'
+                : 'text-slate-900 dark:text-white'
+          }`}
+        >
+          {name}
+        </span>
         <span className={`mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold ${isDone ? 'text-emerald-700 dark:text-emerald-300' : matchedCapabilityId ? 'text-slate-500 dark:text-white/55' : 'text-amber-700 dark:text-amber-300'}`}>
           {statusLabel}
           {engramLabel && <span className="text-slate-400 dark:text-white/40">· {engramLabel}</span>}

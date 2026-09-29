@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock } from 'lucide-react';
-import { getStructuredLearningCostDetail, type StructuredLearningCostDetail } from '../lib/api/costsApi';
+import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  getStructuredLearningCostDetail,
+  getStructuredLearningCostPerEngram,
+  type StructuredLearningCostDetail,
+  type StructuredLearningEngramCost,
+} from '../lib/api/costsApi';
 
 function formatMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -16,6 +21,9 @@ export default function StructuredLearningCostSection({ documentId }: { document
   const { t } = useTranslation();
   const [detail, setDetail] = useState<StructuredLearningCostDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [perEngramOpen, setPerEngramOpen] = useState(false);
+  const [perEngram, setPerEngram] = useState<StructuredLearningEngramCost[] | null>(null);
+  const [perEngramError, setPerEngramError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,6 +32,15 @@ export default function StructuredLearningCostSection({ documentId }: { document
       .catch((err) => { if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err)); });
     return () => { cancelled = true; };
   }, [documentId]);
+
+  useEffect(() => {
+    if (!perEngramOpen || perEngram) return;
+    let cancelled = false;
+    getStructuredLearningCostPerEngram(documentId)
+      .then((rows) => { if (!cancelled) setPerEngram(rows); })
+      .catch((err) => { if (!cancelled) setPerEngramError(err instanceof Error ? err.message : String(err)); });
+    return () => { cancelled = true; };
+  }, [perEngramOpen, perEngram, documentId]);
 
   if (loadError || (detail && detail.Steps.length === 0)) {
     return null;
@@ -74,6 +91,58 @@ export default function StructuredLearningCostSection({ documentId }: { document
             ))}
           </tbody>
         </table>
+      )}
+
+      {detail && (
+        <div className="mt-4 border-t border-white/5 pt-3">
+          <button
+            type="button"
+            onClick={() => setPerEngramOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-amber-300 hover:text-amber-200"
+          >
+            {perEngramOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {t('structuredLearningRunProgress.costPerEngramToggle')}
+          </button>
+
+          {perEngramOpen && (
+            <>
+              {perEngramError && <p className="mt-2 text-xs text-red-300">{perEngramError}</p>}
+              {!perEngram && !perEngramError && <p className="mt-2 text-xs text-slate-500">{t('structuredLearningRunProgress.costLoading')}</p>}
+              {perEngram && perEngram.length === 0 && <p className="mt-2 text-xs text-slate-500">{t('structuredLearningRunProgress.costPerEngramEmpty')}</p>}
+              {perEngram && perEngram.length > 0 && (
+                <table className="mt-2 w-full text-left text-xs">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wide text-slate-500">
+                      <th className="pb-1.5 pr-3 font-medium">{t('structuredLearningRunProgress.costColumnEngram')}</th>
+                      <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnCalls')}</th>
+                      <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnIn')}</th>
+                      <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnOut')}</th>
+                      <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnImages')}</th>
+                      <th className="pb-1.5 pr-3 font-medium text-right">{t('structuredLearningRunProgress.costColumnVideos')}</th>
+                      <th className="pb-1.5 font-medium text-right">{t('structuredLearningRunProgress.costColumnCost')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {perEngram.map((row) => (
+                      <tr key={row.StructuredLearningDocumentSectionId} className="text-slate-300">
+                        <td className="py-1.5 pr-3">
+                          <p className="font-medium text-slate-200">{row.SubchapterTitle}</p>
+                          <p className="text-[10px] text-slate-500">{row.ChapterTitle} · {row.Steps}</p>
+                        </td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.CallCount}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.InputTokens.toLocaleString()}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.OutputTokens.toLocaleString()}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.ImagesGeneratedCount > 0 ? row.ImagesGeneratedCount : '—'}</td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.VideosGeneratedCount > 0 ? row.VideosGeneratedCount : '—'}</td>
+                        <td className="py-1.5 text-right tabular-nums text-amber-300">${row.TotalCostUsd.toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

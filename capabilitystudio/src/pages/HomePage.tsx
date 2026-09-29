@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Sparkles, Layers, GitBranch, BookOpen, Trash2, AlertTriangle, X } from 'lucide-react';
+import { Search, Sparkles, Layers, Trash2, AlertTriangle, X } from 'lucide-react';
 import { deleteCapability, getCapabilities, type BackendCapability } from '../lib/api/capabilitiesApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
 import { deleteStructuredLearningDocument, getStructuredLearningDocuments, type StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
@@ -19,7 +19,6 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSubject, setActiveSubject] = useState<string | null>(null);
   const [activeLanguage, setActiveLanguage] = useState<'es' | 'en' | null>(null);
-  const [activeLearningMode, setActiveLearningMode] = useState<BackendCapability['LearningMode'] | null>(null);
   const [search, setSearch] = useState('');
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedCapabilityIds, setSelectedCapabilityIds] = useState<Set<string>>(new Set());
@@ -60,7 +59,6 @@ export default function HomePage() {
     return capabilities.filter((c) => {
       if (activeSubject && c.SubjectCode !== activeSubject) return false;
       if (activeLanguage && (c.ContentLanguageCode ?? 'es') !== activeLanguage) return false;
-      if (activeLearningMode && c.LearningMode !== activeLearningMode) return false;
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         if (!c.Name.toLowerCase().includes(q) && !(c.LearningSummary ?? '').toLowerCase().includes(q)) {
@@ -69,14 +67,18 @@ export default function HomePage() {
       }
       return true;
     });
-  }, [capabilities, activeSubject, activeLanguage, activeLearningMode, search]);
+  }, [capabilities, activeSubject, activeLanguage, search]);
 
   const filteredStructuredLearningDocuments = useMemo(() => {
-    if (activeSubject || activeLearningMode) return [];
-    if (!search.trim()) return structuredLearningDocuments;
+    if (activeSubject) return [];
+    let docs = structuredLearningDocuments;
+    if (activeLanguage) {
+      docs = docs.filter((d) => (d.Language ?? 'es') === activeLanguage);
+    }
+    if (!search.trim()) return docs;
     const q = search.trim().toLowerCase();
-    return structuredLearningDocuments.filter((d) => d.DocumentName.toLowerCase().includes(q));
-  }, [structuredLearningDocuments, activeSubject, activeLearningMode, search]);
+    return docs.filter((d) => d.DocumentName.toLowerCase().includes(q));
+  }, [structuredLearningDocuments, activeSubject, activeLanguage, search]);
 
   const unifiedCatalog = useMemo(() => {
     const items = [
@@ -182,22 +184,6 @@ export default function HomePage() {
             })}
           </div>
         )}
-
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
-          <SubjectPill label={t('home.allModes')} active={activeLearningMode === null} onClick={() => setActiveLearningMode(null)} icon={<Layers className="h-3.5 w-3.5" />} />
-          <SubjectPill
-            label={t('home.graphMode')}
-            active={activeLearningMode === 'GraphMemoryParadox'}
-            onClick={() => setActiveLearningMode('GraphMemoryParadox')}
-            icon={<GitBranch className="h-3.5 w-3.5" />}
-          />
-          <SubjectPill
-            label={t('home.traditionalMode')}
-            active={activeLearningMode === 'TraditionalChapters'}
-            onClick={() => setActiveLearningMode('TraditionalChapters')}
-            icon={<BookOpen className="h-3.5 w-3.5" />}
-          />
-        </div>
 
         <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
           <SubjectPill label={t('home.allLanguages')} active={activeLanguage === null} onClick={() => setActiveLanguage(null)} />

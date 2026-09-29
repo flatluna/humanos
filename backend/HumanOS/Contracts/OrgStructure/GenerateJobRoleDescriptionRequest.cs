@@ -7,6 +7,8 @@ namespace HumanOS.Contracts.OrgStructure;
 /// its own current draft.</summary>
 public sealed class GenerateJobRoleDescriptionRequest
 {
+    public string? LanguageCode { get; set; }
+
     public Guid? JobRoleId { get; set; }
 
     public Guid? DepartmentId { get; set; }

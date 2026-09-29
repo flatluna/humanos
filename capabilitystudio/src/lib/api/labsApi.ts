@@ -410,6 +410,72 @@ export async function updateObjective(idObjective: string, rowVersion: string, r
   return labsApiPatch<LabContentItem>(`/objectives/${encodeURIComponent(idObjective)}`, rowVersion, request);
 }
 
+/** Only the fields relevant to "who's hiring / what's the job" content — the server accepts the
+ * full LAB_Scenario field set (see UpdateScenarioRequest), this is the subset the Studio UI edits.
+ * ALL of these fields are read by LabSimulationPromptBuilder and sent straight into the LIVE AI
+ * agent's own instructions (not just shown to the participant) — this is exactly where full job
+ * description / hiring context belongs so the agent actually knows about it during the call. */
+export interface UpdateScenarioContentRequest {
+  Descripcion?: string;
+  ContextoParticipante?: string;
+  ProblemaCentral?: string;
+  ResultadoEsperado?: string;
+  Supuestos?: string;
+  InformacionNoRevelarAutomaticamente?: string;
+  MensajeInicial?: string;
+}
+
+/** Edits the Scenario's own text (job description / situation framing). DRAFT-only — see
+ * ScenarioService.UpdateAsync (throws ScenarioNotEditableException once approved/published).
+ * See Scenario_Update (PATCH /scenarios/{id}). */
+export async function updateScenario(idScenario: string, rowVersion: string, request: UpdateScenarioContentRequest): Promise<LabContentItem> {
+  return labsApiPatch<LabContentItem>(`/scenarios/${encodeURIComponent(idScenario)}`, rowVersion, request);
+}
+
+/** The Scenarios LIST endpoint (Scenario_ListByVersion) only returns a trimmed
+ * ScenarioListItemResponse (Nombre/Codigo/Estatus/...) — Descripcion, ContextoParticipante,
+ * ProblemaCentral etc. are NEVER included there. Must fetch the full ScenarioResponse via
+ * Scenario_GetById before populating an edit form. */
+export async function getScenarioDetail(idScenario: string): Promise<LabContentItem> {
+  return labsApiGet<LabContentItem>(`/scenarios/${encodeURIComponent(idScenario)}`);
+}
+
+/** APPROVED/PUBLISHED -> DRAFT — lets a Studio admin edit an already-published Scenario's
+ * content again (e.g. job description fields) without recreating the Lab. Must be re-approved
+ * and re-published afterward (see approveScenario/publishLabScenario). See Scenario_RevertToDraft
+ * (POST /scenarios/{id}/revert-to-draft). */
+export async function revertScenarioToDraft(idScenario: string, rowVersion: string): Promise<ScenarioResponse> {
+  return labsApiPostIfMatch<ScenarioResponse>(`/scenarios/${encodeURIComponent(idScenario)}/revert-to-draft`, rowVersion);
+}
+
+/** Subset of UpdateSimulatedActorRequest the Studio UI edits — the actor's persona/company/what
+ * they know, i.e. exactly where "who is hiring, for what role" content lives. Every one of these
+ * fields is read verbatim by LabSimulationPromptBuilder and injected into the LIVE AI agent's own
+ * instructions (not just displayed to the participant) — this is the agent's actual knowledge. */
+export interface UpdateSimulatedActorContentRequest {
+  Rol?: string;
+  Descripcion?: string;
+  Objetivo?: string;
+  ContextoConocido?: string;
+  BriefOculto?: string;
+  InformacionPuedeRevelar?: string;
+  InformacionNoRevelarAutomaticamente?: string;
+  Objeciones?: string;
+  Contradicciones?: string;
+}
+
+/** Edits one Simulated Actor's persona/context. DRAFT-only (same ETag/status rule as Scenario).
+ * See SimulatedActor_Update (PATCH /simulated-actors/{id}). */
+export async function updateSimulatedActor(idActor: string, rowVersion: string, request: UpdateSimulatedActorContentRequest): Promise<LabContentItem> {
+  return labsApiPatch<LabContentItem>(`/simulated-actors/${encodeURIComponent(idActor)}`, rowVersion, request);
+}
+
+/** Same trimmed-list problem as getScenarioDetail — SimulatedActor_ListByScenario never returns
+ * Rol/Descripcion/Objetivo/ContextoConocido/BriefOculto/etc., only fetch via GetById. */
+export async function getSimulatedActorDetail(idActor: string): Promise<LabContentItem> {
+  return labsApiGet<LabContentItem>(`/simulated-actors/${encodeURIComponent(idActor)}`);
+}
+
 // ── AI Lab Builder (AGE-LAB-001) ────────────────────────────────────────────
 // See HumanOS.SimulationLabs.Api Features/AiLabBuilder/Contracts. Generates a
 // reusable Lab draft — nothing is persisted by this call.

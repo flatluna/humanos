@@ -29,7 +29,8 @@ public sealed class PersonService
         string azureOid,
         string azureTid,
         string? email,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        PersonOrgRole orgRole = PersonOrgRole.Employee)
     {
         var person = new Person
         {
@@ -38,6 +39,7 @@ public sealed class PersonService
             AzureOid = azureOid.Trim(),
             AzureTid = azureTid.Trim(),
             Email = email?.Trim(),
+            OrgRole = orgRole,
             IsActive = true,
             LastLoginDate = DateTime.UtcNow,
             CreatedDate = DateTime.UtcNow,

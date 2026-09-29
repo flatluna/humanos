@@ -19,6 +19,22 @@ namespace HumanOS.Services;
 public sealed class GoogleVeoVideoService
 {
     private const string ModelName = "veo-3.1-fast-generate-preview";
+
+    /// <summary>Public alias of the default "-fast" tier (2026-09-24) — lets
+    /// callers record which model actually generated a clip without
+    /// duplicating the literal string.</summary>
+    public const string FastModelName = ModelName;
+
+    /// <summary>Standard (non-"fast") Veo 3.1 tier — higher quality output
+    /// than <see cref="ModelName"/> at a higher cost/latency, opt-in via
+    /// <see cref="StartGenerationAsync"/>'s <c>modelNameOverride</c> param
+    /// (2026-09-23, requested for Video Productions).</summary>
+    public const string BestQualityModelName = "veo-3.1-generate-preview";
+
+    /// <summary>Cheapest Veo 3.1 tier (~$0.05/sec vs ~$0.10/sec for Fast) —
+    /// still generates audio natively, per Google's docs (2026-09-24).</summary>
+    public const string LiteModelName = "veo-3.1-lite-generate-preview";
+
     private const string BaseUrl = "https://generativelanguage.googleapis.com/v1beta";
 
     private readonly HttpClient _httpClient;
@@ -48,7 +64,8 @@ public sealed class GoogleVeoVideoService
     /// generating a scene from scratch — per Google's docs, personGeneration
     /// must be "allow_adult" (not "allow_all") for this mode.</summary>
     public async Task<string> StartGenerationAsync(
-        string prompt, byte[]? imageBytes = null, string? imageContentType = null, CancellationToken cancellationToken = default)
+        string prompt, byte[]? imageBytes = null, string? imageContentType = null, CancellationToken cancellationToken = default,
+        string? modelNameOverride = null, string resolution = "720p")
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
@@ -92,11 +109,12 @@ public sealed class GoogleVeoVideoService
         var requestBody = new
         {
             instances = new[] { instance },
-            parameters = new { aspectRatio = "16:9", personGeneration = hasImage ? "allow_adult" : "allow_all" }
+            parameters = new { aspectRatio = "16:9", personGeneration = hasImage ? "allow_adult" : "allow_all", resolution }
         };
 
+        var effectiveModelName = modelNameOverride ?? ModelName;
         using var request = new HttpRequestMessage(
-            HttpMethod.Post, $"{BaseUrl}/models/{ModelName}:predictLongRunning");
+            HttpMethod.Post, $"{BaseUrl}/models/{effectiveModelName}:predictLongRunning");
         request.Headers.Add("x-goog-api-key", _apiKey);
         request.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 

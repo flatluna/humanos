@@ -140,13 +140,23 @@ public sealed class StructuredLearningDocumentEnrollmentService
                     .Select(i => (Guid?)i.StructuredLearningIllustrationId)
                     .FirstOrDefaultAsync(cancellationToken);
 
+            var sectionIds = document.Sections.Select(s => s.StructuredLearningDocumentSectionId).ToList();
+            var completedSectionCount = await _dbContext.StructuredLearningAssessmentRounds
+                .AsNoTracking()
+                .Where(r => r.PersonId == personId && r.Status == HumanOS.Models.Capabilities.Studio.StructuredLearningAssessmentRoundStatus.Passed && sectionIds.Contains(r.StructuredLearningDocumentSectionId))
+                .Select(r => r.StructuredLearningDocumentSectionId)
+                .Distinct()
+                .CountAsync(cancellationToken);
+
             results.Add(new EnrolledStructuredLearningDocumentResponse
             {
                 StructuredLearningDocumentId = document.StructuredLearningDocumentId,
                 DocumentName = document.DocumentName,
                 SectionCount = document.Sections.Count,
+                CompletedSectionCount = completedSectionCount,
                 CoverIllustrationId = coverIllustrationId,
-                EnrolledDate = item.EnrolledDate
+                EnrolledDate = item.EnrolledDate,
+                Language = StructuredLearningLanguageHeuristic.Resolve(document.ConfigSnapshotJson, document.ExecutiveSummary ?? document.DocumentName),
             });
         }
 

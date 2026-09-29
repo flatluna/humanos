@@ -35,7 +35,7 @@ export function EmployeeSidebar() {
   };
 
   const navLinks = [
-    { to: '/', end: true, icon: Home, label: labels.today, iconColor: 'text-blue-500 dark:text-blue-400' },
+    { to: '/', end: true, icon: Home, label: labels.today, iconColor: 'text-emerald-500 dark:text-emerald-400' },
     { to: '/programs', end: false, icon: GraduationCap, label: labels.programs, iconColor: 'text-purple-500 dark:text-purple-400' },
     { to: '/learning-labs', end: false, icon: FlaskConical, label: labels.learningLabs, iconColor: 'text-teal-500 dark:text-teal-400' },
     { to: '/program-entities', end: false, icon: Network, label: labels.programEntities, iconColor: 'text-amber-500 dark:text-amber-400' },
@@ -56,7 +56,6 @@ export function EmployeeSidebar() {
   ];
   const visibleNavLinks = navLinks.filter((link) => link.to !== '/objectives' && link.to !== '/capabilities');
   const collapsed = useSidebarStore((state) => state.collapsed);
-
   const navItemClass = ({ isActive }: { isActive: boolean }) =>
     clsx(
       'group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all',
@@ -77,7 +76,7 @@ export function EmployeeSidebar() {
   return (
     <aside
       className={clsx(
-        'flex-none border-r border-slate-200 px-4 py-6 transition-[width] dark:border-white/10',
+        'sticky top-0 h-screen flex-none self-start overflow-y-auto border-r border-slate-200 px-4 py-6 transition-[width] dark:border-white/10',
         collapsed ? 'w-16' : 'w-60',
       )}
     >

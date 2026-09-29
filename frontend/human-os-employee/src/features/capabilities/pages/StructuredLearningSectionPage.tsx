@@ -210,8 +210,27 @@ function HypothesisQuestionCard({
       </p>
 
       {submitted ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100">
-          {isEn ? 'Thank you for your responses. We now will start learning.' : 'Gracias por tus respuestas. Ahora comenzaremos a aprender.'}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100">
+            {isEn ? 'Thank you for your responses. We now will start learning.' : 'Gracias por tus respuestas. Ahora comenzaremos a aprender.'}
+          </div>
+          {questions.map((question, index) => {
+            const selectedIndex = selectedAnswers[index];
+            const selectedOption = selectedIndex !== undefined ? question.options[selectedIndex] : null;
+            return (
+              <div key={`${question.question}-answer-${index}`} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-slate-950/20">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {index + 1}. {question.question}
+                </p>
+                <p className="mt-2 flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white dark:bg-indigo-500/20 dark:text-indigo-100">
+                    {selectedIndex !== undefined ? String.fromCharCode(65 + selectedIndex) : '?'}
+                  </span>
+                  <span>{selectedOption ?? (isEn ? 'No answer recorded' : 'Sin respuesta registrada')}</span>
+                </p>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-4">

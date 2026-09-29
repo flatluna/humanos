@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
@@ -17,6 +18,21 @@ import Footer from "../components/Footer";
 export default function LandingPage() {
   const { isAuthenticated, isLoading, user, login, logout } = useAuth();
   const { t } = useTranslation();
+
+  // The HumanOS for Companies landing page (5181) sends admins here with a
+  // pending organization signup stashed in sessionStorage (see main.tsx).
+  // Skip this marketing page entirely for them — go straight to the real
+  // MSAL sign-in, then straight into the app so AuthenticatedAppLayout can
+  // show the pre-filled company onboarding form (see OnboardingPage).
+  useEffect(() => {
+    const hasPendingOrgSignup = sessionStorage.getItem('humanos.pendingOnboarding')?.includes('"mode":"organization"');
+    if (!hasPendingOrgSignup || isLoading) return;
+    if (!isAuthenticated) {
+      void login();
+    } else if (!user?.onboarded) {
+      window.location.assign('/today');
+    }
+  }, [isAuthenticated, isLoading, user, login]);
 
   return (
     <main className="bg-slate-50 text-slate-900">

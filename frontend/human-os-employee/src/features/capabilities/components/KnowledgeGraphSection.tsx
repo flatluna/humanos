@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw, X, CheckCircle2 } from 'lucide-react';
+import { Sparkles, ArrowDown, ChevronDown, ChevronRight, Code2, RefreshCw, X, CheckCircle2, ListFilter, HelpCircle } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { getMemoryColor, getMemoryTextColor, getRetrievability } from '../../brain/memoryScience';
 import { CourseGalaxy3DGraph } from './CourseGalaxy3DGraph';
@@ -189,8 +189,35 @@ export function KnowledgeFactsPanel({
   expandedEvidence: Record<string, boolean>;
   onToggleEvidence: (key: string) => void;
 }) {
+  const [showStatsHelp, setShowStatsHelp] = useState(false);
+  const STAT_EXPLANATIONS: Record<string, string> = {
+    'Total Facts': 'All Knowledge Facts derived for this Engram — the sum of every category below.',
+    'Core Facts': 'The essential, must-know facts that define this Engram’s central concept.',
+    'Supporting Facts': 'Secondary facts that add context or detail but aren’t essential on their own.',
+    'Atomic Facts': 'A fact built from a single step in the Knowledge Graph (one relationship).',
+    'Composite Facts': 'A fact built by chaining multiple Knowledge Graph relationships together.',
+  };
   return (
     <section className="space-y-3 rounded-xl border border-indigo-400/20 bg-indigo-50 dark:bg-indigo-500/[0.04] p-3" aria-label="Knowledge Facts">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setShowStatsHelp((v) => !v)}
+          className="flex items-center gap-1 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+          {showStatsHelp ? 'Hide explanation' : 'What do these numbers mean?'}
+        </button>
+      </div>
+      {showStatsHelp && (
+        <ul className="space-y-1 rounded-lg border border-indigo-200 dark:border-indigo-400/20 bg-white dark:bg-slate-950/40 p-3 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+          {Object.entries(STAT_EXPLANATIONS).map(([label, explanation]) => (
+            <li key={label}>
+              <span className="font-semibold text-slate-900 dark:text-white">{label}:</span> {explanation}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
         {[
           ['Total Facts', data.TotalFacts],
@@ -199,7 +226,11 @@ export function KnowledgeFactsPanel({
           ['Atomic Facts', data.AtomicFacts],
           ['Composite Facts', data.CompositeFacts],
         ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/30 p-2 text-center">
+          <div
+            key={String(label)}
+            title={STAT_EXPLANATIONS[String(label)]}
+            className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/30 p-2 text-center cursor-help"
+          >
             <div className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
             <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{value}</div>
           </div>
@@ -283,7 +314,7 @@ export default function KnowledgeGraphSection({
   const [documentDetail, setDocumentDetail] = useState<StructuredLearningDocumentDetail | null>(null);
   const [rawEntities, setRawEntities] = useState<StructuredLearningDocumentEntity[]>([]);
   const [rawConnections, setRawConnections] = useState<StructuredLearningConnection[]>([]);
-  const [viewMode, setViewMode] = useState<'tree' | 'galaxy'>('galaxy');
+  const [viewMode, setViewMode] = useState<'tree' | 'galaxy'>(sectionId ? 'tree' : 'galaxy');
   const [engramGraphs, setEngramGraphs] = useState<EngramGraph[] | null>(null);
   const [sectionRounds, setSectionRounds] = useState<Record<string, { status: string; completedDate?: string; finalScore?: number; roundNumber?: number }>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -300,6 +331,12 @@ export default function KnowledgeGraphSection({
   const [showFactsBySection, setShowFactsBySection] = useState<Record<string, boolean>>({});
   const [fullscreenGraphSectionId, setFullscreenGraphSectionId] = useState<string | null>(null);
   const [expandedFactsSectionIds, setExpandedFactsSectionIds] = useState<Record<string, boolean>>({});
+  // Per-engram entity list facet + per-engram 3D view (2026-09-26) — the
+  // per-section tree already showed connections as a diagram, but there
+  // was no plain filterable list of just this engram's own entities, and
+  // no 3D view scoped to a single engram (only the whole-course galaxy).
+  const [showEntitiesBySection, setShowEntitiesBySection] = useState<Record<string, boolean>>({});
+  const [show3DBySection, setShow3DBySection] = useState<Record<string, boolean>>({});
 
   const regenerateFacts = async (currentSectionId: string) => {
     setFactsRegenerating((previous) => ({ ...previous, [currentSectionId]: true }));
@@ -399,15 +436,19 @@ export default function KnowledgeGraphSection({
     };
   }, [documentId, sectionId, initialView, effectivePersonId]);
 
-  // Unique concepts across the whole document — `rawEntities` has one row
-  // PER SECTION an entity appears in, so summing per-section array lengths
-  // (the old `totalEntities`) double/triple-counted shared concepts and
-  // could show absurd totals like "1028 entities". Dedup by canonical
-  // name instead, matching the same merge CourseGalaxy3DGraph does.
+  // Unique concepts scoped to THIS engram only when a sectionId is given
+  // (2026-09-26 fix) — previously this always counted/showed the WHOLE
+  // course's entities/connections even on a single-engram page, since
+  // rawEntities/rawConnections come from the whole-document API calls.
+  // engramGraphs is already filtered to just this section by loadGraphs
+  // below, so derive totals from it directly instead of the raw lists.
   const totalEntities = useMemo(() => {
+    if (sectionId) {
+      return engramGraphs?.reduce((sum, g) => sum + g.entities.length, 0) ?? 0;
+    }
     const names = new Set(rawEntities.map((e) => e.CanonicalName.trim().toLowerCase()));
     return names.size;
-  }, [rawEntities]);
+  }, [rawEntities, sectionId, engramGraphs]);
   const totalConnections = engramGraphs?.reduce((sum, g) => sum + g.connections.length, 0) ?? 0;
   const masteredSections = engramGraphs?.filter((g) => sectionRounds[g.section.StructuredLearningDocumentSectionId]?.status === 'Passed') ?? [];
   const masteredCount = masteredSections.length;
@@ -439,30 +480,32 @@ export default function KnowledgeGraphSection({
         )}
         {engramGraphs && (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800/90 p-1 border border-slate-200 dark:border-white/10 shadow-inner">
-              <button
-                type="button"
-                onClick={() => setViewMode('galaxy')}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                  viewMode === 'galaxy'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                🌌 {t('courseMap.galaxyView')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('tree')}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                  viewMode === 'tree'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                🌳 {t('courseMap.treeView')}
-              </button>
-            </div>
+            {!sectionId && (
+              <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800/90 p-1 border border-slate-200 dark:border-white/10 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('galaxy')}
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                    viewMode === 'galaxy'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  🌌 {t('courseMap.galaxyView')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('tree')}
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                    viewMode === 'tree'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  🌳 {t('courseMap.treeView')}
+                </button>
+              </div>
+            )}
 
             <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
               {t('knowledgeGraph.entitiesAndConnections', { entities: totalEntities, connections: totalConnections })}
@@ -491,7 +534,7 @@ export default function KnowledgeGraphSection({
 
       {!engramGraphs && <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{t('knowledgeGraph.loading')}</p>}
 
-      {viewMode === 'galaxy' && documentDetail && (
+      {!sectionId && viewMode === 'galaxy' && documentDetail && (
         <div className="mt-4">
           <CourseGalaxy3DGraph
             document={documentDetail}
@@ -588,9 +631,34 @@ export default function KnowledgeGraphSection({
                     const showJson = showJsonBySection[section.StructuredLearningDocumentSectionId] ?? false;
                     const showGraph = showGraphBySection[section.StructuredLearningDocumentSectionId] ?? true;
                     const showFacts = showFactsBySection[section.StructuredLearningDocumentSectionId] ?? true;
+                    const showEntities = showEntitiesBySection[section.StructuredLearningDocumentSectionId] ?? false;
+                    const show3D = show3DBySection[section.StructuredLearningDocumentSectionId] ?? false;
                     const hasFactsLoaded = !!factsBySection[section.StructuredLearningDocumentSectionId];
                     return (
                       <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowEntitiesBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !showEntities }))}
+                          className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                            showEntities
+                              ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-700 dark:text-emerald-200'
+                              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20'
+                          }`}
+                        >
+                          <ListFilter className="h-3 w-3" />
+                          {showEntities ? t('knowledgeGraph.hideEntities', { count: entities.length }) : t('knowledgeGraph.showEntities', { count: entities.length })}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShow3DBySection((prev) => ({ ...prev, [section.StructuredLearningDocumentSectionId]: !show3D }))}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                            show3D
+                              ? 'border-indigo-400/60 bg-indigo-500/20 text-indigo-700 dark:text-indigo-200'
+                              : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20'
+                          }`}
+                        >
+                          🌌 {show3D ? t('knowledgeGraph.hide3D') : t('knowledgeGraph.show3D')}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -657,6 +725,76 @@ export default function KnowledgeGraphSection({
                       </div>
                     );
                   })()}
+
+                  {(showEntitiesBySection[section.StructuredLearningDocumentSectionId] ?? false) && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 p-4 shadow-inner">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                            {entities.length}
+                          </span>
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            {t('knowledgeGraph.entitiesTitle')}
+                          </h4>
+                        </div>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {t('knowledgeGraph.entityTypes', { count: new Set(entities.map((e) => e.EntityType)).size })}
+                        </span>
+                      </div>
+                      {entities.length === 0 ? (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{t('knowledgeGraph.noEntities')}</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {entities.map((entity) => {
+                            const kind = getNodeKind(entity.EntityType);
+                            return (
+                              <div
+                                key={entity.EntityId}
+                                className="flex flex-col justify-between rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/80 p-3 shadow-xs hover:border-emerald-400/40 transition"
+                              >
+                                <div>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="text-sm font-semibold text-slate-900 dark:text-white leading-snug">{entity.CanonicalName}</span>
+                                    <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${NODE_KIND_STYLES[kind]}`}>
+                                      {entity.EntityType}
+                                    </span>
+                                  </div>
+                                  {entity.Description && (
+                                    <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3">{entity.Description}</p>
+                                  )}
+                                  {entity.OntologicalClass && (
+                                    <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 italic">Class: {entity.OntologicalClass}</div>
+                                  )}
+                                </div>
+                                {entity.Aliases && entity.Aliases.length > 0 && (
+                                  <div className="mt-2.5 flex flex-wrap items-center gap-1 border-t border-slate-100 dark:border-white/5 pt-2 text-[10px] text-slate-500 dark:text-slate-400">
+                                    <span>Alias:</span>
+                                    {entity.Aliases.map((alias, aIdx) => (
+                                      <span key={aIdx} className="rounded bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-700 dark:text-slate-300">
+                                        {alias}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(show3DBySection[section.StructuredLearningDocumentSectionId] ?? false) && documentDetail && (
+                    <div className="overflow-hidden rounded-xl border border-indigo-500/30 bg-slate-950">
+                      <CourseGalaxy3DGraph
+                        document={{ ...documentDetail, Sections: [section] }}
+                        entities={entities}
+                        connections={connections}
+                        sectionRounds={sectionRounds}
+                        height={420}
+                      />
+                    </div>
+                  )}
 
                   {factsLoading[section.StructuredLearningDocumentSectionId] && (
                     <p className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/30 p-3 text-xs text-slate-500 dark:text-slate-400" role="status">

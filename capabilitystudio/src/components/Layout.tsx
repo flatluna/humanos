@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, FileText, ChevronDown, Menu, X, Tags, Bot, UserCircle2, Clapperboard, Sparkles, Network, FlaskConical } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, FileText, ChevronDown, Menu, X, Tags, Bot, UserCircle2, Clapperboard, Sparkles, Network, FlaskConical, Video } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -173,8 +173,9 @@ export default function Layout() {
           <SidebarLink collapsed={sidebarCollapsed} to="/program-entities" label={t('nav.programEntities')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Network className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-emerald-400" activeColor="bg-emerald-500/15" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label="AI Agents" color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/film-productions" label="Film Productions" color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Clapperboard className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label={t('nav.aiAgents')} color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/film-productions" label={t('nav.filmProductions')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Clapperboard className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/video-productions" label={t('nav.videoProductions')} color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Video className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/labs" label={t('nav.labs')} color="text-teal-400" activeColor="bg-teal-500/15" onNavigate={() => setSidebarOpen(false)}><FlaskConical className="h-5 w-5" /></SidebarLink>
         </nav>
         <div className="mt-8 border-t border-white/10 pt-4">

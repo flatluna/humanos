@@ -44,8 +44,9 @@ interface ResolvedAgentDocument {
  * vector entity match, never a raw dump of every engram), and aware of
  * THIS student's own objectives/skills/progress for this course via
  * personId (BuildStudentContextAsync server-side). */
-export function AiAgentCoursePage() {
-  const { documentId } = useParams<{ documentId: string }>();
+export function AiAgentCoursePage({ documentIdOverride, compact = false }: { documentIdOverride?: string; compact?: boolean } = {}) {
+  const params = useParams<{ documentId: string }>();
+  const documentId = documentIdOverride ?? params.documentId;
   const { language } = useI18n();
   const isEn = language === 'en';
   const { user } = useAuth();
@@ -155,10 +156,12 @@ export function AiAgentCoursePage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-8.5rem)] max-w-4xl flex-col">
-      <Link to="/ai-agents" className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 dark:text-white/60 dark:hover:text-white">
-        <ArrowLeft className="h-4 w-4" /> AI Agents
-      </Link>
+    <div className={compact ? 'flex h-full flex-col' : 'mx-auto flex h-[calc(100dvh-8.5rem)] max-w-4xl flex-col'}>
+      {!compact && (
+        <Link to="/ai-agents" className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 dark:text-white/60 dark:hover:text-white">
+          <ArrowLeft className="h-4 w-4" /> AI Agents
+        </Link>
+      )}
 
       <header className="mt-4 flex shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-r from-brand-500/10 via-indigo-500/10 to-accent-500/10 px-4 py-3 dark:border-white/10">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg">

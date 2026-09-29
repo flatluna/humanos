@@ -1058,11 +1058,11 @@ const en: Translations = {
     },
   },
   onboarding: {
-    eyebrow: 'Welcome to Engram Academy',
+    eyebrow: 'Welcome to Human OS',
     titleIndividual: "Let's create your account",
     titleOrganization: "Let's create your organization's account",
     subtitleIndividual: 'Just your name — your personal Engram Academy account is ready instantly.',
-    subtitleOrganization: "Just a few details to set up your company on Engram Academy and your admin profile.",
+    subtitleOrganization: "Just a few details to set up your company on Human OS and your admin profile.",
     modeIndividual: "I'm an individual",
     modeOrganization: "I'm an organization",
     yourInfo: 'Your information',

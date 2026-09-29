@@ -239,6 +239,14 @@ public sealed class JobRoleService
         jobRole.DepartmentProcessesJson = JsonSerializer.Serialize(request.DepartmentProcesses ?? []);
         jobRole.HrProcessesJson = JsonSerializer.Serialize(request.HrProcesses ?? []);
         jobRole.ToolsJson = JsonSerializer.Serialize(request.Tools ?? []);
+        jobRole.StartInYourRoleTechnicalSkillsJson = JsonSerializer.Serialize(request.StartInYourRoleTechnicalSkills ?? []);
+        jobRole.StartInYourRoleSoftSkillsJson = JsonSerializer.Serialize(request.StartInYourRoleSoftSkills ?? []);
+        jobRole.StartInYourRoleDepartmentProcessesJson = JsonSerializer.Serialize(request.StartInYourRoleDepartmentProcesses ?? []);
+        jobRole.StartInYourRoleHrProcessesJson = JsonSerializer.Serialize(request.StartInYourRoleHrProcesses ?? []);
+        jobRole.InYourRoleTechnicalSkillsJson = JsonSerializer.Serialize(request.InYourRoleTechnicalSkills ?? []);
+        jobRole.InYourRoleSoftSkillsJson = JsonSerializer.Serialize(request.InYourRoleSoftSkills ?? []);
+        jobRole.InYourRoleDepartmentProcessesJson = JsonSerializer.Serialize(request.InYourRoleDepartmentProcesses ?? []);
+        jobRole.InYourRoleHrProcessesJson = JsonSerializer.Serialize(request.InYourRoleHrProcesses ?? []);
         jobRole.DailyActivitiesJson = JsonSerializer.Serialize(request.DailyActivities ?? []);
         jobRole.PerformanceIndicatorsJson = JsonSerializer.Serialize(request.PerformanceIndicators ?? []);
         jobRole.ExpectedOutcomesJson = JsonSerializer.Serialize(request.ExpectedOutcomes ?? []);
@@ -421,6 +429,14 @@ public sealed class JobRoleService
             JsonSerializer.Deserialize<List<string>>(jobRole.HrProcessesJson) ?? [], catalogByCategory, "hr-processes"),
         Tools = ToolService.UnionWithCatalog(
             JsonSerializer.Deserialize<List<string>>(jobRole.ToolsJson) ?? [], catalogTools),
+        StartInYourRoleTechnicalSkills = JsonSerializer.Deserialize<List<string>>(jobRole.StartInYourRoleTechnicalSkillsJson) ?? [],
+        StartInYourRoleSoftSkills = JsonSerializer.Deserialize<List<string>>(jobRole.StartInYourRoleSoftSkillsJson) ?? [],
+        StartInYourRoleDepartmentProcesses = JsonSerializer.Deserialize<List<string>>(jobRole.StartInYourRoleDepartmentProcessesJson) ?? [],
+        StartInYourRoleHrProcesses = JsonSerializer.Deserialize<List<string>>(jobRole.StartInYourRoleHrProcessesJson) ?? [],
+        InYourRoleTechnicalSkills = JsonSerializer.Deserialize<List<string>>(jobRole.InYourRoleTechnicalSkillsJson) ?? [],
+        InYourRoleSoftSkills = JsonSerializer.Deserialize<List<string>>(jobRole.InYourRoleSoftSkillsJson) ?? [],
+        InYourRoleDepartmentProcesses = JsonSerializer.Deserialize<List<string>>(jobRole.InYourRoleDepartmentProcessesJson) ?? [],
+        InYourRoleHrProcesses = JsonSerializer.Deserialize<List<string>>(jobRole.InYourRoleHrProcessesJson) ?? [],
         DailyActivities = JsonSerializer.Deserialize<List<string>>(jobRole.DailyActivitiesJson) ?? [],
         PerformanceIndicators = JsonSerializer.Deserialize<List<string>>(jobRole.PerformanceIndicatorsJson) ?? [],
         ExpectedOutcomes = JsonSerializer.Deserialize<List<string>>(jobRole.ExpectedOutcomesJson) ?? [],

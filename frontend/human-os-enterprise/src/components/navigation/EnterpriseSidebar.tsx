@@ -17,6 +17,7 @@ import {
   UserCircle,
   Target,
   ListTree,
+  Heart,
 } from 'lucide-react';
 
 const NAV_ITEMS_DEF = [
@@ -87,6 +88,7 @@ export function EnterpriseSidebar() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const profileUrl = user?.personId ? `/personal/${user.personId}` : '/perfil';
+  const interestsUrl = user?.personId ? `/personal/${user.personId}/intereses` : '/personal';
   const studioUrl = user
     ? `http://localhost:7071/api/humanos/studio-launch?oid=${encodeURIComponent(user.oid)}&tid=${encodeURIComponent(user.tid)}&email=${encodeURIComponent(user.email)}`
     : CAPABILITY_STUDIO_URL;
@@ -133,6 +135,34 @@ export function EnterpriseSidebar() {
               </NavLink>
             </li>
           ))}
+          <li>
+            <NavLink
+              to={interestsUrl}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium transition',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                  isActive
+                    ? COLOR_STYLES.pink.active
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-white/60 dark:hover:bg-white/5',
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={clsx(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition',
+                      isActive ? 'bg-white/20 text-white' : COLOR_STYLES.pink.chip,
+                    )}
+                  >
+                    <Heart className="h-4 w-4" />
+                  </span>
+                  <span>Intereses, Gustos y Preferencias</span>
+                </>
+              )}
+            </NavLink>
+          </li>
         </ul>
 
         <p className="px-3 pt-6 pb-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-white/30">

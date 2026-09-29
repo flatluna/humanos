@@ -52,6 +52,7 @@ public sealed class GetStudentStructuredLearningDocumentsFunction
                 StructuredLearningDocumentId = d.StructuredLearningDocumentId,
                 DocumentName = d.DocumentName,
                 ExecutiveSummary = d.ExecutiveSummary,
+                ConfigSnapshotJson = d.ConfigSnapshotJson,
                 SubjectId = d.SubjectId,
                 TopicId = d.TopicId,
                 DomainName = _dbContext.Subjects
@@ -76,6 +77,21 @@ public sealed class GetStudentStructuredLearningDocumentsFunction
             .OrderByDescending(d => d.CreatedDate)
             .ToListAsync(cancellationToken);
 
-        return await FunctionResponseFactory.SuccessResponseAsync(request, documents, cancellationToken: cancellationToken);
+        var response = documents.Select(d => new
+        {
+            d.StructuredLearningDocumentId,
+            d.DocumentName,
+            d.ExecutiveSummary,
+            d.SubjectId,
+            d.TopicId,
+            d.DomainName,
+            d.SubdomainName,
+            d.SectionCount,
+            d.CreatedDate,
+            d.CoverIllustrationId,
+            Language = StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName),
+        });
+
+        return await FunctionResponseFactory.SuccessResponseAsync(request, response, cancellationToken: cancellationToken);
     }
 }

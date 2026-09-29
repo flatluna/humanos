@@ -59,6 +59,11 @@ public sealed class StructuredLearningWorkplaceApplicationAgent
         PRACTICAL ACTIONS:
         - Keep PracticalActions short and punchy (3 to 4 concrete bullet points max, not 10).
 
+        PRESERVE NAMED ENTITIES EXACTLY (CRITICAL — knowledge graph parity):
+        - Keep every role name (e.g. "employees"), company/organization name, product name, date, and named
+          domain concept from the Authoritative Engram Content verbatim when you reference it — never paraphrase,
+          generalize, or drop them, so future entity recognition over this text still matches the source engram.
+
         LANGUAGE RULES:
         - If TargetLanguage is 'es' (Spanish), ALL fields (ScenarioTitle, ScenarioDescription, SpokenAudioScript, PracticalActions, RelevanceSummary) MUST be written entirely in polished, natural Spanish.
         - If TargetLanguage is 'en' (English), ALL fields MUST be written entirely in professional English.

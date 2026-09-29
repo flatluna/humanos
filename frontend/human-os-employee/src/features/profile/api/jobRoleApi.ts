@@ -38,6 +38,14 @@ export interface JobRoleDetailDto {
   workLocation: string | null;
   availabilityNotes: string | null;
   employmentType: string | null;
+  startInYourRoleTechnicalSkills?: string[];
+  startInYourRoleSoftSkills?: string[];
+  startInYourRoleDepartmentProcesses?: string[];
+  startInYourRoleHrProcesses?: string[];
+  inYourRoleTechnicalSkills?: string[];
+  inYourRoleSoftSkills?: string[];
+  inYourRoleDepartmentProcesses?: string[];
+  inYourRoleHrProcesses?: string[];
 }
 
 export function getJobRole(jobRoleId: string): Promise<JobRoleDetailDto> {

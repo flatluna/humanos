@@ -42,6 +42,9 @@ interface NetworkLink {
   target: string | NetworkNode;
   label: string;
   color: string;
+  /** True for the sequential engram→engram edges — renders an arrowhead
+   * pointing from the earlier to the later engram (concept edges don't). */
+  sequential?: boolean;
 }
 
 const ENTITY_TYPE_COLORS: Record<string, string> = {
@@ -74,8 +77,22 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [selectedConcept, setSelectedConcept] = useState<BridgeConceptItem | null>(null);
   const [agentConcept, setAgentConcept] = useState<BridgeConceptItem | null>(null);
+  /** "Pyramid" layout (2026-09-28) — arranges engrams top-to-bottom in
+   * levels following the sequential engram→engram edges (and concept
+   * edges), instead of the free-floating force layout, so a course's
+   * teaching order reads as a clear pyramid of rows. */
+  const [pyramidMode, setPyramidMode] = useState(false);
 
   const { data: networkData } = useKnowledgeNetwork(personId, courseId);
+
+  // Switching the course filter (e.g. clicking "All"/"Full course" above the
+  // graph) can leave a previously-selected concept referencing a course that's
+  // no longer in view — the graph then filters down to nothing matching and
+  // looks stuck/blank. Reset the concept focus whenever the course changes.
+  useEffect(() => {
+    setSelectedConcept(null);
+    setAgentConcept(null);
+  }, [courseId]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -169,6 +186,34 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
       });
     }
 
+    // 3. Sequential engram→engram edges — connect engram 1 → engram 2 → ...
+    // in the same order they appear in their own course, per course, so the
+    // graph visually shows how the knowledge builds up as it was taught.
+    if (!selectedConcept) {
+      const byDocument = new Map<string, MasteredEngramItem[]>();
+      for (const engram of filteredEngrams) {
+        const list = byDocument.get(engram.documentId);
+        if (list) {
+          list.push(engram);
+        } else {
+          byDocument.set(engram.documentId, [engram]);
+        }
+      }
+
+      for (const courseEngrams of byDocument.values()) {
+        courseEngrams.sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+        for (let i = 0; i < courseEngrams.length - 1; i++) {
+          links.push({
+            source: courseEngrams[i].sectionId,
+            target: courseEngrams[i + 1].sectionId,
+            label: '',
+            color: 'rgba(148, 163, 184, 0.6)',
+            sequential: true,
+          });
+        }
+      }
+    }
+
     return { nodes, links };
   }, [networkData, selectedConcept, t]);
 
@@ -176,6 +221,11 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
+    if (pyramidMode) {
+      // dagMode does the layout in pyramid mode — just re-fit the view.
+      const timer = setTimeout(() => fg.zoomToFit(400, 80), 250);
+      return () => clearTimeout(timer);
+    }
     fg.d3Force('charge')?.strength(selectedConcept ? -480 : -320);
     fg.d3Force(
       'collide',
@@ -190,7 +240,7 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
       fg.zoomToFit(400, selectedConcept ? 140 : 80);
     }, 200);
     return () => clearTimeout(timer);
-  }, [graphData, selectedConcept]);
+  }, [graphData, selectedConcept, pyramidMode]);
 
   const handleCenterView = useCallback(() => {
     fgRef.current?.zoomToFit(400, selectedConcept ? 140 : 80);
@@ -198,6 +248,11 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
 
   const [conceptFilterTab, setConceptFilterTab] = useState<'all' | 'articles' | 'concepts'>('all');
   const [conceptSearch, setConceptSearch] = useState('');
+  // Collapsible (2026-09-24 fix): on narrower browser windows this absolutely-
+  // positioned overlay panel (w-72, nearly full height, nearly opaque) could
+  // cover most or all of the graph canvas underneath it, making the whole
+  // graph look "lost" even though it was just rendering behind the panel.
+  const [conceptsPanelOpen, setConceptsPanelOpen] = useState(true);
 
   const { allConcepts, articleConcepts, regularConcepts } = useMemo(() => {
     if (!networkData) return { allConcepts: [], articleConcepts: [], regularConcepts: [] };
@@ -336,6 +391,19 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
           <LocateFixed className="h-3.5 w-3.5 text-indigo-400" />
           <span>{t('brainNetwork.centerView')}</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setPyramidMode((prev) => !prev)}
+          title={t('brainNetwork.pyramidView', 'Pyramid view')}
+          className={`pointer-events-auto flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur transition ${
+            pyramidMode
+              ? 'border-indigo-400/60 bg-indigo-600 text-white'
+              : 'border-white/10 bg-slate-900/80 text-white hover:bg-slate-800'
+          }`}
+        >
+          <Network className="h-3.5 w-3.5" />
+          <span>{t('brainNetwork.pyramidView', 'Pyramid view')}</span>
+        </button>
       </div>
 
       {/* ForceGraph2D Canvas */}
@@ -344,9 +412,14 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
         width={size.width}
         height={size.height}
         graphData={graphData}
+        dagMode={pyramidMode ? 'td' : undefined}
+        dagLevelDistance={70}
         backgroundColor="transparent"
         nodeId="id"
         nodeVal={(n) => n.radius}
+        linkDirectionalArrowLength={(l) => ((l as NetworkLink).sequential ? 6 : 0)}
+        linkDirectionalArrowRelPos={1}
+        linkDirectionalArrowColor={() => 'rgba(148, 163, 184, 0.85)'}
         nodeLabel={(n) => {
           if (n.kind === 'engram') {
             return `${n.label} (${n.recallPercent ?? 100}% ${t('brainNetwork.retention')}) — ${t('brainNetwork.clickEngramHint')}`;
@@ -409,6 +482,31 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
           ctx.stroke();
           ctx.restore();
 
+          // Sequence-order badge (engram nodes only) — "1", "2", "3"... in
+          // course-teaching order, small circle at the node's top-left.
+          if (!isConcept && n.engram) {
+            ctx.save();
+            ctx.globalAlpha = dim ? 0.35 : 1;
+            const badgeRadius = Math.max(n.radius * 0.42, 3.5 / globalScale);
+            const badgeX = n.x - n.radius * 0.72;
+            const badgeY = n.y - n.radius * 0.72;
+            ctx.beginPath();
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#0f172a';
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.stroke();
+
+            const badgeFontSize = Math.max(badgeRadius * 1.15, 3.5);
+            ctx.font = `bold ${badgeFontSize}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText(String(n.engram.sequenceIndex + 1), badgeX, badgeY + 0.5);
+            ctx.restore();
+          }
+
           // Permanent Crisp Text Labels
           ctx.save();
           ctx.globalAlpha = dim ? 0.35 : 1;
@@ -452,8 +550,20 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
         onEngineStop={() => fgRef.current?.zoomToFit(400, 80)}
       />
 
-      {/* Left "Entities & Concepts" list */}
-      {(articleConcepts.length > 0 || regularConcepts.length > 0) && (
+      {/* Left "Entities & Concepts" list — collapsible so it never permanently
+          hides the graph canvas on narrower windows. */}
+      {(articleConcepts.length > 0 || regularConcepts.length > 0) && !conceptsPanelOpen && (
+        <button
+          type="button"
+          onClick={() => setConceptsPanelOpen(true)}
+          className="absolute left-4 top-16 z-10 flex items-center gap-1.5 rounded-2xl border border-white/10 bg-slate-900/85 px-3 py-2 text-xs font-semibold text-sky-300 shadow-lg backdrop-blur-md hover:bg-slate-800"
+        >
+          <Network className="h-3.5 w-3.5" />
+          {t('brainNetwork.conceptsListTitle')}
+          <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">{allConcepts.length}</span>
+        </button>
+      )}
+      {(articleConcepts.length > 0 || regularConcepts.length > 0) && conceptsPanelOpen && (
         <div className="absolute left-4 top-16 bottom-4 z-10 flex w-72 flex-col rounded-3xl border border-white/10 bg-slate-900/90 p-3.5 shadow-2xl backdrop-blur-md">
           {/* Header */}
           <div className="flex items-center justify-between px-1 pb-2 border-b border-white/10 text-xs font-bold text-slate-200">
@@ -461,8 +571,18 @@ export function BrainGraph({ personId, courseId, query = '', onSelectNeuron, onS
               <Network className="h-3.5 w-3.5" />
               {t('brainNetwork.conceptsListTitle')}
             </span>
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
-              {allConcepts.length}
+            <span className="flex items-center gap-1.5">
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                {allConcepts.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setConceptsPanelOpen(false)}
+                title={t('brainNetwork.hidePanel', { defaultValue: 'Hide' })}
+                className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </span>
           </div>
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { GitBranch, Search, Sparkles, AlertCircle, CheckCircle2, BookOpen, Clock, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import {
@@ -13,13 +14,14 @@ import {
   type CareerPlanRoadmapStepDto,
 } from '@/api/orgStructureApi';
 
-function errorMessage(error: unknown): string | null {
+function errorMessage(error: unknown, fallback: string): string | null {
   if (!error) return null;
   if (error instanceof Error) return error.message;
-  return 'Ocurrió un error inesperado.';
+  return fallback;
 }
 
 export function RoadmapsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const tenantId = user!.tenantId;
   const queryClient = useQueryClient();
@@ -102,11 +104,8 @@ export function RoadmapsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Rutas de Carrera</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-white/50">
-          Plan de desarrollo generado por IA para cada empleado: compara sus skills actuales contra las que exige su
-          puesto y recomienda cursos reales del catálogo para cerrar la brecha.
-        </p>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">{t('roadmaps.title')}</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-white/50">{t('roadmaps.subtitle')}</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -118,14 +117,14 @@ export function RoadmapsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar empleado…"
+              placeholder={t('roadmaps.searchPlaceholder')}
               className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
             />
           </div>
 
           <div className="max-h-[60vh] space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-1.5 dark:border-white/10">
             {peopleQuery.isLoading && (
-              <p className="px-3 py-2 text-sm text-slate-400">Cargando…</p>
+              <p className="px-3 py-2 text-sm text-slate-400">{t('common.loading')}</p>
             )}
             {filteredPeople.map((p) => (
               <button
@@ -138,18 +137,18 @@ export function RoadmapsPage() {
                     : 'text-slate-700 hover:bg-slate-100 dark:text-white/80 dark:hover:bg-white/5'
                 }`}
               >
-                <span className="block font-medium">{p.displayName ?? p.email ?? 'Sin nombre'}</span>
+                <span className="block font-medium">{p.displayName ?? p.email ?? t('roadmaps.noName')}</span>
                 <span
                   className={`block text-xs ${
                     p.personId === selectedPersonId ? 'text-emerald-50/80' : 'text-slate-400 dark:text-white/40'
                   }`}
                 >
-                  {p.jobRoleTitle ?? 'Sin puesto asignado'}
+                  {p.jobRoleTitle ?? t('roadmaps.unassignedRole')}
                 </span>
               </button>
             ))}
             {!peopleQuery.isLoading && filteredPeople.length === 0 && (
-              <p className="px-3 py-2 text-sm text-slate-400">No se encontraron empleados.</p>
+              <p className="px-3 py-2 text-sm text-slate-400">{t('roadmaps.noEmployeesFound')}</p>
             )}
           </div>
         </div>
@@ -162,10 +161,10 @@ export function RoadmapsPage() {
                 <GitBranch className="h-6 w-6" />
               </span>
               <p className="mt-4 text-sm font-semibold text-slate-900 dark:text-white">
-                Selecciona un empleado
+                {t('roadmaps.selectEmployeePromptTitle')}
               </p>
               <p className="mx-auto mt-1 max-w-md text-sm text-slate-500 dark:text-white/50">
-                Elige un empleado de la lista para ver o generar su plan de carrera con IA.
+                {t('roadmaps.selectEmployeePromptSubtitle')}
               </p>
             </div>
           )}
@@ -174,11 +173,11 @@ export function RoadmapsPage() {
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <p>
-                Este empleado no tiene un puesto asignado todavía.{' '}
+                {t('roadmaps.unassignedRoleWarning')}{' '}
                 <Link to={`/personal/${selectedPerson.personId}`} className="font-medium underline">
-                  Asígnale un puesto
+                  {t('roadmaps.assignRoleLink')}
                 </Link>{' '}
-                antes de generar su plan de carrera.
+                {t('roadmaps.assignRoleSuffix')}
               </p>
             </div>
           )}
@@ -201,32 +200,32 @@ export function RoadmapsPage() {
                   >
                     <Sparkles className="h-4 w-4" />
                     {generateMutation.isPending
-                      ? 'Generando…'
+                      ? t('roadmaps.generating')
                       : plan?.hasPlan
-                        ? 'Regenerar plan con IA'
-                        : 'Generar plan con IA'}
+                        ? t('roadmaps.regenerateWithAi')
+                        : t('roadmaps.generateWithAi')}
                   </button>
                 </div>
 
-                {errorMessage(generateMutation.error) && (
+                {errorMessage(generateMutation.error, t('common.unexpectedError')) && (
                   <p className="mt-3 text-sm text-red-600 dark:text-red-400">
-                    {errorMessage(generateMutation.error)}
+                    {errorMessage(generateMutation.error, t('common.unexpectedError'))}
                   </p>
                 )}
 
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                      Capabilities requeridas por el puesto
+                      {t('roadmaps.requiredSkillsTitle')}
                     </h3>
                     <p className="mt-1 text-xs text-slate-400 dark:text-white/40">
-                      Fuente: puesto asignado del empleado.
+                      {t('roadmaps.requiredSkillsSource')}
                     </p>
 
-                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">Técnicas</p>
+                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">{t('roadmaps.technicalCategory')}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {requiredTechnicalSkills.length === 0 && (
-                        <span className="text-sm text-slate-400">Sin capabilities técnicas definidas.</span>
+                        <span className="text-sm text-slate-400">{t('roadmaps.noTechnicalSkills')}</span>
                       )}
                       {requiredTechnicalSkills.map((skill) => (
                         <span
@@ -238,10 +237,10 @@ export function RoadmapsPage() {
                       ))}
                     </div>
 
-                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">Soft capabilities</p>
+                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-white/50">{t('roadmaps.softCategory')}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {requiredSoftSkills.length === 0 && (
-                        <span className="text-sm text-slate-400">Sin capabilities blandas definidas.</span>
+                        <span className="text-sm text-slate-400">{t('roadmaps.noSoftSkills')}</span>
                       )}
                       {requiredSoftSkills.map((skill) => (
                         <span
@@ -254,17 +253,17 @@ export function RoadmapsPage() {
                     </div>
 
                     {requiredTechnicalSkills.length === 0 && requiredSoftSkills.length === 0 && (
-                      <p className="mt-2 text-sm text-slate-400">Sin capabilities definidas para este puesto.</p>
+                      <p className="mt-2 text-sm text-slate-400">{t('roadmaps.noSkillsDefinedForRole')}</p>
                     )}
                   </div>
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                      Capabilities actuales del empleado
+                      {t('roadmaps.currentSkillsTitle')}
                     </h3>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {currentSkills.length === 0 && (
                         <span className="text-sm text-slate-400">
-                          Sin capabilities registradas (agrégalas desde su ficha).
+                          {t('roadmaps.noCurrentSkills')}
                         </span>
                       )}
                       {currentSkills.map((skill) => (
@@ -285,7 +284,7 @@ export function RoadmapsPage() {
                   {plan.overallRationale && (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
                       <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Resumen del plan
+                        <CheckCircle2 className="h-3.5 w-3.5" /> {t('roadmaps.planSummary')}
                       </p>
                       <p className="mt-1.5">{plan.overallRationale}</p>
                     </div>
@@ -293,12 +292,12 @@ export function RoadmapsPage() {
 
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                      Brecha de skills detectada
+                      {t('roadmaps.skillGapsTitle')}
                     </h3>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {plan.gapSkills.length === 0 && (
                         <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                          Sin brechas — cubre todas las skills requeridas.
+                          {t('roadmaps.noGaps')}
                         </span>
                       )}
                       {plan.gapSkills.map((skill) => (
@@ -314,16 +313,16 @@ export function RoadmapsPage() {
 
                   <div className="grid gap-5 sm:grid-cols-2">
                     <RoadmapTrack
-                      title="Plan técnico"
+                      title={t('roadmaps.technicalTrackTitle')}
                       accentClassName="bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/70"
                       steps={plan.technicalRoadmap}
-                      emptyMessage="Sin brechas técnicas — no se requiere capacitación técnica adicional."
+                      emptyMessage={t('roadmaps.technicalTrackEmpty')}
                     />
                     <RoadmapTrack
-                      title="Plan de soft skills"
+                      title={t('roadmaps.softTrackTitle')}
                       accentClassName="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
                       steps={plan.softSkillsRoadmap}
-                      emptyMessage="Sin brechas de soft skills — no se requiere capacitación adicional."
+                      emptyMessage={t('roadmaps.softTrackEmpty')}
                     />
                   </div>
 
@@ -332,17 +331,17 @@ export function RoadmapsPage() {
                       {plan.isAccepted ? (
                         <p className="flex items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
                           <ShieldCheck className="h-4 w-4" />
-                          Plan aceptado el {plan.acceptedDate ? new Date(plan.acceptedDate).toLocaleString() : ''}
+                          {t('roadmaps.planAcceptedOn', { date: plan.acceptedDate ? new Date(plan.acceptedDate).toLocaleString() : '' })}
                         </p>
                       ) : (
                         <p className="flex items-center gap-2 text-sm font-medium text-amber-600 dark:text-amber-400">
                           <Clock className="h-4 w-4" />
-                          Propuesta de IA pendiente de aceptación por RRHH
+                          {t('roadmaps.planPendingApproval')}
                         </p>
                       )}
                       {plan.generatedDate && (
                         <p className="mt-1 text-xs text-slate-400 dark:text-white/30">
-                          Generado el {new Date(plan.generatedDate).toLocaleString()}
+                          {t('roadmaps.planGeneratedOn', { date: new Date(plan.generatedDate).toLocaleString() })}
                         </p>
                       )}
                     </div>
@@ -355,20 +354,20 @@ export function RoadmapsPage() {
                         className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
                       >
                         <ShieldCheck className="h-4 w-4" />
-                        {acceptMutation.isPending ? 'Aceptando…' : 'Aceptar plan'}
+                        {acceptMutation.isPending ? t('roadmaps.accepting') : t('roadmaps.acceptPlan')}
                       </button>
                     )}
                   </div>
 
-                  {errorMessage(acceptMutation.error) && (
-                    <p className="text-sm text-red-600 dark:text-red-400">{errorMessage(acceptMutation.error)}</p>
+                  {errorMessage(acceptMutation.error, t('common.unexpectedError')) && (
+                    <p className="text-sm text-red-600 dark:text-red-400">{errorMessage(acceptMutation.error, t('common.unexpectedError'))}</p>
                   )}
                 </div>
               )}
 
               {plan && !plan.hasPlan && !generateMutation.isPending && (
                 <p className="text-sm text-slate-400">
-                  Este empleado aún no tiene un plan de carrera generado. Usa el botón de arriba para crear uno.
+                  {t('roadmaps.noPlanYet')}
                 </p>
               )}
             </>
@@ -391,6 +390,7 @@ interface RoadmapTrackProps {
 /// (MatchedProgramId set) or is still pending creation, since the plan is
 /// saved and displayed even before every course has been uploaded.
 function RoadmapTrack({ title, accentClassName, steps, emptyMessage }: RoadmapTrackProps) {
+  const { t } = useTranslation();
   return (
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">{title}</h3>
@@ -410,15 +410,15 @@ function RoadmapTrack({ title, accentClassName, steps, emptyMessage }: RoadmapTr
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">{step.title}</p>
-                <p className="mt-0.5 text-xs text-slate-400 dark:text-white/40">Cierra: {step.skill}</p>
+                <p className="mt-0.5 text-xs text-slate-400 dark:text-white/40">{t('roadmaps.closesSkill', { skill: step.skill })}</p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-white/50">{step.description}</p>
                 {step.matchedProgramId ? (
                   <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                    <BookOpen className="h-3 w-3" /> Curso disponible en el catálogo
+                    <BookOpen className="h-3 w-3" /> {t('roadmaps.catalogCourseAvailable')}
                   </span>
                 ) : (
                   <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500 dark:bg-white/5 dark:text-white/40">
-                    <Clock className="h-3 w-3" /> Curso pendiente de crear
+                    <Clock className="h-3 w-3" /> {t('roadmaps.coursePendingCreation')}
                   </span>
                 )}
               </div>

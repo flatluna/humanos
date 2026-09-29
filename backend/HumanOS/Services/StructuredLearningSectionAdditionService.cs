@@ -27,6 +27,7 @@ public sealed class StructuredLearningSectionAdditionService
     private readonly StructuredLearningPedagogyService _pedagogyService;
     private readonly StructuredLearningEntityExtractionService _entityExtraction;
     private readonly StructuredLearningConnectionExtractionService _connectionExtraction;
+    private readonly PerplexitySearchService _perplexityService;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly GptEncoding _tokenEncoding = GptEncoding.GetEncoding("cl100k_base");
 
@@ -36,6 +37,7 @@ public sealed class StructuredLearningSectionAdditionService
         StructuredLearningPedagogyService pedagogyService,
         StructuredLearningEntityExtractionService entityExtraction,
         StructuredLearningConnectionExtractionService connectionExtraction,
+        PerplexitySearchService perplexityService,
         IDbContextFactory<HumanOsDbContext> dbContextFactory)
     {
         _agent = agent;
@@ -43,7 +45,27 @@ public sealed class StructuredLearningSectionAdditionService
         _pedagogyService = pedagogyService;
         _entityExtraction = entityExtraction;
         _connectionExtraction = connectionExtraction;
+        _perplexityService = perplexityService;
         _dbContextFactory = dbContextFactory;
+    }
+
+    /// <summary>Same JSON-lookup logic as StructuredLearningPedagogyService's own
+    /// private ReadUsePerplexitySearch — lets a null override here fall back to
+    /// whatever the document's original Step 1 design chose.</summary>
+    private static bool ReadUsePerplexitySearch(string? configSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(configSnapshotJson)) return false;
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(configSnapshotJson);
+            return (json.RootElement.TryGetProperty("UsePerplexitySearch", out var value)
+                || json.RootElement.TryGetProperty("usePerplexitySearch", out value))
+                && value.ValueKind == System.Text.Json.JsonValueKind.True;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     public bool IsConfigured => _agent.IsConfigured && _embeddingService.IsConfigured;
@@ -84,7 +106,8 @@ public sealed class StructuredLearningSectionAdditionService
         byte[]? uploadedImageBytes,
         string? uploadedImageContentType,
         string? referenceImageUsageInstruction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool? usePerplexitySearch = null)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -101,9 +124,33 @@ public sealed class StructuredLearningSectionAdditionService
             throw new InvalidOperationException($"No se encontraron secciones para el capítulo '{chapterTitle}'.");
         }
 
+        // Null means "use whatever the document's own Step 1 design chose" —
+        // same inherit-by-default behavior StructuredLearningPedagogyService.RunAsync
+        // already applies for its own usePerplexitySearch parameter.
+        var effectiveUsePerplexitySearch = usePerplexitySearch ?? ReadUsePerplexitySearch(document.ConfigSnapshotJson);
+
+        string? webSearchFindings = null;
+        if (effectiveUsePerplexitySearch && _perplexityService.IsConfigured)
+        {
+            try
+            {
+                var searchResult = await _perplexityService.SearchAsync(
+                    $"{document.DocumentName} — {chapterTitle}: {instruction}", cancellationToken);
+                if (!string.IsNullOrWhiteSpace(searchResult.Answer))
+                {
+                    webSearchFindings = searchResult.Answer;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Best-effort, same graceful-skip rationale as pedagogy's own Perplexity call —
+                // the engram's own invented text just falls back to the model's training knowledge.
+            }
+        }
+
         var response = await _agent.GenerateAsync(
             document.DocumentName, chapterTitle, chapterSections.Select(s => s.SubchapterTitle).ToList(),
-            instruction, document.PedagogicalAudience, cancellationToken);
+            instruction, document.PedagogicalAudience, cancellationToken, webSearchFindings);
 
         var embedding = await _embeddingService.GenerateEmbeddingAsync(response.Text, cancellationToken);
         var tokenCount = _tokenEncoding.Encode(response.Text).Count;
@@ -164,26 +211,17 @@ public sealed class StructuredLearningSectionAdditionService
         dbContext.StructuredLearningDocumentSections.Add(newSection);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // Reuses the Step 3 pipeline as-is — only the new (NotStarted)
-        // section gets processed, every already-Completed section is
-        // left untouched.
-        await _pedagogyService.RunAsync(
-            documentId, languageCode, (_, _, _, _) => { }, cancellationToken,
-            illustrationOverride: new SectionIllustrationOverride
-            {
-                SectionId = newSection.StructuredLearningDocumentSectionId,
-                Mode = illustrationMode,
-                UploadedImageBytes = uploadedImageBytes,
-                UploadedImageContentType = uploadedImageContentType,
-                ReferenceImageUsageInstruction = referenceImageUsageInstruction
-            });
-
-        // Knowledge Graph (2026-08-14): keeps entities/tokens/cost/timing
-        // up to date automatically, same as the original Step 2 extraction
-        // — the professor never has to remember to trigger a backfill.
-        // Respects the document's own Step 1 opt-in choice. Best-effort: a
-        // failure here must never fail section creation itself
-        // (ExtractForSectionAsync already records its own usage).
+        // Knowledge Graph (2026-08-14, reordered 2026-09-26): MUST run
+        // BEFORE pedagogy generation below — pedagogy's own Knowledge
+        // Facts auto-recovery (StructuredLearningPedagogyService.RunAsync)
+        // only derives facts from an ALREADY-EXISTING entity/connection
+        // graph for this section. Running it after pedagogy (the previous
+        // order) meant a professor-added section always fell back to
+        // text-only grounding and never got real Knowledge Facts, unlike
+        // every other engram created through the normal Step 2/3/5
+        // pipeline. Respects the document's own Step 1 opt-in choice.
+        // Best-effort: a failure here must never fail section creation
+        // itself (ExtractForSectionAsync already records its own usage).
         if (document.IncludeKnowledgeGraphEntities && _entityExtraction.IsConfigured)
         {
             try
@@ -209,6 +247,25 @@ public sealed class StructuredLearningSectionAdditionService
                 // Same graceful-skip rationale as entity extraction above.
             }
         }
+
+        // Reuses the Step 3 pipeline as-is — only the new (NotStarted)
+        // section gets processed, every already-Completed section is
+        // left untouched. Now runs AFTER the graph above so its own
+        // Knowledge Facts auto-recovery has real entities/connections to
+        // derive from, giving this section the SAME full engram
+        // attributes (Knowledge Graph + Knowledge Facts + all 6
+        // pedagogical steps) as any other engram in the document.
+        await _pedagogyService.RunAsync(
+            documentId, languageCode, (_, _, _, _) => { }, cancellationToken,
+            illustrationOverride: new SectionIllustrationOverride
+            {
+                SectionId = newSection.StructuredLearningDocumentSectionId,
+                Mode = illustrationMode,
+                UploadedImageBytes = uploadedImageBytes,
+                UploadedImageContentType = uploadedImageContentType,
+                ReferenceImageUsageInstruction = referenceImageUsageInstruction
+            },
+            usePerplexitySearch: effectiveUsePerplexitySearch);
 
         return newSection.StructuredLearningDocumentSectionId;
     }

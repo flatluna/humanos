@@ -18,6 +18,11 @@ export interface MasteredEngramItem {
   completedDate?: string;
   reviewCount: number;
   finalScore?: number;
+  /** This section's position (0-based) within its course's own Sections
+   * list, in the order the course teaches them — used by the graph view
+   * to draw sequential engram→engram edges (engram 1 → engram 2 → ...)
+   * and by the pyramid layout to place engrams row-by-row in course order. */
+  sequenceIndex: number;
   neuron: SelectedNeuron;
 }
 
@@ -115,16 +120,16 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
         allConnections.push(...connections);
 
         const sectionRounds = await Promise.all(
-          docDetail.Sections.map(async (sec) => {
+          docDetail.Sections.map(async (sec, sequenceIndex) => {
             const round = await getActiveStructuredLearningAssessmentRound(
               sec.StructuredLearningDocumentSectionId,
               personId
             ).catch(() => null);
-            return { sec, round };
+            return { sec, round, sequenceIndex };
           })
         );
 
-        for (const { sec, round } of sectionRounds) {
+        for (const { sec, round, sequenceIndex } of sectionRounds) {
           if (round?.Status === 'Passed') {
             masteredEngrams.push({
               sectionId: sec.StructuredLearningDocumentSectionId,
@@ -134,6 +139,7 @@ export function useKnowledgeNetwork(personId: string, courseId?: string | null) 
               completedDate: round.CompletedDate ?? undefined,
               reviewCount: round.RoundNumber ?? 1,
               finalScore: round.FinalScore ?? undefined,
+              sequenceIndex,
               neuron: {
                 capabilityGraphNodeId: sec.StructuredLearningDocumentSectionId,
                 name: sec.SubchapterTitle || sec.ChapterTitle,

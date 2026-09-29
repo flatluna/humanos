@@ -35,10 +35,14 @@ public sealed class HumanOsStudioLaunchFunctions
         var returnTo = query["returnTo"]?.Trim();
         if (string.IsNullOrWhiteSpace(oid) || string.IsNullOrWhiteSpace(tid)) return await ErrorAsync(request, HttpStatusCode.BadRequest, "MissingIdentity", "Azure identity is required.", cancellationToken);
 
-        var person = await _db.People.AsNoTracking().SingleOrDefaultAsync(
-            p => p.IsActive && p.TenantId != null &&
-                 ((p.AzureOid == oid && p.AzureTid == tid) || (!string.IsNullOrEmpty(email) && p.Email == email)),
-            cancellationToken);
+        var person = await _db.People.AsNoTracking()
+            .Where(p => p.IsActive && p.TenantId != null &&
+                 ((p.AzureOid == oid && p.AzureTid == tid) || (!string.IsNullOrEmpty(email) && p.Email == email)))
+            // Duplicate Person rows sharing the same email across tenants/imports exist in real data
+            // (2026-09-26: crashed here with "Sequence contains more than one element" via SingleOrDefaultAsync) —
+            // prefer an exact Oid/Tid match over a looser email-only match, then just take the first.
+            .OrderByDescending(p => p.AzureOid == oid && p.AzureTid == tid)
+            .FirstOrDefaultAsync(cancellationToken);
         if (person?.TenantId is not Guid tenantId) return await ErrorAsync(request, HttpStatusCode.Forbidden, "EmployeeNotAuthorized", "No active HumanOS employee account was found.", cancellationToken);
         var tenantName = await _db.Tenants.AsNoTracking().Where(t => t.TenantId == tenantId).Select(t => t.Name).SingleOrDefaultAsync(cancellationToken) ?? "HumanOS organization";
         var code = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

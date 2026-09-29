@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -37,13 +37,35 @@ const EMPTY_FORM: OnboardingFormState = {
 export function OnboardingPage() {
   const { user, refreshUser } = useAuth();
   const { t, i18n } = useTranslation();
-  const [mode, setMode] = useState<OnboardingMode>('individual');
-  const [form, setForm] = useState<OnboardingFormState>(EMPTY_FORM);
+  // The HumanOS for Companies landing page (5181) sends admins here via
+  // ?mode=organization&companyName=...&companyEmail=..., captured into
+  // sessionStorage in main.tsx before MSAL's login redirect could wipe
+  // the URL query string — read it once here to pre-fill the form.
+  const pendingOnboarding = (() => {
+    try {
+      const raw = sessionStorage.getItem('humanos.pendingOnboarding');
+      return raw ? (JSON.parse(raw) as { mode?: string; companyName?: string; companyEmail?: string }) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const [mode, setMode] = useState<OnboardingMode>(pendingOnboarding?.mode === 'organization' ? 'organization' : 'individual');
+  const [form, setForm] = useState<OnboardingFormState>({
+    ...EMPTY_FORM,
+    companyName: pendingOnboarding?.companyName ?? '',
+    companyEmail: pendingOnboarding?.companyEmail ?? '',
+  });
   const [preferredLanguage, setPreferredLanguage] = useState<'en' | 'es'>(
     i18n.language.startsWith('es') ? 'es' : 'en',
   );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(false);
+
+  // Consume the pending-onboarding hint once so it doesn't leak into a
+  // later, unrelated individual signup in the same browser session.
+  useEffect(() => {
+    sessionStorage.removeItem('humanos.pendingOnboarding');
+  }, []);
 
   function update<K extends keyof OnboardingFormState>(key: K, value: OnboardingFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -98,6 +120,13 @@ export function OnboardingPage() {
       // prior submit succeeded but the app didn't move on yet) — treat it
       // as success rather than an error, and just reload the real user.
       if (!response.ok && response.status !== 409) throw new Error('onboarding failed');
+
+      // A company admin belongs in Human OS Enterprise, not this
+      // individual-learner app — send them there instead of staying here.
+      if (mode === 'organization') {
+        window.location.assign(import.meta.env.VITE_ENTERPRISE_URL ?? 'http://localhost:5179');
+        return;
+      }
 
       await refreshUser();
     } catch {

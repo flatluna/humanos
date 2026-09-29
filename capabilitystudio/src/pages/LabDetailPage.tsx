@@ -5,10 +5,15 @@ import { ArrowLeft, ArrowDown, ArrowUp, FlaskConical, Headphones, Drama, Rocket,
 import {
   getLab,
   getLabContent,
+  getScenarioDetail,
+  getSimulatedActorDetail,
   reorderExpectedMoments,
   updateExpectedMoment,
   updateObjective,
+  updateScenario,
+  updateSimulatedActor,
   publishLabScenario,
+  revertScenarioToDraft,
   LAB_ARCHETYPES,
   type LabContent,
   type LabContentItem,
@@ -169,8 +174,24 @@ export default function LabDetailPage() {
               ) : (
                 <QuestionList items={content.Moments} skillsByName={content.SkillsByName} isEs={isEs} />
               )}
-              <ContentList title={isEs ? 'Escenarios' : 'Scenarios'} items={content.Scenarios} isEs={isEs} />
-              <ContentList title={isEs ? 'Actores simulados' : 'Simulated actors'} items={content.Actors} isEs={isEs} />
+              {lab.Estatus === 'DRAFT' ? (
+                <EditableScenarioList
+                  items={content.Scenarios}
+                  isEs={isEs}
+                  onScenariosChange={(updated) => setContent({ ...content, Scenarios: updated })}
+                />
+              ) : (
+                <ContentList title={isEs ? 'Escenarios' : 'Scenarios'} items={content.Scenarios} isEs={isEs} />
+              )}
+              {lab.Estatus === 'DRAFT' ? (
+                <EditableActorList
+                  items={content.Actors}
+                  isEs={isEs}
+                  onActorsChange={(updated) => setContent({ ...content, Actors: updated })}
+                />
+              ) : (
+                <ContentList title={isEs ? 'Actores simulados' : 'Simulated actors'} items={content.Actors} isEs={isEs} />
+              )}
               <TestedSkillsSection items={content.TestedSkills} isEs={isEs} />
               <ContentList title={isEs ? 'Criterios de rúbrica' : 'Rubric criteria'} items={content.Criteria} isEs={isEs} />
             </div>
@@ -272,6 +293,284 @@ function EditableObjectiveList({
 
 function ContentSection({ title, text, isEs }: { title: string; text: string; isEs: boolean }) {
   return <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4"><h3 className="text-sm font-medium text-teal-300">{title}</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{text || (isEs ? 'Sin información.' : 'No information.')}</p></div>;
+}
+
+/** DRAFT-only editor for LAB_Scenario — this is where "job description / hiring situation"
+ * content actually lives (Descripcion, ContextoParticipante, ProblemaCentral, ResultadoEsperado,
+ * Supuestos = company context, InformacionNoRevelarAutomaticamente, MensajeInicial = opening
+ * line). Previously read-only via ContentList. IMPORTANT: every one of these fields is read
+ * verbatim by LabSimulationPromptBuilder.BuildInstructions and injected into the LIVE AI agent's
+ * own system prompt — they are NOT participant-only text, this is the agent's actual knowledge
+ * of the job/situation during the real-time conversation. */
+function EditableScenarioList({
+  items,
+  isEs,
+  onScenariosChange,
+}: {
+  items: LabContentItem[];
+  isEs: boolean;
+  onScenariosChange: (updated: LabContentItem[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ Descripcion: string; ContextoParticipante: string; ProblemaCentral: string; ResultadoEsperado: string; Supuestos: string; InformacionNoRevelarAutomaticamente: string; MensajeInicial: string }>({
+    Descripcion: '', ContextoParticipante: '', ProblemaCentral: '', ResultadoEsperado: '', Supuestos: '', InformacionNoRevelarAutomaticamente: '', MensajeInicial: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /** Approved/Published scenarios reject Scenario_Update with 422 ("El escenario no está en
+   * DRAFT") — move it back to DRAFT first so job-description edits can actually be saved. Must
+   * be re-approved/re-published afterward (see the Publish button elsewhere on this page). */
+  async function revertToDraft(item: LabContentItem) {
+    if (!window.confirm(isEs
+      ? 'Esto regresa el escenario a borrador. Los empleados no podrán iniciar nuevos intentos hasta que lo publiques de nuevo. ¿Continuar?'
+      : 'This reverts the scenario to draft. Employees won\'t be able to start new attempts until you publish it again. Continue?')) return;
+    setReverting(true);
+    setSaveError(null);
+    try {
+      const updated = await revertScenarioToDraft(String(item.IdScenario), String(item.RowVersion ?? ''));
+      onScenariosChange(items.map((s) => (s.IdScenario === item.IdScenario ? { ...s, Estatus: updated.Estatus, RowVersion: updated.RowVersion } : s)));
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setReverting(false);
+    }
+  }
+
+  /** The list endpoint (Scenario_ListByVersion) never returns Descripcion/ContextoParticipante/
+   * etc — fetch the full ScenarioResponse via GetById first, otherwise the form opens empty. */
+  async function startEdit(item: LabContentItem) {
+    setEditingId(String(item.IdScenario));
+    setLoadingDetail(true);
+    setSaveError(null);
+    try {
+      const full = await getScenarioDetail(String(item.IdScenario));
+      setDraft({
+        Descripcion: String(full.Descripcion ?? ''),
+        ContextoParticipante: String(full.ContextoParticipante ?? ''),
+        ProblemaCentral: String(full.ProblemaCentral ?? ''),
+        ResultadoEsperado: String(full.ResultadoEsperado ?? ''),
+        Supuestos: String(full.Supuestos ?? ''),
+        InformacionNoRevelarAutomaticamente: String(full.InformacionNoRevelarAutomaticamente ?? ''),
+        MensajeInicial: String(full.MensajeInicial ?? ''),
+      });
+      onScenariosChange(items.map((s) => (s.IdScenario === item.IdScenario ? { ...s, ...full } : s)));
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
+  async function saveEdit(item: LabContentItem) {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateScenario(String(item.IdScenario), String(item.RowVersion ?? ''), draft);
+      onScenariosChange(items.map((s) => (s.IdScenario === item.IdScenario ? { ...s, ...updated } : s)));
+      setEditingId(null);
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fields: Array<{ key: keyof typeof draft; labelEn: string; labelEs: string }> = [
+    { key: 'Descripcion', labelEn: 'Scenario description (sent to the AI agent)', labelEs: 'Descripción del escenario (se envía al agente de IA)' },
+    { key: 'ContextoParticipante', labelEn: 'Job description / hiring situation — shared context both the participant AND the AI agent use', labelEs: 'Descripción del puesto / situación de contratación — contexto compartido que usan tanto el participante COMO el agente de IA' },
+    { key: 'ProblemaCentral', labelEn: 'Central problem / what is being hired for (sent to the AI agent)', labelEs: 'Problema central / para qué se está contratando (se envía al agente de IA)' },
+    { key: 'ResultadoEsperado', labelEn: 'Expected outcome', labelEs: 'Resultado esperado' },
+    { key: 'Supuestos', labelEn: 'Company context / assumptions (sent to the AI agent)', labelEs: 'Contexto de la empresa / supuestos (se envía al agente de IA)' },
+    { key: 'InformacionNoRevelarAutomaticamente', labelEn: "Info the AI agent knows but must NOT reveal unless asked directly", labelEs: 'Información que el agente de IA sabe pero NO debe revelar salvo que se le pregunte directamente' },
+    { key: 'MensajeInicial', labelEn: "Actor's opening line", labelEs: 'Frase de apertura del actor' },
+  ];
+
+  return (
+    <section>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">{isEs ? 'Escenarios' : 'Scenarios'} ({items.length})</h3>
+      {saveError && <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300 border border-red-500/30">{saveError}</p>}
+      <div className="mt-2 space-y-2">
+        {items.length === 0 && <p className="text-sm text-slate-500">{isEs ? 'Sin registros.' : 'No records.'}</p>}
+        {items.map((item, index) => {
+          const isEditing = editingId === String(item.IdScenario);
+          return (
+            <div key={String(item.IdScenario ?? index)} className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium text-white">{String(item.Nombre ?? item.Codigo ?? `${isEs ? 'Escenario' : 'Scenario'} ${index + 1}`)}</p>
+                {!isEditing && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    {String(item.Estatus ?? '') !== 'DRAFT' && (
+                      <button type="button" disabled={reverting} onClick={() => revertToDraft(item)} className="rounded border border-amber-400/30 px-2 py-1 text-xs text-amber-300 hover:bg-amber-400/10 disabled:opacity-60">{isEs ? 'Revertir a borrador' : 'Revert to draft'}</button>
+                    )}
+                    <button type="button" onClick={() => startEdit(item)} className="rounded border border-teal-400/30 px-2 py-1 text-xs text-teal-300 hover:bg-teal-400/10">{isEs ? 'Editar' : 'Edit'}</button>
+                  </div>
+                )}
+              </div>
+              {isEditing ? (
+                loadingDetail ? (
+                  <p className="mt-2 text-xs text-slate-500">{isEs ? 'Cargando…' : 'Loading…'}</p>
+                ) : (
+                <div className="mt-2 space-y-2">
+                  {fields.map((f) => (
+                    <div key={f.key}>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">{isEs ? f.labelEs : f.labelEn}</label>
+                      <textarea
+                        value={draft[f.key]}
+                        onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                        rows={2}
+                        className="mt-1 w-full rounded border border-white/10 bg-slate-950/60 p-2 text-sm text-slate-200"
+                      />
+                    </div>
+                  ))}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" disabled={saving} onClick={() => setEditingId(null)} className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10">{isEs ? 'Cancelar' : 'Cancel'}</button>
+                    <button type="button" disabled={saving} onClick={() => saveEdit(item)} className="rounded border border-teal-400/30 px-2 py-1 text-xs text-teal-300 hover:bg-teal-400/10">{isEs ? 'Guardar' : 'Save'}</button>
+                  </div>
+                </div>
+                )
+              ) : (
+                <>
+                  {Boolean(item.Descripcion) && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-400">{String(item.Descripcion)}</p>}
+                  {Boolean(item.ContextoParticipante) && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500">{isEs ? 'Contexto del participante: ' : 'Participant context: '}{String(item.ContextoParticipante)}</p>}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** DRAFT-only editor for LAB_SimulatedActor — the hiring manager/interviewer persona: role,
+ * company, what they already know about the job/candidate. Previously read-only via ContentList.
+ * EVERY field below is read verbatim by LabSimulationPromptBuilder.BuildInstructions and injected
+ * into the LIVE AI agent's own system prompt — this (plus the Scenario fields above) is the
+ * agent's actual, complete knowledge of the job it's hiring for during the real-time call. */
+function EditableActorList({
+  items,
+  isEs,
+  onActorsChange,
+}: {
+  items: LabContentItem[];
+  isEs: boolean;
+  onActorsChange: (updated: LabContentItem[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ Rol: string; Descripcion: string; Objetivo: string; ContextoConocido: string; BriefOculto: string; InformacionPuedeRevelar: string; InformacionNoRevelarAutomaticamente: string; Objeciones: string; Contradicciones: string }>({
+    Rol: '', Descripcion: '', Objetivo: '', ContextoConocido: '', BriefOculto: '', InformacionPuedeRevelar: '', InformacionNoRevelarAutomaticamente: '', Objeciones: '', Contradicciones: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /** The list endpoint (SimulatedActor_ListByScenario) never returns Rol/Descripcion/Objetivo/
+   * ContextoConocido/etc — fetch the full SimulatedActorResponse via GetById first, otherwise the
+   * form opens empty. */
+  async function startEdit(item: LabContentItem) {
+    setEditingId(String(item.IdActor));
+    setLoadingDetail(true);
+    setSaveError(null);
+    try {
+      const full = await getSimulatedActorDetail(String(item.IdActor));
+      setDraft({
+        Rol: String(full.Rol ?? ''),
+        Descripcion: String(full.Descripcion ?? ''),
+        Objetivo: String(full.Objetivo ?? ''),
+        ContextoConocido: String(full.ContextoConocido ?? ''),
+        BriefOculto: String(full.BriefOculto ?? ''),
+        InformacionPuedeRevelar: String(full.InformacionPuedeRevelar ?? ''),
+        InformacionNoRevelarAutomaticamente: String(full.InformacionNoRevelarAutomaticamente ?? ''),
+        Objeciones: String(full.Objeciones ?? ''),
+        Contradicciones: String(full.Contradicciones ?? ''),
+      });
+      onActorsChange(items.map((a) => (a.IdActor === item.IdActor ? { ...a, ...full } : a)));
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
+  async function saveEdit(item: LabContentItem) {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateSimulatedActor(String(item.IdActor), String(item.RowVersion ?? ''), draft);
+      onActorsChange(items.map((a) => (a.IdActor === item.IdActor ? { ...a, ...updated } : a)));
+      setEditingId(null);
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fields: Array<{ key: keyof typeof draft; labelEn: string; labelEs: string }> = [
+    { key: 'Rol', labelEn: 'Role (e.g. "Hiring Manager (Acme Corp)") — sent to the AI agent', labelEs: 'Rol (ej. "Gerente de Contratación (Acme Corp)") — se envía al agente de IA' },
+    { key: 'Descripcion', labelEn: 'Description — sent to the AI agent', labelEs: 'Descripción — se envía al agente de IA' },
+    { key: 'Objetivo', labelEn: 'Objective in this conversation — sent to the AI agent', labelEs: 'Objetivo en esta conversación — se envía al agente de IA' },
+    { key: 'ContextoConocido', labelEn: 'Full job description / what the AI agent already knows (title, responsibilities, requirements, company — this drives the live conversation)', labelEs: 'Descripción completa del puesto / lo que el agente de IA ya sabe (título, responsabilidades, requisitos, empresa — esto guía la conversación en vivo)' },
+    { key: 'BriefOculto', labelEn: "Hidden brief — only the agent knows this, won't reveal unless asked directly", labelEs: 'Brief oculto — solo el agente lo sabe, no lo revela salvo que se le pregunte directamente' },
+    { key: 'InformacionPuedeRevelar', labelEn: 'Information they may reveal', labelEs: 'Información que puede revelar' },
+    { key: 'InformacionNoRevelarAutomaticamente', labelEn: 'Info the agent must NOT reveal automatically, only if asked directly', labelEs: 'Información que el agente NO debe revelar automáticamente, solo si se le pregunta directamente' },
+    { key: 'Objeciones', labelEn: 'Objections the agent can raise', labelEs: 'Objeciones que el agente puede plantear' },
+    { key: 'Contradicciones', labelEn: 'Contradictions the agent can introduce if relevant', labelEs: 'Contradicciones que el agente puede introducir si es relevante' },
+  ];
+
+  return (
+    <section>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">{isEs ? 'Actores simulados' : 'Simulated actors'} ({items.length})</h3>
+      {saveError && <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-300 border border-red-500/30">{saveError}</p>}
+      <div className="mt-2 space-y-2">
+        {items.length === 0 && <p className="text-sm text-slate-500">{isEs ? 'Sin registros.' : 'No records.'}</p>}
+        {items.map((item, index) => {
+          const isEditing = editingId === String(item.IdActor);
+          return (
+            <div key={String(item.IdActor ?? index)} className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium text-white">{String(item.Nombre ?? item.Codigo ?? `${isEs ? 'Actor' : 'Actor'} ${index + 1}`)} {Boolean(item.Rol) && <span className="font-normal text-slate-400">— {String(item.Rol)}</span>}</p>
+                {!isEditing && (
+                  <button type="button" onClick={() => startEdit(item)} className="shrink-0 rounded border border-teal-400/30 px-2 py-1 text-xs text-teal-300 hover:bg-teal-400/10">{isEs ? 'Editar' : 'Edit'}</button>
+                )}
+              </div>
+              {isEditing ? (
+                loadingDetail ? (
+                  <p className="mt-2 text-xs text-slate-500">{isEs ? 'Cargando…' : 'Loading…'}</p>
+                ) : (
+                <div className="mt-2 space-y-2">
+                  {fields.map((f) => (
+                    <div key={f.key}>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">{isEs ? f.labelEs : f.labelEn}</label>
+                      <textarea
+                        value={draft[f.key]}
+                        onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                        rows={2}
+                        className="mt-1 w-full rounded border border-white/10 bg-slate-950/60 p-2 text-sm text-slate-200"
+                      />
+                    </div>
+                  ))}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" disabled={saving} onClick={() => setEditingId(null)} className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10">{isEs ? 'Cancelar' : 'Cancel'}</button>
+                    <button type="button" disabled={saving} onClick={() => saveEdit(item)} className="rounded border border-teal-400/30 px-2 py-1 text-xs text-teal-300 hover:bg-teal-400/10">{isEs ? 'Guardar' : 'Save'}</button>
+                  </div>
+                </div>
+                )
+              ) : (
+                <>
+                  {Boolean(item.Descripcion) && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-400">{String(item.Descripcion)}</p>}
+                  {Boolean(item.ContextoConocido) && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500">{isEs ? 'Contexto conocido: ' : 'Known context: '}{String(item.ContextoConocido)}</p>}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 /** What the AI Lab Builder actually generated per evaluated skill (LAB_TestedSkill) — previously

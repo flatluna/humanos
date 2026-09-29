@@ -27,15 +27,18 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
     private readonly StructuredLearningKnowledgeFactGenerationAgent _agent;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly ILogger<StructuredLearningKnowledgeFactGenerationService> _logger;
+    private readonly StructuredLearningGenerationUsageService _usageService;
 
     public StructuredLearningKnowledgeFactGenerationService(
         StructuredLearningKnowledgeFactGenerationAgent agent,
         IDbContextFactory<HumanOsDbContext> dbContextFactory,
-        ILogger<StructuredLearningKnowledgeFactGenerationService> logger)
+        ILogger<StructuredLearningKnowledgeFactGenerationService> logger,
+        StructuredLearningGenerationUsageService usageService)
     {
         _agent = agent;
         _dbContextFactory = dbContextFactory;
         _logger = logger;
+        _usageService = usageService;
     }
 
     public bool IsConfigured => _agent.IsConfigured;
@@ -111,6 +114,7 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
         _logger.LogInformation("Knowledge Facts request for Engram {EngramId}: {EntityCount} entities, {ConnectionCount} connections", engramId, entityInputs.Count, connectionInputs.Count);
 
         StructuredLearningKnowledgeFactGenerationResponse response;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             // Raw (unvalidated): the model occasionally puts one invalid
@@ -119,7 +123,20 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
             // the bad apples instead of discarding the whole batch, which
             // previously turned a single bad fact into zero facts for the
             // entire Engram.
-            response = await _agent.GenerateRawAsync(request, cancellationToken);
+            var (rawResponse, usage) = await _agent.GenerateRawWithUsageAsync(request, cancellationToken);
+            stopwatch.Stop();
+            try
+            {
+                await _usageService.RecordAsync(
+                    section.StructuredLearningDocumentId, engramId, "KnowledgeFacts", usage.AgentName,
+                    usage.ModelName, usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens,
+                    stopwatch.ElapsedMilliseconds, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Usage logging must never break the actual generation it measures.
+            }
+            response = rawResponse;
             response.KnowledgeFacts = FilterValidFacts(request, response, entityInputs, connectionInputs, engramId);
             if (response.KnowledgeFacts.Count == 0)
             {

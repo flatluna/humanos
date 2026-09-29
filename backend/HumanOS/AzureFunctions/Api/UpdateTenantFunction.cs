@@ -96,6 +96,7 @@ public sealed class UpdateTenantFunction
             updateRequest.Description,
             updateRequest.CultureCode,
             updateRequest.TimeZone,
+            updateRequest.OrgType,
             updateRequest.IsActive,
             cancellationToken);
 
@@ -121,6 +122,7 @@ public sealed class UpdateTenantFunction
                 tenant.Description,
                 tenant.CultureCode,
                 tenant.TimeZone,
+                tenant.OrgType,
                 tenant.IsActive,
                 tenant.CreatedDate,
                 tenant.UpdatedDate

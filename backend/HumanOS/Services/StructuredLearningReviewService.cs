@@ -27,6 +27,11 @@ public sealed class StructuredLearningReviewService
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
     private readonly AzureSpeechService _speechService;
     private readonly PerplexitySearchService _perplexityService;
+    private readonly CapabilityEmbeddingService _embeddingService;
+    private readonly StructuredLearningEntityExtractionService _entityExtraction;
+    private readonly StructuredLearningConnectionExtractionService _connectionExtraction;
+    private readonly StructuredLearningKnowledgeFactGenerationService _knowledgeFactGeneration;
+    private readonly StructuredLearningGenerationUsageService _usageService;
 
     public StructuredLearningReviewService(
         StructuredLearningStepEditorAgent stepAgent,
@@ -34,7 +39,12 @@ public sealed class StructuredLearningReviewService
         GraphIllustrationImageService imageService,
         CapabilityGraphIllustrationStorageService illustrationStorage,
         AzureSpeechService speechService,
-        PerplexitySearchService perplexityService)
+        PerplexitySearchService perplexityService,
+        CapabilityEmbeddingService embeddingService,
+        StructuredLearningEntityExtractionService entityExtraction,
+        StructuredLearningConnectionExtractionService connectionExtraction,
+        StructuredLearningKnowledgeFactGenerationService knowledgeFactGeneration,
+        StructuredLearningGenerationUsageService usageService)
     {
         _stepAgent = stepAgent;
         _cardAgent = cardAgent;
@@ -42,6 +52,11 @@ public sealed class StructuredLearningReviewService
         _illustrationStorage = illustrationStorage;
         _speechService = speechService;
         _perplexityService = perplexityService;
+        _embeddingService = embeddingService;
+        _entityExtraction = entityExtraction;
+        _connectionExtraction = connectionExtraction;
+        _knowledgeFactGeneration = knowledgeFactGeneration;
+        _usageService = usageService;
     }
 
     public sealed class StepResult
@@ -105,7 +120,20 @@ public sealed class StructuredLearningReviewService
         }
 
         var prompt = BuildStepEditPrompt(section, stepType, step.Content, instruction, perplexityFindings);
-        var result = await _stepAgent.EditStepAsync(prompt, cancellationToken);
+        var editStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var (result, editUsage) = await _stepAgent.EditStepWithUsageAsync(prompt, cancellationToken);
+        editStopwatch.Stop();
+        try
+        {
+            await _usageService.RecordAsync(
+                section.StructuredLearningDocumentId, sectionId, "Edit", editUsage.AgentName, editUsage.ModelName,
+                editUsage.InputTokens, editUsage.OutputTokens, editUsage.CachedInputTokens,
+                editStopwatch.ElapsedMilliseconds, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Usage logging must never break the actual edit it measures.
+        }
 
         step.Content = result.UpdatedContent;
         step.IsHumanApproved = false;
@@ -136,6 +164,11 @@ public sealed class StructuredLearningReviewService
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (stepType == StructuredLearningStepType.Teaching)
+        {
+            await ResyncKnowledgeGraphAfterTeachingEditAsync(dbContext, section, step.Content, cancellationToken);
+        }
 
         var finalResult = ToStepResult(step);
         finalResult.WebSearchCitations = citations;
@@ -178,7 +211,58 @@ public sealed class StructuredLearningReviewService
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (stepType == StructuredLearningStepType.Teaching)
+        {
+            await ResyncKnowledgeGraphAfterTeachingEditAsync(dbContext, section, step.Content, cancellationToken);
+        }
+
         return ToStepResult(step);
+    }
+
+    /// <summary>Always runs after ANY Teaching edit (AI or manual) — no opt-in, per
+    /// explicit product decision: leaving the Knowledge Graph/Facts derived from the OLD
+    /// text would silently drift out of sync with what the section now actually teaches.
+    /// Syncs the section's own canonical Text (source of truth for embeddings/Knowledge
+    /// Graph/Knowledge Facts extraction) to the edited Teaching Content, then fully
+    /// deletes and re-extracts entities/connections/facts for this section from it.
+    /// Best-effort: a failure here must never undo the text/audio edit that already
+    /// succeeded and was saved.</summary>
+    private async Task ResyncKnowledgeGraphAfterTeachingEditAsync(
+        HumanOsDbContext dbContext, StructuredLearningDocumentSection section, string newTeachingContent, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(newTeachingContent))
+        {
+            return;
+        }
+
+        try
+        {
+            section.Text = newTeachingContent;
+            section.TotalCharacters = newTeachingContent.Length;
+            if (_embeddingService.IsConfigured)
+            {
+                section.Embedding = new Microsoft.Data.SqlTypes.SqlVector<float>(
+                    await _embeddingService.GenerateEmbeddingAsync(newTeachingContent, cancellationToken));
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            if (_entityExtraction.IsConfigured)
+            {
+                await _entityExtraction.ExtractForSectionAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+            if (_connectionExtraction.IsConfigured)
+            {
+                await _connectionExtraction.ExtractForSectionAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+            if (_knowledgeFactGeneration.IsConfigured)
+            {
+                await _knowledgeFactGeneration.GenerateValidateAndPersistAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort — same graceful-skip rationale as StructuredLearningSectionAdditionService's own Knowledge Graph calls.
+        }
     }
 
     private async Task RegenerateTeachingAudioAsync(

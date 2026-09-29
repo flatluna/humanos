@@ -375,9 +375,13 @@ export default function VoiceTutorAgent({
                 input: {
                   turn_detection: {
                     type: 'server_vad',
-                    threshold: 0.85,
+                    // Matches RealtimeVoiceSessionService.cs's 2026-08-27 tuning — this
+                    // client-side session.update fires AFTER the session is created and
+                    // was overriding the backend's correct 0.65 back to a stale 0.85 that
+                    // never detected interruptions. Keep these two in sync.
+                    threshold: 0.65,
                     prefix_padding_ms: 300,
-                    silence_duration_ms: 700,
+                    silence_duration_ms: 650,
                     create_response: true,
                     interrupt_response: true,
                   },

@@ -44,7 +44,8 @@ const msalConfig: Configuration = {
     knownAuthorities: ['twinetwork.ciamlogin.com'],
     authorityMetadata: CIAM_METADATA,
     redirectUri: 'http://localhost:5180',
-    postLogoutRedirectUri: 'http://localhost:5180',
+    // After logout, send the user back to the HumanOS company landing page, not this app.
+    postLogoutRedirectUri: import.meta.env.VITE_POST_LOGOUT_REDIRECT_URI ?? 'http://localhost:5181',
   },
   cache: {
     cacheLocation: 'sessionStorage',

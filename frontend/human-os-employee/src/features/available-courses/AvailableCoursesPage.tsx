@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   BookCheck,
   BookOpen,
+  CheckCircle2,
   Layers,
   PlayCircle,
   Search,
@@ -48,8 +49,21 @@ export interface AvailableCourseCardItem {
   status: 'Available' | 'InProgress' | 'Completed' | 'Pending';
   sectionCount?: number;
   nodeCount?: number;
+  /** Distinct sections/engrams already passed — only known for enrolled
+   * Structured Learning documents (see EnrolledStructuredLearningDocument). */
+  completedSectionCount?: number;
+  /** True when the student is actually enrolled in this course — Structured
+   * Learning enrollment never updates `status` (it stays 'Available'
+   * forever), so this is the real signal a "started only" filter must use
+   * instead of relying on status alone. */
+  isEnrolled?: boolean;
   gradient: string;
   programMembership?: { programId: string; programName: string } | null;
+  /** "es"/"en" when known (Capabilities only, see Capability.ContentLanguageCode).
+   *  Undefined for course types that don't track a content language yet
+   *  (structured-learning docs, programs) — those always match every
+   *  language filter instead of being hidden. */
+  contentLanguageCode?: string;
 }
 
 const CATEGORY_STYLES: Record<
@@ -111,6 +125,21 @@ const STATUS_BADGES: Record<string, { labelEs: string; labelEn: string; classNam
   },
 };
 
+/** Last-resort language guess for courses with no real language data anywhere
+ * (e.g. career-plan/skill-matched courses that are neither published nor
+ * enrolled, so no backend query ever returns their ConfigSnapshotJson) — same
+ * word-frequency heuristic as the backend's StructuredLearningLanguageHeuristic.
+ * Without this, such courses had contentLanguageCode=undefined and silently
+ * matched EVERY language filter instead of being classified for real. */
+function detectLanguageHeuristic(sampleText: string): 'es' | 'en' {
+  const padded = ` ${sampleText.toLowerCase()} `;
+  const englishWords = [' the ', ' and ', ' you ', ' is ', ' to ', ' your ', ' with ', ' that ', ' this '];
+  const spanishWords = [' el ', ' la ', ' de ', ' que ', ' los ', ' las ', ' para ', ' con ', ' es ', ' tu '];
+  const englishHits = englishWords.filter((w) => padded.includes(w)).length;
+  const spanishHits = spanishWords.filter((w) => padded.includes(w)).length;
+  return englishHits > spanishHits ? 'en' : 'es';
+}
+
 export function AvailableCoursesPage() {
   const { language } = useI18n();
   const isEn = language === 'en';
@@ -119,7 +148,8 @@ export function AvailableCoursesPage() {
   const tenantId = user?.tenantId ?? '';
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedLanguage, setSelectedLanguage] = useState<'all' | 'es' | 'en'>('all');
+  const [startedOnly, setStartedOnly] = useState(false);
 
   // Queries
   const planQuery = useQuery({
@@ -200,6 +230,7 @@ export function AvailableCoursesPage() {
             targetUrl: `/structured-learning/${step.matchedCapabilityId}`,
             status: (step.trainingStatus as any) || 'Available',
             gradient: catStyle.gradient,
+            contentLanguageCode: step.language ?? undefined,
           });
         } else if (step.matchedProgramId) {
           const key = `prog-${step.matchedProgramId}`;
@@ -258,7 +289,12 @@ export function AvailableCoursesPage() {
     if (publishedCapsQuery.data) {
       for (const cap of publishedCapsQuery.data) {
         const key = `cap-${cap.capabilityId}`;
-        if (!itemsMap.has(key)) {
+        const existingCap = itemsMap.get(key);
+        if (existingCap) {
+          // Career-plan/skill-matched items (steps 1-2) never carry a language —
+          // always backfill it here so the ES/EN filter isn't bypassed for them.
+          existingCap.contentLanguageCode = existingCap.contentLanguageCode ?? cap.contentLanguageCode;
+        } else {
           const rawCat = cap.subjectCode || 'general';
           const cat =
             rawCat === 'soft-skills' || rawCat === 'department-processes' || rawCat === 'hr-processes' || rawCat === 'job-skills'
@@ -277,6 +313,7 @@ export function AvailableCoursesPage() {
             nodeCount: cap.nodeCount,
             status: 'Available',
             gradient: catStyle.gradient,
+            contentLanguageCode: cap.contentLanguageCode,
           });
         }
       }
@@ -289,7 +326,10 @@ export function AvailableCoursesPage() {
         const existing = itemsMap.get(key);
         if (existing) {
           existing.sectionCount = doc.sectionCount;
+          existing.completedSectionCount = doc.completedSectionCount;
           existing.coverIllustrationId = doc.coverIllustrationId;
+          existing.isEnrolled = true;
+          existing.contentLanguageCode = existing.contentLanguageCode ?? doc.language;
         } else {
           itemsMap.set(key, {
             id: doc.structuredLearningDocumentId,
@@ -301,8 +341,11 @@ export function AvailableCoursesPage() {
             targetUrl: `/structured-learning/${doc.structuredLearningDocumentId}`,
             coverIllustrationId: doc.coverIllustrationId,
             sectionCount: doc.sectionCount,
+            completedSectionCount: doc.completedSectionCount,
             status: 'Available',
+            isEnrolled: true,
             gradient: CATEGORY_STYLES.general.gradient,
+            contentLanguageCode: doc.language,
           });
         }
       }
@@ -313,7 +356,10 @@ export function AvailableCoursesPage() {
     if (publishedSlQuery.data) {
       for (const doc of publishedSlQuery.data) {
         const key = `cap-${doc.structuredLearningDocumentId}`;
-        if (!itemsMap.has(key)) {
+        const existingSl = itemsMap.get(key);
+        if (existingSl) {
+          existingSl.contentLanguageCode = existingSl.contentLanguageCode ?? doc.language;
+        } else {
           itemsMap.set(key, {
             id: doc.structuredLearningDocumentId,
             title: doc.documentName,
@@ -326,6 +372,7 @@ export function AvailableCoursesPage() {
             sectionCount: doc.sectionCount,
             status: 'Available',
             gradient: CATEGORY_STYLES.general.gradient,
+            contentLanguageCode: doc.language,
           });
         }
       }
@@ -339,6 +386,7 @@ export function AvailableCoursesPage() {
         if (existing) {
           existing.status = (cap.status as any) || existing.status;
           existing.nodeCount = cap.totalNodes;
+          existing.isEnrolled = true;
         }
       }
     }
@@ -366,29 +414,34 @@ export function AvailableCoursesPage() {
     isEn,
   ]);
 
-  // Filtered by search & category
+  // Filtered by search, language & "started" state
   const filteredCourses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return availableCourses.filter((course) => {
-      const matchCat = selectedCategory === 'all' || course.category === selectedCategory;
+      const matchStarted = !startedOnly || course.isEnrolled || course.status === 'InProgress' || course.status === 'Completed';
+      const effectiveLanguage = course.contentLanguageCode?.toLowerCase() || detectLanguageHeuristic(`${course.title} ${course.description}`);
+      const matchLang = selectedLanguage === 'all' || effectiveLanguage.startsWith(selectedLanguage);
       const matchQ =
         !q ||
         course.title.toLowerCase().includes(q) ||
         (course.skillName && course.skillName.toLowerCase().includes(q)) ||
         course.description.toLowerCase().includes(q);
-      return matchCat && matchQ;
+      return matchStarted && matchLang && matchQ;
     });
-  }, [availableCourses, selectedCategory, searchQuery]);
+  }, [availableCourses, startedOnly, selectedLanguage, searchQuery]);
 
-  const categoriesAvailable = useMemo(() => {
-    const set = new Set<string>();
-    availableCourses.forEach((c) => set.add(c.category));
-    return Array.from(set);
-  }, [availableCourses]);
-
-  const totalReady = availableCourses.length;
+  const totalEngramsCompleted = useMemo(
+    () => availableCourses
+      .reduce((sum, c) => {
+        if (typeof c.completedSectionCount === 'number') return sum + c.completedSectionCount;
+        return c.status === 'Completed' ? sum + (c.sectionCount ?? c.nodeCount ?? 0) : sum;
+      }, 0),
+    [availableCourses],
+  );
   const completedCount = availableCourses.filter((c) => c.status === 'Completed').length;
-  const inProgressCount = availableCourses.filter((c) => c.status === 'InProgress').length;
+  const inProgressCount = availableCourses.filter(
+    (c) => c.status !== 'Completed' && (c.status === 'InProgress' || c.isEnrolled),
+  ).length;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 pb-16 sm:p-8">
@@ -417,9 +470,9 @@ export function AvailableCoursesPage() {
 
           <div className="flex items-center gap-4 rounded-2xl bg-white/10 px-5 py-4 ring-1 ring-white/20 backdrop-blur">
             <div className="text-right">
-              <p className="text-2xl font-bold text-white">{totalReady}</p>
+              <p className="text-2xl font-bold text-white">{totalEngramsCompleted}</p>
               <p className="text-xs text-white/70">
-                {isEn ? 'Ready in Catalog' : 'Listos en Catálogo'}
+                {isEn ? 'Engrams completed' : 'Engramas completados'}
               </p>
             </div>
             <div className="h-9 w-px bg-white/20" />
@@ -456,38 +509,48 @@ export function AvailableCoursesPage() {
           />
         </div>
 
-        {/* Category Pills */}
+        {/* Language Pills */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['all', 'es', 'en'] as const).map((lang) => (
+            <button
+              key={lang}
+              type="button"
+              onClick={() => setSelectedLanguage(lang)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                selectedLanguage === lang
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white/70'
+              }`}
+            >
+              {lang === 'all' ? (isEn ? 'All Languages' : 'Todos los Idiomas') : lang === 'es' ? 'Español' : 'English'}
+            </button>
+          ))}
+        </div>
+
+        {/* Started-only toggle */}
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setSelectedCategory('all')}
+            onClick={() => setStartedOnly(false)}
             className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-              selectedCategory === 'all'
+              !startedOnly
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white/70'
             }`}
           >
-            {isEn ? 'All Categories' : 'Todas las Categorías'} ({availableCourses.length})
+            {isEn ? 'All courses' : 'Todos los cursos'}
           </button>
-          {categoriesAvailable.map((catKey) => {
-            const meta = CATEGORY_STYLES[catKey] || CATEGORY_STYLES.general;
-            const count = availableCourses.filter((c) => c.category === catKey).length;
-            const isActive = selectedCategory === catKey;
-            return (
-              <button
-                key={catKey}
-                type="button"
-                onClick={() => setSelectedCategory(catKey)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white/70'
-                }`}
-              >
-                {isEn ? meta.labelEn : meta.labelEs} ({count})
-              </button>
-            );
-          })}
+          <button
+            type="button"
+            onClick={() => setStartedOnly(true)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              startedOnly
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white/70'
+            }`}
+          >
+            {isEn ? 'Started only' : 'Solo iniciados'}
+          </button>
         </div>
       </div>
 
@@ -507,7 +570,8 @@ export function AvailableCoursesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredCourses.map((course) => {
-            const statusMeta = STATUS_BADGES[course.status] || STATUS_BADGES.Available;
+            const effectiveStatus = course.status === 'Available' && course.isEnrolled ? 'InProgress' : course.status;
+            const statusMeta = STATUS_BADGES[effectiveStatus] || STATUS_BADGES.Available;
 
             return (
               <div
@@ -586,8 +650,19 @@ export function AvailableCoursesPage() {
                         <Layers className="h-3.5 w-3.5" />
                         <span>
                           {course.sectionCount
-                            ? `${course.sectionCount} ${isEn ? 'sections' : 'secciones / engramas'}`
+                            ? `${course.sectionCount} ${isEn ? 'engrams' : 'engramas'}`
                             : `${course.nodeCount} ${isEn ? 'learning nodes' : 'nodos de aprendizaje'}`}
+                        </span>
+                      </div>
+                    )}
+
+                    {typeof course.completedSectionCount === 'number' && course.completedSectionCount > 0 && (
+                      <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>
+                          {isEn
+                            ? `${course.completedSectionCount} of ${course.sectionCount ?? course.completedSectionCount} engrams completed`
+                            : `${course.completedSectionCount} de ${course.sectionCount ?? course.completedSectionCount} engramas completados`}
                         </span>
                       </div>
                     )}
@@ -622,9 +697,9 @@ export function AvailableCoursesPage() {
                     >
                       <PlayCircle className="h-4 w-4" />
                       <span>
-                        {course.status === 'Completed'
+                        {effectiveStatus === 'Completed'
                           ? isEn ? 'Review Course' : 'Repasar Curso'
-                          : course.status === 'InProgress'
+                          : effectiveStatus === 'InProgress'
                             ? isEn ? 'Continue Course' : 'Continuar Curso'
                             : isEn ? 'Start Course' : 'Iniciar Curso'}
                       </span>

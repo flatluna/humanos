@@ -428,6 +428,41 @@ public sealed class PersonCareerPlanService
             .Concat(response.HrProcessesRoadmap)
             .ToList();
 
+        // Resolve each matched course's real language regardless of publish/enrollment
+        // status — previously only published/enrolled courses ever carried language
+        // data anywhere, leaving career-plan-matched-but-unpublished courses with no
+        // language at all (silently bypassing the Available Courses ES/EN filter).
+        var matchedIds = allSteps.Where(s => s.MatchedCapabilityId.HasValue).Select(s => s.MatchedCapabilityId!.Value).Distinct().ToList();
+        if (matchedIds.Count > 0)
+        {
+            var docLanguageData = await _dbContext.StructuredLearningDocuments.AsNoTracking()
+                .Where(d => matchedIds.Contains(d.StructuredLearningDocumentId))
+                .Select(d => new { d.StructuredLearningDocumentId, d.ConfigSnapshotJson, d.ExecutiveSummary, d.DocumentName })
+                .ToListAsync(cancellationToken);
+            var capLanguageData = await _dbContext.Capabilities.AsNoTracking()
+                .Where(c => matchedIds.Contains(c.CapabilityId))
+                .Select(c => new { c.CapabilityId, c.ContentLanguageCode })
+                .ToListAsync(cancellationToken);
+
+            var languageById = new Dictionary<Guid, string>();
+            foreach (var d in docLanguageData)
+            {
+                languageById[d.StructuredLearningDocumentId] = StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName);
+            }
+            foreach (var c in capLanguageData)
+            {
+                languageById[c.CapabilityId] = string.IsNullOrWhiteSpace(c.ContentLanguageCode) ? "es" : c.ContentLanguageCode;
+            }
+
+            foreach (var step in allSteps)
+            {
+                if (step.MatchedCapabilityId.HasValue && languageById.TryGetValue(step.MatchedCapabilityId.Value, out var lang))
+                {
+                    step.Language = lang;
+                }
+            }
+        }
+
         if (allSteps.Any(s => s.MatchedProgramId.HasValue))
         {
             var enrolledPrograms = await _growthPlanService.GetEnrolledProgramsAsync(personId, cancellationToken);

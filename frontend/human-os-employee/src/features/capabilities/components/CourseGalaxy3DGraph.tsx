@@ -756,6 +756,34 @@ export const CourseGalaxy3DGraph: React.FC<CourseGalaxy3DGraphProps> = ({
         </div>
       </div>
 
+      {/* Explainer modal */}
+      {showExplainer && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={dismissExplainer}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-base font-bold text-white">{t('courseMap.whatIsThis')}</h3>
+              <button
+                type="button"
+                onClick={dismissExplainer}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                aria-label={t('knowledgeGraph.close')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-slate-300">
+              {t('courseMap.rotateHint')}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Concept detail modal — click a cyan/amber node to see which
           engrams reference it, and jump straight to one. */}
       {selectedEntity && (

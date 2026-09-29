@@ -108,12 +108,14 @@ public sealed class StructuredLearningStepEditorAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _modelName;
 
     public StructuredLearningStepEditorAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+        _modelName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -134,12 +136,29 @@ public sealed class StructuredLearningStepEditorAgent
 
     public async Task<EditStructuredLearningStepResponse> EditStepAsync(string prompt, CancellationToken cancellationToken)
     {
+        var (response, _) = await EditStepWithUsageAsync(prompt, cancellationToken);
+        return response;
+    }
+
+    /// <summary>Same edit call as <see cref="EditStepAsync"/>, also returning the token
+    /// usage that produced it — same shape as StructuredLearningEntityExtractionAgent's own
+    /// ExtractAsync, used to persist a StructuredLearningGenerationUsage row per edit.</summary>
+    public async Task<(EditStructuredLearningStepResponse Response, AgentTokenUsage Usage)> EditStepWithUsageAsync(string prompt, CancellationToken cancellationToken)
+    {
         if (_agent is null)
         {
             throw new InvalidOperationException("StructuredLearningStepEditorAgent is not configured.");
         }
 
         var response = await _agent.RunAsync<EditStructuredLearningStepResponse>(prompt, cancellationToken: cancellationToken);
-        return response.Result;
+        var usage = response.Usage;
+        return (response.Result, new AgentTokenUsage
+        {
+            AgentName = "StructuredLearningStepEditorAgent",
+            ModelName = _modelName,
+            InputTokens = (int)(usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
+            CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)
+        });
     }
 }

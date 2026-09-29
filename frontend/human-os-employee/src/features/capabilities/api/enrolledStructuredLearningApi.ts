@@ -11,8 +11,12 @@ export interface EnrolledStructuredLearningDocument {
   structuredLearningDocumentId: string;
   documentName: string;
   sectionCount: number;
+  /** Distinct sections this person has a Passed assessment round for. */
+  completedSectionCount?: number;
   coverIllustrationId?: string | null;
   enrolledDate: string;
+  /** "es"/"en" — see StructuredLearningLanguageHeuristic (server-side). */
+  language?: string;
 }
 
 export interface StructuredLearningDocumentEnrollmentAction {

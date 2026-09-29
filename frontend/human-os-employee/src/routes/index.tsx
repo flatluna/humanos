@@ -85,6 +85,10 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecMantenteVigentePage) })),
       },
       {
+        path: 'tec-contigo/practica-y-refuerza',
+        lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecPracticaYRefuerzaPage) })),
+      },
+      {
         path: 'tec-contigo/conecta-y-contribuye',
         lazy: () => import('@/features/tec-contigo').then((m) => ({ Component: withAcademicGuard(m.TecConectaYContribuyePage) })),
       },

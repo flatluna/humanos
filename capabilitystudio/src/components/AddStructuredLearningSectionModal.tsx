@@ -60,6 +60,9 @@ export default function AddStructuredLearningSectionModal({
   const [uploadedImageFile, setUploadedImageFile] = useState<File | null>(null);
   const [uploadedImagePreviewUrl, setUploadedImagePreviewUrl] = useState<string | null>(null);
   const [referenceImageUsageInstruction, setReferenceImageUsageInstruction] = useState('');
+  // null = inherit the document's own Step 1 web-search choice (default);
+  // true/false explicitly overrides it just for this new section.
+  const [usePerplexitySearch, setUsePerplexitySearch] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -135,7 +138,8 @@ export default function AddStructuredLearningSectionModal({
         illustrationMode,
         uploadedImageBase64,
         uploadedImageFile?.type ?? null,
-        needsReferenceImageUsageInstruction ? referenceImageUsageInstruction.trim() : null
+        needsReferenceImageUsageInstruction ? referenceImageUsageInstruction.trim() : null,
+        usePerplexitySearch
       );
       onCreated(section);
     } catch (err) {
@@ -201,6 +205,34 @@ export default function AddStructuredLearningSectionModal({
                 selected={requiredByIds}
                 onToggle={(id) => toggle(requiredByIds, setRequiredByIds, id)}
               />
+            </div>
+
+            <div className="mt-5">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                {t('addStructuredLearningSectionModal.webSearchLabel')}
+              </p>
+              <div className="space-y-2">
+                <WebSearchOption
+                  value={null}
+                  current={usePerplexitySearch}
+                  onSelect={setUsePerplexitySearch}
+                  label={t('addStructuredLearningSectionModal.webSearchInherit')}
+                  hint={t('addStructuredLearningSectionModal.webSearchInheritHint')}
+                />
+                <WebSearchOption
+                  value={true}
+                  current={usePerplexitySearch}
+                  onSelect={setUsePerplexitySearch}
+                  label={t('addStructuredLearningSectionModal.webSearchOn')}
+                  hint={t('addStructuredLearningSectionModal.webSearchOnHint')}
+                />
+                <WebSearchOption
+                  value={false}
+                  current={usePerplexitySearch}
+                  onSelect={setUsePerplexitySearch}
+                  label={t('addStructuredLearningSectionModal.webSearchOff')}
+                />
+              </div>
             </div>
 
             <div className="mt-5">
@@ -333,6 +365,40 @@ export default function AddStructuredLearningSectionModal({
         )}
       </div>
     </div>
+  );
+}
+
+function WebSearchOption({
+  value,
+  current,
+  onSelect,
+  label,
+  hint,
+}: {
+  value: boolean | null;
+  current: boolean | null;
+  onSelect: (value: boolean | null) => void;
+  label: string;
+  hint?: string;
+}) {
+  const selected = value === current;
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${
+        selected ? 'border-brand-500/50 bg-brand-500/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+      }`}
+    >
+      <input
+        type="radio"
+        checked={selected}
+        onChange={() => onSelect(value)}
+        className="mt-0.5 h-3.5 w-3.5 border-white/20 bg-white/[0.03] text-brand-500"
+      />
+      <div className="min-w-0">
+        <p className="text-sm text-slate-200">{label}</p>
+        {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+      </div>
+    </label>
   );
 }
 

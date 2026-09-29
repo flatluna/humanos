@@ -111,3 +111,57 @@ export function getStructuredLearningCosts(): Promise<StructuredLearningCostSumm
 export function getStructuredLearningCostDetail(documentId: string): Promise<StructuredLearningCostDetail> {
   return apiGet<StructuredLearningCostDetail>(`/studio/structured-learning-costs/${documentId}`);
 }
+
+/** Per-engram cost breakdown (2026-09-26) — everything billed to ONE
+ * section: initial design generation AND every later edit (manual or AI),
+ * plus that engram's own images/videos. See StructuredLearningCostService
+ * .GetPerEngramAsync. */
+export interface StructuredLearningEngramModelCost {
+  ModelName: string;
+  CallCount: number;
+  InputTokens: number;
+  CachedInputTokens: number;
+  OutputTokens: number;
+  InputRatePerMillionTokens: number;
+  CachedInputRatePerMillionTokens: number;
+  OutputRatePerMillionTokens: number;
+  InputCostUsd: number;
+  CachedInputCostUsd: number;
+  OutputCostUsd: number;
+  TotalCostUsd: number;
+}
+
+export interface StructuredLearningEngramVideoModelCost {
+  ModelName: string;
+  VideoCount: number;
+  RatePerVideoUsd: number;
+  TotalCostUsd: number;
+}
+
+export interface StructuredLearningEngramCost {
+  StructuredLearningDocumentSectionId: string;
+  ChapterTitle: string;
+  SubchapterTitle: string;
+  Steps: string;
+  CallCount: number;
+  InputTokens: number;
+  OutputTokens: number;
+  CachedInputTokens: number;
+  TotalTokens: number;
+  ModelBreakdown: StructuredLearningEngramModelCost[];
+  LlmCostUsd: number;
+  ImagesGeneratedCount: number;
+  ImageRatePerImageUsd: number;
+  ImageCostUsd: number;
+  VideosGeneratedCount: number;
+  VideoModelBreakdown: StructuredLearningEngramVideoModelCost[];
+  VideoCostUsd: number;
+  TotalCostUsd: number;
+  IsEstimate: boolean;
+}
+
+export function getStructuredLearningCostPerEngram(documentId: string, sectionId?: string): Promise<StructuredLearningEngramCost[]> {
+  const query = sectionId ? `?sectionId=${sectionId}` : '';
+  return apiGet<StructuredLearningEngramCost[]>(`/studio/structured-learning-costs/${documentId}/per-engram${query}`);
+}
+

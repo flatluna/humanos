@@ -40,6 +40,22 @@ public sealed class JobRoleResponse
 
     public IReadOnlyList<string> Tools { get; set; } = [];
 
+    public IReadOnlyList<string> StartInYourRoleTechnicalSkills { get; set; } = [];
+
+    public IReadOnlyList<string> StartInYourRoleSoftSkills { get; set; } = [];
+
+    public IReadOnlyList<string> StartInYourRoleDepartmentProcesses { get; set; } = [];
+
+    public IReadOnlyList<string> StartInYourRoleHrProcesses { get; set; } = [];
+
+    public IReadOnlyList<string> InYourRoleTechnicalSkills { get; set; } = [];
+
+    public IReadOnlyList<string> InYourRoleSoftSkills { get; set; } = [];
+
+    public IReadOnlyList<string> InYourRoleDepartmentProcesses { get; set; } = [];
+
+    public IReadOnlyList<string> InYourRoleHrProcesses { get; set; } = [];
+
     public IReadOnlyList<string> DailyActivities { get; set; } = [];
 
     public IReadOnlyList<string> PerformanceIndicators { get; set; } = [];

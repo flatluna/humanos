@@ -31,6 +31,7 @@ import {
   Volume2,
   Bot,
   Lock,
+  Clock,
 } from 'lucide-react';
 import {
   getStructuredLearningDocument,
@@ -72,6 +73,7 @@ import {
   type StructuredLearningVideoRunStatus,
 } from '../lib/api/structuredLearningApi';
 import { apiImageUrl } from '../lib/api/httpClient';
+import { getStructuredLearningCostPerEngram, type StructuredLearningEngramCost } from '../lib/api/costsApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
@@ -468,6 +470,13 @@ export default function StructuredLearningSectionPage() {
       <div className="mt-4 text-center">
         <p className="text-xs font-medium uppercase tracking-wide text-brand-400">{currentSection?.ChapterTitle}</p>
         <h1 className="mt-1 text-2xl font-bold text-white">{currentSection?.SubchapterTitle}</h1>
+        {typeof currentSection?.EstimatedMinutesToComplete === 'number' && (
+          <p className="mt-1.5 flex items-center justify-center gap-1.5 text-xs font-medium text-amber-300">
+            <Clock className="h-3.5 w-3.5" />
+            {t('structuredLearningCourse.estimatedMinutes', { minutes: currentSection.EstimatedMinutesToComplete })}
+          </p>
+        )}
+        {mode === 'edit' && documentId && sectionId && <EngramCostBadge documentId={documentId} sectionId={sectionId} />}
         {documentId && sectionId && (
           <button
             type="button"
@@ -1798,6 +1807,162 @@ function formatInlineText(value: string): ReactNode {
  * StructuredLearningStepEditorAgent. Only rendered for Hypothesis/Teaching/
  * Production — DeepDive is edited card-by-card (DeepDiveCardsEditor);
  * Recall/Assessment have no static Content (generated live). */
+/** Blocking modal (2026-09-26) shown while a Teaching step edit is being
+ * applied — a single backend call already does text update + audio
+ * resynthesis + full Knowledge Graph (entities/connections) + Knowledge
+ * Facts regeneration synchronously, but that can take a while, so this
+ * keeps the reviewer from navigating away mid-flight and explains each
+ * stage happening server-side via a simulated step timer (no true
+ * incremental backend progress exists for one HTTP call, same rationale
+ * as AddStructuredLearningSectionModal's own ProgressView). */
+const TEACHING_REGEN_STEP_DURATION_MS = 3000;
+
+function TeachingRegenerationModal() {
+  const { t } = useTranslation();
+  const [stepIndex, setStepIndex] = useState(0);
+  const steps = [
+    t('structuredLearningCourse.teachingRegenStepText'),
+    t('structuredLearningCourse.teachingRegenStepAudio'),
+    t('structuredLearningCourse.teachingRegenStepGraph'),
+    t('structuredLearningCourse.teachingRegenStepFacts'),
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStepIndex((i) => Math.min(i + 1, steps.length - 1));
+    }, TEACHING_REGEN_STEP_DURATION_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+        <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-white">
+          <Loader2 className="h-4 w-4 flex-none animate-spin text-sky-400" /> {t('structuredLearningCourse.teachingRegenTitle')}
+        </p>
+        <p className="mb-4 text-xs text-slate-400">{t('structuredLearningCourse.teachingRegenHint')}</p>
+        <div className="space-y-3">
+          {steps.map((label, i) => {
+            const isDone = i < stepIndex;
+            const isCurrent = i === stepIndex;
+            return (
+              <div key={label} className="flex items-center gap-3">
+                {isDone ? (
+                  <CheckCircle2 className="h-5 w-5 flex-none text-emerald-400" />
+                ) : isCurrent ? (
+                  <Loader2 className="h-5 w-5 flex-none animate-spin text-sky-400" />
+                ) : (
+                  <span className="h-5 w-5 flex-none rounded-full border border-slate-700" />
+                )}
+                <span className={`text-sm ${isDone ? 'text-slate-400 line-through' : isCurrent ? 'text-white' : 'text-slate-600'}`}>{label}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+          <div
+            className="h-full bg-gradient-to-r from-sky-500 to-violet-500 transition-all"
+            style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Professional per-engram cost breakdown (2026-09-26) — shown at the top
+ * of the section edit page, scoped to just this sectionId (unlike
+ * StructuredLearningCostSection's whole-document breakdown). One row per
+ * AI model actually used (its own input/output/cached rate per million
+ * tokens and resulting cost), plus images and per-video-model rows, ending
+ * in a grand total — the real all-in cost of this one engram. */
+function EngramCostBadge({ documentId, sectionId }: { documentId: string; sectionId: string }) {
+  const { t } = useTranslation();
+  const [cost, setCost] = useState<StructuredLearningEngramCost | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getStructuredLearningCostPerEngram(documentId, sectionId)
+      .then((rows) => { if (!cancelled) setCost(rows[0] ?? null); })
+      .catch(() => { if (!cancelled) setCost(null); });
+    return () => { cancelled = true; };
+  }, [documentId, sectionId]);
+
+  if (!cost) return null;
+
+  const fmtUsd = (n: number) => `$${n.toFixed(4)}`;
+  const fmtRate = (n: number) => `$${n.toFixed(2)}/M`;
+
+  return (
+    <div className="mx-auto mt-3 max-w-md rounded-xl border border-amber-400/20 bg-amber-500/[0.04] p-3 text-left">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between text-xs font-semibold text-amber-300"
+      >
+        <span>{t('structuredLearningRunProgress.costPerEngramToggle')}</span>
+        <span>{fmtUsd(cost.TotalCostUsd)}</span>
+      </button>
+
+      {expanded && (
+        <table className="mt-2 w-full text-left text-[11px]">
+          <thead>
+            <tr className="text-[9px] uppercase tracking-wide text-slate-500">
+              <th className="pb-1 pr-2 font-medium">{t('structuredLearningRunProgress.costColumnModel')}</th>
+              <th className="pb-1 pr-2 font-medium text-right">{t('structuredLearningRunProgress.costColumnIn')}</th>
+              <th className="pb-1 pr-2 font-medium text-right">{t('structuredLearningRunProgress.costColumnOut')}</th>
+              <th className="pb-1 font-medium text-right">{t('structuredLearningRunProgress.costColumnCost')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5 text-slate-300">
+            {cost.ModelBreakdown.map((m) => (
+              <tr key={m.ModelName}>
+                <td className="py-1 pr-2">
+                  <p>{m.ModelName}</p>
+                  <p className="text-[9px] text-slate-500">{fmtRate(m.InputRatePerMillionTokens)} in · {fmtRate(m.OutputRatePerMillionTokens)} out</p>
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">{m.InputTokens.toLocaleString()}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{m.OutputTokens.toLocaleString()}</td>
+                <td className="py-1 text-right tabular-nums">{fmtUsd(m.TotalCostUsd)}</td>
+              </tr>
+            ))}
+            {cost.ImagesGeneratedCount > 0 && (
+              <tr>
+                <td className="py-1 pr-2">
+                  <p>{t('structuredLearningRunProgress.costColumnImages')} ({cost.ImagesGeneratedCount})</p>
+                  <p className="text-[9px] text-slate-500">${cost.ImageRatePerImageUsd.toFixed(2)}/image</p>
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">—</td>
+                <td className="py-1 pr-2 text-right tabular-nums">—</td>
+                <td className="py-1 text-right tabular-nums">{fmtUsd(cost.ImageCostUsd)}</td>
+              </tr>
+            )}
+            {cost.VideoModelBreakdown.map((v) => (
+              <tr key={v.ModelName}>
+                <td className="py-1 pr-2">
+                  <p>{v.ModelName} ({v.VideoCount})</p>
+                  <p className="text-[9px] text-slate-500">${v.RatePerVideoUsd.toFixed(2)}/video</p>
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">—</td>
+                <td className="py-1 pr-2 text-right tabular-nums">—</td>
+                <td className="py-1 text-right tabular-nums">{fmtUsd(v.TotalCostUsd)}</td>
+              </tr>
+            ))}
+            <tr className="font-semibold text-amber-300">
+              <td className="pt-1.5 pr-2">{t('structuredLearningRunProgress.costColumnCost')}</td>
+              <td className="pt-1.5 pr-2 text-right tabular-nums">{cost.InputTokens.toLocaleString()}</td>
+              <td className="pt-1.5 pr-2 text-right tabular-nums">{cost.OutputTokens.toLocaleString()}</td>
+              <td className="pt-1.5 text-right tabular-nums">{fmtUsd(cost.TotalCostUsd)}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function StepEditBox({
   sectionId,
   step,
@@ -1901,6 +2066,7 @@ function StepEditBox({
         {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
         {usePerplexity ? t('structuredLearningCourse.webSearchApplyButton') : t('structuredLearningCourse.editApply')}
       </button>
+      {submitting && step.StepType === 'Teaching' && <TeachingRegenerationModal />}
     </div>
   );
 }
@@ -2493,12 +2659,40 @@ function VideoGenerationBox({
     try {
       const saved = JSON.parse(step.VideoWizardStateJson) as {
         Objective?: string; VideoDescription?: string; Environment?: string; ImageDescription?: string; Prompts?: string[];
+        ImageMode?: 'engram' | 'upload' | 'ai' | 'edit' | 'none';
+        Image?: { base64?: string; contentType?: string };
+        ChainImage?: { base64?: string; contentType?: string };
       };
       setWizardObjective(saved.Objective ?? '');
       setWizardVideoDescription(saved.VideoDescription ?? '');
       setWizardEnvironment(saved.Environment ?? '');
       setWizardImageDescription(saved.ImageDescription ?? '');
       setWizardPrompts(saved.Prompts ?? []);
+      setWizardImageMode(saved.ImageMode ?? 'none');
+      if (saved.Image?.base64 && saved.Image.contentType) {
+        setWizardImage({
+          base64: saved.Image.base64,
+          contentType: saved.Image.contentType,
+          previewUrl: `data:${saved.Image.contentType};base64,${saved.Image.base64}`,
+        });
+      }
+      if (saved.ChainImage?.base64 && saved.ChainImage.contentType) {
+        setWizardChainImage({ base64: saved.ChainImage.base64, contentType: saved.ChainImage.contentType });
+      } else {
+        // Older wizard state did not persist the frame. Rehydrate it once from
+        // the latest generated clip so existing continuations remain usable.
+        listStructuredLearningSectionVideos(sectionId)
+          .then(async (videos) => {
+            const sortedVideos = [...videos].sort((a, b) => Date.parse(a.CreatedDate) - Date.parse(b.CreatedDate));
+            const latest = sortedVideos[sortedVideos.length - 1];
+            if (!latest) return;
+            const lastFrame = await getStructuredLearningVideoLastFrame(latest.IllustrationId);
+            if (lastFrame?.Base64 && lastFrame.ContentType) {
+              setWizardChainImage({ base64: lastFrame.Base64, contentType: lastFrame.ContentType });
+            }
+          })
+          .catch(() => {});
+      }
     } catch {
       // ignore malformed saved state
     } finally {
@@ -2512,7 +2706,7 @@ function VideoGenerationBox({
   useEffect(() => {
     if (!wizardLoadedRef.current) return;
     const timeout = setTimeout(() => {
-      const hasContent = wizardObjective.trim() || wizardVideoDescription.trim() || wizardEnvironment.trim() || wizardPrompts.length > 0;
+      const hasContent = wizardObjective.trim() || wizardVideoDescription.trim() || wizardEnvironment.trim() || wizardPrompts.length > 0 || wizardImage || wizardChainImage;
       const json = hasContent
         ? JSON.stringify({
             Objective: wizardObjective,
@@ -2520,12 +2714,15 @@ function VideoGenerationBox({
             Environment: wizardEnvironment,
             ImageDescription: wizardImageDescription,
             Prompts: wizardPrompts,
+            ImageMode: wizardImageMode,
+            Image: wizardImage ? { base64: wizardImage.base64, contentType: wizardImage.contentType } : null,
+            ChainImage: wizardChainImage,
           })
         : null;
       setStructuredLearningVideoWizardState(step.StructuredLearningSectionStepId, json).catch(() => {});
     }, 1200);
     return () => clearTimeout(timeout);
-  }, [wizardObjective, wizardVideoDescription, wizardEnvironment, wizardImageDescription, wizardPrompts, step.StructuredLearningSectionStepId]);
+  }, [wizardObjective, wizardVideoDescription, wizardEnvironment, wizardImageDescription, wizardPrompts, wizardImageMode, wizardImage, wizardChainImage, step.StructuredLearningSectionStepId]);
 
   async function handleWizardImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -3657,6 +3854,7 @@ function ManualEditBox({
           {t('structuredLearningCourse.editCancel')}
         </button>
       </div>
+      {submitting && step.StepType === 'Teaching' && <TeachingRegenerationModal />}
     </div>
   );
 }

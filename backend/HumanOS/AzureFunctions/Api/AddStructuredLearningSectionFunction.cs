@@ -40,6 +40,12 @@ public sealed class AddStructuredLearningSectionRequest
     /// scenes (e.g. "put our logo on the volunteers' t-shirts"), kept
     /// separate from Instruction (which only describes the section's content).</summary>
     public string? ReferenceImageUsageInstruction { get; set; }
+
+    /// <summary>Null (default) inherits the document's own Step 1 web-search
+    /// choice; true/false explicitly overrides it just for this new section —
+    /// same real-time Perplexity grounding used to complement the invented
+    /// engram text AND its 6 pedagogical steps.</summary>
+    public bool? UsePerplexitySearch { get; set; }
 }
 
 /// <summary>
@@ -137,7 +143,7 @@ public sealed class AddStructuredLearningSectionFunction
             var newSectionId = await _service.AddSectionAsync(
                 documentId, body.ChapterTitle, body.Instruction, body.LanguageCode,
                 requiresSectionIds, requiredBySectionIds, illustrationMode, uploadedImageBytes, body.UploadedImageContentType,
-                body.ReferenceImageUsageInstruction, cancellationToken);
+                body.ReferenceImageUsageInstruction, cancellationToken, body.UsePerplexitySearch);
 
             var section = await _dbContext.StructuredLearningDocumentSections
                 .Include(s => s.Steps)

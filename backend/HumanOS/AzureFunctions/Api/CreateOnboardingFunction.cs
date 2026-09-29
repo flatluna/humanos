@@ -96,6 +96,14 @@ public sealed class CreateOnboardingFunction
                 cancellationToken);
         }
 
+        // NOTE: every Human OS company shares the SAME CIAM directory
+        // (twinetwork) — azureTid is identical for every real user, not a
+        // per-company Azure AD tenant id. Tenant.AzureTenantId is unique
+        // in the DB, so it must never be set to this shared value (doing
+        // so previously made every second-ever company onboarding fail
+        // with a DbUpdateException on UX_Tenant_AzureTenantId). Pass null
+        // here; this column is reserved for real per-customer Azure AD
+        // tenants if/when Human OS supports bring-your-own-tenant SSO.
         var tenant = await _tenantService.CreateAsync(
             onboardingRequest.CompanyName,
             null,
@@ -103,7 +111,7 @@ public sealed class CreateOnboardingFunction
             onboardingRequest.CompanyAddress,
             onboardingRequest.CompanyEmail,
             onboardingRequest.CompanyPhone,
-            azureTid,
+            azureTenantId: null,
             cancellationToken);
 
         var person = await _personService.CreateAsync(
@@ -111,7 +119,11 @@ public sealed class CreateOnboardingFunction
             azureOid,
             azureTid,
             onboardingRequest.Email,
-            cancellationToken);
+            cancellationToken,
+            // The person who registers the company is its first admin —
+            // never left at the Person model's Employee default, or they'd
+            // be locked out of the Enterprise console they just created.
+            orgRole: HumanOS.Models.People.PersonOrgRole.HRAdmin);
 
         await _personProfileService.CreateAsync(
             person.PersonId,

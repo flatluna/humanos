@@ -61,6 +61,21 @@ public sealed class StructuredLearningSectionDeletionService
                 dbContext.StructuredLearningIllustrations.RemoveRange(illustrations);
             }
 
+            // StructuredLearningConnection.SourceSectionId has NO cascade FK
+            // (unlike every other table referencing this section) — deleting
+            // the section with dangling connections pointing at it as their
+            // provenance throws a foreign-key violation (confirmed
+            // 2026-09-28). SourceSectionId is just optional provenance, so
+            // null it out rather than deleting the connection itself.
+            var connectionsFromSection = await dbContext.Set<HumanOS.Models.Capabilities.Studio.StructuredLearningConnection>()
+                .Where(c => c.SourceSectionId == sectionId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var connection in connectionsFromSection)
+            {
+                connection.SourceSectionId = null;
+            }
+
             dbContext.StructuredLearningDocumentSections.Remove(section);
 
             var laterSections = await dbContext.StructuredLearningDocumentSections

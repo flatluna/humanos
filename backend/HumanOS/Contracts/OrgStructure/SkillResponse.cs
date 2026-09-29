@@ -45,6 +45,16 @@ public sealed class SkillResponse
     /// <summary>"structured-learning" or "graph" — indicates which Studio
     /// player/detail route to open.</summary>
     public string? MatchedCourseType { get; set; }
+
+    public IReadOnlyList<SkillMatchedCourseResponse> MatchedCourses { get; set; } = [];
+}
+
+public sealed class SkillMatchedCourseResponse
+{
+    public Guid CourseId { get; set; }
+    public string CourseName { get; set; } = null!;
+    public string CourseType { get; set; } = null!;
+    public string LanguageCode { get; set; } = "es";
 }
 
 /// <summary>One Job Role this Skill is currently linked to — enough to

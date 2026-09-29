@@ -26,6 +26,8 @@ export interface CareerPlanRoadmapStepDto {
   matchedProgramName: string | null;
   matchedCapabilityId: string | null;
   matchedCapabilityName: string | null;
+  /** "es"/"en" — see PersonCareerPlanService.ApplyTrainingStatusAsync. Null when no course is matched yet. */
+  language?: string | null;
   /** "Completed" | "InProgress" | "Pending" */
   trainingStatus: string;
 }

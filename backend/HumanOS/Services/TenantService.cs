@@ -124,6 +124,7 @@ public sealed class TenantService
         string? description,
         string cultureCode,
         string timeZone,
+        string orgType,
         bool isActive,
         CancellationToken cancellationToken = default)
     {
@@ -149,6 +150,7 @@ public sealed class TenantService
 
         tenant.CultureCode = cultureCode.Trim();
         tenant.TimeZone = timeZone.Trim();
+        tenant.OrgType = string.IsNullOrWhiteSpace(orgType) ? "Corporate" : orgType.Trim();
         tenant.IsActive = isActive;
         tenant.UpdatedDate = DateTime.UtcNow;
 

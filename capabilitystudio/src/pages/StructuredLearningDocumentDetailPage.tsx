@@ -445,6 +445,9 @@ export default function StructuredLearningDocumentDetailPage() {
           <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1 text-xs font-medium text-[#fff] backdrop-blur-sm">
             <FileText className="h-3.5 w-3.5" /> Structured section document
           </span>
+          <span className="mt-2 ml-2 inline-flex items-center gap-2 rounded-full border border-sky-300/70 bg-sky-100 px-4 py-2 text-sm font-bold text-sky-900 shadow-sm dark:border-amber-300/70 dark:bg-amber-400 dark:text-amber-950">
+            Language: {document.LanguageCode === 'en' ? 'English' : 'Spanish'}
+          </span>
         </div>
       </div>
 

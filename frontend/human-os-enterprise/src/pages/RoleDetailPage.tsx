@@ -2,7 +2,26 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Award, Briefcase, ExternalLink, Globe, GraduationCap, Heart, ListChecks, Sparkles, Wrench, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Award,
+  BookOpen,
+  Briefcase,
+  CheckCircle2,
+  Cpu,
+  ExternalLink,
+  Flame,
+  Globe,
+  GraduationCap,
+  Handshake,
+  Heart,
+  ListChecks,
+  RefreshCw,
+  Rocket,
+  Sparkles,
+  Wrench,
+  X,
+} from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import {
   attachDepartmentJobRole,
@@ -173,6 +192,14 @@ const emptyForm = {
   salaryCurrency: '',
   benefits: '',
   expectedOutcomes: '',
+  startInYourRoleTechnicalSkills: '',
+  startInYourRoleSoftSkills: '',
+  startInYourRoleDepartmentProcesses: '',
+  startInYourRoleHrProcesses: '',
+  inYourRoleTechnicalSkills: '',
+  inYourRoleSoftSkills: '',
+  inYourRoleDepartmentProcesses: '',
+  inYourRoleHrProcesses: '',
 };
 
 const inputClass =
@@ -260,7 +287,7 @@ function Section({
 }
 
 export function RoleDetailPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const tenantId = user!.tenantId;
   const navigate = useNavigate();
@@ -274,6 +301,9 @@ export function RoleDetailPage() {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const returnUrl = locationState?.returnUrl || searchParams.get('returnUrl') || '/roles';
   const callerDepartmentId = locationState?.departmentId || searchParams.get('departmentId') || null;
+
+  type RoleDetailTab = 'editJobRole' | 'startInYourRole' | 'inYourRole' | 'stayCurrent' | 'masterYourJob';
+  const [activeTab, setActiveTab] = useState<RoleDetailTab>('editJobRole');
 
   const [form, setForm] = useState(emptyForm);
   const [reviewRows, setReviewRows] = useState<DescriptionDiffRow[] | null>(null);
@@ -448,6 +478,46 @@ export function RoleDetailPage() {
         salaryCurrency: r.salaryCurrency ?? '',
         benefits: arrayToLines(r.benefits),
         expectedOutcomes: arrayToLines(r.expectedOutcomes),
+        startInYourRoleTechnicalSkills: arrayToLines(
+          r.startInYourRoleTechnicalSkills && r.startInYourRoleTechnicalSkills.length > 0
+            ? r.startInYourRoleTechnicalSkills
+            : (r.technicalSkills ?? [])
+        ),
+        startInYourRoleSoftSkills: arrayToLines(
+          r.startInYourRoleSoftSkills && r.startInYourRoleSoftSkills.length > 0
+            ? r.startInYourRoleSoftSkills
+            : (r.softSkills ?? [])
+        ),
+        startInYourRoleDepartmentProcesses: arrayToLines(
+          r.startInYourRoleDepartmentProcesses && r.startInYourRoleDepartmentProcesses.length > 0
+            ? r.startInYourRoleDepartmentProcesses
+            : (r.departmentProcesses ?? [])
+        ),
+        startInYourRoleHrProcesses: arrayToLines(
+          r.startInYourRoleHrProcesses && r.startInYourRoleHrProcesses.length > 0
+            ? r.startInYourRoleHrProcesses
+            : (r.hrProcesses ?? [])
+        ),
+        inYourRoleTechnicalSkills: arrayToLines(
+          r.inYourRoleTechnicalSkills && r.inYourRoleTechnicalSkills.length > 0
+            ? r.inYourRoleTechnicalSkills
+            : (r.technicalSkills ?? [])
+        ),
+        inYourRoleSoftSkills: arrayToLines(
+          r.inYourRoleSoftSkills && r.inYourRoleSoftSkills.length > 0
+            ? r.inYourRoleSoftSkills
+            : (r.softSkills ?? [])
+        ),
+        inYourRoleDepartmentProcesses: arrayToLines(
+          r.inYourRoleDepartmentProcesses && r.inYourRoleDepartmentProcesses.length > 0
+            ? r.inYourRoleDepartmentProcesses
+            : (r.departmentProcesses ?? [])
+        ),
+        inYourRoleHrProcesses: arrayToLines(
+          r.inYourRoleHrProcesses && r.inYourRoleHrProcesses.length > 0
+            ? r.inYourRoleHrProcesses
+            : (r.hrProcesses ?? [])
+        ),
       });
     } else if (!isEditing && callerDepartmentId) {
       setForm((f) => (f.departmentId ? f : { ...f, departmentId: callerDepartmentId }));
@@ -482,9 +552,11 @@ export function RoleDetailPage() {
     },
   });
 
+  const [saveSuccessNotification, setSaveSuccessNotification] = useState<string | null>(null);
+
   const updateMutation = useMutation({
     mutationFn: (body: SaveJobRoleRequest) => updateJobRole(jobRoleId!, body),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: ['job-roles', tenantId] });
       void queryClient.invalidateQueries({ queryKey: ['job-role', jobRoleId] });
       if (callerDepartmentId) {
@@ -492,7 +564,20 @@ export function RoleDetailPage() {
         void queryClient.invalidateQueries({ queryKey: ['departments', tenantId] });
         void queryClient.invalidateQueries({ queryKey: ['department', callerDepartmentId] });
       }
-      navigate(returnUrl);
+      // Actualizar el estado local para asegurar sincronización sin salir de la página
+      setForm((f) => ({
+        ...f,
+        startInYourRoleTechnicalSkills: arrayToLines(updated.startInYourRoleTechnicalSkills),
+        startInYourRoleSoftSkills: arrayToLines(updated.startInYourRoleSoftSkills),
+        startInYourRoleDepartmentProcesses: arrayToLines(updated.startInYourRoleDepartmentProcesses),
+        startInYourRoleHrProcesses: arrayToLines(updated.startInYourRoleHrProcesses),
+        inYourRoleTechnicalSkills: arrayToLines(updated.inYourRoleTechnicalSkills),
+        inYourRoleSoftSkills: arrayToLines(updated.inYourRoleSoftSkills),
+        inYourRoleDepartmentProcesses: arrayToLines(updated.inYourRoleDepartmentProcesses),
+        inYourRoleHrProcesses: arrayToLines(updated.inYourRoleHrProcesses),
+      }));
+      setSaveSuccessNotification(i18n.language === 'es' ? 'Cambios guardados exitosamente.' : 'Changes saved successfully.');
+      setTimeout(() => setSaveSuccessNotification(null), 3500);
     },
   });
 
@@ -518,6 +603,7 @@ export function RoleDetailPage() {
   const generateMutation = useMutation({
     mutationFn: () => {
       const body: GenerateJobRoleDescriptionRequest = {
+        languageCode: i18n.language.startsWith('en') ? 'en' : 'es',
         jobRoleId: jobRoleId ?? null,
         departmentId: form.departmentId || null,
         title: form.title,
@@ -623,6 +709,14 @@ export function RoleDetailPage() {
       salaryCurrency: form.salaryCurrency || null,
       benefits: linesToArray(form.benefits),
       expectedOutcomes: linesToArray(form.expectedOutcomes),
+      startInYourRoleTechnicalSkills: linesToArray(form.startInYourRoleTechnicalSkills),
+      startInYourRoleSoftSkills: linesToArray(form.startInYourRoleSoftSkills),
+      startInYourRoleDepartmentProcesses: linesToArray(form.startInYourRoleDepartmentProcesses),
+      startInYourRoleHrProcesses: linesToArray(form.startInYourRoleHrProcesses),
+      inYourRoleTechnicalSkills: linesToArray(form.inYourRoleTechnicalSkills),
+      inYourRoleSoftSkills: linesToArray(form.inYourRoleSoftSkills),
+      inYourRoleDepartmentProcesses: linesToArray(form.inYourRoleDepartmentProcesses),
+      inYourRoleHrProcesses: linesToArray(form.inYourRoleHrProcesses),
     };
 
     if (isEditing) {
@@ -670,6 +764,32 @@ export function RoleDetailPage() {
           {generateMutation.isPending ? t('roleDetail.generating') : t('roleDetail.generateAi')}
         </button>
       </div>
+
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-white/10" role="tablist">
+        {(['editJobRole', 'startInYourRole', 'inYourRole', 'stayCurrent', 'masterYourJob'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+            className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium transition ${
+              activeTab === tab
+                ? 'border-brand-600 text-brand-700 dark:text-brand-300'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-white/50 dark:hover:text-white'
+            }`}
+          >
+            {t(`roleDetail.tabs.${tab}`)}
+          </button>
+        ))}
+      </div>
+
+      {saveSuccessNotification && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span>{saveSuccessNotification}</span>
+        </div>
+      )}
 
       {mutationError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
@@ -795,7 +915,8 @@ export function RoleDetailPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {activeTab === 'editJobRole' && (
+        <form onSubmit={handleSubmit} className="space-y-4">
         <Section number={1} title={t('roleDetail.section1.title')}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -1475,6 +1596,1111 @@ export function RoleDetailPage() {
           </button>
         </div>
       </form>
+      )}
+
+      {activeTab === 'startInYourRole' && (
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-sky-600 via-blue-600 to-indigo-700 p-6 text-white shadow-xl shadow-blue-900/10">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-100">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">01</span>
+                  <span>{i18n.language === 'es' ? 'Primeros 90 días' : 'First 90 days'}</span>
+                  <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+                    {i18n.language === 'es' ? 'Estás aquí' : 'You are here'}
+                  </span>
+                </div>
+                <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
+                  {i18n.language === 'es' ? 'Comienza en tu rol' : 'Start in Your Role'}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-blue-50 sm:text-base">
+                  {i18n.language === 'es'
+                    ? 'Conoce la empresa, completa tu capacitación esencial y comienza a desarrollar los conocimientos que requiere tu puesto.'
+                    : 'Get to know the company, complete your essential training, and begin developing the knowledge required for your role.'}
+                </p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
+                <Rocket className="h-7 w-7" />
+              </div>
+            </div>
+          </section>
+
+          {/* Selector interactivo: Izquierda catálogo de capacidades del puesto / Derecha selección Day One */}
+          {(() => {
+            const techList = linesToArray(form.technicalSkills);
+            const softList = linesToArray(form.softSkills);
+            const deptProcList = linesToArray(form.departmentProcesses);
+            const hrProcList = linesToArray(form.hrProcesses);
+
+            const selTech = new Set(linesToArray(form.startInYourRoleTechnicalSkills));
+            const selSoft = new Set(linesToArray(form.startInYourRoleSoftSkills));
+            const selDept = new Set(linesToArray(form.startInYourRoleDepartmentProcesses));
+            const selHr = new Set(linesToArray(form.startInYourRoleHrProcesses));
+
+            const totalAvailable = techList.length + softList.length + deptProcList.length + hrProcList.length;
+            const totalSelected = selTech.size + selSoft.size + selDept.size + selHr.size;
+
+            const toggleItem = (category: 'tech' | 'soft' | 'dept' | 'hr', item: string) => {
+              if (category === 'tech') {
+                const next = new Set(selTech);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, startInYourRoleTechnicalSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'soft') {
+                const next = new Set(selSoft);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, startInYourRoleSoftSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'dept') {
+                const next = new Set(selDept);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, startInYourRoleDepartmentProcesses: arrayToLines(Array.from(next)) }));
+              } else if (category === 'hr') {
+                const next = new Set(selHr);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, startInYourRoleHrProcesses: arrayToLines(Array.from(next)) }));
+              }
+            };
+
+            const selectAllCategory = (category: 'tech' | 'soft' | 'dept' | 'hr') => {
+              if (category === 'tech') {
+                const next = new Set([...selTech, ...techList]);
+                setForm((f) => ({ ...f, startInYourRoleTechnicalSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'soft') {
+                const next = new Set([...selSoft, ...softList]);
+                setForm((f) => ({ ...f, startInYourRoleSoftSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'dept') {
+                const next = new Set([...selDept, ...deptProcList]);
+                setForm((f) => ({ ...f, startInYourRoleDepartmentProcesses: arrayToLines(Array.from(next)) }));
+              } else if (category === 'hr') {
+                const next = new Set([...selHr, ...hrProcList]);
+                setForm((f) => ({ ...f, startInYourRoleHrProcesses: arrayToLines(Array.from(next)) }));
+              }
+            };
+
+            const deselectAllCategory = (category: 'tech' | 'soft' | 'dept' | 'hr') => {
+              if (category === 'tech') {
+                setForm((f) => ({ ...f, startInYourRoleTechnicalSkills: '' }));
+              } else if (category === 'soft') {
+                setForm((f) => ({ ...f, startInYourRoleSoftSkills: '' }));
+              } else if (category === 'dept') {
+                setForm((f) => ({ ...f, startInYourRoleDepartmentProcesses: '' }));
+              } else if (category === 'hr') {
+                setForm((f) => ({ ...f, startInYourRoleHrProcesses: '' }));
+              }
+            };
+
+            return (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {i18n.language === 'es' ? 'Plan de Arranque (Día Uno / Primeros 90 Días)' : 'Day One / First 90 Days Training Plan'}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-white/60">
+                      {i18n.language === 'es'
+                        ? 'Selecciona del lado izquierdo los cursos y capacidades prioritarios que el nuevo colaborador debe desarrollar al iniciar en su rol.'
+                        : 'Select the priority capabilities and courses from the left that new hires must complete upon starting in this role.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                      {totalSelected} / {totalAvailable} {i18n.language === 'es' ? 'seleccionados' : 'selected'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleSubmit(e as unknown as FormEvent)}
+                      disabled={isSaving}
+                      className="rounded-full bg-brand-600 px-5 py-2 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+                    >
+                      {isSaving ? t('common.saving') : (i18n.language === 'es' ? 'Guardar Plan' : 'Save Plan')}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  {/* Columna Izquierda: Catálogo Disponible del Puesto */}
+                  <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                          {i18n.language === 'es' ? '1. Capacidades y Procesos del Puesto' : '1. Role Capabilities & Processes'}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 dark:text-white/40">
+                          {i18n.language === 'es' ? 'Haz clic en las casillas para agregar o quitar del plan' : 'Click checkboxes to add or remove from day one'}
+                        </p>
+                      </div>
+                      <span className="text-xs text-slate-400">{totalAvailable} {i18n.language === 'es' ? 'disponibles' : 'available'}</span>
+                    </div>
+
+                    {totalAvailable === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400 dark:border-white/10">
+                        {i18n.language === 'es'
+                          ? 'Este rol aún no tiene habilidades o procesos capturados. Agrégalos en el tab "Editar Puesto".'
+                          : 'This role has no technical/soft skills or processes configured yet. Add them in the "Edit Job Role" tab.'}
+                      </div>
+                    ) : (
+                      <div className="space-y-5">
+                        {/* Técnicas */}
+                        {techList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-sky-700 dark:text-sky-300">
+                              <span className="flex items-center gap-1.5">
+                                <Wrench className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Habilidades Técnicas' : 'Technical Skills'} ({techList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('tech')} className="text-blue-600 hover:underline dark:text-blue-400">
+                                  {i18n.language === 'es' ? 'Todas' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('tech')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguna' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {techList.map((skill) => {
+                                const checked = selTech.has(skill);
+                                return (
+                                  <label
+                                    key={skill}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-sky-300 bg-sky-50/70 text-sky-950 font-medium dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('tech', skill)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span>{skill}</span>
+                                    </div>
+                                    <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                                      {i18n.language === 'es' ? 'Técnica' : 'Technical'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Blandas / No técnicas */}
+                        {softList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-violet-700 dark:text-violet-300">
+                              <span className="flex items-center gap-1.5">
+                                <Heart className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Habilidades No Técnicas / Blandas' : 'Soft / Non-Technical Skills'} ({softList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('soft')} className="text-blue-600 hover:underline dark:text-blue-400">
+                                  {i18n.language === 'es' ? 'Todas' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('soft')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguna' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {softList.map((skill) => {
+                                const checked = selSoft.has(skill);
+                                return (
+                                  <label
+                                    key={skill}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-violet-300 bg-violet-50/70 text-violet-950 font-medium dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('soft', skill)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span>{skill}</span>
+                                    </div>
+                                    <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                                      {i18n.language === 'es' ? 'Blanda' : 'Soft'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Procesos de Depto */}
+                        {deptProcList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-amber-700 dark:text-amber-300">
+                              <span className="flex items-center gap-1.5">
+                                <Briefcase className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Procesos del Puesto / Departamento' : 'Department & Role Processes'} ({deptProcList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('dept')} className="text-blue-600 hover:underline dark:text-blue-400">
+                                  {i18n.language === 'es' ? 'Todos' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('dept')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguno' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {deptProcList.map((proc) => {
+                                const checked = selDept.has(proc);
+                                return (
+                                  <label
+                                    key={proc}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-amber-300 bg-amber-50/70 text-amber-950 font-medium dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('dept', proc)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span>{proc}</span>
+                                    </div>
+                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                      {i18n.language === 'es' ? 'Proceso Puesto' : 'Process'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Procesos de RRHH */}
+                        {hrProcList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-rose-700 dark:text-rose-300">
+                              <span className="flex items-center gap-1.5">
+                                <BookOpen className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Procesos y Políticas de RRHH' : 'HR & Compliance Policies'} ({hrProcList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('hr')} className="text-blue-600 hover:underline dark:text-blue-400">
+                                  {i18n.language === 'es' ? 'Todos' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('hr')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguno' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {hrProcList.map((proc) => {
+                                const checked = selHr.has(proc);
+                                return (
+                                  <label
+                                    key={proc}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-rose-300 bg-rose-50/70 text-rose-950 font-medium dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('hr', proc)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span>{proc}</span>
+                                    </div>
+                                    <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
+                                      {i18n.language === 'es' ? 'RRHH' : 'HR'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Columna Derecha: Plan Configurado "Día Uno / Primeros 90 Días" */}
+                  <div className="space-y-4 rounded-2xl border border-blue-200 bg-blue-50/30 p-5 dark:border-blue-500/20 dark:bg-blue-500/5">
+                    <div className="flex items-center justify-between border-b border-blue-100 pb-3 dark:border-white/5">
+                      <div>
+                        <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-900 dark:text-blue-200">
+                          <Rocket className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          {i18n.language === 'es' ? '2. Plan de Arranque del Empleado' : '2. New Hire Day One Plan'}
+                        </h4>
+                        <p className="text-[11px] text-blue-700/70 dark:text-blue-300/70">
+                          {i18n.language === 'es'
+                            ? 'Cursos y capacidades requeridas en los primeros 90 días'
+                            : 'Essential courses and capabilities assigned for the first 90 days'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-bold text-white">
+                        {totalSelected}
+                      </span>
+                    </div>
+
+                    {totalSelected === 0 ? (
+                      <div className="rounded-xl border border-dashed border-blue-200 bg-white/60 p-8 text-center text-xs text-blue-800/60 dark:border-blue-400/20 dark:bg-transparent dark:text-blue-200/60">
+                        <Sparkles className="mx-auto mb-2 h-6 w-6 text-blue-400" />
+                        <p className="font-semibold">
+                          {i18n.language === 'es' ? 'Sin capacidades seleccionadas aún' : 'No capabilities selected yet'}
+                        </p>
+                        <p className="mt-1">
+                          {i18n.language === 'es'
+                            ? 'Marca las casillas a la izquierda para armar el plan de los primeros días.'
+                            : 'Check items on the left to build the initial onboarding roadmap.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {/* Items seleccionados por categoría */}
+                        {selTech.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-sky-800 dark:text-sky-300">
+                              {i18n.language === 'es' ? 'Técnicas' : 'Technical'} ({selTech.size})
+                            </p>
+                            {Array.from(selTech).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('tech', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {selSoft.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-violet-800 dark:text-violet-300">
+                              {i18n.language === 'es' ? 'No Técnicas / Blandas' : 'Soft'} ({selSoft.size})
+                            </p>
+                            {Array.from(selSoft).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('soft', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {selDept.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                              {i18n.language === 'es' ? 'Procesos del Puesto' : 'Role Processes'} ({selDept.size})
+                            </p>
+                            {Array.from(selDept).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('dept', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {selHr.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                              {i18n.language === 'es' ? 'Procesos y Políticas de RRHH' : 'HR & Compliance'} ({selHr.size})
+                            </p>
+                            {Array.from(selHr).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('hr', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSubmit(e as unknown as FormEvent)}
+                        disabled={isSaving}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isSaving ? t('common.saving') : (i18n.language === 'es' ? 'Guardar Cambios del Plan' : 'Save Plan Changes')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {activeTab === 'inYourRole' && (
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-xl shadow-indigo-900/10">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-100">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">02</span>
+                  <span>{i18n.language === 'es' ? 'Después de los 90 días' : 'After 90 days'}</span>
+                  <span className="rounded-full bg-blue-400/20 px-2 py-0.5 text-[10px] font-bold text-blue-200">
+                    {i18n.language === 'es' ? 'En curso / Día a día' : 'Ongoing / Day-to-day'}
+                  </span>
+                </div>
+                <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
+                  {i18n.language === 'es' ? 'En tu puesto' : 'In your role'}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-indigo-50 sm:text-base">
+                  {i18n.language === 'es'
+                    ? 'Crece en tu día a día: cursos asignados, objetivos reales y evidencia de tu progreso.'
+                    : 'Grow in your day-to-day: assigned courses, real objectives, and evidence of your progress.'}
+                </p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
+                <Briefcase className="h-7 w-7" />
+              </div>
+            </div>
+          </section>
+
+          {/* Selector interactivo: Izquierda catálogo de capacidades del puesto / Derecha selección "En tu puesto (después de 90 días)" */}
+          {(() => {
+            const techList = linesToArray(form.technicalSkills);
+            const softList = linesToArray(form.softSkills);
+            const deptProcList = linesToArray(form.departmentProcesses);
+            const hrProcList = linesToArray(form.hrProcesses);
+
+            const selTech = new Set(linesToArray(form.inYourRoleTechnicalSkills));
+            const selSoft = new Set(linesToArray(form.inYourRoleSoftSkills));
+            const selDept = new Set(linesToArray(form.inYourRoleDepartmentProcesses));
+            const selHr = new Set(linesToArray(form.inYourRoleHrProcesses));
+
+            const totalAvailable = techList.length + softList.length + deptProcList.length + hrProcList.length;
+            const totalSelected = selTech.size + selSoft.size + selDept.size + selHr.size;
+
+            const toggleItem = (category: 'tech' | 'soft' | 'dept' | 'hr', item: string) => {
+              if (category === 'tech') {
+                const next = new Set(selTech);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, inYourRoleTechnicalSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'soft') {
+                const next = new Set(selSoft);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, inYourRoleSoftSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'dept') {
+                const next = new Set(selDept);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, inYourRoleDepartmentProcesses: arrayToLines(Array.from(next)) }));
+              } else if (category === 'hr') {
+                const next = new Set(selHr);
+                next.has(item) ? next.delete(item) : next.add(item);
+                setForm((f) => ({ ...f, inYourRoleHrProcesses: arrayToLines(Array.from(next)) }));
+              }
+            };
+
+            const selectAllCategory = (category: 'tech' | 'soft' | 'dept' | 'hr') => {
+              if (category === 'tech') {
+                const next = new Set([...selTech, ...techList]);
+                setForm((f) => ({ ...f, inYourRoleTechnicalSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'soft') {
+                const next = new Set([...selSoft, ...softList]);
+                setForm((f) => ({ ...f, inYourRoleSoftSkills: arrayToLines(Array.from(next)) }));
+              } else if (category === 'dept') {
+                const next = new Set([...selDept, ...deptProcList]);
+                setForm((f) => ({ ...f, inYourRoleDepartmentProcesses: arrayToLines(Array.from(next)) }));
+              } else if (category === 'hr') {
+                const next = new Set([...selHr, ...hrProcList]);
+                setForm((f) => ({ ...f, inYourRoleHrProcesses: arrayToLines(Array.from(next)) }));
+              }
+            };
+
+            const deselectAllCategory = (category: 'tech' | 'soft' | 'dept' | 'hr') => {
+              if (category === 'tech') {
+                setForm((f) => ({ ...f, inYourRoleTechnicalSkills: '' }));
+              } else if (category === 'soft') {
+                setForm((f) => ({ ...f, inYourRoleSoftSkills: '' }));
+              } else if (category === 'dept') {
+                setForm((f) => ({ ...f, inYourRoleDepartmentProcesses: '' }));
+              } else if (category === 'hr') {
+                setForm((f) => ({ ...f, inYourRoleHrProcesses: '' }));
+              }
+            };
+
+            return (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {i18n.language === 'es' ? 'Plan de Desarrollo Continuo (Después de 90 Días)' : 'Ongoing Development Plan (After 90 Days)'}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-white/60">
+                      {i18n.language === 'es'
+                        ? 'Selecciona las capacidades técnicas, blandas y procesos que el colaborador cursará de manera continua en su rol.'
+                        : 'Select the technical, soft, and process capabilities the employee will develop on an ongoing basis in their role.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                      {totalSelected} {i18n.language === 'es' ? 'seleccionadas de' : 'selected of'} {totalAvailable}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {/* Columna Izquierda: Catálogo Disponible del Puesto */}
+                  <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
+                      <div>
+                        <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                          <BookOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                          {i18n.language === 'es' ? '1. Capacidades y Procesos del Puesto' : '1. Role Capabilities & Processes'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-white/60">
+                          {i18n.language === 'es' ? 'Marca las casillas que aplicarán para la etapa continua' : 'Check the items to include in the ongoing stage'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700 dark:bg-white/10 dark:text-white">
+                        {totalAvailable}
+                      </span>
+                    </div>
+
+                    {totalAvailable === 0 ? (
+                      <p className="py-8 text-center text-xs italic text-slate-400">
+                        {i18n.language === 'es'
+                          ? 'No hay capacidades registradas en la pestaña "Editar Puesto". Agrega habilidades técnicas o blandas primero.'
+                          : 'No capabilities found. Add technical or soft skills in the "Edit Job Role" tab first.'}
+                      </p>
+                    ) : (
+                      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                        {/* Habilidades Técnicas */}
+                        {techList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-sky-700 dark:text-sky-300">
+                              <span className="flex items-center gap-1.5">
+                                <Cpu className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Habilidades Técnicas' : 'Technical Skills'} ({techList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('tech')} className="text-indigo-600 hover:underline dark:text-indigo-400">
+                                  {i18n.language === 'es' ? 'Todos' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('tech')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguno' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {techList.map((skill) => {
+                                const checked = selTech.has(skill);
+                                return (
+                                  <label
+                                    key={skill}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-sky-300 bg-sky-50/70 text-sky-950 font-medium dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('tech', skill)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span className="truncate">{skill}</span>
+                                    </div>
+                                    <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                                      {i18n.language === 'es' ? 'Técnica' : 'Tech'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Habilidades Blandas */}
+                        {softList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-violet-700 dark:text-violet-300">
+                              <span className="flex items-center gap-1.5">
+                                <Handshake className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Habilidades Blandas' : 'Soft Skills'} ({softList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('soft')} className="text-indigo-600 hover:underline dark:text-indigo-400">
+                                  {i18n.language === 'es' ? 'Todos' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('soft')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguno' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {softList.map((skill) => {
+                                const checked = selSoft.has(skill);
+                                return (
+                                  <label
+                                    key={skill}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-violet-300 bg-violet-50/70 text-violet-950 font-medium dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('soft', skill)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span className="truncate">{skill}</span>
+                                    </div>
+                                    <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                                      {i18n.language === 'es' ? 'Blanda' : 'Soft'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Procesos del Puesto */}
+                        {deptProcList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-amber-700 dark:text-amber-300">
+                              <span className="flex items-center gap-1.5">
+                                <Briefcase className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Procesos del Puesto' : 'Role Processes'} ({deptProcList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('dept')} className="text-indigo-600 hover:underline dark:text-indigo-400">
+                                  {i18n.language === 'es' ? 'Todos' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('dept')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguno' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {deptProcList.map((proc) => {
+                                const checked = selDept.has(proc);
+                                return (
+                                  <label
+                                    key={proc}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-amber-300 bg-amber-50/70 text-amber-950 font-medium dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('dept', proc)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span className="truncate">{proc}</span>
+                                    </div>
+                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                      {i18n.language === 'es' ? 'Proceso Puesto' : 'Process'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Procesos de RRHH */}
+                        {hrProcList.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-semibold text-rose-700 dark:text-rose-300">
+                              <span className="flex items-center gap-1.5">
+                                <BookOpen className="h-3.5 w-3.5" />
+                                {i18n.language === 'es' ? 'Procesos y Políticas de RRHH' : 'HR & Compliance Policies'} ({hrProcList.length})
+                              </span>
+                              <div className="flex items-center gap-2 text-[11px] font-normal">
+                                <button type="button" onClick={() => selectAllCategory('hr')} className="text-indigo-600 hover:underline dark:text-indigo-400">
+                                  {i18n.language === 'es' ? 'Todos' : 'All'}
+                                </button>
+                                <span>·</span>
+                                <button type="button" onClick={() => deselectAllCategory('hr')} className="text-slate-400 hover:underline">
+                                  {i18n.language === 'es' ? 'Ninguno' : 'None'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {hrProcList.map((proc) => {
+                                const checked = selHr.has(proc);
+                                return (
+                                  <label
+                                    key={proc}
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2 text-xs transition ${
+                                      checked
+                                        ? 'border-rose-300 bg-rose-50/70 text-rose-950 font-medium dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+                                        : 'border-slate-100 bg-slate-50/50 text-slate-700 hover:bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] dark:text-white/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleItem('hr', proc)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                                      />
+                                      <span className="truncate">{proc}</span>
+                                    </div>
+                                    <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
+                                      {i18n.language === 'es' ? 'RRHH' : 'HR'}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Columna Derecha: Plan Configurado "En tu puesto (Después de 90 días)" */}
+                  <div className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 dark:border-indigo-500/20 dark:bg-indigo-500/5">
+                    <div className="flex items-center justify-between border-b border-indigo-100 pb-3 dark:border-white/5">
+                      <div>
+                        <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
+                          <Briefcase className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                          {i18n.language === 'es' ? '2. Plan Seleccionado para tu Puesto' : '2. Ongoing Plan for This Role'}
+                        </h4>
+                        <p className="text-[11px] text-indigo-700/70 dark:text-indigo-300/70">
+                          {i18n.language === 'es'
+                            ? 'Cursos y capacidades visibles para el colaborador tras los primeros 90 días'
+                            : 'Capabilities active for the employee in their ongoing role stage'}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-xs font-bold text-white">
+                        {totalSelected}
+                      </span>
+                    </div>
+
+                    {totalSelected === 0 ? (
+                      <div className="rounded-xl border border-dashed border-indigo-200 bg-white/60 p-8 text-center text-xs text-indigo-800/60 dark:border-indigo-400/20 dark:bg-transparent dark:text-indigo-200/60">
+                        <Sparkles className="mx-auto mb-2 h-6 w-6 text-indigo-400" />
+                        <p className="font-semibold">
+                          {i18n.language === 'es' ? 'Sin capacidades seleccionadas aún' : 'No capabilities selected yet'}
+                        </p>
+                        <p className="mt-1">
+                          {i18n.language === 'es'
+                            ? 'Marca las casillas a la izquierda para armar el plan continuo.'
+                            : 'Check items on the left to configure the ongoing role roadmap.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                        {/* Items seleccionados por categoría */}
+                        {selTech.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-sky-800 dark:text-sky-300">
+                              {i18n.language === 'es' ? 'Técnicas' : 'Technical'} ({selTech.size})
+                            </p>
+                            {Array.from(selTech).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('tech', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {selSoft.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-violet-800 dark:text-violet-300">
+                              {i18n.language === 'es' ? 'No Técnicas / Blandas' : 'Soft'} ({selSoft.size})
+                            </p>
+                            {Array.from(selSoft).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('soft', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {selDept.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                              {i18n.language === 'es' ? 'Procesos del Puesto' : 'Role Processes'} ({selDept.size})
+                            </p>
+                            {Array.from(selDept).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('dept', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {selHr.size > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                              {i18n.language === 'es' ? 'Procesos y Políticas de RRHH' : 'HR & Compliance'} ({selHr.size})
+                            </p>
+                            {Array.from(selHr).map((item) => (
+                              <div
+                                key={item}
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow-xs dark:bg-white/10 dark:text-white"
+                              >
+                                <span className="font-medium text-slate-800 dark:text-white">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleItem('hr', item)}
+                                  className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                                  title={t('common.remove')}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSubmit(e as unknown as FormEvent)}
+                        disabled={isSaving}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {isSaving ? t('common.saving') : (i18n.language === 'es' ? 'Guardar Cambios del Plan' : 'Save Plan Changes')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {activeTab === 'stayCurrent' && (
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500 via-orange-600 to-rose-600 p-6 text-white shadow-xl shadow-orange-900/10">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-100">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">03</span>
+                  <span>{i18n.language === 'es' ? 'Siempre' : 'Always'}</span>
+                  <span className="rounded-full bg-amber-300/25 px-2 py-0.5 text-[10px] font-bold text-amber-100">
+                    {i18n.language === 'es' ? 'A lo largo de tu carrera' : 'Throughout your career'}
+                  </span>
+                </div>
+                <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
+                  {i18n.language === 'es' ? 'Mantente vigente' : 'Stay current'}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-amber-50 sm:text-base">
+                  {i18n.language === 'es'
+                    ? 'Actualiza tus capacidades conforme evolucionan tu puesto y tu industria.'
+                    : 'Update your capabilities as your role and industry evolve.'}
+                </p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
+                <RefreshCw className="h-7 w-7" />
+              </div>
+            </div>
+          </section>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                <Award className="h-4 w-4" />
+                <span>{i18n.language === 'es' ? 'Certificaciones & Nuevas Herramientas' : 'Certifications & Tooling'}</span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {i18n.language === 'es' ? 'Evolución Tecnológica' : 'Tooling & Certifications'}
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-white/70">
+                {form.requiredCertifications || (i18n.language === 'es' ? 'Certificaciones periódicas y actualización en nuevas versiones del stack.' : 'Periodic certifications and stack refreshes.')}
+              </p>
+              {linesToArray(form.tools).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {linesToArray(form.tools).map((t, idx) => (
+                    <span key={idx} className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                <Flame className="h-4 w-4" />
+                <span>{i18n.language === 'es' ? 'Tendencias de la Industria' : 'Industry Trends'}</span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {i18n.language === 'es' ? 'Capacidades Emergentes' : 'Emerging Capabilities'}
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-white/70">
+                {i18n.language === 'es'
+                  ? 'Revisión periódica de nuevas habilidades recomendadas por IA y cambios del sector.'
+                  : 'Continuous scanning of AI-suggested skills and industry shifts to keep this role ahead.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'masterYourJob' && (
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-teal-600 via-cyan-600 to-blue-700 p-6 text-white shadow-xl shadow-cyan-900/10">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cyan-100">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">04</span>
+                  <span>{i18n.language === 'es' ? 'Madurez y Dominio' : 'Seniority & Mastery'}</span>
+                  <span className="rounded-full bg-cyan-300/25 px-2 py-0.5 text-[10px] font-bold text-cyan-100">
+                    {i18n.language === 'es' ? 'Antes de tu siguiente etapa' : 'Before your next chapter'}
+                  </span>
+                </div>
+                <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
+                  {i18n.language === 'es' ? 'Domina tu puesto' : 'Master your job'}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-cyan-50 sm:text-base">
+                  {i18n.language === 'es'
+                    ? 'Alcanza el máximo desempeño en tu puesto y prepárate para el liderazgo o la especialización.'
+                    : 'Reach peak performance in your role and prepare for leadership or specialization.'}
+                </p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
+                <GraduationCap className="h-7 w-7" />
+              </div>
+            </div>
+          </section>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400">
+                <Award className="h-4 w-4" />
+                <span>{i18n.language === 'es' ? 'Liderazgo & Mentoría' : 'Leadership & Mentorship'}</span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {i18n.language === 'es' ? 'Desarrollo de Otros' : 'Mentoring & Impact'}
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-white/70">
+                {i18n.language === 'es'
+                  ? 'Guía a nuevos integrantes, lidera proyectos estratégicos y comparte mejores prácticas.'
+                  : 'Guide newcomers, drive cross-functional strategic initiatives, and institutionalize best practices.'}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-teal-600 dark:text-teal-400">
+                <Rocket className="h-4 w-4" />
+                <span>{i18n.language === 'es' ? 'Siguiente Nivel de Carrera' : 'Next Career Chapter'}</span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {i18n.language === 'es' ? 'Especialización o Gestión' : 'Specialization & Growth'}
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-white/70">
+                {form.expectedOutcomes || (i18n.language === 'es' ? 'Preparación de carrera para roles senior, liderazgo de equipo o especialización experta.' : 'Career roadmap toward senior roles, management, or deep technical specialization.')}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

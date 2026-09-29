@@ -34,6 +34,22 @@ public sealed class SaveJobRoleRequest
 
     public List<string>? Tools { get; set; }
 
+    public List<string>? StartInYourRoleTechnicalSkills { get; set; }
+
+    public List<string>? StartInYourRoleSoftSkills { get; set; }
+
+    public List<string>? StartInYourRoleDepartmentProcesses { get; set; }
+
+    public List<string>? StartInYourRoleHrProcesses { get; set; }
+
+    public List<string>? InYourRoleTechnicalSkills { get; set; }
+
+    public List<string>? InYourRoleSoftSkills { get; set; }
+
+    public List<string>? InYourRoleDepartmentProcesses { get; set; }
+
+    public List<string>? InYourRoleHrProcesses { get; set; }
+
     public List<string>? DailyActivities { get; set; }
 
     public List<string>? PerformanceIndicators { get; set; }

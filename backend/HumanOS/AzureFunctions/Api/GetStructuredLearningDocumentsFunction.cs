@@ -25,6 +25,9 @@ public sealed class StructuredLearningDocumentSummaryDto
     public string? Category { get; set; }
 
     public string? TargetSkill { get; set; }
+
+    /// <summary>"es"/"en" — see StructuredLearningLanguageHeuristic.</summary>
+    public string Language { get; set; } = "es";
 }
 
 /// <summary>
@@ -66,12 +69,12 @@ public sealed class GetStructuredLearningDocumentsFunction
         var documents = await _dbContext.StructuredLearningDocuments
             .AsNoTracking()
             .Where(d => d.IsGlobal || d.TenantId == Guid.Empty || (tenantId != null && d.TenantId == tenantId) || tenantId == null)
-            .Select(d => new StructuredLearningDocumentSummaryDto
+            .Select(d => new
             {
-                StructuredLearningDocumentId = d.StructuredLearningDocumentId,
-                DocumentName = d.DocumentName,
-                ExecutiveSummary = d.ExecutiveSummary,
-                CreatedDate = d.CreatedDate,
+                d.StructuredLearningDocumentId,
+                d.DocumentName,
+                d.ExecutiveSummary,
+                d.CreatedDate,
                 SectionCount = d.Sections.Count,
                 CoverIllustrationId = _dbContext.StructuredLearningIllustrations
                     .Where(i => i.StructuredLearningDocumentSectionId == d.Sections
@@ -81,12 +84,26 @@ public sealed class GetStructuredLearningDocumentsFunction
                     .OrderBy(i => i.CreatedDate)
                     .Select(i => (Guid?)i.StructuredLearningIllustrationId)
                     .FirstOrDefault(),
-                Category = d.Category,
-                TargetSkill = d.TargetSkill
+                d.Category,
+                d.TargetSkill,
+                d.ConfigSnapshotJson
             })
             .OrderByDescending(d => d.CreatedDate)
             .ToListAsync(cancellationToken);
 
-        return await FunctionResponseFactory.SuccessResponseAsync(request, documents, cancellationToken: cancellationToken);
+        var result = documents.Select(d => new StructuredLearningDocumentSummaryDto
+        {
+            StructuredLearningDocumentId = d.StructuredLearningDocumentId,
+            DocumentName = d.DocumentName,
+            ExecutiveSummary = d.ExecutiveSummary,
+            CreatedDate = d.CreatedDate,
+            SectionCount = d.SectionCount,
+            CoverIllustrationId = d.CoverIllustrationId,
+            Category = d.Category,
+            TargetSkill = d.TargetSkill,
+            Language = HumanOS.Services.StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName)
+        }).ToList();
+
+        return await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);
     }
 }

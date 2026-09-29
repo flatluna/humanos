@@ -82,6 +82,42 @@ public sealed class JobRole
     /// must use (e.g. "Excel", "Power BI", "GitHub").</summary>
     public string ToolsJson { get; set; } = "[]";
 
+    /// <summary>JSON string[] — subset of <see cref="TechnicalSkillsJson"/>
+    /// explicitly chosen as day-one development priorities for the "Start in
+    /// Your Role" journey.</summary>
+    public string StartInYourRoleTechnicalSkillsJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="SoftSkillsJson"/>
+    /// explicitly chosen as day-one development priorities for the "Start in
+    /// Your Role" journey.</summary>
+    public string StartInYourRoleSoftSkillsJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="DepartmentProcessesJson"/>
+    /// explicitly chosen as day-one development priorities for the "Start in
+    /// Your Role" journey.</summary>
+    public string StartInYourRoleDepartmentProcessesJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="HrProcessesJson"/>
+    /// explicitly chosen as day-one development priorities for the "Start in
+    /// Your Role" journey.</summary>
+    public string StartInYourRoleHrProcessesJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="TechnicalSkillsJson"/>
+    /// chosen for the ongoing development plan (after 90 days) in "In Your Role".</summary>
+    public string InYourRoleTechnicalSkillsJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="SoftSkillsJson"/>
+    /// chosen for the ongoing development plan (after 90 days) in "In Your Role".</summary>
+    public string InYourRoleSoftSkillsJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="DepartmentProcessesJson"/>
+    /// chosen for the ongoing development plan (after 90 days) in "In Your Role".</summary>
+    public string InYourRoleDepartmentProcessesJson { get; set; } = "[]";
+
+    /// <summary>JSON string[] — subset of <see cref="HrProcessesJson"/>
+    /// chosen for the ongoing development plan (after 90 days) in "In Your Role".</summary>
+    public string InYourRoleHrProcessesJson { get; set; } = "[]";
+
     /// <summary>JSON string[] — day-to-day or periodic activities.</summary>
     public string DailyActivitiesJson { get; set; } = "[]";
 

@@ -12,5 +12,7 @@ public sealed class UpdateTenantRequest
 
     public string TimeZone { get; set; } = "UTC";
 
+    public string OrgType { get; set; } = "Corporate";
+
     public bool IsActive { get; set; } = true;
 }

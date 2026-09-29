@@ -104,6 +104,91 @@ public static class TokenCostEstimator
             ? value
             : fallback;
     }
+
+    /// <summary>Same rate logic as <see cref="Estimate"/>, but grouped PER MODEL
+    /// instead of collapsed into one aggregate — for a professional cost
+    /// breakdown ("$X at model A's rate + $Y at model B's rate"), each row
+    /// showing the exact input/output/cached rate (per million tokens) used.</summary>
+    public static IReadOnlyList<ModelCostBreakdown> EstimateByModel(
+        IReadOnlyList<AgentTokenUsage> tokenUsage,
+        IConfiguration configuration)
+    {
+        var defaultInputRate = ReadDecimal(configuration, "AgentPricing:DefaultInputPerMillionTokens", DefaultInputPerMillion);
+        var defaultCachedRate = ReadDecimal(configuration, "AgentPricing:DefaultCachedInputPerMillionTokens", DefaultCachedInputPerMillion);
+        var defaultOutputRate = ReadDecimal(configuration, "AgentPricing:DefaultOutputPerMillionTokens", DefaultOutputPerMillion);
+
+        var results = new List<ModelCostBreakdown>();
+        foreach (var group in tokenUsage.GroupBy(u => string.IsNullOrWhiteSpace(u.ModelName) ? "(unknown model)" : u.ModelName))
+        {
+            var modelName = group.Key;
+            var modelKey = modelName == "(unknown model)" ? null : $"AgentPricing:Models:{modelName}";
+            var inputRate = modelKey is null ? defaultInputRate : ReadDecimal(configuration, $"{modelKey}:InputPerMillionTokens", defaultInputRate);
+            var cachedRate = modelKey is null ? defaultCachedRate : ReadDecimal(configuration, $"{modelKey}:CachedInputPerMillionTokens", defaultCachedRate);
+            var outputRate = modelKey is null ? defaultOutputRate : ReadDecimal(configuration, $"{modelKey}:OutputPerMillionTokens", defaultOutputRate);
+
+            long billableInput = 0, cachedInput = 0, output = 0;
+            var callCount = 0;
+            foreach (var usage in group)
+            {
+                var cached = (long)usage.CachedInputTokens;
+                cachedInput += cached;
+                billableInput += Math.Max(0, (long)usage.InputTokens - cached);
+                output += usage.OutputTokens;
+                callCount++;
+            }
+
+            var inputCost = billableInput / 1_000_000m * inputRate;
+            var cachedCost = cachedInput / 1_000_000m * cachedRate;
+            var outputCost = output / 1_000_000m * outputRate;
+
+            results.Add(new ModelCostBreakdown
+            {
+                ModelName = modelName,
+                CallCount = callCount,
+                BillableInputTokens = billableInput,
+                CachedInputTokens = cachedInput,
+                OutputTokens = output,
+                InputRatePerMillionTokens = inputRate,
+                CachedInputRatePerMillionTokens = cachedRate,
+                OutputRatePerMillionTokens = outputRate,
+                InputCostUsd = Math.Round(inputCost, 4),
+                CachedInputCostUsd = Math.Round(cachedCost, 4),
+                OutputCostUsd = Math.Round(outputCost, 4),
+                TotalCostUsd = Math.Round(inputCost + cachedCost + outputCost, 4)
+            });
+        }
+
+        return results.OrderByDescending(r => r.TotalCostUsd).ToList();
+    }
+}
+
+/// <summary>One model's share of a per-engram/per-document cost breakdown —
+/// see <see cref="TokenCostEstimator.EstimateByModel"/>.</summary>
+public sealed class ModelCostBreakdown
+{
+    public string ModelName { get; set; } = string.Empty;
+
+    public int CallCount { get; set; }
+
+    public long BillableInputTokens { get; set; }
+
+    public long CachedInputTokens { get; set; }
+
+    public long OutputTokens { get; set; }
+
+    public decimal InputRatePerMillionTokens { get; set; }
+
+    public decimal CachedInputRatePerMillionTokens { get; set; }
+
+    public decimal OutputRatePerMillionTokens { get; set; }
+
+    public decimal InputCostUsd { get; set; }
+
+    public decimal CachedInputCostUsd { get; set; }
+
+    public decimal OutputCostUsd { get; set; }
+
+    public decimal TotalCostUsd { get; set; }
 }
 
 /// <summary>Result of <see cref="TokenCostEstimator.Estimate"/> — see that

@@ -495,7 +495,7 @@ public sealed class StructuredLearningExtractionService
             totalTokens += tokenCount;
         }
 
-        await GenerateDocumentContextAndCoverAsync(dbContext, document, documentText, tenantId, reportProgress, cancellationToken);
+        await GenerateDocumentContextAndCoverAsync(dbContext, document, documentText, tenantId, creationOptions, reportProgress, cancellationToken);
         if (document.IncludeKnowledgeGraphEntities)
         {
             try
@@ -688,6 +688,7 @@ public sealed class StructuredLearningExtractionService
         StructuredLearningDocument document,
         string documentText,
         Guid tenantId,
+        StructuredLearningCreationOptions? creationOptions,
         Action<string> reportProgress,
         CancellationToken cancellationToken)
     {
@@ -703,7 +704,7 @@ public sealed class StructuredLearningExtractionService
                         Summary = documentText[..Math.Min(documentText.Length, 4000)],
                         Chunks = [new CuratedChunk { Tag = document.DocumentName, Content = documentText }]
                     },
-                    "es",
+                    string.Equals(creationOptions?.LanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "es",
                     cancellationToken);
                 document.ExecutiveSummary = context.Context.ExecutiveSummary;
                 await dbContext.SaveChangesAsync(cancellationToken);

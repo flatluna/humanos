@@ -166,7 +166,7 @@ public class StructuredLearningKnowledgeFactGenerationAgent
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var response = await RunModelAsync(request, cancellationToken);
+        var (response, _) = await RunModelAsync(request, cancellationToken);
         ValidateResponse(request, response);
         return response;
     }
@@ -180,10 +180,21 @@ public class StructuredLearningKnowledgeFactGenerationAgent
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var (response, _) = await GenerateRawWithUsageAsync(request, cancellationToken);
+        return response;
+    }
+
+    /// <summary>Same call as <see cref="GenerateRawAsync"/>, also returning the token usage
+    /// that produced it — used to persist a StructuredLearningGenerationUsage row per call.</summary>
+    public virtual async Task<(StructuredLearningKnowledgeFactGenerationResponse Response, AgentTokenUsage Usage)> GenerateRawWithUsageAsync(
+        StructuredLearningKnowledgeFactGenerationRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
         return await RunModelAsync(request, cancellationToken);
     }
 
-    protected virtual async Task<StructuredLearningKnowledgeFactGenerationResponse> RunModelAsync(
+    protected virtual async Task<(StructuredLearningKnowledgeFactGenerationResponse Response, AgentTokenUsage Usage)> RunModelAsync(
         StructuredLearningKnowledgeFactGenerationRequest request,
         CancellationToken cancellationToken)
     {
@@ -222,7 +233,15 @@ public class StructuredLearningKnowledgeFactGenerationAgent
 
         var response = await _agent.RunAsync<StructuredLearningKnowledgeFactGenerationResponse>(
             prompt, options: runOptions, cancellationToken: cancellationToken);
-        return response.Result;
+        var usage = response.Usage;
+        return (response.Result, new AgentTokenUsage
+        {
+            AgentName = "StructuredLearningKnowledgeFactGenerationAgent",
+            ModelName = _modelName,
+            InputTokens = (int)(usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
+            CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)
+        });
     }
 
     public static void ValidateResponse(

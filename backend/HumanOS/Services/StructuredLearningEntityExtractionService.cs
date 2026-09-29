@@ -232,6 +232,18 @@ public sealed class StructuredLearningEntityExtractionService
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+        // Full replace (2026-09-26, mirrors StructuredLearningConnectionExtractionService's own
+        // "REPLACES" behavior): a re-run of this method almost always means the section's Text
+        // just changed (edit/review flow) — stale links pointing at sentences that no longer
+        // exist in the section must be cleared first, or old and new entity mentions would pile
+        // up together forever. This only removes the LINK to this section, never the shared
+        // master Entity row itself (still used by other sections).
+        var staleLinks = await dbContext.StructuredLearningEntitySections
+            .Where(l => l.StructuredLearningDocumentSectionId == sectionId)
+            .ToListAsync(cancellationToken);
+        dbContext.StructuredLearningEntitySections.RemoveRange(staleLinks);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         // Tracks entity ids already added to THIS batch (2026-08-26 fix) —
         // the DB-only AnyAsync check below can't see rows added earlier in
         // this same loop (not yet flushed), so two extracted mentions that

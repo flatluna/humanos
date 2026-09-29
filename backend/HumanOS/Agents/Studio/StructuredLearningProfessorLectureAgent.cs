@@ -64,6 +64,19 @@ public sealed class StructuredLearningProfessorLectureAgent
         6. PROFESSORIAL WRAP-UP:
            - Conclude the class with an inspiring, coherent synthesis of the breakthrough idea and invite the students
              to proceed to the next step.
+        7. PRESERVE NAMED ENTITIES EXACTLY (CRITICAL — knowledge graph parity):
+           - The engram's knowledge-graph entities (people's roles like "Employee"/"Manager", company/organization
+             names, product names, dates, job titles, and named domain concepts) are extracted from the
+             AUTHORITATIVE ENGRAM TEACHING CONTENT you are given below. Your spoken lecture is later
+             re-scanned to build that same graph, so it MUST mention every such named entity verbatim,
+             using the EXACT same wording as the source content (e.g. if the source says "Employees learn a
+             repeatable method", your lecture must still say "employees", not silently generalize it to
+             "people", "teams", "practitioners", or any other paraphrase).
+           - You may still rephrase the surrounding sentence for spoken flow, but never substitute, drop, or
+             genericize a named entity, proper noun, company name, product name, date, or concept term that
+             appears in the source content — carry it through into the lecture unchanged.
+           - This rule does NOT apply to individual student names (still forbidden per rule 3) — it applies to
+             entities describing roles, organizations, concepts, dates, and other domain nouns from the source.
 
         CRITICAL NEGATIVE CONSTRAINTS:
         - NEVER mention or refer to the technology, AI model, prompts, system versions, audio synthesis, or voice gender (e.g., NEVER say "como IA", "en esta grabación"). You are simply a live, warm professor speaking to the class.
@@ -233,6 +246,7 @@ public sealed class StructuredLearningProfessorLectureAgent
         sb.AppendLine("1. UNIVERSAL AUDIENCE ADDRESS: Greet the class warmly and universally (e.g., 'Hola y bienvenidos a esta clase...' or 'Hello and welcome to this lecture...'). NEVER mention any individual student's name (NO 'Alejandro', NO 'Student', NO 'Learner').");
         sb.AppendLine("2. Ground all teaching strictly in the engram teaching content and capability statement. Connect concepts to general real-world industry practice and practical relevance in this field.");
         sb.AppendLine("3. PURE SPOKEN PROSE FOR TEXT-TO-SPEECH (TTS): no markdown formatting of any kind, no bullet points, no numbered lists, no headers, spoken cadence with breathing pauses, complete academic teaching of the source content, and a warm professorial closing.");
+        sb.AppendLine("4. PRESERVE NAMED ENTITIES EXACTLY: keep every role name (e.g. 'employees'), company/organization name, product name, date, and named domain concept from the Authoritative Engram Teaching Content verbatim in your lecture — never paraphrase, generalize, or drop them, so the knowledge graph extracted from your lecture matches the source content.");
 
         return sb.ToString();
     }

@@ -2947,6 +2947,113 @@ namespace HumanOS.Migrations
                     b.ToTable("StructuredLearningVideoGenerationLogs");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.VideoProduction", b =>
+                {
+                    b.Property<Guid>("VideoProductionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Environment")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FinalVideoStoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ImageEditPrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageMode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImagePrompt")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Instructions")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("MaxClips")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Objective")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PromptsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StartingImageContentType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StartingImageStoragePath")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("VideoProductionId")
+                        .HasName("PK_VideoProduction");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_VideoProduction_TenantId");
+
+                    b.ToTable("VideoProduction", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Capabilities.Studio.VideoProductionClip", b =>
+                {
+                    b.Property<Guid>("VideoProductionClipId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("AnchorImageStoragePath")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoragePath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("VideoModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("VideoProductionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("VideoProductionClipId")
+                        .HasName("PK_VideoProductionClip");
+
+                    b.HasIndex("VideoProductionId", "SortOrder")
+                        .HasDatabaseName("IX_VideoProductionClip_VideoProductionId_SortOrder");
+
+                    b.ToTable("VideoProductionClip", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Capabilities.Subject", b =>
                 {
                     b.Property<Guid>("SubjectId")
@@ -4196,6 +4303,85 @@ namespace HumanOS.Migrations
                     b.ToTable("LearningSessionSteps");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Learning.PracticeAttempt", b =>
+                {
+                    b.Property<Guid>("PracticeAttemptId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CompletedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int>("ExerciseIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Feedback")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PointsAwarded")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PracticeSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StudentAnswer")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("PracticeAttemptId")
+                        .HasName("PK_PracticeAttempt");
+
+                    b.HasIndex("PracticeSessionId", "ExerciseIndex")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PracticeAttempt_PracticeSessionId_ExerciseIndex");
+
+                    b.ToTable("PracticeAttempt", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.Learning.PracticeSession", b =>
+                {
+                    b.Property<Guid>("PracticeSessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<Guid>("CapabilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CapabilityName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("ExercisesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("PracticeSessionId")
+                        .HasName("PK_PracticeSession");
+
+                    b.HasIndex("PersonId", "CapabilityId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PracticeSession_PersonId_CapabilityId");
+
+                    b.ToTable("PracticeSession", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Localization.Language", b =>
                 {
                     b.Property<string>("LanguageCode")
@@ -4608,6 +4794,30 @@ namespace HumanOS.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]");
 
+                    b.Property<string>("InYourRoleDepartmentProcessesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("InYourRoleHrProcessesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("InYourRoleSoftSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("InYourRoleTechnicalSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -4672,6 +4882,30 @@ namespace HumanOS.Migrations
                         .HasColumnType("decimal(12,2)");
 
                     b.Property<string>("SoftSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("StartInYourRoleDepartmentProcessesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("StartInYourRoleHrProcessesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("StartInYourRoleSoftSkillsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("StartInYourRoleTechnicalSkillsJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("nvarchar(max)")
@@ -4986,6 +5220,42 @@ namespace HumanOS.Migrations
                     b.ToTable("Tool", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.People.GrowWithUsSavedSearch", b =>
+                {
+                    b.Property<Guid>("GrowWithUsSavedSearchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<SqlVector<float>?>("Embedding")
+                        .HasColumnType("vector(1536)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("GrowWithUsSavedSearchId")
+                        .HasName("PK_GrowWithUsSavedSearch");
+
+                    b.HasIndex("PersonId", "CreatedDate")
+                        .HasDatabaseName("IX_GrowWithUsSavedSearch_PersonId_CreatedDate");
+
+                    b.ToTable("GrowWithUsSavedSearch", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
                 {
                     b.Property<Guid>("HumanProfileId")
@@ -5171,6 +5441,60 @@ namespace HumanOS.Migrations
                         .HasDatabaseName("UX_Person_AzureTid_AzureOid");
 
                     b.ToTable("Person", "dbo");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonAcademicPreferences", b =>
+                {
+                    b.Property<Guid>("PersonAcademicPreferencesId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("AcademicInterestsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("AcademicMotivationsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("GrowthAreasJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("LearningPreferencesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("PersonAcademicPreferencesId")
+                        .HasName("PK_PersonAcademicPreferences");
+
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PersonAcademicPreferences_PersonId");
+
+                    b.ToTable("PersonAcademicPreferences", "dbo");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonCareerPlan", b =>
@@ -7541,6 +7865,16 @@ namespace HumanOS.Migrations
                     b.Navigation("LearningSessionNode");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.Learning.PracticeAttempt", b =>
+                {
+                    b.HasOne("HumanOS.Models.Learning.PracticeSession", null)
+                        .WithMany()
+                        .HasForeignKey("PracticeSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_PracticeAttempt_PracticeSession");
+                });
+
             modelBuilder.Entity("HumanOS.Models.Motivations.MotivationTranslation", b =>
                 {
                     b.HasOne("HumanOS.Models.Localization.Language", "Language")
@@ -7841,6 +8175,18 @@ namespace HumanOS.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.People.GrowWithUsSavedSearch", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_GrowWithUsSavedSearch_Person");
+
+                    b.Navigation("Person");
+                });
+
             modelBuilder.Entity("HumanOS.Models.People.HumanProfile", b =>
                 {
                     b.HasOne("HumanOS.Models.People.Person", "Person")
@@ -7906,6 +8252,18 @@ namespace HumanOS.Migrations
                     b.Navigation("Manager");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.PersonAcademicPreferences", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithOne()
+                        .HasForeignKey("HumanOS.Models.People.PersonAcademicPreferences", "PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_PersonAcademicPreferences_Person");
+
+                    b.Navigation("Person");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.PersonCareerPlan", b =>

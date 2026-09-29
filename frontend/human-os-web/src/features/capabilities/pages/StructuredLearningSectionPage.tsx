@@ -125,8 +125,25 @@ function HypothesisQuestionCard({ sectionId, personId, step }: { sectionId: stri
     <div className="mt-4 space-y-4 rounded-2xl border border-brand-200 dark:border-brand-500/20 bg-brand-50 dark:bg-brand-500/[0.04] p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-300">Before we start</p>
       {submitted ? (
-        <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-100">
-          Thank you for your responses. We now will start learning.
+        <div className="space-y-3">
+          <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-100">
+            Thank you for your responses. We now will start learning.
+          </div>
+          {questions.map((question, index) => {
+            const selectedIndex = selectedAnswers[index];
+            const selectedOption = selectedIndex !== undefined ? question.options[selectedIndex] : null;
+            return (
+              <div key={`${question.question}-answer-${index}`} className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/20 p-3">
+                <p className="text-sm font-medium text-slate-900 dark:text-white">{index + 1}. {question.question}</p>
+                <p className="mt-2 flex items-center gap-2 text-sm text-brand-700 dark:text-brand-300">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-200 dark:bg-brand-500/20 text-xs font-bold text-brand-800 dark:text-brand-100">
+                    {selectedIndex !== undefined ? String.fromCharCode(65 + selectedIndex) : '?'}
+                  </span>
+                  <span>{selectedOption ?? 'No answer recorded'}</span>
+                </p>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-4">

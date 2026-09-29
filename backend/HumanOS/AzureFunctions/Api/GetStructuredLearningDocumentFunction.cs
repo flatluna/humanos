@@ -80,6 +80,13 @@ public sealed class StructuredLearningSectionDetailDto
 
     public bool HasApiData { get; set; }
 
+    /// <summary>Estimated minutes for a learner to complete this Engram,
+    /// built from the actual steps present (Before you start/Learn/Deep
+    /// dive/In your role/Recall/Assessment) rather than raw token counts —
+    /// each step type has its own realistic fixed duration, with Deep Dive
+    /// scaled by its real card count (2026-09-27).</summary>
+    public int EstimatedMinutesToComplete { get; set; }
+
     public List<StructuredLearningStepDetailDto> Steps { get; set; } = [];
 }
 
@@ -104,6 +111,8 @@ public sealed class StructuredLearningDocumentDetailResponse
     public string? TargetSkill { get; set; }
 
     public string? ExecutiveSummary { get; set; }
+
+    public string? LanguageCode { get; set; }
 
     public Guid? CoverIllustrationId { get; set; }
 
@@ -202,6 +211,7 @@ public sealed class GetStructuredLearningDocumentFunction
             Category = document.Category,
             TargetSkill = document.TargetSkill,
             ExecutiveSummary = document.ExecutiveSummary,
+            LanguageCode = ResolveLanguageCode(document.ConfigSnapshotJson),
             CoverIllustrationId = coverIllustrationId,
             PedagogicalAudience = document.PedagogicalAudience,
             PromptVersion = document.PromptVersion,
@@ -242,6 +252,7 @@ public sealed class GetStructuredLearningDocumentFunction
                     KnowledgeGraphRootEntityName = s.KnowledgeGraphRootEntityName,
                     WebSearchSources = ExtractSourcesFromConfigSnapshot(s.ConfigSnapshotJson),
                     HasApiData = CheckHasApiData(s.ConfigSnapshotJson),
+                    EstimatedMinutesToComplete = EstimateMinutesToComplete(s.Steps, document.RecallItemsRequired, document.AssessmentQuestionsPerRound),
                     Steps = s.Steps
                         .OrderBy(st => st.SortOrder)
                         .Select(st => new StructuredLearningStepDetailDto
@@ -267,6 +278,114 @@ public sealed class GetStructuredLearningDocumentFunction
         };
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, response, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Estimates learner completion time (minutes) for one Engram
+    /// from the ACTUAL steps present, using a fixed realistic duration per
+    /// step type instead of a token/word count (2026-09-27 fix — a designer
+    /// correctly pointed out token-derived estimates don't match how long a
+    /// human actually spends per step). Deep Dive scales by its real
+    /// illustrated-panel count (a single card can be a multi-panel sequence,
+    /// see CountDeepDivePanels). Recall/Assessment scale by the document's
+    /// CONFIGURED item counts (known before the learner starts) instead of
+    /// trying to predict real per-learner mistakes — each question already
+    /// bakes in an average read+answer+retry-on-error buffer, so more
+    /// configured questions realistically means more time regardless of how
+    /// many the learner actually gets wrong (2026-09-28 follow-up fix).</summary>
+    private static int EstimateMinutesToComplete(
+        ICollection<Models.Capabilities.Studio.StructuredLearningSectionStep> steps,
+        int? recallItemsRequired,
+        int? assessmentQuestionsPerRound)
+    {
+        const int minutesPerRecallItem = 1; // read the prompt + answer + occasional retry
+        const int minutesPerAssessmentQuestion = 2; // read + answer + review feedback on a miss
+
+        var totalMinutes = 0;
+        foreach (var step in steps)
+        {
+            totalMinutes += step.StepType switch
+            {
+                Models.Capabilities.Studio.StructuredLearningStepType.Hypothesis => 2, // "Before you start"
+                Models.Capabilities.Studio.StructuredLearningStepType.Teaching => 6, // "Learn" — reading + narrated audio
+                Models.Capabilities.Studio.StructuredLearningStepType.DeepDive => 2 * CountDeepDivePanels(step.StepDataJson),
+                Models.Capabilities.Studio.StructuredLearningStepType.Production => 4, // "In your role"
+                Models.Capabilities.Studio.StructuredLearningStepType.Recall => Math.Max(3, minutesPerRecallItem * (recallItemsRequired ?? 3)),
+                Models.Capabilities.Studio.StructuredLearningStepType.Assessment => Math.Max(5, minutesPerAssessmentQuestion * (assessmentQuestionsPerRound ?? 3)),
+                _ => 0,
+            };
+        }
+
+        return Math.Max(totalMinutes, 3);
+    }
+
+    /// <summary>DeepDive's StepDataJson is persisted as a bare JSON array of
+    /// ExampleCards (see StructuredLearningPedagogyService.BuildStepDataJson).
+    /// A single card can itself be a multi-panel illustrated sequence (its
+    /// own IllustrationIds/IllustrationPrompts array, e.g. a 4-step visual
+    /// derivation) — counting only the number of CARDS badly undercounts
+    /// that content, so this sums each card's panel count instead
+    /// (2026-09-28 fix), defaulting to 1 panel per card when neither array
+    /// is present.</summary>
+    private static int CountDeepDivePanels(string? stepDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(stepDataJson))
+        {
+            return 1;
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(stepDataJson);
+            if (json.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return 1;
+            }
+
+            var totalPanels = 0;
+            foreach (var card in json.RootElement.EnumerateArray())
+            {
+                var panelCount = 1;
+                if (card.TryGetProperty("IllustrationIds", out var ids) && ids.ValueKind == JsonValueKind.Array && ids.GetArrayLength() > 0)
+                {
+                    panelCount = ids.GetArrayLength();
+                }
+                else if (card.TryGetProperty("IllustrationPrompts", out var prompts) && prompts.ValueKind == JsonValueKind.Array && prompts.GetArrayLength() > 0)
+                {
+                    panelCount = prompts.GetArrayLength();
+                }
+
+                totalPanels += panelCount;
+            }
+
+            return Math.Max(1, totalPanels);
+        }
+        catch (JsonException)
+        {
+            return 1;
+        }
+    }
+
+    private static string? ResolveLanguageCode(string? configSnapshotJson)
+    {        if (string.IsNullOrWhiteSpace(configSnapshotJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(configSnapshotJson);
+            if (json.RootElement.TryGetProperty("LanguageCode", out var language) ||
+                json.RootElement.TryGetProperty("languageCode", out language))
+            {
+                return language.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            // Ignore malformed historical snapshots; the field is optional.
+        }
+
+        return null;
     }
 
     private static List<string>? ExtractCitationsFromStepData(string? stepDataJson)

@@ -33,6 +33,13 @@ public sealed class CareerPlanRoadmapStepDto
 
     public string? MatchedCapabilityName { get; set; }
 
+    /// <summary>"es"/"en" of the matched course — resolved live on every
+    /// plan read (see PersonCareerPlanService.ApplyTrainingStatusAsync)
+    /// from Capability.ContentLanguageCode or the Structured Learning
+    /// document's own ConfigSnapshotJson/StructuredLearningLanguageHeuristic.
+    /// Null when no course is matched yet.</summary>
+    public string? Language { get; set; }
+
     /// <summary>"Completed" | "InProgress" | "Pending" — this employee's
     /// real progress on MatchedProgramId/MatchedCapabilityId, derived live
     /// from their enrollment/Capability Graph mastery (see

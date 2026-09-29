@@ -13,6 +13,9 @@ export interface AiAgentCourseCard {
   totalEngrams: number;
   masteredEngrams: number;
   coverIllustrationId?: string | null;
+  /** "es"/"en" — Capability.ContentLanguageCode or
+   * StructuredLearningLanguageHeuristic (server-side) depending on course type. */
+  language?: string;
 }
 
 interface StructuredLearningDocumentSummary {
@@ -20,6 +23,7 @@ interface StructuredLearningDocumentSummary {
   documentName: string;
   sectionCount: number;
   coverIllustrationId?: string | null;
+  language?: string;
 }
 
 function getPublishedStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {
@@ -44,6 +48,7 @@ export async function listAiAgentCourses(personId: string, tenantId: string): Pr
           totalEngrams: doc.sectionCount,
           masteredEngrams: 0,
           coverIllustrationId: doc.coverIllustrationId,
+          language: doc.language,
         };
       }
       try {
@@ -59,6 +64,7 @@ export async function listAiAgentCourses(personId: string, tenantId: string): Pr
           totalEngrams: detail.Sections.length,
           masteredEngrams: rounds.filter((r) => r?.Status === 'Passed').length,
           coverIllustrationId: enrolledDoc.coverIllustrationId,
+          language: enrolledDoc.language ?? doc.language,
         };
       } catch {
         return {
@@ -67,6 +73,7 @@ export async function listAiAgentCourses(personId: string, tenantId: string): Pr
           totalEngrams: enrolledDoc.sectionCount,
           masteredEngrams: 0,
           coverIllustrationId: enrolledDoc.coverIllustrationId,
+          language: enrolledDoc.language ?? doc.language,
         };
       }
     }));
@@ -80,6 +87,7 @@ export async function listAiAgentCourses(personId: string, tenantId: string): Pr
       totalEngrams: capability.nodeCount ?? 0,
       masteredEngrams: 0,
       coverIllustrationId: null,
+      language: capability.contentLanguageCode,
     }));
 
   const knownIds = new Set([...structuredLearningIds, ...capabilityCards.map((course) => course.documentId)]);

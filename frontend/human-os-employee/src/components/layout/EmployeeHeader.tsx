@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, LogOut, Moon, Sun, Menu } from 'lucide-react';
+import { ChevronDown, LogOut, Moon, Sun, Menu, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useThemeStore } from '@/store/useThemeStore';
 import { useSidebarStore } from '@/store/useSidebarStore';
+import { useHumanOsAgentPanelStore } from '@/store/useHumanOsAgentPanelStore';
 import { setLanguage, useI18n } from '@/features/capabilities/i18n/useI18n';
 import { GamificationProfilePanel } from '@/features/gamification/components/GamificationProfilePanel';
 
@@ -17,6 +18,7 @@ export function EmployeeHeader() {
   const { language, t } = useI18n();
   const collapsed = useSidebarStore((state) => state.collapsed);
   const toggleSidebar = useSidebarStore((state) => state.toggle);
+  const openAgentPanel = useHumanOsAgentPanelStore((state) => state.open);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +51,7 @@ export function EmployeeHeader() {
   }, []);
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-white/10 dark:bg-[#05060a]">
+    <header className="relative flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-white/10 dark:bg-[#05060a]">
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -76,6 +78,22 @@ export function EmployeeHeader() {
           <p className="text-xs text-slate-500 dark:text-white/50">Aprendizaje basado en ciencia de la memoria: repetición espaciada y curva del olvido</p>
         </div>
       </div>
+
+      {/* Centered Human OS agent launcher — deliberately loud (yellow pulse +
+          bouncing arrow) since this is a brand-new feature people won't
+          otherwise notice next to the rest of the header controls. */}
+      <div className="pointer-events-none absolute left-1/2 top-0.5 hidden -translate-x-1/2 sm:block">
+        <ChevronDown className="h-4 w-4 animate-humanOsAgentArrow text-yellow-400 drop-shadow" />
+      </div>
+      <button
+        type="button"
+        onClick={openAgentPanel}
+        aria-label={language === 'en' ? 'Ask Human OS' : 'Pregúntale a Human OS'}
+        className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border-2 border-yellow-400 bg-white px-4 py-1.5 text-sm font-semibold text-slate-800 shadow-lg animate-humanOsAgentPulse transition-transform hover:scale-105 dark:bg-slate-900 dark:text-white sm:flex"
+      >
+        <MessageCircle className="h-4 w-4 text-yellow-500" />
+        {language === 'en' ? 'Ask Human OS' : 'Pregúntale a Human OS'}
+      </button>
 
       <div className="flex items-center gap-3">
         <GamificationProfilePanel />

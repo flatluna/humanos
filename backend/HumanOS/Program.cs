@@ -126,8 +126,10 @@ var host = new HostBuilder()
         services.AddScoped<CertificationService>();
         services.AddScoped<ToolService>();
         services.AddScoped<PersonProfileService>();
+        services.AddScoped<PersonAcademicPreferencesService>();
         services.AddScoped<GrowthPlanService>();
         services.AddScoped<CapabilityEnrollmentService>();
+        services.AddScoped<GrowWithUsSavedSearchService>();
         services.AddScoped<StructuredLearningDocumentEnrollmentService>();
         services.AddScoped<HumanProfileService>();
         services.AddScoped<HumanStateService>();
@@ -152,6 +154,7 @@ var host = new HostBuilder()
         services.AddScoped<CapabilityCostService>();
         services.AddScoped<StructuredLearningCostService>();
         services.AddScoped<HumanOS.Storage.ProgramLogoStorageService>();
+        services.AddScoped<HumanOS.Storage.TenantLogoStorageService>();
         services.AddScoped<HumanOS.Storage.PersonProfilePhotoStorageService>();
         services.AddScoped<GoalService>();
         services.AddScoped<MotivationService>();
@@ -203,6 +206,13 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.CareerDevelopmentPlanAgent>();
         services.AddScoped<PersonCareerPlanService>();
 
+        // "Grow With Us" → Advance Your Knowledge growth-plan agent
+        // (2026-09-27): given a free-text prompt plus the person's role/
+        // résumé/completed courses, searches the internet (WebGroundingService)
+        // and asks the LLM for suggested courses/papers/news. Singleton,
+        // same rationale as every other Studio/agent-framework agent.
+        services.AddSingleton<HumanOS.Agents.GrowWithUsPlanAgent>();
+
         // Employee SMART Objective Recommendation Agent (Microsoft Agent Framework) —
         // Recommends individual SMART objectives and selects role skills based on aligned
         // department objectives and job role competencies.
@@ -211,6 +221,25 @@ var host = new HostBuilder()
         // Employee professional profile consolidation service for AI scoring
         services.AddScoped<EmployeeScoringProfileService>();
         services.AddScoped<ILearnerContextBuilder, LearnerContextBuilder>();
+        // Buddy (2026-09-22) — main-page voice companion grounded in the
+        // employee's own profile/skills/CQI/objectives/achievements.
+        services.AddScoped<BuddyContextBuilder>();
+        services.AddSingleton<HumanOS.Agents.TecContigoAgent>();
+        services.AddScoped<TecContigoContextBuilder>();
+
+        // "Mientras estudias" learning-experience design agent (2026-09-28) — distinct
+        // from TecContigoAgent's general chat: designs a full catalog+external plan and
+        // notifies the Tec by email when a student requests a non-catalog course.
+        services.AddSingleton<HumanOS.Agents.TecMileniumAgent>();
+        services.AddScoped<TecMileniumContextBuilder>();
+        services.AddSingleton<TecMileniumNotificationEmailService>();
+
+        // "Practica y refuerza" (2026-09-28) — on-demand AI reinforcement exercises for
+        // already-completed courses, graded + gamified via the existing reward ledger.
+        services.AddSingleton<HumanOS.Agents.TecPracticeAgent>();
+        services.AddScoped<TecPracticeService>();
+
+
         services.AddSingleton<HumanOS.Agents.EngramImpactScoringAgent>();
         services.AddScoped<EngramImpactScorePersistenceService>();
         services.AddScoped<EngramImpactOrchestrator>();
@@ -411,6 +440,7 @@ var host = new HostBuilder()
         // rationale (stateless, only needs config + a shared HttpClient).
         services.AddSingleton<GoogleVeoVideoService>();
         services.AddSingleton<GoogleOmniFlashVideoService>();
+        services.AddSingleton<KlingVideoService>();
         services.AddSingleton<StructuredLearningVideoOrchestrator>();
 
         // Real-time Recall/Assessment (2026-08-10) — replaces the earlier
@@ -439,6 +469,11 @@ var host = new HostBuilder()
         // Fase 2 (2026-08-24) — per-scene review/edit video generation via
         // Gemini Omni Flash image-to-video. Same Scoped rationale as above.
         services.AddScoped<HumanOS.Services.FilmProductionVideoOrchestrator>();
+        // Standalone "Video Productions" module (2026-09-23) — deliberately
+        // independent from FilmProductionOrchestrator (no per-scene image
+        // agent step): text prompt straight to Veo/Omni Flash video. Scoped,
+        // same rationale as FilmProductionOrchestrator above.
+        services.AddScoped<HumanOS.Services.VideoProductionOrchestrator>();
         services.AddScoped<StructuredLearningAssessmentEngine>();
         services.AddScoped<StructuredLearningRecallEngine>();
 

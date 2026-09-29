@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Bot, BookOpen, Layers, MessageCircle, Sparkles } from 'lucide-react';
+import { Bot, BookOpen, Layers, MessageCircle, Search, Sparkles, Trophy } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
@@ -24,6 +24,8 @@ export function AiAgentsPage() {
   const [courses, setCourses] = useState<AiAgentCourseCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [startedOnly, setStartedOnly] = useState(false);
 
   useEffect(() => {
     if (!personId) return;
@@ -33,6 +35,20 @@ export function AiAgentsPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your agents.'))
       .finally(() => setLoading(false));
   }, [personId, tenantId]);
+
+  const totalEngramsCompleted = useMemo(
+    () => courses.reduce((sum, course) => sum + course.masteredEngrams, 0),
+    [courses],
+  );
+
+  const filteredCourses = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return courses.filter((course) => {
+      if (query && !course.documentName.toLowerCase().includes(query)) return false;
+      if (startedOnly && course.masteredEngrams <= 0) return false;
+      return true;
+    });
+  }, [courses, searchQuery, startedOnly]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 pb-16 sm:p-8">
@@ -55,6 +71,48 @@ export function AiAgentsPage() {
           </div>
         </div>
       </div>
+
+      {!loading && !error && courses.length > 0 && (
+        <div className="flex items-center gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-xs dark:border-white/10 dark:bg-white/[0.03]">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-accent-500 text-white">
+            <Trophy className="h-7 w-7" />
+          </span>
+          <div>
+            <p className="text-4xl font-bold text-slate-900 dark:text-white">{totalEngramsCompleted}</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-white/60">
+              {isEn ? 'Total engrams completed' : 'Total de engramas completados'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && courses.length > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative max-w-md flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={isEn ? 'Search by course name...' : 'Buscar por nombre de curso...'}
+              className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setStartedOnly((prev) => !prev)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                startedOnly
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white/70'
+              }`}
+            >
+              {isEn ? 'Started classes' : 'Clases iniciadas'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <LoadingBackdrop
@@ -79,9 +137,18 @@ export function AiAgentsPage() {
         </Card>
       )}
 
-      {!loading && !error && courses.length > 0 && (
+      {!loading && !error && courses.length > 0 && filteredCourses.length === 0 && (
+        <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+          <Search className="h-10 w-10 text-slate-300 dark:text-white/20" />
+          <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
+            {isEn ? 'No agents match those filters' : 'Ningún agente coincide con esos filtros'}
+          </h3>
+        </Card>
+      )}
+
+      {!loading && !error && filteredCourses.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {courses.map((course) => (
+          {filteredCourses.map((course) => (
             <div
               key={course.documentId}
               className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xs transition-all hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl dark:border-white/10 dark:bg-white/[0.03] dark:hover:border-white/20"

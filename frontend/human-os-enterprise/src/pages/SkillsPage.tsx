@@ -473,17 +473,53 @@ export function SkillsPage() {
                     </div>
 
                     <div className="mt-2">
-                      {skill.matchedCapabilityId ? (
-                        <a
-                          href={buildCapabilityStudioDetailUrl(skill.matchedCapabilityId, skill.matchedCourseType, user)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-500"
-                        >
-                          <PlayCircle className="h-3.5 w-3.5" />
-                          {t('skills.courseCreated')}
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+                      {skill.matchedCourses && skill.matchedCourses.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {skill.matchedCourses.map((course) => (
+                            <a
+                              key={`${course.courseId}-${course.languageCode}`}
+                              href={buildCapabilityStudioDetailUrl(course.courseId, course.courseType, user)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition ${course.languageCode === 'en' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}
+                            >
+                              <PlayCircle className="h-3.5 w-3.5" />
+                              {course.languageCode === 'en' ? 'English' : 'Español'}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ))}
+                          <a
+                            href={buildGenerateCourseUrl(skill, user)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            {t('skills.recreateCourse')}
+                          </a>
+                        </div>
+                      ) : skill.matchedCapabilityId ? (
+                        <>
+                          <a
+                            href={buildCapabilityStudioDetailUrl(skill.matchedCapabilityId, skill.matchedCourseType, user)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-500"
+                          >
+                            <PlayCircle className="h-3.5 w-3.5" />
+                            {t('skills.courseCreated')}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <a
+                            href={buildGenerateCourseUrl(skill, user)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            {t('skills.recreateCourse')}
+                          </a>
+                        </>
                       ) : (
                         <a
                           href={buildGenerateCourseUrl(skill, user)}
