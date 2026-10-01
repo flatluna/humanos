@@ -63,6 +63,8 @@ public sealed class HumanOsDbContext : DbContext
     /// generated growth plans, one row per generation.</summary>
     public DbSet<GrowWithUsSavedSearch> GrowWithUsSavedSearches => Set<GrowWithUsSavedSearch>();
 
+    public DbSet<ContentRecommendationSavedSearch> ContentRecommendationSavedSearches => Set<ContentRecommendationSavedSearch>();
+
     /// <summary>"Practica y refuerza" (2026-09-28) — AI-generated reinforcement
     /// exercises for an already-completed course, cached per (Person, Capability).</summary>
     public DbSet<HumanOS.Models.Learning.PracticeSession> PracticeSessions => Set<HumanOS.Models.Learning.PracticeSession>();

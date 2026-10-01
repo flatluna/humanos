@@ -149,6 +149,27 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/profile').then((m) => ({ Component: m.ProfilePage })),
       },
       {
+        // "Insight Persona" (2026-09-29) — read-only persona sheet combining
+        // profile, academic preferences, enrolled courses, grades, objective
+        // and thesis status. See src/features/insight-persona.
+        path: 'insight-persona',
+        lazy: () => import('@/features/insight-persona').then((m) => ({ Component: m.InsightPersonaPage })),
+      },
+      {
+        // "Recomienda contenido relevante" (2026-09-29) — content recommendations
+        // agent grounded in tastes/interests/performance/learning trends. See
+        // src/features/content-recommendations.
+        path: 'recomendaciones',
+        lazy: () =>
+          import('@/features/content-recommendations').then((m) => ({ Component: m.ContentRecommendationsPage })),
+      },
+      {
+        // "Mi Ruta de Aprender" (2026-09-29) — reuses Tec Contigo's learning
+        // path designer panel outside the academic-gated flow.
+        path: 'mi-ruta-aprendizaje',
+        lazy: () => import('@/features/mi-ruta-aprendizaje').then((m) => ({ Component: m.MiRutaAprendizajePage })),
+      },
+      {
         // "Objetivos & Mi Puesto" — Full Job Description + SMART Employee Objectives
         // aligned with Department Objectives and Company Strategy.
         path: 'objectives',
@@ -178,6 +199,13 @@ export const router = createBrowserRouter([
       {
         path: 'program-entities/:programId',
         lazy: () => import('@/features/program-entities').then((m) => ({ Component: m.ProgramEntitiesDetailPage })),
+      },
+      {
+        // "Cruzar Mis Cursos" (2026-09-29) — cross-course entity view scoped
+        // to a free selection of the user's own enrolled courses, distinct
+        // from Program Entities which is scoped to a curated Program.
+        path: 'cross-course-entities',
+        lazy: () => import('@/features/cross-course-entities').then((m) => ({ Component: m.CrossCourseEntitiesPage })),
       },
       {
         path: 'programas',

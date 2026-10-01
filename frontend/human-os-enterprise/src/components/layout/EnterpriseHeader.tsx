@@ -40,6 +40,7 @@ export function EnterpriseHeader() {
               Tenant ID: <span className="select-all font-medium text-slate-500 dark:text-white/60">{user.tenantId}</span>
             </p>
           )}
+          <p className="italic text-xs font-semibold text-brand-600 dark:text-brand-300">Use AI to protect what is human from AI &mdash; Usa IA para proteger lo humano de la IA</p>
         </div>
       </div>
 

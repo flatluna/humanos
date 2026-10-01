@@ -45,6 +45,9 @@ public sealed class GetPersonAcademicPreferencesFunction
             LearningPreferences = System.Text.Json.JsonSerializer.Deserialize<string[]>(profile.LearningPreferencesJson) ?? [],
             AcademicMotivations = System.Text.Json.JsonSerializer.Deserialize<string[]>(profile.AcademicMotivationsJson) ?? [],
             GrowthAreas = System.Text.Json.JsonSerializer.Deserialize<string[]>(profile.GrowthAreasJson) ?? [],
+            profile.Frustrations,
+            profile.MainChallenges,
+            profile.ImportantValues,
             profile.CreatedDate,
             profile.UpdatedDate,
         }, cancellationToken);

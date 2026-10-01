@@ -317,16 +317,19 @@ export function TodayPage() {
     [capabilities],
   );
 
-  const displayName = user?.name?.split(' ')[0] ?? '';
   const profile = profileQuery.data;
   const resume = resumeQuery.data;
-  const profileName = profile?.DisplayName || [profile?.FirstName, profile?.LastName].filter(Boolean).join(' ') || user?.name;
+  const profileName = profile?.DisplayName || [profile?.FirstName, profile?.LastName].filter(Boolean).join(' ');
   const emailName = user?.email?.split('@')[0]
     ?.split(/[._-]/)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
-  const safeName = profileName && !profileName.includes('@') ? profileName : emailName;
+  // Prefer the real profile name, then a name derived from the email —
+  // the MSAL account "name" claim can be a bare username/test-account
+  // string (e.g. for demo accounts) instead of the person's actual name.
+  const safeName = profileName || emailName || user?.name;
+  const displayName = safeName?.split(' ')[0] ?? '';
   const highlightedSkills = resume?.skills?.slice(0, 5) ?? [];
   const additionalSkills = Math.max((resume?.skills?.length ?? 0) - highlightedSkills.length, 0);
   const education = resume?.education?.[0]?.trim();
@@ -441,15 +444,15 @@ export function TodayPage() {
           <Card className="!border-0 !bg-slate-950 p-7 text-white shadow-xl shadow-blue-950/10 dark:!border dark:border-white/10 dark:!bg-white/[0.05] dark:shadow-none">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="group relative h-14 w-14 shrink-0">
+                <div className="group relative h-40 w-40 shrink-0">
                   {profile?.ProfilePhotoUrl ? (
                     <img
                       src={getProfilePhotoUrl(personId, profile.UpdatedDate)}
                       alt={safeName}
-                      className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/25"
+                      className="h-40 w-40 rounded-2xl object-cover ring-1 ring-white/25"
                     />
                   ) : (
-                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-lg font-bold ring-1 ring-white/25 backdrop-blur">
+                    <span className="flex h-40 w-40 items-center justify-center rounded-2xl bg-white/15 text-5xl font-bold ring-1 ring-white/25 backdrop-blur">
                       {safeName?.trim().charAt(0).toUpperCase() || '?'}
                     </span>
                   )}
@@ -459,9 +462,9 @@ export function TodayPage() {
                     disabled={uploadPhotoMutation.isPending}
                     aria-label={language === 'es' ? 'Cambiar foto de perfil' : 'Change profile photo'}
                     title={language === 'es' ? 'Cambiar foto de perfil' : 'Change profile photo'}
-                    className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-slate-950 bg-blue-600 text-white shadow-md transition hover:bg-blue-700 disabled:opacity-60 dark:border-slate-900"
+                    className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-slate-950 bg-blue-600 text-white shadow-md transition hover:bg-blue-700 disabled:opacity-60 dark:border-slate-900"
                   >
-                    <Camera className="h-3 w-3" />
+                    <Camera className="h-4 w-4" />
                   </button>
                   <input
                     ref={fileInputRef}

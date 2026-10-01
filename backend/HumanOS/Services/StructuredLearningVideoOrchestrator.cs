@@ -40,7 +40,7 @@ public sealed class StructuredLearningVideoRunStatus
 /// </summary>
 public sealed class StructuredLearningVideoOrchestrator
 {
-    public const int MaxVideosPerSection = 10;
+    public const int MaxVideosPerSection = 15;
 
     private readonly GoogleVeoVideoService _veoService;
     private readonly GoogleOmniFlashVideoService _omniService;

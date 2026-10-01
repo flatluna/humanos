@@ -18,6 +18,9 @@ export interface PersonAcademicPreferencesDto {
   LearningPreferences: string[];
   AcademicMotivations: string[];
   GrowthAreas: string[];
+  Frustrations: string | null;
+  MainChallenges: string | null;
+  ImportantValues: string | null;
   CreatedDate: string;
   UpdatedDate: string;
 }

@@ -1,0 +1,1 @@
+export { CrossCourseEntitiesPage } from './CrossCourseEntitiesPage';

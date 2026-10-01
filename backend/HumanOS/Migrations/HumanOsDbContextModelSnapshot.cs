@@ -5220,6 +5220,39 @@ namespace HumanOS.Migrations
                     b.ToTable("Tool", "dbo");
                 });
 
+            modelBuilder.Entity("HumanOS.Models.People.ContentRecommendationSavedSearch", b =>
+                {
+                    b.Property<Guid>("ContentRecommendationSavedSearchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("ContentRecommendationSavedSearchId")
+                        .HasName("PK_ContentRecommendationSavedSearch");
+
+                    b.HasIndex("PersonId", "CreatedDate")
+                        .HasDatabaseName("IX_ContentRecommendationSavedSearch_PersonId_CreatedDate");
+
+                    b.ToTable("ContentRecommendationSavedSearch", "dbo");
+                });
+
             modelBuilder.Entity("HumanOS.Models.People.GrowWithUsSavedSearch", b =>
                 {
                     b.Property<Guid>("GrowWithUsSavedSearchId")
@@ -5467,17 +5500,26 @@ namespace HumanOS.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("SYSUTCDATETIME()");
 
+                    b.Property<string>("Frustrations")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("GrowthAreasJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]");
 
+                    b.Property<string>("ImportantValues")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("LearningPreferencesJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]");
+
+                    b.Property<string>("MainChallenges")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uniqueidentifier");
@@ -8173,6 +8215,18 @@ namespace HumanOS.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("HumanOS.Models.People.ContentRecommendationSavedSearch", b =>
+                {
+                    b.HasOne("HumanOS.Models.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_ContentRecommendationSavedSearch_Person");
+
+                    b.Navigation("Person");
                 });
 
             modelBuilder.Entity("HumanOS.Models.People.GrowWithUsSavedSearch", b =>

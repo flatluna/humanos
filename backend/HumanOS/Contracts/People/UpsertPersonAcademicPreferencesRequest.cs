@@ -9,4 +9,10 @@ public sealed class UpsertPersonAcademicPreferencesRequest
     public string[] AcademicMotivations { get; set; } = [];
 
     public string[] GrowthAreas { get; set; } = [];
+
+    public string? Frustrations { get; set; }
+
+    public string? MainChallenges { get; set; }
+
+    public string? ImportantValues { get; set; }
 }

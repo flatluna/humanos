@@ -74,6 +74,9 @@ public sealed class TecContigoContextBuilder
                 AppendList(sb, "Learning preferences", preferences.LearningPreferencesJson);
                 AppendList(sb, "Academic motivations", preferences.AcademicMotivationsJson);
                 AppendList(sb, "Growth areas", preferences.GrowthAreasJson);
+                if (!string.IsNullOrWhiteSpace(preferences.Frustrations)) sb.AppendLine($"- Frustrations: {preferences.Frustrations}");
+                if (!string.IsNullOrWhiteSpace(preferences.MainChallenges)) sb.AppendLine($"- Main challenges: {preferences.MainChallenges}");
+                if (!string.IsNullOrWhiteSpace(preferences.ImportantValues)) sb.AppendLine($"- Important values: {preferences.ImportantValues}");
             }
         }
         catch

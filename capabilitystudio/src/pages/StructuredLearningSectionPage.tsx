@@ -3021,7 +3021,7 @@ function VideoGenerationBox({
   }
 
   async function handleRegenerate(illustrationId: string, model: 'veo' | 'omni') {
-    if (videos.length >= 10) {
+    if (videos.length >= 15) {
       setError('Cannot regenerate — this section is already at the max video limit. Delete the old one first.');
       return;
     }

@@ -79,6 +79,9 @@ public sealed class TecMileniumContextBuilder
                 context.LearningPreferences = DeserializeStringList(preferences.LearningPreferencesJson);
                 context.AcademicMotivations = DeserializeStringList(preferences.AcademicMotivationsJson);
                 context.GrowthAreas = DeserializeStringList(preferences.GrowthAreasJson);
+                context.Frustrations = preferences.Frustrations;
+                context.MainChallenges = preferences.MainChallenges;
+                context.ImportantValues = preferences.ImportantValues;
             }
         }
         catch

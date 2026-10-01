@@ -19,6 +19,12 @@ public sealed class PersonAcademicPreferences
 
     public string GrowthAreasJson { get; set; } = "[]";
 
+    public string? Frustrations { get; set; }
+
+    public string? MainChallenges { get; set; }
+
+    public string? ImportantValues { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }

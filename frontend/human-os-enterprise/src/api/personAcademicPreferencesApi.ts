@@ -7,6 +7,9 @@ export interface PersonAcademicPreferencesDto {
   LearningPreferences: string[];
   AcademicMotivations: string[];
   GrowthAreas: string[];
+  Frustrations: string | null;
+  MainChallenges: string | null;
+  ImportantValues: string | null;
   CreatedDate: string;
   UpdatedDate: string;
 }
@@ -16,6 +19,9 @@ export interface UpsertPersonAcademicPreferencesRequest {
   learningPreferences: string[];
   academicMotivations: string[];
   growthAreas: string[];
+  frustrations?: string | null;
+  mainChallenges?: string | null;
+  importantValues?: string | null;
 }
 
 export async function getPersonAcademicPreferences(personId: string): Promise<PersonAcademicPreferencesDto | null> {

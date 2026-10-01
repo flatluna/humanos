@@ -76,6 +76,7 @@ export function EmployeeHeader() {
         <div>
           <p className="text-sm font-semibold text-slate-900 dark:text-white">Human OS</p>
           <p className="text-xs text-slate-500 dark:text-white/50">Aprendizaje basado en ciencia de la memoria: repetición espaciada y curva del olvido</p>
+          <p className="italic text-xs font-semibold text-brand-600 dark:text-brand-300">Use AI to protect what is human from AI &mdash; Usa IA para proteger lo humano de la IA</p>
         </div>
       </div>
 

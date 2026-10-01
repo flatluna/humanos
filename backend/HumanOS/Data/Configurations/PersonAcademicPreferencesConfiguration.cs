@@ -39,6 +39,15 @@ public sealed class PersonAcademicPreferencesConfiguration : IEntityTypeConfigur
             .HasDefaultValue("[]")
             .IsRequired();
 
+        builder.Property(x => x.Frustrations)
+            .HasColumnType("nvarchar(max)");
+
+        builder.Property(x => x.MainChallenges)
+            .HasColumnType("nvarchar(max)");
+
+        builder.Property(x => x.ImportantValues)
+            .HasColumnType("nvarchar(max)");
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")

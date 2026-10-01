@@ -130,6 +130,7 @@ var host = new HostBuilder()
         services.AddScoped<GrowthPlanService>();
         services.AddScoped<CapabilityEnrollmentService>();
         services.AddScoped<GrowWithUsSavedSearchService>();
+        services.AddScoped<ContentRecommendationService>();
         services.AddScoped<StructuredLearningDocumentEnrollmentService>();
         services.AddScoped<HumanProfileService>();
         services.AddScoped<HumanStateService>();
@@ -212,6 +213,10 @@ var host = new HostBuilder()
         // and asks the LLM for suggested courses/papers/news. Singleton,
         // same rationale as every other Studio/agent-framework agent.
         services.AddSingleton<HumanOS.Agents.GrowWithUsPlanAgent>();
+
+        // "Recomienda contenido relevante" agent (2026-09-29): recommends content based on
+        // tastes/interests/performance/learning trends, grounded in PerplexitySearchService.
+        services.AddSingleton<HumanOS.Agents.ContentRecommendationAgent>();
 
         // Employee SMART Objective Recommendation Agent (Microsoft Agent Framework) —
         // Recommends individual SMART objectives and selects role skills based on aligned

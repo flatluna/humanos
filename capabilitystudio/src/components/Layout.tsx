@@ -64,7 +64,7 @@ export default function Layout() {
                   <span>STUDIO</span>
                   <Sparkles className="h-3.5 w-3.5 text-brand-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.6)]" />
                 </div>
-                <div className="text-[11px] sm:text-xs text-slate-400">Transforming source material into learning experiences</div>
+                <div className="italic text-[11px] sm:text-xs font-semibold text-brand-400">Use AI to protect what is human from AI &mdash; Usa IA para proteger lo humano de la IA</div>
               </div>
             </Link>
           </div>

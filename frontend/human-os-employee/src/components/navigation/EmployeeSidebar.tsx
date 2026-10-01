@@ -1,4 +1,4 @@
-import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot, Network, Trophy, FlaskConical, BrainCircuit } from 'lucide-react';
+import { GraduationCap, Home, Brain, TrendingUp, UserCircle, Target, BookCheck, Bot, Network, Trophy, FlaskConical, BrainCircuit, IdCard, Map, Sparkles, GitMerge } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
@@ -19,12 +19,16 @@ export function EmployeeSidebar() {
     programs: t('nav.programs', { defaultValue: 'Programas' }),
     learningLabs: t('nav.learningLabs', { defaultValue: 'Learning Labs' }),
     programEntities: t('nav.programEntities', { defaultValue: 'Entidades del Programa' }),
+    crossCourseEntities: t('nav.crossCourseEntities', { defaultValue: 'Knowledge Graph' }),
     programAgents: t('nav.programAgents', { defaultValue: 'Agentes de Programa' }),
     aiAgents: t('nav.aiAgents', { defaultValue: 'Agentes de Curso' }),
     brain: t('nav.brain'),
     cqiWorkspace: t('nav.cqiWorkspace', { defaultValue: 'CQI Workspace' }),
     evolution: t('nav.evolution'),
     achievements: t('nav.achievements', { defaultValue: 'Mis Logros' }),
+    insightPersona: t('nav.insightPersona', { defaultValue: 'Insight Persona' }),
+    miRutaAprendizaje: t('nav.miRutaAprendizaje', { defaultValue: 'Mi Ruta de Aprender' }),
+    recomendaciones: t('nav.recomendaciones', { defaultValue: 'Recomendaciones' }),
     profile: t('nav.profile'),
     courses: t('nav.courses'),
     job: t('nav.job'),
@@ -36,9 +40,13 @@ export function EmployeeSidebar() {
 
   const navLinks = [
     { to: '/', end: true, icon: Home, label: labels.today, iconColor: 'text-emerald-500 dark:text-emerald-400' },
+    { to: '/insight-persona', end: false, icon: IdCard, label: labels.insightPersona, iconColor: 'text-indigo-500 dark:text-indigo-400' },
+    { to: '/mi-ruta-aprendizaje', end: false, icon: Map, label: labels.miRutaAprendizaje, iconColor: 'text-emerald-600 dark:text-emerald-400' },
+    { to: '/recomendaciones', end: false, icon: Sparkles, label: labels.recomendaciones, iconColor: 'text-fuchsia-500 dark:text-fuchsia-400' },
     { to: '/programs', end: false, icon: GraduationCap, label: labels.programs, iconColor: 'text-purple-500 dark:text-purple-400' },
     { to: '/learning-labs', end: false, icon: FlaskConical, label: labels.learningLabs, iconColor: 'text-teal-500 dark:text-teal-400' },
     { to: '/program-entities', end: false, icon: Network, label: labels.programEntities, iconColor: 'text-amber-500 dark:text-amber-400' },
+    { to: '/cross-course-entities', end: false, icon: GitMerge, label: labels.crossCourseEntities, iconColor: 'text-sky-500 dark:text-sky-400' },
     { to: '/program-agents', end: false, icon: Bot, label: labels.programAgents, iconColor: 'text-violet-500 dark:text-violet-400' },
     { to: '/available-courses', end: false, icon: BookCheck, label: labels.availableCourses, iconColor: 'text-emerald-500 dark:text-emerald-400' },
     { to: '/ai-agents', end: false, icon: Bot, label: labels.aiAgents, iconColor: 'text-cyan-500 dark:text-cyan-400' },

@@ -52,6 +52,9 @@ public sealed class PersonAcademicPreferencesService
         profile.LearningPreferencesJson = Serialize(request.LearningPreferences);
         profile.AcademicMotivationsJson = Serialize(request.AcademicMotivations);
         profile.GrowthAreasJson = Serialize(request.GrowthAreas);
+        profile.Frustrations = string.IsNullOrWhiteSpace(request.Frustrations) ? null : request.Frustrations.Trim();
+        profile.MainChallenges = string.IsNullOrWhiteSpace(request.MainChallenges) ? null : request.MainChallenges.Trim();
+        profile.ImportantValues = string.IsNullOrWhiteSpace(request.ImportantValues) ? null : request.ImportantValues.Trim();
         profile.UpdatedDate = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);

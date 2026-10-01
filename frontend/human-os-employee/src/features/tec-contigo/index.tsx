@@ -52,7 +52,6 @@ import {
   uploadThesis,
 } from "./thesisApi";
 import { TecContigoAgentChat } from "./TecContigoAgentChat";
-import { TecMileniumLearningExperiencePanel } from "./TecMileniumLearningExperiencePanel";
 
 type PageKey =
   "semestre" | "industria" | "objetivo" | "conocimientos" | "humanas";
@@ -914,7 +913,6 @@ export function TecMientrasEstudiasPage() {
         </Card>
         <LearningExecutiveSummary />
         <Tec360StageSummary resume={resume} />
-        <TecMileniumLearningExperiencePanel />
         <TecContigoExperienceCards resume={resume} />
         <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-white shadow-lg dark:border-white/10 dark:bg-slate-900/90">
           <h2 className="text-xl font-semibold">
@@ -2091,6 +2089,7 @@ interface RealCompletedCourse {
   capabilityId: string;
   name: string;
   averageScore?: number | null;
+  isStructuredLearning: boolean;
 }
 
 function TecPracticeTab({ personId }: { personId: string }) {
@@ -2121,10 +2120,10 @@ function TecPracticeTab({ personId }: { personId: string }) {
       // Emocional y Mindfulness"). No fabricated/local content — only what the real APIs return.
       const completedCapabilities: RealCompletedCourse[] = capabilities
         .filter((c) => c.status === "Completed")
-        .map((c) => ({ capabilityId: c.capabilityId, name: c.name, averageScore: c.averageScore }));
+        .map((c) => ({ capabilityId: c.capabilityId, name: c.name, averageScore: c.averageScore, isStructuredLearning: false }));
       const completedDocuments: RealCompletedCourse[] = documents
         .filter((d) => d.sectionCount > 0 && d.completedSectionCount === d.sectionCount)
-        .map((d) => ({ capabilityId: d.structuredLearningDocumentId, name: d.documentName }));
+        .map((d) => ({ capabilityId: d.structuredLearningDocumentId, name: d.documentName, isStructuredLearning: true }));
       setEnrolledQuery({ loading: false, items: [...completedCapabilities, ...completedDocuments] });
     });
     return () => {
@@ -2204,18 +2203,24 @@ function TecPracticeTab({ personId }: { personId: string }) {
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
       <div className="space-y-2">
         {enrolledQuery.items.map((course) => (
-          <button
+          <div
             key={course.capabilityId}
-            type="button"
-            onClick={() => openCourse(course.capabilityId)}
-            className={`w-full rounded-xl border p-3 text-left text-sm font-semibold transition ${
+            className={`w-full rounded-xl border p-3 text-sm font-semibold transition ${
               selectedCapabilityId === course.capabilityId
                 ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200"
                 : "border-slate-200 bg-white text-slate-700 hover:border-rose-200 dark:border-white/10 dark:bg-white/[0.03] dark:text-white/75"
             }`}
           >
-            {course.name}
-          </button>
+            <button type="button" onClick={() => openCourse(course.capabilityId)} className="block w-full text-left">
+              {course.name}
+            </button>
+            <Link
+              to={course.isStructuredLearning ? `/structured-learning/${course.capabilityId}` : `/capabilities/${course.capabilityId}`}
+              className="mt-1 inline-block text-xs font-medium text-blue-600 hover:underline dark:text-blue-300"
+            >
+              Ver curso
+            </Link>
+          </div>
         ))}
       </div>
 

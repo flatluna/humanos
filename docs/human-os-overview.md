@@ -1637,18 +1637,22 @@ Grow With Us connects the learner's personal development with the programs and c
 
 The employee experience includes:
 
-1. **Grow With Us**: The starting page for discovering learning and continuing current development.
-2. **Programs**: The learner's learning journeys and available programs.
-3. **Learning Labs**: Practical simulations and conversational practice.
-4. **Program Entities**: The lessons, chapters, activities, and experiences inside programs.
-5. **Program AI Agents**: The learning partners connected to a particular program.
-6. **Available Courses**: Courses the learner can explore or join.
-7. **Course AI Agents**: Conversational partners connected to a course or learning activity.
-8. **CQI Workspace**: A space for understanding personal cognitive and learning characteristics.
-9. **My Brain**: A view of remembered learning, review needs, and personal knowledge growth.
-10. **My Evolution**: A view of progress, development, capabilities, and long-term growth.
-11. **My Achievements**: Recognition of learning milestones and demonstrated progress.
-12. **My Profile**: The personal and professional information that gives learning context.
+1. **Grow With Us ("Tec Contigo")**: The starting page for discovering learning and continuing current development.
+2. **Insight Persona**: A personal-style profile, built from the employee's own information and choices, that helps Buddy and the recommendation experiences understand how this person prefers to learn and be supported.
+3. **Mi Ruta de Aprendizaje**: The employee's personal, ordered path through the programs and capabilities relevant to their role and goals.
+4. **Recomendaciones**: On-demand, personalized content recommendations grounded in the employee's interests, academic performance, and what is currently relevant in their field — with the option to save the answer for later and have it sent by email.
+5. **Programas**: The learner's learning journeys and available programs.
+6. **Learning Labs**: Practical simulations and conversational practice.
+7. **Entidades del Programa**: The lessons, chapters, activities, and experiences inside programs.
+8. **Knowledge Graph**: A map of how ideas, facts, and Engrams connect to each other across a program and across different courses.
+9. **Agentes de Programa**: The learning partners connected to a particular program.
+10. **Cursos Disponibles**: Courses the learner can explore or join.
+11. **Agentes de Curso**: Conversational partners connected to a course or learning activity.
+12. **CQI Workspace**: A space for understanding personal cognitive and learning characteristics.
+13. **Mi Cerebro**: A view of remembered learning, review needs, and personal knowledge growth.
+14. **Mi Evolución**: A view of progress, development, capabilities, and long-term growth.
+15. **Mis Logros**: Recognition of learning milestones and demonstrated progress.
+16. **Mi Perfil**: The personal and professional information that gives learning context.
 
 ## Chapter 1. Grow With Us
 
@@ -1724,6 +1728,20 @@ Buddy can help the learner:
 When the question concerns how the organization works, Buddy can direct the learner to the onboarding class or another relevant course. When the learner needs practice, Buddy can point them toward the Learning Labs.
 
 Buddy is a guide, not the owner of the learner's development. The learner remains responsible for decisions, goals, conversations, and the work they choose to do.
+
+Grow With Us is not only a place for study time. Because Buddy already knows the person's profile, achievements, and context, the same conversational relationship that supports a lesson can also support a work question, a personal milestone, or a moment where the person simply needs orientation — an employee's life does not separate neatly into "learning moments" and "everything else."
+
+## Insight Persona: knowing how this person learns
+
+**Insight Persona** builds a personal profile of how someone prefers to learn, decide, and engage — informed by the person's own resume, stated interests, and learning preferences.
+
+This profile is not used to label or limit a person. It is used so that Buddy, the Recomendaciones experience, and other guidance across Human OS can adapt in a way that feels relevant to that specific person, rather than presenting the same generic experience to everyone.
+
+## Recomendaciones: content that fits this person right now
+
+**Recomendaciones** lets the employee or student ask, in their own words, for content recommendations suited to their interests, academic performance, and what is currently happening in their field or profession. The recommendation looks at what the person has already completed, so it does not suggest something they already finished, and grounds its suggestions in current, real sources rather than guesses.
+
+Each set of recommendations can be saved and revisited later, so a person can build a running history of guidance over time instead of losing a previous answer every time they ask something new. A person can also choose to have the recommendation emailed to themselves for safekeeping or later reference.
 
 ## Your journey with Human OS
 

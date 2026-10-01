@@ -29,8 +29,8 @@ export const es = {
     of: 'de',
   },
   nav: {
-    today: 'Crece con Nosotros',
-    todayGeneric: 'Crece con Nosotros',
+    today: 'Tec Contigo',
+    todayGeneric: 'Tec Contigo',
     objectives: 'Objetivos',
     availableCourses: 'Cursos Disponibles',
     programs: 'Programas',

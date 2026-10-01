@@ -1,0 +1,1 @@
+export { MiRutaAprendizajePage } from './MiRutaAprendizajePage';

@@ -1,0 +1,1 @@
+export { InsightPersonaPage } from './InsightPersonaPage';

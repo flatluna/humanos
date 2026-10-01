@@ -201,6 +201,18 @@ export function ProfilePage() {
     enabled: !!personId,
   });
 
+  // Prefer the real profile name over the MSAL account's raw "name" claim,
+  // which can be a bare username/test-account string instead of the
+  // person's actual first and last name.
+  const profileFullName = profileQuery.data?.DisplayName
+    || [profileQuery.data?.FirstName, profileQuery.data?.LastName].filter(Boolean).join(' ');
+  const emailFullName = user?.email?.split('@')[0]
+    ?.split(/[._-]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+  const safeName = profileFullName || emailFullName || user?.name;
+
   // Full job description (title/purpose/skills/etc.) for "Mi Puesto y
   // Desarrollo" below — read-only here, HR-managed data (2026-08-02).
   const jobRoleQuery = useQuery({
@@ -330,7 +342,7 @@ export function ProfilePage() {
               >
                 <img
                   src={getProfilePhotoUrl(personId, profileQuery.data.UpdatedDate)}
-                  alt={user?.name ?? 'Empleado'}
+                  alt={safeName ?? 'Empleado'}
                   className="h-16 w-16 object-cover"
                 />
                 <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover/zoom:opacity-100">
@@ -339,7 +351,7 @@ export function ProfilePage() {
               </button>
             ) : (
               <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold ring-1 ring-white/25 backdrop-blur">
-                {initialsOf(user?.name ?? 'Empleado')}
+                {initialsOf(safeName ?? 'Empleado')}
               </span>
             )}
             <button
@@ -361,7 +373,7 @@ export function ProfilePage() {
             />
           </div>
           <div>
-            <p className="text-lg font-semibold">{user?.name}</p>
+            <p className="text-lg font-semibold">{safeName}</p>
             <p className="text-sm text-white/80">{user?.email}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               {user?.tenantName && (

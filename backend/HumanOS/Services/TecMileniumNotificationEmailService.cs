@@ -33,6 +33,12 @@ public sealed class TecMileniumNotificationEmailService
         && !string.IsNullOrWhiteSpace(SenderEmail)
         && !string.IsNullOrWhiteSpace(NotificationRecipient);
 
+    /// <summary>Only requires the SendGrid API key + sender (not the fixed
+    /// notification mailbox) — used when emailing an arbitrary recipient
+    /// like the student themselves.</summary>
+    public bool IsConfiguredForArbitraryRecipient =>
+        !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(SenderEmail);
+
     public sealed class RequestedCourse
     {
         public required string Name { get; init; }
@@ -83,6 +89,73 @@ public sealed class TecMileniumNotificationEmailService
         var message = MailHelper.CreateSingleEmail(
             new EmailAddress(SenderEmail, "Tec Contigo"),
             new EmailAddress(NotificationRecipient),
+            subject,
+            plainText,
+            html);
+
+        var response = await new SendGridClient(ApiKey).SendEmailAsync(message, cancellationToken);
+        if ((int)response.StatusCode >= 400)
+        {
+            throw new InvalidOperationException($"SendGrid rejected the email: {response.StatusCode}.");
+        }
+    }
+
+    public sealed class RecommendedItem
+    {
+        public required string Title { get; init; }
+
+        public required string Type { get; init; }
+
+        public required string Reason { get; init; }
+
+        public string? Url { get; init; }
+    }
+
+    /// <summary>"Recomienda contenido relevante" (2026-09-29) — sends the student their own
+    /// generated content-recommendation report, in a plain-text + HTML format they can save
+    /// (e.g. as a PDF from their email client). Sent to the student's OWN email, not the
+    /// fixed Tec notification mailbox.</summary>
+    public async Task SendContentRecommendationsAsync(
+        string studentEmail,
+        string studentName,
+        string title,
+        string summary,
+        string trendsSummary,
+        IReadOnlyList<RecommendedItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (!IsConfiguredForArbitraryRecipient || string.IsNullOrWhiteSpace(studentEmail)) return;
+
+        var subject = $"Tus recomendaciones de contenido — {title}";
+
+        var plainTextItems = string.Join(
+            "\n\n",
+            items.Select((item, index) =>
+                $"{index + 1}. [{item.Type}] {item.Title}\n{item.Reason}" +
+                (string.IsNullOrWhiteSpace(item.Url) ? "" : $"\nURL: {item.Url}")));
+        var plainText =
+            $"Hola {studentName},\n\n{summary}\n\nTendencias del área:\n{trendsSummary}\n\n" +
+            $"Contenido recomendado para ti:\n\n{plainTextItems}";
+
+        var htmlItems = string.Join(
+            "",
+            items.Select(item =>
+                $"<li style=\"margin-bottom:12px;\"><span style=\"color:#6b7280;font-size:12px;\">{WebUtility.HtmlEncode(item.Type)}</span><br/>" +
+                $"<strong>{WebUtility.HtmlEncode(item.Title)}</strong><br/>" +
+                $"{WebUtility.HtmlEncode(item.Reason)}" +
+                (string.IsNullOrWhiteSpace(item.Url) ? "" : $"<br/><a href=\"{WebUtility.HtmlEncode(item.Url)}\">{WebUtility.HtmlEncode(item.Url)}</a>") +
+                "</li>"));
+        var html =
+            $"<div style=\"font-family:Arial,sans-serif;color:#172033;\">" +
+            $"<h2>{WebUtility.HtmlEncode(title)}</h2>" +
+            $"<p>Hola {WebUtility.HtmlEncode(studentName)},</p>" +
+            $"<p>{WebUtility.HtmlEncode(summary)}</p>" +
+            $"<p><strong>Tendencias del área:</strong> {WebUtility.HtmlEncode(trendsSummary)}</p>" +
+            $"<ul>{htmlItems}</ul></div>";
+
+        var message = MailHelper.CreateSingleEmail(
+            new EmailAddress(SenderEmail, "Tec Contigo"),
+            new EmailAddress(studentEmail, studentName),
             subject,
             plainText,
             html);

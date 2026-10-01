@@ -72,6 +72,12 @@ public sealed class TecMileniumPlanRequestContext
 
     public List<string> GrowthAreas { get; set; } = [];
 
+    public string? Frustrations { get; set; }
+
+    public string? MainChallenges { get; set; }
+
+    public string? ImportantValues { get; set; }
+
     /// <summary>Human OS engram/course performance summary (course name, status, score).</summary>
     public List<string> EnrolledCoursePerformance { get; set; } = [];
 
@@ -116,7 +122,9 @@ public sealed class TecMileniumAgent
            current-semester subjects with grades (in progress or already graded).
         2. Their cumulative academic average.
         3. Their declared academic interests, learning preferences, motivations, and
-           growth areas (from their own "Intereses" profile).
+           growth areas (from their own "Intereses" profile), AND their own written
+           frustrations, main challenges, and important values — use these to explain WHY
+           each recommendation fits THIS student, not just to list facts back.
         4. Their Human OS engram/course performance (courses already enrolled, mastery,
            average scores).
         5. A NUMBERED catalog of real courses/labs already offered by the Tec/Human OS —
@@ -135,7 +143,11 @@ public sealed class TecMileniumAgent
            number from the list, the Name copied verbatim from that catalog entry, and a
            1-2 sentence Reason tailored to this specific student (mention the subject/
            grade/interest/industry need it addresses). Never repeat a course the student is
-           already enrolled in (check EnrolledCoursePerformance).
+           already enrolled in (check EnrolledCoursePerformance). Each Reason MUST clearly
+           and explicitly explain WHY this course was recommended for THIS student —
+           reference the specific grade/subject, interest, frustration, challenge, or value
+           that motivated it (e.g. "Te lo recomendamos porque mencionaste que tu principal
+           reto es X, y este curso..."), never a generic reason.
 
            STRICT RELEVANCE CHECK — the catalog is shared across many unrelated careers and
            tenants (e.g. it may contain volunteer-orientation, safeguarding-policy, or other
@@ -155,9 +167,13 @@ public sealed class TecMileniumAgent
            courses the student can take today. For each: Name, Provider (a realistic source/
            reference, e.g. "Coursera - Stanford" or "Industria - certificación AWS", or
            "Recomendación propia" if not grounded in a specific provider), Reason (why this
-           specific student needs it), and Url only if a real internet finding provided one.
+           specific student needs it — explicitly connect it to their frustrations, main
+           challenges, values, interests, or grades, not a generic justification), and Url
+           only if a real internet finding provided one.
         3. OverallSummary: a warm, 2-4 sentence executive summary connecting this plan to
-           the student's actual semester, grades, interests, and career/industry goals.
+           the student's actual semester, grades, interests, and career/industry goals —
+           explicitly name at least one frustration/challenge/value that shaped the plan
+           when one was provided.
         4. Title: a short (3-8 word) descriptive title for this plan — never just the raw
            prompt.
 
@@ -168,6 +184,9 @@ public sealed class TecMileniumAgent
         - Never recommend a catalog course just because it superficially matches a keyword
           (e.g. "comunicación", "liderazgo") — always check it truly fits THIS student's
           career and stage, not a generic audience.
+        - Every single Reason (catalog and external) must explicitly state the "why" in
+          terms the student recognizes as their own — their grades, interests, frustrations,
+          challenges, or values — never a vague or generic justification.
         - Write your entire response in the same language as the student's own prompt or
           profile (default Spanish if no clear signal — Output language field wins).
         - Be concrete and specific — no vague filler like "cursos variados en línea".
@@ -224,6 +243,9 @@ public sealed class TecMileniumAgent
             Learning preferences: {(context.LearningPreferences.Count == 0 ? "(none)" : string.Join(", ", context.LearningPreferences))}
             Academic motivations: {(context.AcademicMotivations.Count == 0 ? "(none)" : string.Join(", ", context.AcademicMotivations))}
             Growth areas: {(context.GrowthAreas.Count == 0 ? "(none)" : string.Join(", ", context.GrowthAreas))}
+            Frustrations (in the student's own words): {(string.IsNullOrWhiteSpace(context.Frustrations) ? "(none)" : context.Frustrations)}
+            Main challenges (in the student's own words): {(string.IsNullOrWhiteSpace(context.MainChallenges) ? "(none)" : context.MainChallenges)}
+            Important values (in the student's own words): {(string.IsNullOrWhiteSpace(context.ImportantValues) ? "(none)" : context.ImportantValues)}
 
             Human OS engram/course performance:
             {(context.EnrolledCoursePerformance.Count == 0 ? "(none yet)" : string.Join('\n', context.EnrolledCoursePerformance.Select(c => "- " + c)))}

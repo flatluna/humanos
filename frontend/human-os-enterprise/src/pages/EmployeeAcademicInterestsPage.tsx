@@ -1,8 +1,47 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Check, Compass, Heart, Lightbulb, Save, Sparkles } from 'lucide-react';
+import { BookOpen, Check, Compass, Heart, Lightbulb, Save, Sparkles, ShieldAlert, Mountain, Gem } from 'lucide-react';
 import { useParams } from 'react-router';
 import { getPersonAcademicPreferences, savePersonAcademicPreferences } from '@/api/personAcademicPreferencesApi';
+
+const freeTextSections = [
+  {
+    id: 'frustrations' as const,
+    title: 'Mis frustraciones',
+    description: 'Lo que le genera desmotivación, bloqueos o incomodidad en su proceso de aprendizaje.',
+    placeholder: 'Escribe aquí las frustraciones del estudiante...',
+    icon: ShieldAlert,
+    color: 'text-red-600 dark:text-red-300',
+    background: 'bg-red-100 dark:bg-red-500/15',
+  },
+  {
+    id: 'mainChallenges' as const,
+    title: 'Mis principales retos',
+    description: 'Los obstáculos concretos que enfrenta hoy y que quiere superar.',
+    placeholder: 'Escribe aquí los principales retos del estudiante...',
+    icon: Mountain,
+    color: 'text-orange-600 dark:text-orange-300',
+    background: 'bg-orange-100 dark:bg-orange-500/15',
+  },
+  {
+    id: 'importantValues' as const,
+    title: 'Mis valores importantes',
+    description: 'Los principios y valores que guían sus decisiones académicas y personales.',
+    placeholder: 'Escribe aquí los valores importantes del estudiante...',
+    icon: Gem,
+    color: 'text-cyan-600 dark:text-cyan-300',
+    background: 'bg-cyan-100 dark:bg-cyan-500/15',
+  },
+];
+
+type FreeTextId = (typeof freeTextSections)[number]['id'];
+type FreeTextValues = Record<FreeTextId, string>;
+
+const initialFreeText: FreeTextValues = {
+  frustrations: '',
+  mainChallenges: '',
+  importantValues: '',
+};
 
 const sections = [
   {
@@ -83,6 +122,7 @@ export function EmployeeAcademicInterestsPage() {
     enabled: Boolean(personId),
   });
   const [selections, setSelections] = useState<Selections | null>(null);
+  const [freeText, setFreeText] = useState<FreeTextValues | null>(null);
   const [isSaved, setIsSaved] = useState(false);
 
   const saveMutation = useMutation({
@@ -92,6 +132,9 @@ export function EmployeeAcademicInterestsPage() {
         learningPreferences: selections?.preferences ?? [],
         academicMotivations: selections?.motivations ?? [],
         growthAreas: selections?.growth ?? [],
+        frustrations: storedFreeText.frustrations,
+        mainChallenges: storedFreeText.mainChallenges,
+        importantValues: storedFreeText.importantValues,
       }),
     onSuccess: (saved) => {
       queryClient.setQueryData(['person-academic-preferences', personId], saved);
@@ -105,6 +148,17 @@ export function EmployeeAcademicInterestsPage() {
     motivations: preferencesQuery.data?.AcademicMotivations ?? initialSelections.motivations,
     growth: preferencesQuery.data?.GrowthAreas ?? initialSelections.growth,
   };
+
+  const storedFreeText: FreeTextValues = freeText ?? {
+    frustrations: preferencesQuery.data?.Frustrations ?? initialFreeText.frustrations,
+    mainChallenges: preferencesQuery.data?.MainChallenges ?? initialFreeText.mainChallenges,
+    importantValues: preferencesQuery.data?.ImportantValues ?? initialFreeText.importantValues,
+  };
+
+  function updateFreeText(id: FreeTextId, value: string) {
+    setIsSaved(false);
+    setFreeText((current) => ({ ...(current ?? storedFreeText), [id]: value }));
+  }
 
   function toggleOption(sectionId: SectionId, option: string) {
     setIsSaved(false);
@@ -184,6 +238,29 @@ export function EmployeeAcademicInterestsPage() {
             </div>
           </fieldset>
         ))}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {freeTextSections.map(({ id, title, description, placeholder, icon: Icon, color, background }) => (
+            <fieldset key={id} className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+              <div className="flex items-start gap-4">
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${background}`}>
+                  <Icon className={`h-5 w-5 ${color}`} aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-base font-bold text-slate-950 dark:text-white">{title}</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-white/70">{description}</p>
+                </div>
+              </div>
+              <textarea
+                value={storedFreeText[id]}
+                onChange={(event) => updateFreeText(id, event.target.value)}
+                placeholder={placeholder}
+                rows={5}
+                className="mt-4 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+              />
+            </fieldset>
+          ))}
         </div>
 
         <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center dark:border-white/10 dark:bg-white/[0.04]">
