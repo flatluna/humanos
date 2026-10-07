@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, Mail, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/auth/AuthContext";
@@ -12,13 +13,13 @@ import {
   type TecMileniumPlanDto,
 } from "./api/tecMileniumApi";
 
-/** "2. Diseño de la experiencia de aprendizaje" (2026-09-28) — Tec Contigo
- *  "Mientras estudias" AI plan: designs an interactive, adaptive, stackable,
- *  personalized learning path from the student's current semester/grades,
- *  interests and the real catalog, then lets them enroll directly in
- *  catalog courses or request the Tec develop external ones (auto-emailed). */
+/** Professional Growth Pathway panel — designs an interactive, adaptive,
+ *  personalized development path aligned with the employee's role and company catalog. */
 export function TecMileniumLearningExperiencePanel() {
   const { user } = useAuth();
+  const { i18n } = useTranslation();
+  const isEn = i18n.language?.startsWith('en');
+  const companyName = user?.tenantName?.trim() || (isEn ? "your organization" : "tu empresa");
   const personId = user?.personId ?? "";
   const [prompt, setPrompt] = useState("");
   const [plan, setPlan] = useState<TecMileniumPlanDto | null>(null);
@@ -64,32 +65,35 @@ export function TecMileniumLearningExperiencePanel() {
   }
 
   return (
-    <section aria-labelledby="tec-milenium-title" className="space-y-4">
+    <section aria-labelledby="learning-experience-title" className="space-y-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
-          2. Diseño de la experiencia de aprendizaje
+          {isEn ? "Professional Growth Pathway" : "Ruta de desarrollo profesional"}
         </p>
-        <h2 id="tec-milenium-title" className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
-          Tu ruta de aprendizaje personalizada
+        <h2 id="learning-experience-title" className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
+          {isEn ? "Your Personalized Training & Growth Plan" : "Tu plan de capacitación y desarrollo"}
         </h2>
         <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-white/70">
-          Aprendizaje interactivo, adaptativo, apilable y personalizado: te recomendamos
-          cursos y labs del catálogo del Tec para mejorar tus calificaciones y prepararte
-          para el mercado laboral, y detectamos cursos que aún no tenemos para que el Tec
-          los desarrolle.
+          {isEn
+            ? `Continuous, adaptive, capability-driven learning: we recommend courses and labs available in ${companyName} to elevate your performance and accelerate your career growth, while identifying high-leverage areas for new topics.`
+            : `Aprendizaje continuo, adaptativo y enfocado en capacidades: te recomendamos cursos y labs disponibles en ${companyName} para fortalecer tu desempeño y acelerar tu crecimiento profesional, e identificamos áreas clave para proponer nuevos temas.`}
         </p>
       </div>
 
       <Card className="p-5">
-        <label htmlFor="tec-milenium-prompt" className="text-sm font-medium text-slate-700 dark:text-white/80">
-          ¿En qué quieres enfocarte? (opcional)
+        <label htmlFor="learning-experience-prompt" className="text-sm font-medium text-slate-700 dark:text-white/80">
+          {isEn ? "What skills or career goals do you want to focus on? (optional)" : "¿En qué habilidades o metas deseas enfocarte? (opcional)"}
         </label>
         <textarea
-          id="tec-milenium-prompt"
+          id="learning-experience-prompt"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           rows={2}
-          placeholder="Ej. Quiero mejorar mi calificación en Arquitecturas de IA y prepararme para trabajar en la industria de manufactura."
+          placeholder={
+            isEn
+              ? "E.g. I want to strengthen my skills in technical leadership, software architectures, and AI-driven project management."
+              : "Ej. Deseo fortalecer mis habilidades en liderazgo técnico, arquitecturas de software y gestión de proyectos con IA."
+          }
           className="mt-2 w-full rounded-xl border border-slate-200 p-3 text-sm dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
         />
         <button
@@ -99,11 +103,13 @@ export function TecMileniumLearningExperiencePanel() {
           className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
         >
           <Sparkles className="h-4 w-4" aria-hidden="true" />
-          {generateMutation.isPending ? "Diseñando tu ruta..." : "Diseñar mi ruta de aprendizaje"}
+          {generateMutation.isPending
+            ? (isEn ? "Designing your plan..." : "Diseñando tu plan...")
+            : (isEn ? "Generate My Growth Plan" : "Diseñar mi ruta de desarrollo")}
         </button>
         {generateMutation.isError && (
           <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
-            No pudimos generar tu ruta en este momento.
+            {isEn ? "We could not generate your growth plan at this moment." : "No pudimos generar tu plan en este momento."}
           </p>
         )}
       </Card>
@@ -117,7 +123,7 @@ export function TecMileniumLearningExperiencePanel() {
 
           <div>
             <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60">
-              Cursos del catálogo del Tec
+              {isEn ? `Available Courses in ${companyName}` : `Cursos disponibles en ${companyName}`}
             </h4>
             <div className="mt-2 grid gap-3 md:grid-cols-2">
               {plan.catalogCourses.map((course) => {
@@ -133,23 +139,27 @@ export function TecMileniumLearningExperiencePanel() {
                       className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
                     >
                       <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      {isEnrolled ? "Inscrito" : "Inscribirme"}
+                      {isEnrolled ? (isEn ? "Enrolled" : "Inscrito") : (isEn ? "Enroll" : "Inscribirme")}
                     </button>
                   </Card>
                 );
               })}
               {plan.catalogCourses.length === 0 && (
-                <p className="text-sm text-slate-500">No encontramos cursos del catálogo para recomendar.</p>
+                <p className="text-sm text-slate-500">
+                  {isEn ? "No matching catalog courses found to recommend." : "No encontramos cursos del catálogo para recomendar."}
+                </p>
               )}
             </div>
           </div>
 
           <div>
             <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60">
-              Cursos que el Tec aún no tiene
+              {isEn ? "Recommended Additional Topics to Add" : "Temas complementarios recomendados"}
             </h4>
             <p className="mt-1 text-xs text-slate-500 dark:text-white/60">
-              Selecciona uno o varios y envía una sola solicitud al Tec con todo el contenido.
+              {isEn
+                ? `Select one or more topics to request their addition to ${companyName}'s catalog.`
+                : `Selecciona uno o varios temas para solicitar su incorporación al catálogo de ${companyName}.`}
             </p>
             <div className="mt-2 grid gap-3 md:grid-cols-2">
               {plan.externalCourses.map((course) => {
@@ -173,14 +183,16 @@ export function TecMileniumLearningExperiencePanel() {
                     </label>
                     {isRequested && (
                       <p className="mt-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                        Solicitud enviada al Tec
+                        {isEn ? `Request sent to ${companyName}` : `Solicitud enviada a ${companyName}`}
                       </p>
                     )}
                   </Card>
                 );
               })}
               {plan.externalCourses.length === 0 && (
-                <p className="text-sm text-slate-500">No detectamos vacíos adicionales en el catálogo por ahora.</p>
+                <p className="text-sm text-slate-500">
+                  {isEn ? "No additional catalog gaps detected at this time." : "No detectamos vacíos adicionales en el catálogo por ahora."}
+                </p>
               )}
             </div>
             {plan.externalCourses.length > 0 && (
@@ -196,13 +208,15 @@ export function TecMileniumLearningExperiencePanel() {
               >
                 <Mail className="h-4 w-4" aria-hidden="true" />
                 {requestMutation.isPending
-                  ? "Enviando solicitud..."
-                  : `Solicitar al Tec (${selectedExternalNames.size})`}
+                  ? (isEn ? "Sending request..." : "Enviando solicitud...")
+                  : (isEn
+                      ? `Request for ${companyName} (${selectedExternalNames.size})`
+                      : `Solicitar a ${companyName} (${selectedExternalNames.size})`)}
               </button>
             )}
             {requestMutation.isError && (
               <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
-                No pudimos enviar la solicitud al Tec en este momento.
+                {isEn ? `We could not send your request to ${companyName} at this time.` : `No pudimos enviar la solicitud a ${companyName} en este momento.`}
               </p>
             )}
           </div>

@@ -65,6 +65,34 @@ export interface StartStructuredLearningExtractionRequest {
   includeKnowledgeGraphEntities?: boolean;
   includeKnowledgeGraphConnections?: boolean;
 
+  // ---- Course design toggles (2026-10-06) — learner-facing feature
+  // switches + the Static/Dynamic Recall+Assessment generation-cost lever.
+  // Omitting any of these keeps the backend default (all true/Dynamic). ----
+
+  /** Shows/hides the "Q&A with the professor" trigger (voice or text —
+   * both share this one switch) during the Learn/Teaching step. */
+  showQaProfessorStep?: boolean;
+  /** Shows/hides "Speak with your agent about this example" (the voice
+   * tutor embedded in Deep Dive cards). */
+  showDeepDiveAgentChat?: boolean;
+  /** Designer cost lever (2026-10-06): when true (default), the QA
+   * Professor trigger offers BOTH text and real-time voice. When false,
+   * ONLY the cheap text chat is offered (no voice option at all) — saves
+   * the real-time voice session cost. Ignored when showQaProfessorStep
+   * is false. */
+  enableQaProfessorVoice?: boolean;
+  /** Same cost lever as enableQaProfessorVoice, for Deep Dive's "Speak
+   * with your agent about this example". Ignored when
+   * showDeepDiveAgentChat is false. */
+  enableDeepDiveAgentVoice?: boolean;
+  /** Shows/hides the "In your role" workplace-application step entirely. */
+  includeWorkplaceApplicationStep?: boolean;
+  /** Static = fixed at course-creation time, same for every student, max
+   * 3 items/engram, cheaper. Dynamic = generated per student/attempt. */
+  recallGenerationMode?: StructuredLearningGenerationMode;
+  /** Same Static/Dynamic choice as recallGenerationMode, for Assessment. */
+  assessmentGenerationMode?: StructuredLearningGenerationMode;
+
   /** Document Type Detection Engine (2026-08-17, Paso 3a) — the designer's
    * confirmed choice from the outline-preview step's DetectedDocumentType
    * recommendation (accepted as-is or overridden). Omit to let the backend
@@ -243,6 +271,10 @@ export function generateStructuredLearningConnections(sectionId: string): Promis
 
 export type StructuredLearningAssessmentQuestionType = 'MultipleChoice' | 'OpenEnded';
 
+/** Static = fixed at course-creation time, same for every student, max 3
+ * items/engram, cheaper. Dynamic = generated per student/attempt. */
+export type StructuredLearningGenerationMode = 'Dynamic' | 'Static';
+
 export interface StructuredLearningPedagogyConfig {
   pedagogicalAudience?: string | null;
   maxDeepDiveCardsPerNode?: number | null;
@@ -252,6 +284,13 @@ export interface StructuredLearningPedagogyConfig {
   includeAssessmentStep: boolean;
   assessmentQuestionType: StructuredLearningAssessmentQuestionType;
   assessmentQuestionsPerRound?: number | null;
+  showQaProfessorStep: boolean;
+  showDeepDiveAgentChat: boolean;
+  enableQaProfessorVoice: boolean;
+  enableDeepDiveAgentVoice: boolean;
+  includeWorkplaceApplicationStep: boolean;
+  recallGenerationMode: StructuredLearningGenerationMode;
+  assessmentGenerationMode: StructuredLearningGenerationMode;
 }
 
 export function updateStructuredLearningPedagogyConfig(
@@ -552,6 +591,38 @@ export function postStructuredLearningWorkplaceChat(
   );
 }
 
+/** One turn of the chat history sent back on every "Q&A with Professor"
+ * TEXT-tab request — the backend is stateless and expects the running
+ * conversation resent each call (see StructuredLearningQaProfessorChatService). */
+export interface StructuredLearningQaChatHistoryEntry {
+  Role: 'Student' | 'Professor';
+  Text: string;
+}
+
+/** Text tab of "Q&A with Professor" (2026-10-06) — the cheap/non-voice
+ * sibling of the Realtime voice professor (VoiceTutorAgent's isQaMode).
+ * Also used, with `exampleCardIndex` set, for Deep Dive's "Speak with your
+ * agent" text fallback — same backend endpoint grounds the Professor in
+ * just that one ExampleCard instead of the whole step. Default interaction
+ * mode across the app: TEXT is always available; real-time voice is an
+ * explicit opt-in toggle (see VoiceTextModeToggle). */
+export function postStructuredLearningQaChat(
+  stepId: string,
+  message: string,
+  history: StructuredLearningQaChatHistoryEntry[],
+  personId?: string,
+  exampleCardIndex?: number,
+  engramSessionId?: string
+): Promise<{ Message: string }> {
+  return apiPost<{ Message: string }>(`/structured-learning/sections/steps/${stepId}/qa-chat`, {
+    PersonId: personId || null,
+    Message: message,
+    History: history,
+    ExampleCardIndex: exampleCardIndex ?? null,
+    EngramSessionId: engramSessionId || null,
+  });
+}
+
 /** Video wizard tab 3 "Generar con IA" — cheap ephemeral starting-image
  * candidate, optionally guided by an uploaded reference image. */
 export function generateStructuredLearningVideoStartImage(
@@ -727,6 +798,13 @@ export interface StructuredLearningDocumentDetail {
   AssessmentQuestionType: StructuredLearningAssessmentQuestionType;
   AssessmentQuestionsPerRound: number | null;
   ShowKnowledgeGraphToLearners: boolean;
+  ShowQaProfessorStep: boolean;
+  ShowDeepDiveAgentChat: boolean;
+  EnableQaProfessorVoice: boolean;
+  EnableDeepDiveAgentVoice: boolean;
+  IncludeWorkplaceApplicationStep: boolean;
+  RecallGenerationMode: StructuredLearningGenerationMode;
+  AssessmentGenerationMode: StructuredLearningGenerationMode;
   Sections: StructuredLearningSectionDetail[];
 }
 
@@ -777,6 +855,7 @@ export function updateStructuredLearningDocumentName(
  * these as cards without the full Capability-model integration. */
 export interface StructuredLearningDocumentSummary {
   StructuredLearningDocumentId: string;
+  TenantId?: string;
   DocumentName: string;
   SectionCount: number;
   CreatedDate: string;
@@ -785,6 +864,10 @@ export interface StructuredLearningDocumentSummary {
   TargetSkill?: string | null;
   /** "es"/"en" — see StructuredLearningLanguageHeuristic (server-side). */
   Language?: string;
+  /** True when this document is in the public/official catalog. Lets the
+   * Studio catalog's "Mis cursos / Globales" filter distinguish a
+   * tenant-owned draft from a public one (2026-10-06). */
+  IsGlobal?: boolean;
 }
 
 export function getStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {

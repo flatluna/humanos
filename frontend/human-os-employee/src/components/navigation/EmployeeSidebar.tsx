@@ -7,7 +7,8 @@ import { useAuth } from '@/auth/AuthContext';
 
 /** Sidebar for the employee portal using standard react-i18next translations. */
 export function EmployeeSidebar() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isEn = i18n.language?.startsWith('en');
   const { user } = useAuth();
 
   const labels = {
@@ -27,7 +28,7 @@ export function EmployeeSidebar() {
     evolution: t('nav.evolution'),
     achievements: t('nav.achievements', { defaultValue: 'Mis Logros' }),
     insightPersona: t('nav.insightPersona', { defaultValue: 'Insight Persona' }),
-    miRutaAprendizaje: t('nav.miRutaAprendizaje', { defaultValue: 'Mi Ruta de Aprender' }),
+    miRutaAprendizaje: t('nav.miRutaAprendizaje', { defaultValue: isEn ? 'Growth Pathway' : 'Mi Ruta de Desarrollo' }),
     recomendaciones: t('nav.recomendaciones', { defaultValue: 'Recomendaciones' }),
     profile: t('nav.profile'),
     courses: t('nav.courses'),

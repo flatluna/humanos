@@ -94,6 +94,35 @@ public sealed class StructuredLearningCreationOptions
 
     public bool? IncludeKnowledgeGraphConnections { get; set; }
 
+    /// <summary>Whether the "Q&amp;A with the professor" trigger (voice or
+    /// text) is offered to students. Null keeps the default (true).</summary>
+    public bool? ShowQaProfessorStep { get; set; }
+
+    /// <summary>Whether "Speak with your agent about this example" (Deep
+    /// Dive's voice tutor) is offered to students. Null keeps the default
+    /// (true).</summary>
+    public bool? ShowDeepDiveAgentChat { get; set; }
+
+    /// <summary>Designer cost lever: null keeps the default (true = voice
+    /// offered alongside text). False hides the voice option, text-only.</summary>
+    public bool? EnableQaProfessorVoice { get; set; }
+
+    /// <summary>Same cost lever as <see cref="EnableQaProfessorVoice"/>,
+    /// for Deep Dive's agent chat. Null keeps the default (true).</summary>
+    public bool? EnableDeepDiveAgentVoice { get; set; }
+
+    /// <summary>Whether the "In your role" workplace-application step is
+    /// generated/shown at all. Null keeps the default (true).</summary>
+    public bool? IncludeWorkplaceApplicationStep { get; set; }
+
+    /// <summary>Static (fixed at creation, max 3/engram) vs. Dynamic
+    /// (generated per attempt). Null keeps the default (Dynamic).</summary>
+    public StructuredLearningGenerationMode? RecallGenerationMode { get; set; }
+
+    /// <summary>Same Static/Dynamic choice as <see cref="RecallGenerationMode"/>,
+    /// applied to Assessment. Null keeps the default (Dynamic).</summary>
+    public StructuredLearningGenerationMode? AssessmentGenerationMode { get; set; }
+
     /// <summary>Document Type Detection Engine (2026-08-17, Paso 3a) — the
     /// designer's confirmed choice from the wizard's outline-preview step,
     /// as one of HumanOS.Services.DocumentClassification.DocumentType's
@@ -409,7 +438,14 @@ public sealed class StructuredLearningExtractionService
             AssessmentQuestionType = creationOptions?.AssessmentQuestionType ?? StructuredLearningAssessmentQuestionType.MultipleChoice,
             AssessmentQuestionsPerRound = creationOptions?.AssessmentQuestionsPerRound,
             IncludeKnowledgeGraphEntities = creationOptions?.IncludeKnowledgeGraphEntities ?? true,
-            IncludeKnowledgeGraphConnections = creationOptions?.IncludeKnowledgeGraphConnections ?? true
+            IncludeKnowledgeGraphConnections = creationOptions?.IncludeKnowledgeGraphConnections ?? true,
+            ShowQaProfessorStep = creationOptions?.ShowQaProfessorStep ?? true,
+            ShowDeepDiveAgentChat = creationOptions?.ShowDeepDiveAgentChat ?? true,
+            EnableQaProfessorVoice = creationOptions?.EnableQaProfessorVoice ?? true,
+            EnableDeepDiveAgentVoice = creationOptions?.EnableDeepDiveAgentVoice ?? true,
+            IncludeWorkplaceApplicationStep = creationOptions?.IncludeWorkplaceApplicationStep ?? true,
+            RecallGenerationMode = creationOptions?.RecallGenerationMode ?? StructuredLearningGenerationMode.Dynamic,
+            AssessmentGenerationMode = creationOptions?.AssessmentGenerationMode ?? StructuredLearningGenerationMode.Dynamic
         };
         document.ConfigSnapshotJson = JsonSerializer.Serialize(new
         {
@@ -621,7 +657,24 @@ public sealed class StructuredLearningExtractionService
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 connectionPassSucceeded = false;
-                Console.WriteLine($"[KG-DEBUG] connection extraction FAILED for section {sectionId}: {ex}"); // TEMP DEBUG (2026-08-15)
+                // The SDK's own ex.Message is often empty for 400s — the real
+                // reason lives in the raw HTTP response body (2026-10-06,
+                // diagnosing recurring "invalid_request_error" on specific
+                // sections). Pull it out so the next failure is actionable.
+                var rawDetail = ex.Message;
+                if (ex is System.ClientModel.ClientResultException clientEx)
+                {
+                    try
+                    {
+                        var rawResponse = clientEx.GetRawResponse();
+                        if (rawResponse?.Content is not null)
+                        {
+                            rawDetail = rawResponse.Content.ToString();
+                        }
+                    }
+                    catch { /* best-effort diagnostics only */ }
+                }
+                Console.WriteLine($"[KG-DEBUG] connection extraction FAILED for section {sectionId}: {ex}\n[KG-DEBUG] raw response body: {rawDetail}"); // TEMP DEBUG (2026-08-15, extended 2026-10-06)
                 reportProgress($"Relationship extraction skipped for a section; continuing ({ex.Message})");
             }
         });

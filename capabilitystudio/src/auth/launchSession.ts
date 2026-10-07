@@ -10,6 +10,17 @@ import { decodeJwtPayload, type StudioLaunchClaims } from './jwt';
 
 const STORAGE_KEY = 'humanos.studio.launchSession';
 export const STORAGE_CHANGE_EVENT = 'humanos-studio-session-change';
+// Legacy NGO-membership fallback values cached by StudioAuthGate (see
+// Layout.tsx) — must never outlive the launch session that wrote them,
+// otherwise a previous user's tenant/company keeps showing up for whoever
+// logs in next in the same tab (looked "hardcoded" — 2026-10-06 bug report).
+const INHERITED_TENANT_ID_KEY = 'humanos.studio.inheritedTenantId';
+const INHERITED_TENANT_NAME_KEY = 'humanos.studio.inheritedTenantName';
+
+function clearInheritedTenant(): void {
+  sessionStorage.removeItem(INHERITED_TENANT_ID_KEY);
+  sessionStorage.removeItem(INHERITED_TENANT_NAME_KEY);
+}
 
 export interface LaunchSession {
   token: string;
@@ -26,6 +37,10 @@ export function saveLaunchSession(token: string): LaunchSession | null {
   const claims = decodeJwtPayload(token);
   if (!claims) return null;
   const session: LaunchSession = { token, claims };
+  // A brand-new launch always carries its own tenant/company claims —
+  // drop any stale inherited-tenant cache from a previous session so it
+  // can't leak into this one (see clearInheritedTenant's doc comment).
+  clearInheritedTenant();
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   notifySessionChange();
   return session;
@@ -54,6 +69,7 @@ export function hasValidLaunchSession(): boolean {
 
 export function clearLaunchSession(): void {
   sessionStorage.removeItem(STORAGE_KEY);
+  clearInheritedTenant();
   notifySessionChange();
 }
 

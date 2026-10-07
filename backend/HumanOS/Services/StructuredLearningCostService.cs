@@ -25,17 +25,22 @@ public sealed class StructuredLearningCostService
         _configuration = configuration;
     }
 
-    /// <summary>Real per-video cost by the model that generated it (2026-08-26) —
-    /// mirrors the frontend's priceForModel: videos are NOT priced at the
-    /// flat per-image placeholder rate, since Veo/Omni Flash calls cost far
-    /// more than a still image. Returns 0 for "merged" (local ffmpeg,
-    /// unbilled) or unrecognized model names.</summary>
+    /// <summary>Real per-video cost by the model that generated it (2026-10-01,
+    /// corrected pricing) — mirrors the frontend's priceForModel: videos are
+    /// NOT priced at the flat per-image placeholder rate. The actual video
+    /// generation model is "gemini-omni-flash-preview" (Google), billed at
+    /// ~$0.10 USD per second of 720p video; every clip here is a fixed
+    /// 8-second generation, so $0.10 × 8 = $0.80 per video. Returns 0 only
+    /// for "merged" (local ffmpeg, unbilled) or an empty model name.</summary>
+    private const decimal GeminiOmniFlashCostPerSecondUsd = 0.10m;
+    private const int VideoClipSeconds = 8;
+    private const decimal VideoCostPerVideoUsd = GeminiOmniFlashCostPerSecondUsd * VideoClipSeconds;
+
     private static decimal VideoCostForModel(string? imageModel)
     {
         if (string.IsNullOrEmpty(imageModel)) return 0m;
-        if (imageModel.StartsWith("veo-", StringComparison.Ordinal)) return 0.30m;
-        if (imageModel.StartsWith("gemini-omni-flash", StringComparison.Ordinal)) return 0.55m;
-        return 0m;
+        if (imageModel.Equals("merged", StringComparison.OrdinalIgnoreCase)) return 0m;
+        return VideoCostPerVideoUsd;
     }
 
     private decimal ReadImageRate()
@@ -51,9 +56,9 @@ public sealed class StructuredLearningCostService
         CancellationToken cancellationToken = default)
     {
         var docQuery = _dbContext.StructuredLearningDocuments.AsNoTracking();
-        if (tenantId != null)
+        if (tenantId != null && tenantId != Guid.Empty)
         {
-            docQuery = docQuery.Where(d => d.IsGlobal || d.TenantId == Guid.Empty || d.TenantId == tenantId);
+            docQuery = docQuery.Where(d => d.TenantId == tenantId.Value);
         }
 
         var documents = await docQuery

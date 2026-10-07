@@ -33,17 +33,20 @@ public sealed class BuddyVoiceSessionFunction
     private readonly BuddyContextBuilder _buddyContextBuilder;
     private readonly PersonService _personService;
     private readonly PerplexitySearchService _perplexityService;
+    private readonly TenantQuotaService _quotaService;
 
     public BuddyVoiceSessionFunction(
         RealtimeVoiceSessionService voiceSessionService,
         BuddyContextBuilder buddyContextBuilder,
         PersonService personService,
-        PerplexitySearchService perplexityService)
+        PerplexitySearchService perplexityService,
+        TenantQuotaService quotaService)
     {
         _voiceSessionService = voiceSessionService;
         _buddyContextBuilder = buddyContextBuilder;
         _personService = personService;
         _perplexityService = perplexityService;
+        _quotaService = quotaService;
     }
 
     [Function("BuddyVoiceSession")]
@@ -80,6 +83,35 @@ public sealed class BuddyVoiceSessionFunction
 
         var employeeId = body.PersonId ?? await ResolveAuthenticatedEmployeeIdAsync(request, cancellationToken);
         var isEnglish = string.Equals(body.LanguageCode, "en", StringComparison.OrdinalIgnoreCase);
+
+        // Quota enforcement (2026-10-04) — Buddy voice minutes/month per
+        // employee, configured per tenant via the admin "Quotas" page (see
+        // QuotaCatalog/TenantQuotaService). Text chat (BuddyChatFunction,
+        // same skills/tools) is never subject to this — only the more
+        // expensive Realtime voice channel. Fails OPEN (lets the call
+        // through) if the employee/tenant can't be resolved, same
+        // best-effort posture as the rest of this function's identity
+        // resolution.
+        if (employeeId.HasValue)
+        {
+            var person = await _personService.GetByIdAsync(employeeId.Value, cancellationToken);
+            if (person?.TenantId is Guid tenantId)
+            {
+                var (exceeded, usedSeconds, limitSeconds) = await _quotaService.HasExceededBuddyVoiceQuotaAsync(
+                    tenantId, employeeId.Value, cancellationToken);
+                if (exceeded)
+                {
+                    return await FunctionResponseFactory.ErrorResponseAsync(
+                        request,
+                        HttpStatusCode.TooManyRequests,
+                        "VoiceQuotaExceeded",
+                        isEnglish
+                            ? $"You've used your Buddy voice time for this month ({usedSeconds / 60}/{limitSeconds / 60} min). Keep going with Buddy's text chat instead."
+                            : $"Ya usaste tu tiempo de voz de Buddy este mes ({usedSeconds / 60}/{limitSeconds / 60} min). Continúa con el chat de texto de Buddy.",
+                        cancellationToken);
+                }
+            }
+        }
 
         var instructions = await _buddyContextBuilder.BuildInstructionsAsync(employeeId, body.PersonName, isEnglish, cancellationToken);
         var tools = _perplexityService.IsConfigured ? BuildTools() : null;

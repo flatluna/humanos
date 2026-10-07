@@ -106,6 +106,20 @@ public sealed class StartStructuredLearningExtractionFunction
 
         public bool? IncludeKnowledgeGraphConnections { get; set; }
 
+        public bool? ShowQaProfessorStep { get; set; }
+
+        public bool? ShowDeepDiveAgentChat { get; set; }
+
+        public bool? EnableQaProfessorVoice { get; set; }
+
+        public bool? EnableDeepDiveAgentVoice { get; set; }
+
+        public bool? IncludeWorkplaceApplicationStep { get; set; }
+
+        public StructuredLearningGenerationMode? RecallGenerationMode { get; set; }
+
+        public StructuredLearningGenerationMode? AssessmentGenerationMode { get; set; }
+
         /// <summary>Document Type Detection Engine (2026-08-17, Paso 3a) —
         /// the designer's confirmed choice from the wizard's outline-preview
         /// step, as one of HumanOS.Services.DocumentClassification.DocumentType's
@@ -166,6 +180,20 @@ public sealed class StartStructuredLearningExtractionFunction
                 "'approvedOutline' (from Paso 5 'Learning path design') is required for Step 2.", cancellationToken);
         }
 
+        if (body.RecallGenerationMode == StructuredLearningGenerationMode.Static && body.RecallItemsRequired is > 3)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidRequest",
+                "'recallItemsRequired' must be 3 or fewer when 'recallGenerationMode' is 'Static'.", cancellationToken);
+        }
+
+        if (body.AssessmentGenerationMode == StructuredLearningGenerationMode.Static && body.AssessmentQuestionsPerRound is > 3)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidRequest",
+                "'assessmentQuestionsPerRound' must be 3 or fewer when 'assessmentGenerationMode' is 'Static'.", cancellationToken);
+        }
+
         var languageCode = string.IsNullOrWhiteSpace(body.LanguageCode) ? "es" : body.LanguageCode;
 
         var creationOptions = new StructuredLearningCreationOptions
@@ -191,6 +219,13 @@ public sealed class StartStructuredLearningExtractionFunction
             AssessmentQuestionsPerRound = body.AssessmentQuestionsPerRound,
             IncludeKnowledgeGraphEntities = body.IncludeKnowledgeGraphEntities,
             IncludeKnowledgeGraphConnections = body.IncludeKnowledgeGraphConnections,
+            ShowQaProfessorStep = body.ShowQaProfessorStep,
+            ShowDeepDiveAgentChat = body.ShowDeepDiveAgentChat,
+            EnableQaProfessorVoice = body.EnableQaProfessorVoice,
+            EnableDeepDiveAgentVoice = body.EnableDeepDiveAgentVoice,
+            IncludeWorkplaceApplicationStep = body.IncludeWorkplaceApplicationStep,
+            RecallGenerationMode = body.RecallGenerationMode,
+            AssessmentGenerationMode = body.AssessmentGenerationMode,
             ConfirmedDocumentType = string.IsNullOrWhiteSpace(body.ConfirmedDocumentType) ? null : body.ConfirmedDocumentType,
             ExpandSparseContent = body.ExpandSparseContent,
             ContentExpansionModel = body.ContentExpansionModel,

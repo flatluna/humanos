@@ -96,6 +96,7 @@ public sealed class StructuredLearningAssessmentAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _deploymentName = string.Empty;
 
     public StructuredLearningAssessmentAgent(IConfiguration configuration)
     {
@@ -109,6 +110,8 @@ public sealed class StructuredLearningAssessmentAgent
             return;
         }
 
+        _deploymentName = deploymentName;
+
         AzureOpenAIClient client = string.IsNullOrWhiteSpace(apiKey)
             ? new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
             : new AzureOpenAIClient(new Uri(endpoint), new System.ClientModel.ApiKeyCredential(apiKey));
@@ -120,7 +123,7 @@ public sealed class StructuredLearningAssessmentAgent
 
     public bool IsConfigured => _agent is not null;
 
-    public async Task<GeneratedStructuredLearningAssessmentQuestionResponse> GenerateQuestionAsync(string prompt, CancellationToken cancellationToken)
+    public async Task<StructuredLearningAssessmentAgentResult<GeneratedStructuredLearningAssessmentQuestionResponse>> GenerateQuestionAsync(string prompt, CancellationToken cancellationToken)
     {
         if (_agent is null)
         {
@@ -128,10 +131,16 @@ public sealed class StructuredLearningAssessmentAgent
         }
 
         var response = await _agent.RunAsync<GeneratedStructuredLearningAssessmentQuestionResponse>(prompt, cancellationToken: cancellationToken);
-        return response.Result;
+        return new StructuredLearningAssessmentAgentResult<GeneratedStructuredLearningAssessmentQuestionResponse>
+        {
+            Result = response.Result,
+            ModelName = _deploymentName,
+            InputTokens = (int)(response.Usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(response.Usage?.OutputTokenCount ?? 0),
+        };
     }
 
-    public async Task<GradedStructuredLearningAssessmentAnswerResponse> GradeAnswerAsync(string prompt, CancellationToken cancellationToken)
+    public async Task<StructuredLearningAssessmentAgentResult<GradedStructuredLearningAssessmentAnswerResponse>> GradeAnswerAsync(string prompt, CancellationToken cancellationToken)
     {
         if (_agent is null)
         {
@@ -139,6 +148,25 @@ public sealed class StructuredLearningAssessmentAgent
         }
 
         var response = await _agent.RunAsync<GradedStructuredLearningAssessmentAnswerResponse>(prompt, cancellationToken: cancellationToken);
-        return response.Result;
+        return new StructuredLearningAssessmentAgentResult<GradedStructuredLearningAssessmentAnswerResponse>
+        {
+            Result = response.Result,
+            ModelName = _deploymentName,
+            InputTokens = (int)(response.Usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(response.Usage?.OutputTokenCount ?? 0),
+        };
     }
+}
+
+/// <summary>Generic wrapper pairing an agent's structured result with the real
+/// token usage from that call \u2014 see <see cref="StructuredLearningAssessmentAgent"/>.</summary>
+public sealed class StructuredLearningAssessmentAgentResult<T>
+{
+    public T Result { get; set; } = default!;
+
+    public string ModelName { get; set; } = string.Empty;
+
+    public int InputTokens { get; set; }
+
+    public int OutputTokens { get; set; }
 }

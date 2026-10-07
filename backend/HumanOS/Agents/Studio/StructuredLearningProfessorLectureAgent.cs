@@ -148,10 +148,23 @@ public sealed class StructuredLearningProfessorLectureAgent
 
     public string DeploymentName => _deploymentName;
 
+    /// <summary>Real per-call token usage alongside the structured lecture
+    /// result (2026-10-04) — previously discarded entirely, which meant this
+    /// agent's LLM cost (one call per Engram, every course) never showed up
+    /// anywhere on the cost dashboard/Simulations baseline. See
+    /// <see cref="HumanOS.Services.StructuredLearningPedagogyService"/>'s
+    /// caller for how this is now persisted via <c>StructuredLearningGenerationUsageService</c>.</summary>
+    public sealed class LectureGenerationResult
+    {
+        public StructuredLearningProfessorLectureResult Result { get; set; } = null!;
+
+        public AgentTokenUsage TokenUsage { get; set; } = null!;
+    }
+
     /// <summary>
     /// Generates a spoken, personalized professor lecture for the specified Engram and student context.
     /// </summary>
-    public async Task<StructuredLearningProfessorLectureResult> GenerateLectureAsync(
+    public async Task<LectureGenerationResult> GenerateLectureAsync(
         StructuredLearningProfessorLectureContext context,
         CancellationToken cancellationToken = default)
     {
@@ -202,7 +215,21 @@ public sealed class StructuredLearningProfessorLectureAgent
             }
         }
 
-        return result ?? new StructuredLearningProfessorLectureResult();
+        var usage = response.Usage;
+        var tokenUsage = new AgentTokenUsage
+        {
+            AgentName = "StructuredLearningProfessorLectureAgent",
+            ModelName = _deploymentName,
+            InputTokens = (int)(usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
+            CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)
+        };
+
+        return new LectureGenerationResult
+        {
+            Result = result ?? new StructuredLearningProfessorLectureResult(),
+            TokenUsage = tokenUsage,
+        };
     }
 
     public static string BuildPrompt(StructuredLearningProfessorLectureContext context)

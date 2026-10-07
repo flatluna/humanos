@@ -26,6 +26,12 @@ public class StructuredLearningRecallAttempt
     /// (2026-08-13).</summary>
     public Guid? PersonId { get; set; }
 
+    /// <summary>The course-visit session this attempt happened during
+    /// (2026-10-02) — lets Recall fail/mastery counts be rolled up per
+    /// real session, not just lifetime-per-person. Null for attempts
+    /// recorded before this FK existed.</summary>
+    public Guid? StructuredLearningEngramSessionId { get; set; }
+
     /// <summary>The question this attempt answers (asked by the PREVIOUS turn).</summary>
     public string TutorPromptShown { get; set; } = string.Empty;
 

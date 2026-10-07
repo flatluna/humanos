@@ -17,6 +17,7 @@ import {
   UserCircle,
   Target,
   ListTree,
+  BookOpen,
   Heart,
 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ const NAV_ITEMS_DEF = [
   { to: '/certifications', end: false, icon: Award, labelKey: 'nav.certifications', color: 'orange' },
   { to: '/skills', end: false, icon: GraduationCap, labelKey: 'nav.skills', color: 'teal' },
   { to: '/proceso-aprendizaje', end: false, icon: ListTree, labelKey: 'nav.processLearning', color: 'violet' },
+  { to: '/programar-cursos', end: false, icon: BookOpen, labelKey: 'nav.learningPrograms', color: 'violet' },
   { to: '/roadmaps', end: false, icon: GitBranch, labelKey: 'nav.roadmaps', color: 'emerald' },
   { to: '/reportes', end: false, icon: BarChart3, labelKey: 'nav.reports', color: 'rose' },
 ] as const;

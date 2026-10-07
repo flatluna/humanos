@@ -69,6 +69,19 @@ public sealed class StructuredLearningDocumentSection
 
     public DateTime CreatedDate { get; set; }
 
+    /// <summary>JSON array (max 3 items) of the Recall questions generated
+    /// once for this section/engram when the document's
+    /// <see cref="StructuredLearningDocument.RecallGenerationMode"/> is
+    /// Static — every student is served the same questions from here
+    /// instead of generating new ones per attempt. Null when the document
+    /// is Dynamic (the default/existing behavior).</summary>
+    public string? StaticRecallItemsJson { get; set; }
+
+    /// <summary>Same Static-mode question bank as
+    /// <see cref="StaticRecallItemsJson"/>, but for the Assessment step
+    /// (max 3 questions per engram).</summary>
+    public string? StaticAssessmentQuestionsJson { get; set; }
+
     /// <summary>Knowledge Graph (2026-08-15) — the entity name (from this
     /// section's own extracted entities) the model chose as the conceptual
     /// hub/root of its relationship graph — used to render the tree

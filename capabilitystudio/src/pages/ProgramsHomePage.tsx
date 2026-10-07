@@ -5,9 +5,12 @@ import { Link } from 'react-router-dom';
 import { deleteProgram, getPrograms, type BackendProgram } from '../lib/api/programsApi';
 import ProgramCard from '../components/ProgramCard';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuth } from '../auth/AuthContext';
 
 export default function ProgramsHomePage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const userTenantId = user?.tenantId ?? sessionStorage.getItem('humanos.studio.inheritedTenantId') ?? null;
   const [programs, setPrograms] = useState<BackendProgram[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +42,19 @@ export default function ProgramsHomePage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return programs;
-    return programs.filter(
-      (p) => p.Name.toLowerCase().includes(q) || (p.Description ?? '').toLowerCase().includes(q),
-    );
-  }, [programs, search]);
+    return programs.filter((p) => {
+      // Filter by tenant: match program's TenantId vs user's TenantId
+      if (userTenantId) {
+        if (!p.TenantId || p.TenantId.toLowerCase() !== userTenantId.toLowerCase()) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      return (
+        p.Name.toLowerCase().includes(q) || (p.Description ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [programs, search, userTenantId]);
 
   const selectedPrograms = useMemo(
     () => programs.filter((program) => selectedIds.includes(program.ProgramId)),
@@ -132,7 +143,7 @@ export default function ProgramsHomePage() {
           </div>
         )}
 
-        {!loading && !error && programs.length > 0 && (
+        {!loading && !error && filtered.length > 0 && (
           <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-sm text-slate-300">
               <CheckCheck className="h-4 w-4 text-brand-400" />

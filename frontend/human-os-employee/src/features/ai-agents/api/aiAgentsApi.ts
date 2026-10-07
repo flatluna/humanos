@@ -135,11 +135,15 @@ export function postAiAgentChat(
   documentId: string,
   message: string,
   history: AiAgentChatHistoryEntry[],
+  engramId?: string,
+  engramSessionId?: string,
 ): Promise<AiAgentChatResponse> {
   return apiPost<AiAgentChatResponse>('/studio/structured-learning/chat', {
     tenantId,
     personId,
     documentId,
+    engramId,
+    engramSessionId,
     message,
     history: history.map((h) => ({ role: h.role, text: h.text })),
   });

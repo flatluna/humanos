@@ -43,6 +43,16 @@ public static class TokenCostEstimator
     private const decimal DefaultCachedInputPerMillion = 0.625m;
     private const decimal DefaultOutputPerMillion = 10.00m;
     private const decimal DefaultImageCost = 0.04m;
+    private const decimal DefaultAzureSpeechNeuralPerMillionChars = 16.00m;
+
+    /// <summary>Sentinel ModelName (2026-10-04) marking a usage row as Azure
+    /// Speech TEXT-TO-SPEECH characters, not LLM tokens — billed per
+    /// "AgentPricing:AzureSpeechNeuralPerMillionCharactersUsd", never the
+    /// per-token rate table below. <see cref="AgentTokenUsage.InputTokens"/>
+    /// holds the CHARACTER count for these rows (see
+    /// <see cref="HumanOS.Services.StructuredLearningPedagogyService"/>'s
+    /// Professor Lecture audio synthesis, the first caller to record one).</summary>
+    public const string AzureSpeechTtsModelSentinel = "azure-speech-tts";
 
     public static PdfCapabilityCostEstimate Estimate(
         IReadOnlyList<AgentTokenUsage> tokenUsage,
@@ -53,6 +63,7 @@ public static class TokenCostEstimator
         var defaultCachedRate = ReadDecimal(configuration, "AgentPricing:DefaultCachedInputPerMillionTokens", DefaultCachedInputPerMillion);
         var defaultOutputRate = ReadDecimal(configuration, "AgentPricing:DefaultOutputPerMillionTokens", DefaultOutputPerMillion);
         var imageRate = ReadDecimal(configuration, "AgentPricing:PerImage", DefaultImageCost);
+        var speechPerMillionCharsRate = ReadDecimal(configuration, "AgentPricing:AzureSpeechNeuralPerMillionCharactersUsd", DefaultAzureSpeechNeuralPerMillionChars);
 
         long totalBillableInput = 0;
         long totalCachedInput = 0;
@@ -63,6 +74,15 @@ public static class TokenCostEstimator
 
         foreach (var usage in tokenUsage)
         {
+            if (usage.ModelName == AzureSpeechTtsModelSentinel)
+            {
+                // InputTokens holds a CHARACTER count here, priced per
+                // million characters — never the per-token rate table.
+                totalInputCost += usage.InputTokens / 1_000_000m * speechPerMillionCharsRate;
+                totalBillableInput += usage.InputTokens;
+                continue;
+            }
+
             var modelKey = string.IsNullOrWhiteSpace(usage.ModelName) ? null : $"AgentPricing:Models:{usage.ModelName}";
 
             var inputRate = modelKey is null ? defaultInputRate : ReadDecimal(configuration, $"{modelKey}:InputPerMillionTokens", defaultInputRate);
@@ -121,6 +141,30 @@ public static class TokenCostEstimator
         foreach (var group in tokenUsage.GroupBy(u => string.IsNullOrWhiteSpace(u.ModelName) ? "(unknown model)" : u.ModelName))
         {
             var modelName = group.Key;
+
+            if (modelName == AzureSpeechTtsModelSentinel)
+            {
+                var speechPerMillionCharsRate = ReadDecimal(configuration, "AgentPricing:AzureSpeechNeuralPerMillionCharactersUsd", DefaultAzureSpeechNeuralPerMillionChars);
+                var characterCount = group.Sum(u => (long)u.InputTokens);
+                var speechCost = characterCount / 1_000_000m * speechPerMillionCharsRate;
+                results.Add(new ModelCostBreakdown
+                {
+                    ModelName = modelName,
+                    CallCount = group.Count(),
+                    BillableInputTokens = characterCount,
+                    CachedInputTokens = 0,
+                    OutputTokens = 0,
+                    InputRatePerMillionTokens = speechPerMillionCharsRate,
+                    CachedInputRatePerMillionTokens = 0,
+                    OutputRatePerMillionTokens = 0,
+                    InputCostUsd = Math.Round(speechCost, 4),
+                    CachedInputCostUsd = 0,
+                    OutputCostUsd = 0,
+                    TotalCostUsd = Math.Round(speechCost, 4)
+                });
+                continue;
+            }
+
             var modelKey = modelName == "(unknown model)" ? null : $"AgentPricing:Models:{modelName}";
             var inputRate = modelKey is null ? defaultInputRate : ReadDecimal(configuration, $"{modelKey}:InputPerMillionTokens", defaultInputRate);
             var cachedRate = modelKey is null ? defaultCachedRate : ReadDecimal(configuration, $"{modelKey}:CachedInputPerMillionTokens", defaultCachedRate);

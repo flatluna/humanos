@@ -5,6 +5,7 @@ using HumanOS.Models.Capabilities.Studio;
 using HumanOS.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HumanOS.Services;
 
@@ -63,6 +64,7 @@ public sealed class StructuredLearningPedagogyService
     private readonly StructuredLearningProfessorLectureAgent _professorLectureAgent;
     private readonly AzureSpeechService _speechService;
     private readonly PerplexitySearchService _perplexityService;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public StructuredLearningPedagogyService(
         StructuredLearningSectionDesignerAgent designer,
@@ -74,7 +76,8 @@ public sealed class StructuredLearningPedagogyService
         StructuredLearningKnowledgeFactGenerationService knowledgeFactGeneration,
         StructuredLearningProfessorLectureAgent professorLectureAgent,
         AzureSpeechService speechService,
-        PerplexitySearchService perplexityService)
+        PerplexitySearchService perplexityService,
+        IServiceScopeFactory scopeFactory)
     {
         _designer = designer;
         _dbContextFactory = dbContextFactory;
@@ -86,6 +89,7 @@ public sealed class StructuredLearningPedagogyService
         _professorLectureAgent = professorLectureAgent;
         _speechService = speechService;
         _perplexityService = perplexityService;
+        _scopeFactory = scopeFactory;
         // Same rationale as TraditionalCoursePipelineService: this service
         // only needs IConfiguration, so it's constructed directly rather
         // than injected (it's registered Scoped in DI, incompatible with
@@ -666,6 +670,41 @@ public sealed class StructuredLearningPedagogyService
                 await swapTransaction.CommitAsync(cancellationToken);
             });
 
+            // Static Recall/Assessment generation-cost lever (2026-10-06) —
+            // when the designer chose "Static" for either step, pre-generate
+            // its up-to-3 questions right now, during authoring, so no
+            // student ever triggers an LLM call for them at runtime (same
+            // question persisted in SQL and served to everyone). No-op for
+            // sections whose step isn't included, or whose mode is Dynamic.
+            if ((document.IncludeRecallStep && document.RecallGenerationMode == StructuredLearningGenerationMode.Static)
+                || (document.IncludeAssessmentStep && document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static))
+            {
+                try
+                {
+                    using var staticScope = _scopeFactory.CreateScope();
+                    await using var staticDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+                    if (document.IncludeRecallStep && document.RecallGenerationMode == StructuredLearningGenerationMode.Static)
+                    {
+                        var recallEngine = staticScope.ServiceProvider.GetRequiredService<StructuredLearningRecallEngine>();
+                        await recallEngine.EnsureStaticItemsAsync(staticDbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
+                    }
+
+                    if (document.IncludeAssessmentStep && document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static)
+                    {
+                        var assessmentEngine = staticScope.ServiceProvider.GetRequiredService<StructuredLearningAssessmentEngine>();
+                        await assessmentEngine.EnsureStaticQuestionsAsync(staticDbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Never fail the whole section over the static-bank
+                    // pre-generation step — Dynamic generation at runtime
+                    // remains the safety net if this didn't finish.
+                    Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: static Recall/Assessment generation failed, will fall back to Dynamic at runtime: {ex.Message}");
+                }
+            }
+
             return (true, design.TokenUsage.InputTokens, design.TokenUsage.OutputTokens);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -805,6 +844,7 @@ public sealed class StructuredLearningPedagogyService
         HumanOS.Contracts.Studio.StructuredLearningProfessorLectureResult? lecture = null;
         if (_professorLectureAgent.IsConfigured)
         {
+            var lectureStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var context = new HumanOS.Contracts.Studio.StructuredLearningProfessorLectureContext
@@ -821,8 +861,28 @@ public sealed class StructuredLearningPedagogyService
                     TargetLanguage = languageCode
                 };
 
-                lecture = await _professorLectureAgent.GenerateLectureAsync(context, cancellationToken);
+                var lectureGeneration = await _professorLectureAgent.GenerateLectureAsync(context, cancellationToken);
+                lectureStopwatch.Stop();
+                lecture = lectureGeneration.Result;
                 teachingStep.ProfessorLecture = lecture;
+
+                // Real LLM cost of this call (2026-10-04) — previously
+                // discarded entirely (see GenerateLectureAsync's doc
+                // comment), meaning the professor lecture's generation cost
+                // never showed up in the Pedagogy step total on the admin
+                // "Cursos" tab nor the Simulations authoring baseline.
+                try
+                {
+                    await _usageService.RecordAsync(
+                        document.StructuredLearningDocumentId, section.StructuredLearningDocumentSectionId, "Pedagogy",
+                        "StructuredLearningProfessorLectureAgent", lectureGeneration.TokenUsage.ModelName,
+                        lectureGeneration.TokenUsage.InputTokens, lectureGeneration.TokenUsage.OutputTokens,
+                        lectureGeneration.TokenUsage.CachedInputTokens, lectureStopwatch.ElapsedMilliseconds, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Usage logging must never break pedagogy generation itself.
+                }
 
                 // Also update the teaching step's visible text to the professor's spoken lecture class
                 if (!string.IsNullOrWhiteSpace(lecture.SpokenLectureScript))
@@ -858,7 +918,9 @@ public sealed class StructuredLearningPedagogyService
                         ? "es-MX-CecilioNeural"
                         : (languageCode.StartsWith("es", StringComparison.OrdinalIgnoreCase) ? "es-MX-CecilioNeural" : "en-US-AndrewNeural");
 
+                    var ttsStopwatch = System.Diagnostics.Stopwatch.StartNew();
                     var audioBytes = await _speechService.SynthesizeAsync(speechText, voiceName, cancellationToken);
+                    ttsStopwatch.Stop();
                     using var audioStream = new MemoryStream(audioBytes);
 
                     var storagePath = await _illustrationStorage.UploadLectureAudioAsync(
@@ -870,6 +932,28 @@ public sealed class StructuredLearningPedagogyService
                         cancellationToken: cancellationToken);
 
                     teachingStep.SpeechStoragePath = storagePath;
+
+                    // Real Azure Speech TTS cost of narrating the Learn step's
+                    // lecture (2026-10-04) — previously never recorded anywhere,
+                    // a genuine gap in both the admin "Cursos" cost tab and the
+                    // Simulations authoring baseline. Reuses the SAME
+                    // StructuredLearningGenerationUsage table with a sentinel
+                    // ModelName ("azure-speech-tts") so ComputeCostForModel/
+                    // TokenCostEstimator can price it by CHARACTER count (billed
+                    // via AgentPricing:AzureSpeechNeuralPerMillionCharactersUsd)
+                    // instead of the per-token LLM rate — InputTokens here holds
+                    // the character count, not a token count.
+                    try
+                    {
+                        await _usageService.RecordAsync(
+                            document.StructuredLearningDocumentId, section.StructuredLearningDocumentSectionId, "Pedagogy",
+                            "AzureSpeechService", TokenCostEstimator.AzureSpeechTtsModelSentinel, speechText.Length, 0, 0,
+                            ttsStopwatch.ElapsedMilliseconds, cancellationToken);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Usage logging must never break pedagogy generation itself.
+                    }
                 }
             }
             catch

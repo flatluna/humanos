@@ -11,6 +11,8 @@ import { getJobRole } from '@/features/profile/api/jobRoleApi';
 import { getPerson } from '@/features/profile/api/personProfileApi';
 import { getSkills } from '@/features/capabilities/api/skillsApi';
 import { getEnrolledCapabilities } from '@/features/capabilities/api/enrolledCapabilitiesApi';
+import { getStructuredLearningDocuments } from '@/features/capabilities/api/structuredLearningRuntimeApi';
+import { getProgramById, getPrograms } from '@/features/programs/api/programsApi';
 
 interface RequirementMatch {
   name: string;
@@ -154,6 +156,53 @@ export function StartInYourRolePage() {
   const currentRole = effectiveRoleQuery.data ?? roleQuery.data;
 
   const roleTitle = currentRole?.title || plan?.jobRoleTitle || user?.jobRoleTitle || (isEn ? 'Your role' : 'Tu puesto');
+  const scheduledProgramQuery = useQuery({
+    queryKey: ['scheduled-first-90-days-program', roleTitle],
+    queryFn: async () => {
+      const programs = await getPrograms();
+      const program = programs.find((item) => item.name === `${roleTitle} · First 90 days`);
+      if (!program) return null;
+      const detail = await getProgramById(program.programId);
+      let pendingCourses: Array<{ capabilityId: string; capabilityName: string; capabilityCode: string; sortOrder: number }> = [];
+      if (detail.requirements) {
+        try {
+          const metadata = JSON.parse(detail.requirements) as { scheduledRoleSkills?: Array<{ capabilityId: string; capabilityName: string; capabilityCode: string; sortOrder: number }> };
+          pendingCourses = (metadata.scheduledRoleSkills ?? []).filter((course) =>
+            Boolean(course.capabilityId && course.capabilityName),
+          );
+        } catch (error) {
+          console.error('Could not parse scheduled first-90-days courses:', error);
+        }
+      }
+      const existingIds = new Set(detail.capabilities.map((course) => course.capabilityId));
+      return {
+        ...detail,
+        capabilities: [
+          ...detail.capabilities,
+          ...pendingCourses
+            .filter((course) => !existingIds.has(course.capabilityId))
+            .map((course) => ({
+              ...course,
+              programCapabilityId: `pending-${course.capabilityId}`,
+              subjectCode: null,
+              isRequired: true,
+              phaseLabel: null,
+              objectives: null,
+              requirements: null,
+              levelCount: 0,
+              nodeCount: 0,
+              hasCoverImage: false,
+              courseType: 'RoleSkill',
+            })),
+        ].sort((a, b) => a.sortOrder - b.sortOrder),
+      };
+    },
+    enabled: Boolean(roleTitle),
+  });
+  const structuredDocumentsQuery = useQuery({
+    queryKey: ['structured-learning-catalog-start-in-your-role'],
+    queryFn: getStructuredLearningDocuments,
+  });
   const dueDate = useMemo(() => {
     const createdDate = personQuery.data?.createdDate;
     if (!createdDate) return null;
@@ -184,16 +233,40 @@ export function StartInYourRolePage() {
   }, [enrolledQuery.data, skillsQuery.data]);
 
   const technicalFirst90Days = useMemo(() => {
-    const selected = currentRole?.startInYourRoleTechnicalSkills ?? [];
-    const sourceList = selected.length > 0 ? selected : (currentRole?.technicalSkills ?? []);
-    return sourceList.map(matchRequirement).sort(sortReadyFirst);
-  }, [currentRole?.startInYourRoleTechnicalSkills, currentRole?.technicalSkills, matchRequirement]);
+    const softNames = new Set((currentRole?.softSkills ?? []).map((name) => name.trim().toLowerCase()));
+    return (scheduledProgramQuery.data?.capabilities ?? [])
+      .filter((course) => !softNames.has(course.capabilityName.trim().toLowerCase()))
+      .map((course) => {
+        const structuredDocument = structuredDocumentsQuery.data?.find((document) => document.documentName.trim().toLowerCase() === course.capabilityName.trim().toLowerCase());
+        const isStructuredLearning = course.courseType === 'StructuredLearning' || Boolean(structuredDocument);
+        return {
+          name: course.capabilityName,
+          description: course.objectives ?? course.requirements ?? null,
+          matchedCapabilityId: structuredDocument?.structuredLearningDocumentId ?? (isStructuredLearning ? course.capabilityId : null),
+          matchedCourseType: isStructuredLearning ? 'structured-learning' as const : 'graph' as const,
+          status: undefined,
+        };
+      })
+      .sort(sortReadyFirst);
+  }, [currentRole?.softSkills, scheduledProgramQuery.data?.capabilities, structuredDocumentsQuery.data]);
 
   const softSkillsFirst90Days = useMemo(() => {
-    const selected = currentRole?.startInYourRoleSoftSkills ?? [];
-    const sourceList = selected.length > 0 ? selected : (currentRole?.softSkills ?? []);
-    return sourceList.map(matchRequirement).sort(sortReadyFirst);
-  }, [currentRole?.startInYourRoleSoftSkills, currentRole?.softSkills, matchRequirement]);
+    const softNames = new Set((currentRole?.softSkills ?? []).map((name) => name.trim().toLowerCase()));
+    return (scheduledProgramQuery.data?.capabilities ?? [])
+      .filter((course) => softNames.has(course.capabilityName.trim().toLowerCase()))
+      .map((course) => {
+        const structuredDocument = structuredDocumentsQuery.data?.find((document) => document.documentName.trim().toLowerCase() === course.capabilityName.trim().toLowerCase());
+        const isStructuredLearning = course.courseType === 'StructuredLearning' || Boolean(structuredDocument);
+        return {
+          name: course.capabilityName,
+          description: course.objectives ?? course.requirements ?? null,
+          matchedCapabilityId: structuredDocument?.structuredLearningDocumentId ?? (isStructuredLearning ? course.capabilityId : null),
+          matchedCourseType: isStructuredLearning ? 'structured-learning' as const : 'graph' as const,
+          status: undefined,
+        };
+      })
+      .sort(sortReadyFirst);
+  }, [currentRole?.softSkills, scheduledProgramQuery.data?.capabilities, structuredDocumentsQuery.data]);
 
   const roleProcessesFirst90Days = useMemo(() => {
     const selected = currentRole?.startInYourRoleDepartmentProcesses ?? [];
@@ -205,7 +278,7 @@ export function StartInYourRolePage() {
     return selected.map(matchRequirement).sort(sortReadyFirst);
   }, [currentRole?.startInYourRoleHrProcesses, matchRequirement]);
 
-  if (planQuery.isLoading || effectiveRoleQuery.isLoading) {
+  if (planQuery.isLoading || effectiveRoleQuery.isLoading || scheduledProgramQuery.isLoading) {
     return <LoadingBackdrop title={isEn ? 'Preparing your first step...' : 'Preparando tu primer paso...'} description={isEn ? 'Loading your role and available courses.' : 'Cargando tu puesto y cursos disponibles.'} />;
   }
 

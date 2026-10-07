@@ -5,6 +5,8 @@ namespace HumanOS.Contracts.Programs;
 /// sequencing is a separate call, see <see cref="UpdateProgramCapabilitiesRequest"/>.</summary>
 public sealed class SaveProgramRequest
 {
+    public Guid? TenantId { get; set; }
+
     public string Name { get; set; } = null!;
 
     public string? Description { get; set; }

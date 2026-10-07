@@ -1,79 +1,83 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FileText, Layers, Check } from 'lucide-react';
+import { Layers, Clock, Sparkles } from 'lucide-react';
 import type { StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 
-/** Mirrors CapabilityCard's visual style (2026-08-10) — Structured
- * Learning documents have no Capability record yet (see repo memory), so
- * this is a separate lightweight card, purely additive to the catalog. */
+/**
+ * Modern media-rich card for Structured Learning / Engram documents.
+ * Full-bleed cover illustration with no letterboxing, clean floating pill badges,
+ * and prominent Engram count + estimated duration.
+ */
 export default function StructuredLearningDocumentCard({
   document,
-  selected = false,
-  onToggle,
 }: {
   document: StructuredLearningDocumentSummary;
   selected?: boolean;
   onToggle?: () => void;
 }) {
-  const { t, i18n } = useTranslation();
-  const createdLabel = new Date(document.CreatedDate).toLocaleString(i18n.language, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  const { t } = useTranslation();
+  const engramsCount = document.SectionCount || 0;
+  const estimatedMinutes = Math.max(5, engramsCount * 6);
 
   return (
     <Link
       to={`/structured-learning/${document.StructuredLearningDocumentId}`}
-      className="group relative flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] transition-all hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06] hover:shadow-2xl hover:shadow-brand-500/10"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-md transition-all duration-300 hover:-translate-y-1 hover:border-brand-500/40 hover:bg-white/[0.05] hover:shadow-2xl hover:shadow-brand-500/10"
     >
-      {onToggle && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            onToggle();
-          }}
-          aria-label={selected ? `Deselect ${document.DocumentName}` : `Select ${document.DocumentName}`}
-          aria-pressed={selected}
-          className={`absolute left-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg border backdrop-blur-sm transition ${
-            selected ? 'border-brand-300 bg-brand-500 text-white' : 'border-white/30 bg-black/40 text-transparent hover:border-white/70'
-          }`}
-        >
-          <Check className="h-4 w-4" />
-        </button>
-      )}
-      <div className="relative h-36 w-full overflow-hidden bg-gradient-to-br from-teal-600 to-emerald-700">
+      <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-900">
         {document.CoverIllustrationId ? (
           <img
             src={apiImageUrl(`/illustrations/structured-learning/${document.CoverIllustrationId}/image`)}
-            alt=""
-            className="h-full w-full object-contain object-center opacity-90 transition-transform duration-500 group-hover:scale-105"
+            alt={document.DocumentName}
+            className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <FileText className="h-12 w-12 text-white/70" strokeWidth={1.5} />
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-900/40 via-slate-900 to-slate-950">
+            <Sparkles className="h-12 w-12 text-brand-400/60" strokeWidth={1.5} />
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-        <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
-          <FileText className="h-3 w-3" />
-          {t('capabilityCard.structuredLearningBadge')}
-        </span>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/20" />
+
+        <div className="absolute inset-x-3 top-3 flex items-center justify-between pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-[#fff] backdrop-blur-md shadow-sm"
+              title={t(document.IsGlobal ? 'capabilityCard.globalHint' : 'capabilityCard.tenantHint')}
+            >
+              {t(document.IsGlobal ? 'capabilityCard.globalBadge' : 'capabilityCard.tenantBadge')}
+            </span>
+          </div>
+
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-[#34d399] backdrop-blur-md shadow-sm">
+            <Sparkles className="h-3 w-3 text-emerald-400" />
+            Engrams
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-5">
-        <h3 className="font-semibold text-white leading-snug line-clamp-2">{document.DocumentName}</h3>
+        <h3 className="text-base font-bold text-white leading-snug line-clamp-2 transition-colors group-hover:text-brand-400">
+          {document.DocumentName}
+        </h3>
 
-        <span className="text-[11px] text-slate-500" title={t('capabilityCard.createdOn', { date: createdLabel })}>
-          {t('capabilityCard.createdOn', { date: createdLabel })}
-        </span>
+        <div className="mt-auto pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 font-semibold text-slate-200">
+              <Layers className="h-4 w-4 text-brand-400" />
+              {engramsCount} {engramsCount === 1 ? 'Engram' : 'Engrams'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 font-medium text-slate-400">
+              <Clock className="h-4 w-4 text-amber-400" />
+              ~{estimatedMinutes} min
+            </span>
+          </div>
 
-        <div className="mt-auto flex items-center gap-4 pt-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <Layers className="h-3.5 w-3.5" />
-            {t('capabilityCard.sections', { count: document.SectionCount })}
-          </span>
+          {document.Category && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-medium text-slate-400 truncate max-w-[120px]">
+              {document.Category}
+            </span>
+          )}
         </div>
       </div>
     </Link>

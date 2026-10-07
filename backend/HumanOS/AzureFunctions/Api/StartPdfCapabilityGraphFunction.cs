@@ -323,12 +323,38 @@ public sealed class StartPdfCapabilityGraphFunction
                 }
             }
 
+            // Studio sessions launched from a parent app with no HumanOS
+            // Person record (e.g. an NGO admin) carry their tenant directly
+            // via this header instead — see capabilitystudio's
+            // getIdentityHeaders() and GetCapabilitiesFunction's identical
+            // fallback for the read side.
+            if (callerTenantId is null &&
+                request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+                Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId))
+            {
+                callerTenantId = studioTenantId;
+            }
+
             // Global/personal visibility (2026-08-06 "cursos globales o
             // personales" feature): IsGlobal forces the catalog-visible
             // owner fields to null (public catalog) regardless of who
             // created it. ConsentAcceptedByPersonId/Name below always keep
             // the real creator identity for audit purposes, independent of
             // this choice.
+            //
+            // A non-global course MUST end up with a resolvable owner
+            // (person and/or tenant) — null/null is exactly what the
+            // catalog treats as "public/official", so silently falling
+            // back to it here would leak a course meant to be private to
+            // one tenant/person into everyone's catalog (2026-10-06 fix).
+            if (!body.IsGlobal && callerPersonId is null && callerTenantId is null)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "CallerIdentityRequired",
+                    "Creating a non-global (personal/tenant) capability requires a resolvable caller identity (X-Azure-OID/X-Azure-TID or X-Studio-Tenant-Id).",
+                    cancellationToken);
+            }
+
             Guid? ownerPersonId = body.IsGlobal ? null : callerPersonId;
             Guid? ownerTenantId = body.IsGlobal ? null : callerTenantId;
 

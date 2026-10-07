@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, GraduationCap, Sparkles, RefreshCw, Check } from 'lucide-react';
 import { createProgram, uploadProgramLogo, generateProgramLogoPreview } from '../lib/api/programsApi';
 import StepIndicator from '../components/StepIndicator';
+import { useAuth } from '../auth/AuthContext';
 
 function base64ToFile(base64: string, contentType: string, fileName: string): File {
   const byteChars = atob(base64);
@@ -15,6 +16,7 @@ function base64ToFile(base64: string, contentType: string, fileName: string): Fi
 
 export default function NewProgramPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const STEPS = t('newProgram.steps', { returnObjects: true }) as string[];
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -59,6 +61,7 @@ export default function NewProgramPage() {
     try {
       const program = await createProgram({
         name: name.trim(),
+        tenantId: user?.tenantId ?? sessionStorage.getItem('humanos.studio.inheritedTenantId') ?? null,
         description: description.trim() || null,
         objectives: objectives.trim() || null,
         requirements: requirements.trim() || null,

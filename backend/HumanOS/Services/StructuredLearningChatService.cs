@@ -76,7 +76,9 @@ public sealed class StructuredLearningChatService
         Guid? topicId = null,
         Guid? documentId = null,
         Guid? personId = null,
-        Guid? programId = null)
+        Guid? programId = null,
+        Guid? engramId = null,
+        Guid? engramSessionId = null)
     {
         List<Guid>? programDocumentIds = null;
         if (programId.HasValue)
@@ -152,11 +154,46 @@ public sealed class StructuredLearningChatService
         var retrievalQuery = history.Count > 0
             ? string.Join(" ", history.TakeLast(2).Select(h => h.Text)) + " " + userMessage
             : userMessage;
-        var package = await _retrieval.BuildRetrievalPackageAsync(
-            tenantId, retrievalQuery, cancellationToken, subjectId, topicId, documentId, programDocumentIds);
+        var package = engramId.HasValue
+            ? await BuildSingleEngramPackageAsync(engramId.Value, cancellationToken)
+            : await _retrieval.BuildRetrievalPackageAsync(
+                tenantId, retrievalQuery, cancellationToken, subjectId, topicId, documentId, programDocumentIds);
 
         var prompt = BuildPrompt(package, history, userMessage, studentContext);
-        var answer = await _tutorAgent.AnswerAsync(prompt, cancellationToken);
+        var chatResult = await _tutorAgent.AnswerAsync(prompt, cancellationToken);
+        var answer = chatResult.Answer;
+
+        // Real usage tracking (2026-10-04) — this AI Agents chat turn
+        // previously recorded NOTHING anywhere (a genuine, confirmed gap:
+        // distinct from "Teaching" stage Q&A, this is free-roaming chat
+        // available all day, any course/topic/program), so it's logged
+        // under its own StepType="AiAgentChat" marker — never folded into
+        // "Teaching", which would silently inflate Step 2's Learn-stage
+        // cost baseline with unrelated usage. Uses the context-factory
+        // directly (rather than injecting the scoped StructuredLearningEngramUsageService)
+        // since this class is registered Singleton.
+        try
+        {
+            await using var usageContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            usageContext.StructuredLearningEngramRuntimeUsages.Add(new Models.Capabilities.Studio.StructuredLearningEngramRuntimeUsage
+            {
+                PersonId = personId,
+                StructuredLearningDocumentId = documentId,
+                StructuredLearningDocumentSectionId = engramId,
+                StructuredLearningEngramSessionId = engramSessionId,
+                Channel = "Text",
+                ModelName = chatResult.TokenUsage.ModelName,
+                StepType = "AiAgentChat",
+                InputTokens = chatResult.TokenUsage.InputTokens,
+                OutputTokens = chatResult.TokenUsage.OutputTokens,
+                CreatedDate = DateTime.UtcNow,
+            });
+            await usageContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Usage logging must never break the chat turn itself.
+        }
 
         var allEngrams = package.RetrievedEngrams.Concat(package.RelatedEngrams).ToList();
         var usedEngrams = answer.UsedEngramIndices
@@ -170,6 +207,39 @@ public sealed class StructuredLearningChatService
             Message = answer.Message,
             UsedEngrams = usedEngrams,
             RetrievalPackage = package
+        };
+    }
+
+    private async Task<StructuredLearningRetrievalPackage> BuildSingleEngramPackageAsync(
+        Guid engramId, CancellationToken cancellationToken)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var section = await context.StructuredLearningDocumentSections
+            .AsNoTracking()
+            .Include(s => s.Document)
+            .SingleOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == engramId, cancellationToken);
+
+        if (section is null)
+        {
+            throw new InvalidOperationException("The requested engram is not available.");
+        }
+
+        return new StructuredLearningRetrievalPackage
+        {
+            UserQuery = section.Text,
+            RetrievedEngrams =
+            [
+                new RetrievedEngramDto
+                {
+                    EngramId = section.StructuredLearningDocumentSectionId,
+                    Title = string.IsNullOrWhiteSpace(section.SubchapterTitle)
+                        ? section.ChapterTitle
+                        : section.SubchapterTitle,
+                    Text = section.Text,
+                    SchemaId = section.StructuredLearningDocumentId,
+                    SchemaName = section.Document.DocumentName,
+                },
+            ],
         };
     }
 

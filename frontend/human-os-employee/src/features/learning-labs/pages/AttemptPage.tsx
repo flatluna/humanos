@@ -846,11 +846,6 @@ export function AttemptPage() {
           </div>
 
           {simulationTitle && <h1 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">{simulationTitle}</h1>}
-          {simulationObjective && (
-            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-              <span className="font-semibold">{isEn ? 'Objective:' : 'Objetivo:'}</span> {simulationObjective}
-            </p>
-          )}
           <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">{isEn ? 'Live Interview' : 'Entrevista en vivo'}</h2>
           {actorLabel && <p className="mt-1 text-sm text-teal-600 dark:text-teal-300">{actorLabel}</p>}
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{errorMessage ?? voiceStateLabel[voiceState]}</p>

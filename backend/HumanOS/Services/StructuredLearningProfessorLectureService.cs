@@ -112,7 +112,8 @@ public sealed class StructuredLearningProfessorLectureService
             "Invoking StructuredLearningProfessorLectureAgent for section {SectionId} ({SubchapterTitle}) in language '{Language}'",
             sectionId, section.SubchapterTitle, resolvedLanguage);
 
-        var lectureResult = await _agent.GenerateLectureAsync(context, cancellationToken);
+        var lectureGeneration = await _agent.GenerateLectureAsync(context, cancellationToken);
+        var lectureResult = lectureGeneration.Result;
 
         // Synthesize spoken audio and persist to Data Lake and section Teaching step
         if (_speechService.IsConfigured && _illustrationStorage.IsConfigured && !string.IsNullOrWhiteSpace(lectureResult.SpokenLectureScript))

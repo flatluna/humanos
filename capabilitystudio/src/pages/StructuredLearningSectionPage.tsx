@@ -76,6 +76,8 @@ import { apiImageUrl } from '../lib/api/httpClient';
 import { getStructuredLearningCostPerEngram, type StructuredLearningEngramCost } from '../lib/api/costsApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
+import VoiceTextModeToggle, { type QaInteractionMode } from '../components/VoiceTextModeToggle';
+import QaProfessorTextChat from '../components/QaProfessorTextChat';
 import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { usePreviewMode, withPreviewMode, type PreviewMode } from '../lib/previewMode';
@@ -545,6 +547,11 @@ export default function StructuredLearningSectionPage() {
             sectionId={currentSection.StructuredLearningDocumentSectionId}
             courseLanguage={courseLanguage}
             questionType={document.AssessmentQuestionType}
+            showQaProfessorStep={document.ShowQaProfessorStep}
+            showDeepDiveAgentChat={document.ShowDeepDiveAgentChat}
+            enableQaProfessorVoice={document.EnableQaProfessorVoice}
+            enableDeepDiveAgentVoice={document.EnableDeepDiveAgentVoice}
+            showWorkplaceApplicationStep={document.IncludeWorkplaceApplicationStep}
             mode={mode}
             onComplete={handleStepComplete}
             onNext={() => goNext(true)}
@@ -657,6 +664,11 @@ function StepContent({
   onComplete,
   onNext,
   onStepUpdated,
+  showQaProfessorStep,
+  showDeepDiveAgentChat,
+  enableQaProfessorVoice,
+  enableDeepDiveAgentVoice,
+  showWorkplaceApplicationStep,
 }: {
   step: StructuredLearningStepDetail;
   allSteps?: StructuredLearningStepDetail[];
@@ -667,6 +679,22 @@ function StepContent({
   onComplete: () => void;
   onNext?: () => void;
   onStepUpdated: (updated: StructuredLearningStepDetail) => void;
+  /** Course design toggle (2026-10-06) — hides the "Q&A with the
+   * professor" trigger during Teaching when the designer turned it off. */
+  showQaProfessorStep: boolean;
+  /** Course design toggle (2026-10-06) — hides "Speak with your agent
+   * about this example" inside Deep Dive cards; students can still answer
+   * in writing. */
+  showDeepDiveAgentChat: boolean;
+  /** Designer-only cost lever (2026-10-06, NOT a student choice): when
+   * false, QA Professor offers ONLY the text chat (no realtime voice
+   * option at all) to save the voice session cost. */
+  enableQaProfessorVoice: boolean;
+  /** Same cost lever as enableQaProfessorVoice, for Deep Dive's agent chat. */
+  enableDeepDiveAgentVoice: boolean;
+  /** Course design toggle (2026-10-06) — hides the "In your role"
+   * (Production) step entirely. */
+  showWorkplaceApplicationStep: boolean;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -678,6 +706,9 @@ function StepContent({
   // Two-step/Three-step Learn wizard (2026-09-06):
   // 1) Listen to recorded class & read whiteboard, 2) Watch videos (if any), 3) Q&A with professor
   const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('listen');
+  // Voice-vs-text choice for QA Professor (2026-10-06) — text is always
+  // on by default; real-time voice is an explicit student opt-in.
+  const [qaInteractionMode, setQaInteractionMode] = useState<QaInteractionMode>('text');
   const [isAudioFinished, setIsAudioFinished] = useState(false);
   const [audioProgressPercent, setAudioProgressPercent] = useState(0);
 
@@ -706,20 +737,34 @@ function StepContent({
 
   const teachingShowsVideo = step.StepType === 'Teaching' && !isEditing && teachingSubStep === 'videos';
 
+  // Course design toggle (2026-10-06) — when "Q&A with the professor" is
+  // off, any transition that would normally land on the 'qa' sub-step
+  // instead finishes the Teaching step right away.
+  const goToQaOrFinishTeaching = () => {
+    if (showQaProfessorStep) {
+      setTeachingSubStep('qa');
+    } else {
+      onComplete();
+      onNext?.();
+    }
+  };
+
   // Check if professor lecture audio or metadata exists
   const hasAudio = step.StepType === 'Teaching' && Boolean(
     step.StepDataJson && (step.StepDataJson.includes('SpeechStoragePath') || step.StepDataJson.includes('ProfessorLecture'))
   );
 
-  const canGoToVideos = mode !== 'real' || !hasAudio || isAudioFinished;
-  const canGoToQa = mode !== 'real' || (canGoToVideos && areVideosFinished);
+  // 2026-10-06: students can move on to the next Learn sub-step (videos/Q&A/Deep
+  // Dive) without having to finish listening to the whole lecture audio first.
+  const canGoToVideos = true;
+  const canGoToQa = mode !== 'real' || areVideosFinished;
 
-  // Signal completion of the whole Teaching step (unlocks Deep Dive) when both audio and videos are done, or when in QA step
+  // Signal completion of the whole Teaching step (unlocks Deep Dive) when videos
+  // are done (audio no longer gates progress, 2026-10-06), or when in QA step
   useEffect(() => {
     if (step.StepType !== 'Teaching') return;
-    const audioDone = !hasAudio || isAudioFinished;
     const videosDone = !hasVideos || areVideosFinished;
-    if ((audioDone && videosDone) || teachingSubStep === 'qa') {
+    if (videosDone || teachingSubStep === 'qa') {
       onComplete();
     }
   }, [step.StepType, hasAudio, isAudioFinished, hasVideos, areVideosFinished, teachingSubStep, onComplete]);
@@ -785,6 +830,7 @@ function StepContent({
             </button>
           )}
 
+          {showQaProfessorStep && (
           <button
             type="button"
             disabled={!canGoToQa}
@@ -819,10 +865,11 @@ function StepContent({
               </span>
             )}
           </button>
+          )}
         </div>
       )}
 
-      {step.StepType === 'Teaching' && teachingSubStep === 'qa' ? (
+      {step.StepType === 'Teaching' && showQaProfessorStep && teachingSubStep === 'qa' ? (
         <div className="space-y-4 animate-fade-in">
           <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-slate-950/40 to-violet-500/10 p-6 shadow-2xl shadow-indigo-500/10">
             <div className="flex items-center gap-3 mb-4">
@@ -837,14 +884,27 @@ function StepContent({
               </div>
             </div>
 
-            <VoiceTutorAgent
-              structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
-              personId={user?.memberId || undefined}
-              personName={user?.email ? user.email.split('@')[0] : undefined}
-              startLabel={t('structuredLearningCourse.teachingQaStartButton')}
-              isQaMode={true}
-              autoConnect={!isEditing}
-            />
+            {enableQaProfessorVoice && (
+            <div className="mb-3">
+              <VoiceTextModeToggle mode={qaInteractionMode} onChange={setQaInteractionMode} />
+            </div>
+            )}
+
+            {enableQaProfessorVoice && qaInteractionMode === 'voice' ? (
+              <VoiceTutorAgent
+                structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
+                personId={user?.memberId || undefined}
+                personName={user?.email ? user.email.split('@')[0] : undefined}
+                startLabel={t('structuredLearningCourse.teachingQaStartButton')}
+                isQaMode={true}
+                autoConnect={!isEditing}
+              />
+            ) : (
+              <QaProfessorTextChat
+                structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
+                personId={user?.memberId || undefined}
+              />
+            )}
 
             <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.05] p-4">
               <p className="text-xs text-slate-300">
@@ -1011,7 +1071,7 @@ function StepContent({
                   disabled={!areVideosFinished}
                   onClick={() => {
                     if (!areVideosFinished) return;
-                    setTeachingSubStep('qa');
+                    goToQaOrFinishTeaching();
                   }}
                   className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-lg transition-all ${
                     areVideosFinished
@@ -1019,8 +1079,8 @@ function StepContent({
                       : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
                   }`}
                 >
-                  {!areVideosFinished ? <Lock className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-                  <span>{t('structuredLearningCourse.teachingGoToStep3Qa')}</span>
+                  {!areVideosFinished ? <Lock className="h-4 w-4" /> : showQaProfessorStep ? <MessageSquareText className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                  <span>{showQaProfessorStep ? t('structuredLearningCourse.teachingGoToStep3Qa') : t('common.continue')}</span>
                 </button>
               </div>
             </div>
@@ -1077,7 +1137,7 @@ function StepContent({
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="text-amber-300/90 flex items-center gap-1">
-                      <Lock className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
+                      <Volume2 className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
                     </span>
                     {isEditing && (
                       <button
@@ -1094,18 +1154,16 @@ function StepContent({
                 )}
                 <button
                   type="button"
-                  disabled={!isAudioFinished}
                   onClick={() => {
-                    if (!isAudioFinished) return;
-                    setTeachingSubStep(hasVideos ? 'videos' : 'qa');
+                    if (hasVideos) {
+                      setTeachingSubStep('videos');
+                    } else {
+                      goToQaOrFinishTeaching();
+                    }
                   }}
-                  className={`inline-flex items-center gap-1 font-semibold transition-colors ${
-                    isAudioFinished
-                      ? 'text-emerald-300 hover:text-emerald-200 cursor-pointer'
-                      : 'text-slate-500 cursor-not-allowed opacity-50'
-                  }`}
+                  className="inline-flex items-center gap-1 font-semibold text-emerald-300 hover:text-emerald-200 cursor-pointer transition-colors"
                 >
-                  <span>{hasVideos ? t('structuredLearningCourse.teachingGoToVideosStep') : t('structuredLearningCourse.teachingGoToQaStep')}</span>
+                  <span>{hasVideos ? t('structuredLearningCourse.teachingGoToVideosStep') : showQaProfessorStep ? t('structuredLearningCourse.teachingGoToQaStep') : t('common.continue')}</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -1168,7 +1226,11 @@ function StepContent({
                     disabled={!canGoToVideos}
                     onClick={() => {
                       if (!canGoToVideos) return;
-                      setTeachingSubStep(hasVideos ? 'videos' : 'qa');
+                      if (hasVideos) {
+                        setTeachingSubStep('videos');
+                      } else {
+                        goToQaOrFinishTeaching();
+                      }
                     }}
                     className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-lg transition-all ${
                       !canGoToVideos
@@ -1176,8 +1238,8 @@ function StepContent({
                         : 'bg-gradient-to-r from-brand-500 to-indigo-500 text-white shadow-brand-500/20 hover:scale-[1.02] active:scale-[0.98]'
                     }`}
                   >
-                    {!canGoToVideos ? <Lock className="h-4 w-4" /> : hasVideos ? <Video className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-                    <span>{hasVideos ? t('structuredLearningCourse.teachingContinueToVideos') : t('structuredLearningCourse.teachingAskProfessor')}</span>
+                    {!canGoToVideos ? <Lock className="h-4 w-4" /> : hasVideos ? <Video className="h-4 w-4" /> : showQaProfessorStep ? <MessageSquareText className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                    <span>{hasVideos ? t('structuredLearningCourse.teachingContinueToVideos') : showQaProfessorStep ? t('structuredLearningCourse.teachingAskProfessor') : t('structuredLearningCourse.teachingGateCompleted')}</span>
                   </button>
                 </div>
               )}
@@ -1195,7 +1257,7 @@ function StepContent({
                 isEditing ? (
                   <DeepDiveCardsEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
                 ) : (
-                  <DeepDiveQuiz sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} stepDataJson={step.StepDataJson} mode={mode} onComplete={onComplete} />
+                  <DeepDiveQuiz sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} stepDataJson={step.StepDataJson} mode={mode} onComplete={onComplete} showDeepDiveAgentChat={showDeepDiveAgentChat} enableDeepDiveAgentVoice={enableDeepDiveAgentVoice} />
                 )
               )}
               {step.StepType === 'Recall' &&
@@ -1204,7 +1266,7 @@ function StepContent({
                 ) : (
                   <RecallPractice sectionId={sectionId} onComplete={onComplete} />
                 ))}
-              {step.StepType === 'Production' && (
+              {step.StepType === 'Production' && showWorkplaceApplicationStep && (
                 <WorkplaceApplicationStep
                   key={sectionId}
                   sectionId={sectionId}
@@ -3107,9 +3169,8 @@ function VideoGenerationBox({
 
   function priceForModel(imageModel: string | null | undefined): number | null {
     if (!imageModel) return null;
-    if (imageModel.startsWith('veo-')) return 0.30;
-    if (imageModel.startsWith('gemini-omni-flash')) return 0.55;
-    return null; // e.g. "merged" (local ffmpeg, unbilled) or unknown
+    if (imageModel.toLowerCase() === 'merged') return null; // local ffmpeg, unbilled
+    return 0.1 * 8; // gemini-omni-flash-preview: ~$0.10/sec 720p, 8s clips
   }
 
   const totalPrice = videos.reduce((sum, v) => sum + (priceForModel(v.ImageModel) ?? 0), 0);
@@ -4192,12 +4253,22 @@ function DeepDiveQuiz({
   stepDataJson,
   mode: _mode,
   onComplete,
+  showDeepDiveAgentChat,
+  enableDeepDiveAgentVoice,
 }: {
   sectionId: string;
   stepId: string;
   stepDataJson: string;
   mode: PreviewMode;
   onComplete: () => void;
+  /** Course design toggle (2026-10-06) — hides the voice-tutor "speak with
+   * your agent about this example" trigger; students can still answer in
+   * writing. */
+  showDeepDiveAgentChat: boolean;
+  /** Designer-only cost lever (2026-10-06, NOT a student choice): when
+   * false, Deep Dive's agent chat offers ONLY the text chat (no realtime
+   * voice option at all). */
+  enableDeepDiveAgentVoice: boolean;
 }) {
   const { t } = useTranslation();
   let cards: DeepDiveCard[] = [];
@@ -4224,6 +4295,9 @@ function DeepDiveQuiz({
   const [complete, setComplete] = useState(false);
   const [reviewCardIndex, setReviewCardIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Voice-vs-text choice for "Speak with your agent" (2026-10-06) — text
+  // is always on by default; real-time voice is an explicit student opt-in.
+  const [agentInteractionMode, setAgentInteractionMode] = useState<QaInteractionMode>('text');
 
   const markCompleteOnce = () => {
     setComplete(true);
@@ -4339,14 +4413,27 @@ function DeepDiveQuiz({
           <p className="text-sm font-semibold text-white">{freeCard.Title}</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{freeCard.Text}</p>
 
-          <VoiceTutorAgent
-            key={`${stepId}:${cardIndex}`}
-            structuredLearningSectionStepId={stepId}
-            exampleCardIndex={cardIndex}
-            reviewOnly
-            autoConnect={false}
-            compact
-          />
+          {showDeepDiveAgentChat && (
+          <div className="mt-2">
+            {enableDeepDiveAgentVoice && <VoiceTextModeToggle mode={agentInteractionMode} onChange={setAgentInteractionMode} />}
+            {enableDeepDiveAgentVoice && agentInteractionMode === 'voice' ? (
+              <VoiceTutorAgent
+                key={`${stepId}:${cardIndex}`}
+                structuredLearningSectionStepId={stepId}
+                exampleCardIndex={cardIndex}
+                reviewOnly
+                autoConnect={false}
+                compact
+              />
+            ) : (
+              <QaProfessorTextChat
+                key={`${stepId}:${cardIndex}`}
+                structuredLearningSectionStepId={stepId}
+                exampleCardIndex={cardIndex}
+              />
+            )}
+          </div>
+          )}
         </div>
         {cards.length > 1 && (
           <div className="flex items-center justify-between gap-3">
@@ -4419,6 +4506,8 @@ function DeepDiveQuiz({
             index={reviewCardIndex}
             stepId={stepId}
             onClose={() => setReviewCardIndex(null)}
+            showDeepDiveAgentChat={showDeepDiveAgentChat}
+            enableDeepDiveAgentVoice={enableDeepDiveAgentVoice}
           />
         )}
       </div>
@@ -4483,14 +4572,27 @@ function DeepDiveQuiz({
         <p className="text-sm font-semibold text-white">{card.Title}</p>
         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{card.Text}</p>
 
-        <VoiceTutorAgent
-          key={`${stepId}:${cardIndex}`}
-          structuredLearningSectionStepId={stepId}
-          exampleCardIndex={cardIndex}
-          autoConnect={false}
-          compact
-          onExplanationAccepted={(explanation) => void handleSubmit(explanation)}
-        />
+        {showDeepDiveAgentChat && (
+        <div className="mt-2">
+          {enableDeepDiveAgentVoice && <VoiceTextModeToggle mode={agentInteractionMode} onChange={setAgentInteractionMode} />}
+          {enableDeepDiveAgentVoice && agentInteractionMode === 'voice' ? (
+            <VoiceTutorAgent
+              key={`${stepId}:${cardIndex}`}
+              structuredLearningSectionStepId={stepId}
+              exampleCardIndex={cardIndex}
+              autoConnect={false}
+              compact
+              onExplanationAccepted={(explanation) => void handleSubmit(explanation)}
+            />
+          ) : (
+            <QaProfessorTextChat
+              key={`${stepId}:${cardIndex}`}
+              structuredLearningSectionStepId={stepId}
+              exampleCardIndex={cardIndex}
+            />
+          )}
+        </div>
+        )}
       </div>
 
       <p className="text-sm text-slate-300">{currentPrompt || t('structuredLearningCourse.deepDiveOpeningPrompt', { title: card.Title })}</p>
@@ -4533,6 +4635,8 @@ function DeepDiveQuiz({
           index={reviewCardIndex}
           stepId={stepId}
           onClose={() => setReviewCardIndex(null)}
+          showDeepDiveAgentChat={showDeepDiveAgentChat}
+          enableDeepDiveAgentVoice={enableDeepDiveAgentVoice}
         />
       )}
     </div>
@@ -4547,13 +4651,18 @@ function DeepDiveCardReviewOverlay({
   index,
   stepId,
   onClose,
+  showDeepDiveAgentChat,
+  enableDeepDiveAgentVoice,
 }: {
   card: DeepDiveCard;
   index: number;
   stepId: string;
   onClose: () => void;
+  showDeepDiveAgentChat: boolean;
+  enableDeepDiveAgentVoice: boolean;
 }) {
   const { t } = useTranslation();
+  const [agentInteractionMode, setAgentInteractionMode] = useState<QaInteractionMode>('text');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
       <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black/40">
@@ -4590,19 +4699,31 @@ function DeepDiveCardReviewOverlay({
         <p className="text-sm font-semibold text-white">{card.Title}</p>
         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{card.Text}</p>
 
-        <VoiceTutorAgent
-          key={`${stepId}:${index}`}
-          structuredLearningSectionStepId={stepId}
-          exampleCardIndex={index}
-          reviewOnly
-          autoConnect={false}
-          compact
-        />
+        {showDeepDiveAgentChat && (
+        <div className="mt-2">
+          {enableDeepDiveAgentVoice && <VoiceTextModeToggle mode={agentInteractionMode} onChange={setAgentInteractionMode} />}
+          {enableDeepDiveAgentVoice && agentInteractionMode === 'voice' ? (
+            <VoiceTutorAgent
+              key={`${stepId}:${index}`}
+              structuredLearningSectionStepId={stepId}
+              exampleCardIndex={index}
+              reviewOnly
+              autoConnect={false}
+              compact
+            />
+          ) : (
+            <QaProfessorTextChat
+              key={`${stepId}:${index}`}
+              structuredLearningSectionStepId={stepId}
+              exampleCardIndex={index}
+            />
+          )}
+        </div>
+        )}
       </div>
     </div>
   );
 }
-
 
 /** Interactive Recall practice — every turn grades the previous answer AND
  * generates a genuinely new question (StructuredLearningRecallEngine),

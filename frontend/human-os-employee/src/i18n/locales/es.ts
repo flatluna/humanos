@@ -30,7 +30,7 @@ export const es = {
   },
   nav: {
     today: 'Tec Contigo',
-    todayGeneric: 'Tec Contigo',
+    todayGeneric: 'Crece con Nosotros',
     objectives: 'Objetivos',
     availableCourses: 'Cursos Disponibles',
     programs: 'Programas',

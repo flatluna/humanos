@@ -45,18 +45,24 @@ public sealed class StructuredLearningAssessmentEngine
     private const int DefaultQuestionsPerRound = 3;
     private const int MinQuestionsPerRound = 1;
     private const int MaxQuestionsPerRound = 10;
+    /// <summary>Static mode's hard cap (2026-10-06) — same question bank
+    /// for every student, generated at most once per slot and reused.</summary>
+    private const int MaxStaticQuestions = 3;
     private const int PassThreshold = 80;
 
     private readonly StructuredLearningAssessmentAgent _agent;
+    private readonly StructuredLearningEngramUsageService _usageService;
     private readonly GamificationOrchestrator? _gamificationOrchestrator;
     private readonly ILogger<StructuredLearningAssessmentEngine>? _logger;
 
     public StructuredLearningAssessmentEngine(
         StructuredLearningAssessmentAgent agent,
+        StructuredLearningEngramUsageService usageService,
         GamificationOrchestrator? gamificationOrchestrator = null,
         ILogger<StructuredLearningAssessmentEngine>? logger = null)
     {
         _agent = agent;
+        _usageService = usageService;
         _gamificationOrchestrator = gamificationOrchestrator;
         _logger = logger;
     }
@@ -120,6 +126,11 @@ public sealed class StructuredLearningAssessmentEngine
         public StructuredLearningAssessmentQuestionType QuestionType { get; set; }
         public int QuestionsPerRound { get; set; } = DefaultQuestionsPerRound;
         public string LanguageCode { get; set; } = "es";
+        /// <summary>Static (2026-10-06): reuse the same up-to-3 cached
+        /// questions for every student instead of asking the LLM for a
+        /// fresh one each time — see
+        /// <see cref="GetOrGenerateQuestionAsync"/>.</summary>
+        public StructuredLearningGenerationMode GenerationMode { get; set; } = StructuredLearningGenerationMode.Dynamic;
     }
 
     /// <summary>Starts a brand-new round and generates its first question.
@@ -128,11 +139,12 @@ public sealed class StructuredLearningAssessmentEngine
     /// <paramref name="personId"/> is null only for capabilitystudio's
     /// author/reviewer preview — the real student runtime always passes
     /// it so each student's rounds stay separate.</summary>
-    public async Task<RoundState> StartRoundAsync(HumanOsDbContext dbContext, Guid sectionId, Guid? personId = null, CancellationToken cancellationToken = default)
+    public async Task<RoundState> StartRoundAsync(HumanOsDbContext dbContext, Guid sectionId, Guid? personId = null, Guid? engramSessionId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
         var context = await LoadSectionContextAsync(dbContext, sectionId, cancellationToken);
+        var documentId = await ResolveDocumentIdAsync(dbContext, sectionId, cancellationToken);
 
         var priorRoundNumbers = await dbContext.StructuredLearningAssessmentRounds
             .Where(r => r.StructuredLearningDocumentSectionId == sectionId && r.PersonId == personId)
@@ -159,12 +171,13 @@ public sealed class StructuredLearningAssessmentEngine
         {
             StructuredLearningDocumentSectionId = sectionId,
             PersonId = personId,
+            StructuredLearningEngramSessionId = engramSessionId,
             RoundNumber = roundNumber,
             Status = StructuredLearningAssessmentRoundStatus.InProgress
         };
         dbContext.StructuredLearningAssessmentRounds.Add(round);
 
-        var question = await GenerateQuestionAsync(context, questionIndex: 1, alreadyAsked: [], errorsObservedSoFar: priorRoundErrors, cancellationToken);
+        var question = await GenerateQuestionAsync(dbContext, context, questionIndex: 1, alreadyAsked: [], errorsObservedSoFar: priorRoundErrors, personId, documentId, sectionId, engramSessionId, cancellationToken);
         var questionRow = BuildQuestionRow(round.StructuredLearningAssessmentRoundId, 1, question);
         dbContext.StructuredLearningAssessmentQuestionAttempts.Add(questionRow);
 
@@ -226,7 +239,7 @@ public sealed class StructuredLearningAssessmentEngine
     /// starts a brand-new round with fresh questions in the SAME call.
     /// </summary>
     public async Task<SubmitAnswerResult> SubmitAnswerAsync(
-        HumanOsDbContext dbContext, Guid questionAttemptId, string studentAnswer, CancellationToken cancellationToken = default)
+        HumanOsDbContext dbContext, Guid questionAttemptId, string studentAnswer, Guid? engramSessionId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
@@ -247,6 +260,7 @@ public sealed class StructuredLearningAssessmentEngine
 
         var round = question.Round;
         var context = await LoadSectionContextAsync(dbContext, round.StructuredLearningDocumentSectionId, cancellationToken);
+        var documentId = await ResolveDocumentIdAsync(dbContext, round.StructuredLearningDocumentSectionId, cancellationToken);
 
         int score;
         string feedback;
@@ -276,7 +290,11 @@ public sealed class StructuredLearningAssessmentEngine
                 .ToList();
 
             var gradingPrompt = BuildGradingPrompt(context, question, studentAnswer, alreadyAnsweredThisRound);
-            var graded = await _agent.GradeAnswerAsync(gradingPrompt, cancellationToken);
+            var gradedAgentResult = await _agent.GradeAnswerAsync(gradingPrompt, cancellationToken);
+            var graded = gradedAgentResult.Result;
+            await _usageService.RecordTextUsageAsync(
+                round.PersonId, documentId, round.StructuredLearningDocumentSectionId, engramSessionId,
+                gradedAgentResult.ModelName, gradedAgentResult.InputTokens, gradedAgentResult.OutputTokens, cancellationToken, stepType: "Assessment");
             score = Math.Clamp(graded.Score, 0, 100);
             feedback = graded.Feedback;
             observedError = string.IsNullOrWhiteSpace(graded.ObservedError) ? null : graded.ObservedError;
@@ -347,7 +365,9 @@ public sealed class StructuredLearningAssessmentEngine
             var errorsSoFar = string.IsNullOrWhiteSpace(observedError) ? [] : new List<string> { observedError };
             var alreadyAsked = round.Questions.OrderBy(q => q.QuestionIndex).Select(q => q.QuestionText).ToList();
 
-            var nextQuestion = await GenerateQuestionAsync(context, question.QuestionIndex + 1, alreadyAsked, errorsSoFar, cancellationToken);
+            var nextQuestion = await GenerateQuestionAsync(
+                dbContext, context, question.QuestionIndex + 1, alreadyAsked, errorsSoFar,
+                round.PersonId, documentId, round.StructuredLearningDocumentSectionId, engramSessionId, cancellationToken);
             var nextQuestionRow = BuildQuestionRow(round.StructuredLearningAssessmentRoundId, question.QuestionIndex + 1, nextQuestion);
             dbContext.StructuredLearningAssessmentQuestionAttempts.Add(nextQuestionRow);
 
@@ -398,19 +418,141 @@ public sealed class StructuredLearningAssessmentEngine
         CorrectOptionIndex = question.CorrectOptionIndex
     };
 
-    private async Task<(string Text, List<string>? Options, int? CorrectOptionIndex)> GenerateQuestionAsync(
-        SectionContext context, int questionIndex, IReadOnlyList<string> alreadyAsked, IReadOnlyList<string> errorsObservedSoFar, CancellationToken cancellationToken)
+    /// <summary>Eager Static-mode generation (2026-10-06) — called from
+    /// <see cref="StructuredLearningPedagogyService"/> right after a
+    /// section's pedagogy finishes generating, so the up-to-3 Assessment
+    /// questions are already persisted in SQL BEFORE any student ever opens
+    /// the course (no LLM call happens at student runtime for Static
+    /// documents). Safe to call for Dynamic documents too — it's a no-op.
+    /// Also safe to call again later (e.g. a redo) — already-cached slots
+    /// are skipped via the same <see cref="TryGetStaticQuestionAsync"/>
+    /// check <see cref="GenerateQuestionAsync"/> uses at runtime.</summary>
+    public async Task EnsureStaticQuestionsAsync(HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken = default)
     {
-        var prompt = BuildQuestionGenerationPrompt(context, questionIndex, alreadyAsked, errorsObservedSoFar);
-        var response = await _agent.GenerateQuestionAsync(prompt, cancellationToken);
+        ArgumentNullException.ThrowIfNull(dbContext);
 
-        if (context.QuestionType == StructuredLearningAssessmentQuestionType.MultipleChoice
-            && response.Options is { Count: >= 2 } && response.CorrectOptionIndex is not null)
+        var context = await LoadSectionContextAsync(dbContext, sectionId, cancellationToken);
+        if (context.GenerationMode != StructuredLearningGenerationMode.Static)
         {
-            return (response.QuestionText, response.Options, response.CorrectOptionIndex);
+            return;
         }
 
-        return (response.QuestionText, null, null);
+        var documentId = await ResolveDocumentIdAsync(dbContext, sectionId, cancellationToken);
+        var questionCount = Math.Min(context.QuestionsPerRound, MaxStaticQuestions);
+        var alreadyAsked = new List<string>();
+
+        for (var slot = 0; slot < questionCount; slot++)
+        {
+            var question = await GenerateQuestionAsync(
+                dbContext, context, questionIndex: slot + 1, alreadyAsked, errorsObservedSoFar: [],
+                personId: null, documentId, sectionId, engramSessionId: null, cancellationToken);
+            alreadyAsked.Add(question.Text);
+        }
+    }
+
+    private static async Task<Guid?> ResolveDocumentIdAsync(HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken)
+    {
+        return await dbContext.StructuredLearningDocumentSections
+            .AsNoTracking()
+            .Where(s => s.StructuredLearningDocumentSectionId == sectionId)
+            .Select(s => (Guid?)s.StructuredLearningDocumentId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<(string Text, List<string>? Options, int? CorrectOptionIndex)> GenerateQuestionAsync(
+        HumanOsDbContext dbContext, SectionContext context, int questionIndex, IReadOnlyList<string> alreadyAsked, IReadOnlyList<string> errorsObservedSoFar,
+        Guid? personId, Guid? documentId, Guid sectionId, Guid? engramSessionId, CancellationToken cancellationToken)
+    {
+        var cacheSlot = questionIndex - 1;
+        var useStaticCache = context.GenerationMode == StructuredLearningGenerationMode.Static && cacheSlot < MaxStaticQuestions;
+
+        if (useStaticCache)
+        {
+            var cached = await TryGetStaticQuestionAsync(dbContext, sectionId, cacheSlot, cancellationToken);
+            if (cached is not null)
+            {
+                return cached.Value;
+            }
+        }
+
+        var prompt = BuildQuestionGenerationPrompt(context, questionIndex, alreadyAsked, errorsObservedSoFar);
+        var agentResult = await _agent.GenerateQuestionAsync(prompt, cancellationToken);
+        var response = agentResult.Result;
+        await _usageService.RecordTextUsageAsync(
+            personId, documentId, sectionId, engramSessionId,
+            agentResult.ModelName, agentResult.InputTokens, agentResult.OutputTokens, cancellationToken, stepType: "Assessment");
+
+        (string Text, List<string>? Options, int? CorrectOptionIndex) question =
+            context.QuestionType == StructuredLearningAssessmentQuestionType.MultipleChoice
+                && response.Options is { Count: >= 2 } && response.CorrectOptionIndex is not null
+                ? (response.QuestionText, response.Options, response.CorrectOptionIndex)
+                : (response.QuestionText, null, null);
+
+        if (useStaticCache)
+        {
+            await SaveStaticQuestionAsync(dbContext, sectionId, cacheSlot, question, cancellationToken);
+        }
+
+        return question;
+    }
+
+    /// <summary>Static mode (2026-10-06) — reads a previously cached
+    /// question for this (section, slot) pair, generated once by whichever
+    /// student reached it first, so later students/attempts skip the LLM
+    /// call entirely (same questions for everyone, lower cost).</summary>
+    private static async Task<(string Text, List<string>? Options, int? CorrectOptionIndex)?> TryGetStaticQuestionAsync(
+        HumanOsDbContext dbContext, Guid sectionId, int cacheSlot, CancellationToken cancellationToken)
+    {
+        var json = await dbContext.StructuredLearningDocumentSections
+            .AsNoTracking()
+            .Where(s => s.StructuredLearningDocumentSectionId == sectionId)
+            .Select(s => s.StaticAssessmentQuestionsJson)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        var items = JsonSerializer.Deserialize<List<StaticAssessmentQuestionCacheItem>>(json);
+        var match = items?.FirstOrDefault(i => i.Slot == cacheSlot);
+        return match is null ? null : (match.Text, match.Options, match.CorrectOptionIndex);
+    }
+
+    private static async Task SaveStaticQuestionAsync(
+        HumanOsDbContext dbContext, Guid sectionId, int cacheSlot,
+        (string Text, List<string>? Options, int? CorrectOptionIndex) question, CancellationToken cancellationToken)
+    {
+        var section = await dbContext.StructuredLearningDocumentSections
+            .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId, cancellationToken);
+        if (section is null)
+        {
+            return;
+        }
+
+        var items = string.IsNullOrWhiteSpace(section.StaticAssessmentQuestionsJson)
+            ? new List<StaticAssessmentQuestionCacheItem>()
+            : JsonSerializer.Deserialize<List<StaticAssessmentQuestionCacheItem>>(section.StaticAssessmentQuestionsJson) ?? [];
+
+        items.RemoveAll(i => i.Slot == cacheSlot);
+        items.Add(new StaticAssessmentQuestionCacheItem
+        {
+            Slot = cacheSlot,
+            Text = question.Text,
+            Options = question.Options,
+            CorrectOptionIndex = question.CorrectOptionIndex
+        });
+
+        section.StaticAssessmentQuestionsJson = JsonSerializer.Serialize(items);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private sealed class StaticAssessmentQuestionCacheItem
+    {
+        public int Slot { get; set; }
+        public string Text { get; set; } = string.Empty;
+        public List<string>? Options { get; set; }
+        public int? CorrectOptionIndex { get; set; }
     }
 
     private static string BuildQuestionGenerationPrompt(
@@ -508,6 +650,11 @@ public sealed class StructuredLearningAssessmentEngine
             Math.Max(DefaultQuestionsPerRound, document.AssessmentQuestionsPerRound ?? DefaultQuestionsPerRound),
             MinQuestionsPerRound, MaxQuestionsPerRound);
 
+        if (document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static)
+        {
+            questionsPerRound = Math.Min(questionsPerRound, MaxStaticQuestions);
+        }
+
         return new SectionContext
         {
             ChapterTitle = section.ChapterTitle,
@@ -515,7 +662,8 @@ public sealed class StructuredLearningAssessmentEngine
             TeachingContent = teachingStep?.Content ?? section.Text,
             QuestionType = document.AssessmentQuestionType,
             QuestionsPerRound = questionsPerRound,
-            LanguageCode = ResolveLanguageCode(document.ConfigSnapshotJson, teachingStep?.Content ?? section.Text)
+            LanguageCode = ResolveLanguageCode(document.ConfigSnapshotJson, teachingStep?.Content ?? section.Text),
+            GenerationMode = document.AssessmentGenerationMode
         };
     }
 

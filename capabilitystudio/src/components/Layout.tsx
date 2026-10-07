@@ -1,7 +1,7 @@
-import { useRef, useState, useEffect, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, FileText, ChevronDown, Menu, X, Tags, Bot, UserCircle2, Clapperboard, Sparkles, Network, FlaskConical, Video } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, Menu, X, Tags, Bot, UserCircle2, Sparkles, Network, FlaskConical, Video } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -21,10 +21,15 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [identityModalOpen, setIdentityModalOpen] = useState(false);
+  // Legacy NGO-membership fallback only — the launch session JWT (user.*)
+  // always carries the real, current tenant/company claims and must win
+  // whenever present (2026-10-06: these used to take priority and could
+  // show a previous session's tenant after the inherited values got stuck
+  // in sessionStorage, making Studio look like it had a hardcoded tenant).
   const inheritedTenantId = sessionStorage.getItem('humanos.studio.inheritedTenantId');
   const inheritedTenantName = sessionStorage.getItem('humanos.studio.inheritedTenantName');
   const backToMainAppUrl = user?.returnUrl ?? (user?.tenantId ? HUMAN_OS_ENTERPRISE_URL : HUMAN_OS_WEB_URL);
-  const backToAppName = inheritedTenantName || user?.tenantName || user?.sourceApplication;
+  const backToAppName = user?.tenantName || inheritedTenantName || user?.sourceApplication;
   const backToAppLabel = backToAppName ? t('nav.backToApp', { appName: backToAppName }) : t('nav.backToHumanOS');
 
   return (
@@ -54,17 +59,15 @@ export default function Layout() {
             </button>
 
             <Link to="/" className="flex items-center gap-3.5 group">
-              <img
-                src="/HumanOsLogoBlack.png"
-                alt="HUMAN OS"
-                className="h-8 sm:h-9 w-auto object-contain object-left transition-transform group-hover:scale-105 drop-shadow-[0_0_12px_rgba(59,130,246,0.3)]"
-              />
+              <span className="font-black text-xl sm:text-2xl tracking-tight text-white group-hover:text-brand-300 transition-colors">
+                Engrams<span className="text-brand-400">IQ</span>
+              </span>
               <div className="leading-tight border-l border-white/15 pl-3">
                 <div className="flex items-center gap-1.5 font-bold tracking-wider text-white text-xs sm:text-sm">
                   <span>STUDIO</span>
                   <Sparkles className="h-3.5 w-3.5 text-brand-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.6)]" />
                 </div>
-                <div className="italic text-[11px] sm:text-xs font-semibold text-brand-400">Use AI to protect what is human from AI &mdash; Usa IA para proteger lo humano de la IA</div>
+                <div className="italic text-[11px] sm:text-xs font-semibold text-brand-400">Human intelligence, strengthened by AI</div>
               </div>
             </Link>
           </div>
@@ -156,7 +159,9 @@ export default function Layout() {
       <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:top-[57px] lg:h-[calc(100vh-57px)] lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between pb-3 lg:hidden">
           <div className="flex items-center gap-2.5">
-            <img src="/HumanOsLogoBlack.png" alt="HUMAN OS" className="h-7 w-auto object-contain" />
+            <span className="font-black text-lg tracking-tight text-white">
+              Engrams<span className="text-brand-400">IQ</span>
+            </span>
             <div className="flex items-center gap-1.5 font-bold text-xs tracking-wider text-white border-l border-white/15 pl-2">
               <span>STUDIO</span>
               <Sparkles className="h-3 w-3 text-brand-400" />
@@ -174,13 +179,14 @@ export default function Layout() {
           <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-emerald-400" activeColor="bg-emerald-500/15" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label={t('nav.aiAgents')} color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/film-productions" label={t('nav.filmProductions')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Clapperboard className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/video-productions" label={t('nav.videoProductions')} color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Video className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/labs" label={t('nav.labs')} color="text-teal-400" activeColor="bg-teal-500/15" onNavigate={() => setSidebarOpen(false)}><FlaskConical className="h-5 w-5" /></SidebarLink>
         </nav>
         <div className="mt-8 border-t border-white/10 pt-4">
-          {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">Create</p>}
-          <div className="mt-2"><NewCapabilityMenu collapsed={sidebarCollapsed} /></div>
+          {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Create</p>}
+          <div className="mt-2.5">
+            <NewLearningPathButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
+          </div>
         </div>
       </aside>
       {sidebarOpen && <button type="button" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/50 lg:hidden" />}
@@ -197,7 +203,7 @@ export default function Layout() {
 
       {identityModalOpen && user && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => setIdentityModalOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f1a1a] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-white">{t('common.identityModalTitle')}</h2>
               <button type="button" onClick={() => setIdentityModalOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-white/5 hover:text-white" aria-label={t('common.close')}>
@@ -215,11 +221,11 @@ export default function Layout() {
               </div>
               <div>
                 <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{t('common.identityTenantId')}</dt>
-                <dd className="mt-0.5 break-all font-mono text-slate-200">{inheritedTenantId ?? user.tenantId ?? '—'}</dd>
+                <dd className="mt-0.5 break-all font-mono text-slate-200">{user.tenantId ?? inheritedTenantId ?? '—'}</dd>
               </div>
               <div>
                 <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{t('common.identityTenantCompany')}</dt>
-                <dd className="mt-0.5 text-slate-200">{inheritedTenantName ?? user.tenantName ?? t('common.individualAccount')}</dd>
+                <dd className="mt-0.5 text-slate-200">{user.tenantName ?? inheritedTenantName ?? t('common.individualAccount')}</dd>
               </div>
               <div>
                 <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{t('common.identityBackTo')}</dt>
@@ -266,51 +272,38 @@ function SidebarLink({
   );
 }
 
-/** "Nueva ruta de aprendizaje" CTA: only the modern Studio creation flows remain
- * visible here to avoid confusion with the legacy curator/blueprint pipeline. */
-function NewCapabilityMenu({ collapsed = false }: { collapsed?: boolean }) {
+/** Single direct CTA button to create a new learning path (no dropdown needed) */
+function NewLearningPathButton({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  if (collapsed) {
+    return (
+      <Link
+        to="/new-structured-learning"
+        onClick={onNavigate}
+        title={t('nav.newCapability')}
+        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-brand-500 via-indigo-500 to-accent-500 text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-105 hover:shadow-brand-500/40 active:scale-[0.98]"
+      >
+        <Plus className="h-5 w-5 transition-transform duration-200 group-hover:rotate-90" strokeWidth={2.5} />
+      </Link>
+    );
+  }
 
   return (
-    <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        title={collapsed ? t('nav.newCapability') : undefined}
-        className={`flex items-center rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-2.5 text-sm font-semibold text-[#fff] shadow-lg shadow-brand-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98] ${collapsed ? 'mx-auto justify-center px-2.5' : 'gap-2 px-4'}`}
-      >
-        <Plus className="h-4 w-4" strokeWidth={2.5} />
-        {!collapsed && <>{t('nav.newCapability')}<ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></>}
-      </button>
-
-      {open && (
-        <div className="animate-fade-in absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-xl">
-          <Link
-            to="/new-structured-learning"
-            onClick={() => setOpen(false)}
-            className="flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/5"
-          >
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15">
-              <FileText className="h-4 w-4 text-emerald-400" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-white">{t('nav.newStructuredLearning')}</div>
-            </div>
-          </Link>
-        </div>
-      )}
-    </div>
+    <Link
+      to="/new-structured-learning"
+      onClick={onNavigate}
+      title={t('nav.newCapability')}
+      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-brand-500 via-indigo-500 to-accent-500 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-[1.02] hover:shadow-brand-500/40 active:scale-[0.98]"
+    >
+      <Plus className="h-4.5 w-4.5 transition-transform duration-200 group-hover:rotate-90" strokeWidth={2.5} />
+      <span className="tracking-wide">{t('nav.newCapability')}</span>
+    </Link>
   );
 }

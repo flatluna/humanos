@@ -102,4 +102,25 @@ public sealed class PersonProfilePhotoStorageService
         var response = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
         return response.Value.Content;
     }
+
+    /// <summary>Deletes every blob under a person's picture prefix
+    /// (there's always at most one, but this is extension-agnostic) —
+    /// best-effort, returns the count actually removed (used by
+    /// TenantDeletionService).</summary>
+    public async Task<int> DeletePhotosAsync(Guid tenantId, Guid personId, CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null) return 0;
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        var deleted = 0;
+        await foreach (var existingBlob in containerClient.GetBlobsAsync(
+            prefix: $"{tenantId:D}/{personId:D}/picture/", cancellationToken: cancellationToken))
+        {
+            if (await containerClient.DeleteBlobIfExistsAsync(existingBlob.Name, cancellationToken: cancellationToken))
+            {
+                deleted++;
+            }
+        }
+        return deleted;
+    }
 }

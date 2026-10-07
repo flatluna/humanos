@@ -18,6 +18,8 @@ import {
   Sparkles,
   GraduationCap,
   BookOpen,
+  Bot,
+  Cpu,
 } from 'lucide-react';
 import {
   getCapabilityCosts,
@@ -32,6 +34,7 @@ import {
 import { getCapabilities, type BackendCapability } from '../lib/api/capabilitiesApi';
 import { getStructuredLearningDocuments, type StructuredLearningDocumentSummary } from '../lib/api/structuredLearningApi';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuth } from '../auth/AuthContext';
 
 export type UnifiedCourseType = 'structured' | 'capability';
 
@@ -81,6 +84,120 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
+function formatAgentPills(agentsString: string | null | undefined) {
+  if (!agentsString || !agentsString.trim()) {
+    return <span className="text-slate-500">—</span>;
+  }
+  const agents = agentsString
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (agents.length === 0) return <span className="text-slate-500">—</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 py-0.5">
+      {agents.map((agent) => {
+        let label = agent
+          .replace(/^StructuredLearning/, '')
+          .replace(/^Capability/, '')
+          .replace(/Agent$/, '')
+          .replace(/Service$/, '')
+          .replace(/([A-Z])/g, ' $1')
+          .trim();
+        if (!label) label = agent;
+
+        return (
+          <span
+            key={agent}
+            title={agent}
+            className="inline-flex items-center gap-1 rounded-md border border-brand-500/25 bg-brand-500/10 px-2 py-0.5 text-[11px] font-medium text-brand-400 dark:text-brand-300 transition-colors"
+          >
+            <Bot className="h-3 w-3 shrink-0 text-brand-400" />
+            <span className="truncate max-w-[170px]">{label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function formatModelPills(modelsString: string | null | undefined) {
+  if (!modelsString || !modelsString.trim()) {
+    return <span className="text-slate-500">—</span>;
+  }
+  const models = modelsString
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (models.length === 0) return <span className="text-slate-500">—</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 py-0.5">
+      {models.map((model) => (
+        <span
+          key={model}
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-mono font-medium text-emerald-400 dark:text-emerald-300"
+        >
+          <Cpu className="h-3 w-3 shrink-0 text-emerald-400" />
+          <span>{model}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function formatStageLabel(stepName: string) {
+  switch (stepName.toLowerCase()) {
+    case 'pedagogy':
+      return (
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-400">
+            <GraduationCap className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-semibold text-white">Pedagogy</span>
+        </div>
+      );
+    case 'knowledgegraph':
+      return (
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-400">
+            <Layers3 className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-semibold text-white">Knowledge Graph</span>
+        </div>
+      );
+    case 'knowledgefacts':
+      return (
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
+            <Sparkles className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-semibold text-white">Knowledge Facts</span>
+        </div>
+      );
+    case 'extraction':
+      return (
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+            <BookOpen className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-semibold text-white">Extraction</span>
+        </div>
+      );
+    default:
+      return (
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-500/15 text-slate-400">
+            <Layers3 className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-semibold text-white">{stepName}</span>
+        </div>
+      );
+  }
+}
+
 function CourseCostCard({ summary }: { summary: UnifiedCourseCostSummary }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'en' ? 'en-US' : 'es-MX';
@@ -111,7 +228,7 @@ function CourseCostCard({ summary }: { summary: UnifiedCourseCostSummary }) {
   }, [expanded, summary.id, summary.type, structuredDetail, capabilityDetail, loadingDetail]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-lg transition-all hover:border-white/20">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] shadow-lg transition-all hover:border-white/20">
       <div
         role="button"
         tabIndex={0}
@@ -122,7 +239,7 @@ function CourseCostCard({ summary }: { summary: UnifiedCourseCostSummary }) {
             setExpanded((v) => !v);
           }
         }}
-        className="flex w-full cursor-pointer flex-col gap-4 p-5 text-left transition-colors hover:bg-white/[0.03] sm:flex-row sm:items-center"
+        className={`flex w-full cursor-pointer flex-col gap-4 rounded-t-2xl p-5 text-left transition-colors hover:bg-white/[0.03] sm:flex-row sm:items-center ${expanded ? '' : 'rounded-b-2xl'}`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -225,7 +342,7 @@ function CourseCostCard({ summary }: { summary: UnifiedCourseCostSummary }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-white/10 bg-black/25 px-5 py-4">
+        <div className="rounded-b-2xl border-t border-white/10 bg-black/25 px-5 py-4">
           {loadingDetail && <LoadingSpinner label={t('costDashboard.loadingDetail')} />}
 
           {!loadingDetail && detailError && (
@@ -233,130 +350,192 @@ function CourseCostCard({ summary }: { summary: UnifiedCourseCostSummary }) {
           )}
 
           {!loadingDetail && !detailError && summary.type === 'structured' && structuredDetail && (
-            <div className="overflow-x-auto">
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-slate-950/40">
               {structuredDetail.Steps.length === 0 ? (
-                <p className="py-4 text-sm text-slate-400">{t('costDashboard.noUsageData')}</p>
+                <p className="p-6 text-center text-sm text-slate-400">{t('costDashboard.noUsageData')}</p>
               ) : (
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead>
-                    <tr className="text-[11px] uppercase tracking-wide text-slate-500">
-                      <th className="pb-2 pr-4 font-medium">{t('costDashboard.columnStep')}</th>
-                      <th className="pb-2 pr-4 font-medium">{t('costDashboard.columnAgents')}</th>
-                      <th className="pb-2 pr-4 font-medium">{t('costDashboard.columnModel')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnTime')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnIn')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnOut')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnImages')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnVideos')}</th>
-                      <th className="pb-2 font-medium text-right">{t('costDashboard.columnCost')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {structuredDetail.Steps.map((step) => (
-                      <tr key={step.StepName} className="text-slate-300 hover:bg-white/[0.02]">
-                        <td className="py-2 pr-4 font-medium text-white">{step.StepName}</td>
-                        <td className="py-2 pr-4 text-xs text-slate-400">{step.Agents || '—'}</td>
-                        <td className="py-2 pr-4 text-xs text-slate-400">{step.Models || '—'}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums text-slate-300">
-                          {formatDuration(step.TotalElapsedMilliseconds)}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/[0.04] text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        <th className="py-3 pl-4 pr-3 whitespace-nowrap">{t('costDashboard.columnStep')}</th>
+                        <th className="py-3 px-3">{t('costDashboard.columnAgents')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap">{t('costDashboard.columnModel')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnTime')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnIn')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnOut')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnImages')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnVideos')}</th>
+                        <th className="py-3 pl-3 pr-4 whitespace-nowrap text-right">{t('costDashboard.columnCost')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {structuredDetail.Steps.map((step) => (
+                        <tr key={step.StepName} className="transition-colors hover:bg-white/[0.02]">
+                          <td className="py-3 pl-4 pr-3 align-middle whitespace-nowrap font-medium text-white">
+                            {formatStageLabel(step.StepName)}
+                          </td>
+                          <td className="py-3 px-3 align-middle max-w-sm">
+                            {formatAgentPills(step.Agents)}
+                          </td>
+                          <td className="py-3 px-3 align-middle whitespace-nowrap">
+                            {formatModelPills(step.Models)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {formatDuration(step.TotalElapsedMilliseconds)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {formatTokens(step.InputTokens, locale)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {formatTokens(step.OutputTokens, locale)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {step.ImagesGeneratedCount > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 font-medium text-emerald-400">
+                                {step.ImagesGeneratedCount}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {(step.VideosGeneratedCount ?? 0) > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-pink-500/10 px-1.5 py-0.5 font-medium text-pink-400">
+                                {step.VideosGeneratedCount}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 pl-3 pr-4 text-right align-middle whitespace-nowrap font-semibold tabular-nums text-amber-400 dark:text-amber-300">
+                            {formatUsd(step.EstimatedCostUsd, locale)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-white/10 bg-white/[0.03] font-semibold text-white">
+                        <td className="py-3 pl-4 pr-3 whitespace-nowrap" colSpan={3}>
+                          <div className="flex items-center gap-2">
+                            <Coins className="h-4 w-4 text-amber-400" />
+                            <span>{t('costDashboard.totalCourse')}</span>
+                          </div>
                         </td>
-                        <td className="py-2 pr-4 text-right tabular-nums text-slate-300">
-                          {formatTokens(step.InputTokens, locale)}
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatDuration(structuredDetail.TotalElapsedMilliseconds)}
                         </td>
-                        <td className="py-2 pr-4 text-right tabular-nums text-slate-300">
-                          {formatTokens(step.OutputTokens, locale)}
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatTokens(structuredDetail.InputTokens, locale)}
                         </td>
-                        <td className="py-2 pr-4 text-right tabular-nums text-slate-300">
-                          {step.ImagesGeneratedCount > 0 ? formatTokens(step.ImagesGeneratedCount, locale) : '—'}
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatTokens(structuredDetail.OutputTokens, locale)}
                         </td>
-                        <td className="py-2 pr-4 text-right tabular-nums text-slate-300">
-                          {(step.VideosGeneratedCount ?? 0) > 0 ? formatTokens(step.VideosGeneratedCount ?? 0, locale) : '—'}
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {structuredDetail.ImagesGeneratedCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 font-medium text-emerald-400">
+                              {structuredDetail.ImagesGeneratedCount}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
                         </td>
-                        <td className="py-2 text-right font-medium tabular-nums text-amber-300">
-                          {formatUsd(step.EstimatedCostUsd, locale)}
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {structuredDetail.VideosGeneratedCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-pink-500/10 px-1.5 py-0.5 font-medium text-pink-400">
+                              {structuredDetail.VideosGeneratedCount}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="py-3 pl-3 pr-4 text-right whitespace-nowrap text-base font-bold tabular-nums text-amber-400 dark:text-amber-300">
+                          {formatUsd(structuredDetail.EstimatedCostUsd, locale)}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-white/10 font-semibold text-white">
-                      <td className="pt-3 pr-4" colSpan={3}>
-                        {t('costDashboard.totalCourse')}
-                      </td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">
-                        {formatDuration(structuredDetail.TotalElapsedMilliseconds)}
-                      </td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">
-                        {formatTokens(structuredDetail.InputTokens, locale)}
-                      </td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">
-                        {formatTokens(structuredDetail.OutputTokens, locale)}
-                      </td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">
-                        {structuredDetail.ImagesGeneratedCount > 0 ? formatTokens(structuredDetail.ImagesGeneratedCount, locale) : '—'}
-                      </td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">
-                        {structuredDetail.VideosGeneratedCount > 0 ? formatTokens(structuredDetail.VideosGeneratedCount, locale) : '—'}
-                      </td>
-                      <td className="pt-3 text-right tabular-nums text-amber-300">
-                        {formatUsd(structuredDetail.EstimatedCostUsd, locale)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </tfoot>
+                  </table>
+                </div>
               )}
             </div>
           )}
 
           {!loadingDetail && !detailError && summary.type === 'capability' && capabilityDetail && (
-            <div className="overflow-x-auto">
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-slate-950/40">
               {capabilityDetail.Sections.length === 0 ? (
-                <p className="py-4 text-sm text-slate-400">{t('costDashboard.noUsageData')}</p>
+                <p className="p-6 text-center text-sm text-slate-400">{t('costDashboard.noUsageData')}</p>
               ) : (
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead>
-                    <tr className="text-[11px] uppercase tracking-wide text-slate-500">
-                      <th className="pb-2 pr-4 font-medium">{t('costDashboard.columnSection')}</th>
-                      <th className="pb-2 pr-4 font-medium">{t('costDashboard.columnAgents')}</th>
-                      <th className="pb-2 pr-4 font-medium">{t('costDashboard.columnModel')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnIn')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnOut')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnCache')}</th>
-                      <th className="pb-2 pr-4 font-medium text-right">{t('costDashboard.columnTotal')}</th>
-                      <th className="pb-2 font-medium text-right">{t('costDashboard.columnCost')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {capabilityDetail.Sections.map((section) => (
-                      <tr key={section.SectionLabel} className="text-slate-300 hover:bg-white/[0.02]">
-                        <td className="py-2 pr-4 font-medium text-white">{section.SectionLabel}</td>
-                        <td className="py-2 pr-4 text-xs text-slate-400">{section.Agents}</td>
-                        <td className="py-2 pr-4 text-xs text-slate-400">{section.Models || '—'}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums">{formatTokens(section.InputTokens, locale)}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums">{formatTokens(section.OutputTokens, locale)}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums">{formatTokens(section.CachedInputTokens, locale)}</td>
-                        <td className="py-2 pr-4 text-right font-medium tabular-nums text-white">
-                          {formatTokens(section.TotalTokens, locale)}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/[0.04] text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        <th className="py-3 pl-4 pr-3 whitespace-nowrap">{t('costDashboard.columnSection')}</th>
+                        <th className="py-3 px-3">{t('costDashboard.columnAgents')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap">{t('costDashboard.columnModel')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnIn')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnOut')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnCache')}</th>
+                        <th className="py-3 px-3 whitespace-nowrap text-right">{t('costDashboard.columnTotal')}</th>
+                        <th className="py-3 pl-3 pr-4 whitespace-nowrap text-right">{t('costDashboard.columnCost')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {capabilityDetail.Sections.map((section) => (
+                        <tr key={section.SectionLabel} className="transition-colors hover:bg-white/[0.02]">
+                          <td className="py-3 pl-4 pr-3 align-middle whitespace-nowrap font-medium text-white">
+                            {formatStageLabel(section.SectionLabel)}
+                          </td>
+                          <td className="py-3 px-3 align-middle max-w-sm">
+                            {formatAgentPills(section.Agents)}
+                          </td>
+                          <td className="py-3 px-3 align-middle whitespace-nowrap">
+                            {formatModelPills(section.Models)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {formatTokens(section.InputTokens, locale)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {formatTokens(section.OutputTokens, locale)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap tabular-nums text-slate-300">
+                            {formatTokens(section.CachedInputTokens, locale)}
+                          </td>
+                          <td className="py-3 px-3 text-right align-middle whitespace-nowrap font-medium tabular-nums text-white">
+                            {formatTokens(section.TotalTokens, locale)}
+                          </td>
+                          <td className="py-3 pl-3 pr-4 text-right align-middle whitespace-nowrap font-semibold tabular-nums text-amber-400 dark:text-amber-300">
+                            {formatUsd(section.EstimatedCostUsd, locale)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-white/10 bg-white/[0.03] font-semibold text-white">
+                        <td className="py-3 pl-4 pr-3 whitespace-nowrap" colSpan={3}>
+                          <div className="flex items-center gap-2">
+                            <Coins className="h-4 w-4 text-amber-400" />
+                            <span>{t('costDashboard.totalCourse')}</span>
+                          </div>
                         </td>
-                        <td className="py-2 text-right font-medium tabular-nums text-amber-300">
-                          {formatUsd(section.EstimatedCostUsd, locale)}
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatTokens(capabilityDetail.InputTokens, locale)}
+                        </td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatTokens(capabilityDetail.OutputTokens, locale)}
+                        </td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatTokens(capabilityDetail.CachedInputTokens, locale)}
+                        </td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap tabular-nums text-slate-200">
+                          {formatTokens(capabilityDetail.TotalTokens, locale)}
+                        </td>
+                        <td className="py-3 pl-3 pr-4 text-right whitespace-nowrap text-base font-bold tabular-nums text-amber-400 dark:text-amber-300">
+                          {formatUsd(capabilityDetail.EstimatedCostUsd, locale)}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-white/10 font-semibold text-white">
-                      <td className="pt-3 pr-4" colSpan={3}>
-                        {t('costDashboard.totalCourse')}
-                      </td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">{formatTokens(capabilityDetail.InputTokens, locale)}</td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">{formatTokens(capabilityDetail.OutputTokens, locale)}</td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">{formatTokens(capabilityDetail.CachedInputTokens, locale)}</td>
-                      <td className="pt-3 pr-4 text-right tabular-nums">{formatTokens(capabilityDetail.TotalTokens, locale)}</td>
-                      <td className="pt-3 text-right tabular-nums text-amber-300">{formatUsd(capabilityDetail.EstimatedCostUsd, locale)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </tfoot>
+                  </table>
+                </div>
               )}
             </div>
           )}
@@ -368,6 +547,8 @@ function CourseCostCard({ summary }: { summary: UnifiedCourseCostSummary }) {
 
 export default function CostDashboardPage() {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const effectiveTenantId = user?.tenantId ?? sessionStorage.getItem('humanos.studio.inheritedTenantId') ?? null;
   const locale = i18n.language === 'en' ? 'en-US' : 'es-MX';
   const [courses, setCourses] = useState<UnifiedCourseCostSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -398,7 +579,17 @@ export default function CostDashboardPage() {
         capabilityCosts.forEach((c) => capabilityCostMap.set(c.CapabilityId, c));
 
         // 1. Structured Learning courses from Catalog (only courses belonging to this tenant)
-        const structuredItems: UnifiedCourseCostSummary[] = catalogStructuredDocs.map((doc) => {
+        const tenantStructuredDocs = catalogStructuredDocs.filter((doc) => {
+          if (effectiveTenantId && doc.TenantId) {
+            return doc.TenantId.toLowerCase() === effectiveTenantId.toLowerCase();
+          }
+          if (effectiveTenantId) {
+            return !doc.IsGlobal;
+          }
+          return true;
+        });
+
+        const structuredItems: UnifiedCourseCostSummary[] = tenantStructuredDocs.map((doc) => {
           const cost = structuredCostMap.get(doc.StructuredLearningDocumentId);
           return {
             id: doc.StructuredLearningDocumentId,
@@ -422,7 +613,14 @@ export default function CostDashboardPage() {
         });
 
         // 2. Capabilities from Catalog (only courses belonging to this tenant)
-        const capabilityItems: UnifiedCourseCostSummary[] = catalogCapabilities.map((cap) => {
+        const tenantCapabilities = catalogCapabilities.filter((cap) => {
+          if (effectiveTenantId) {
+            return !!cap.OwnerTenantId && cap.OwnerTenantId.toLowerCase() === effectiveTenantId.toLowerCase();
+          }
+          return true;
+        });
+
+        const capabilityItems: UnifiedCourseCostSummary[] = tenantCapabilities.map((cap) => {
           const cost = capabilityCostMap.get(cap.CapabilityId);
           const studioUrl =
             cap.LearningMode === 'TraditionalChapters'

@@ -133,30 +133,58 @@ public class StructuredLearningKnowledgeFactGenerationAgent
     {
         var endpoint = configuration["ClaudeConnectionAgentEndpoint"];
         var deploymentName = configuration["ClaudeConnectionAgentDeploymentName"];
-        if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
+        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(deploymentName))
+        {
+            _modelName = deploymentName;
+            _isReasoningModel = deploymentName.Contains("gpt-5", StringComparison.OrdinalIgnoreCase)
+                && !deploymentName.Contains("chat", StringComparison.OrdinalIgnoreCase);
+            _maxOutputTokens = int.TryParse(configuration["ClaudeConnectionAgentMaxTokens"], out var maxTokens)
+                ? maxTokens
+                : null;
+            var apiKey = configuration["ClaudeConnectionAgentApiKey"];
+            var client = string.IsNullOrWhiteSpace(apiKey)
+                ? new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
+                : new AzureOpenAIClient(new Uri(endpoint), new System.ClientModel.ApiKeyCredential(apiKey));
+
+#pragma warning disable OPENAI001
+            _agent = client
+                .GetResponsesClient()
+                .AsIChatClient(deploymentName)
+                .AsAIAgent(instructions: Instructions, name: "StructuredLearningKnowledgeFactGenerationAgent");
+#pragma warning restore OPENAI001
+            return;
+        }
+
+        // Fallback to the main gpt-5-mini deployment (2026-10-06) — this
+        // agent used to REQUIRE the experimental Claude-on-Azure-AI-Foundry
+        // slot above with no fallback at all, so disabling that experiment
+        // (its endpoint shape is incompatible with the OpenAI Responses API
+        // client, see StructuredLearningConnectionExtractionAgent's own
+        // fallback for the full story) silently broke Knowledge Fact
+        // generation entirely. Mirrors that same agent's proven-working
+        // AzureOpenAIEndpoint/AzureOpenAIDeploymentName + GetChatClient path.
+        var fallbackEndpoint = configuration["AzureOpenAIEndpoint"];
+        var fallbackDeploymentName = configuration["AzureOpenAIDeploymentName"];
+        var fallbackApiKey = configuration["AzureOpenAIApiKey"];
+        if (string.IsNullOrWhiteSpace(fallbackEndpoint) || string.IsNullOrWhiteSpace(fallbackDeploymentName))
         {
             _agent = null;
             _modelName = string.Empty;
             return;
         }
 
-        _modelName = deploymentName;
-        _isReasoningModel = deploymentName.Contains("gpt-5", StringComparison.OrdinalIgnoreCase)
-            && !deploymentName.Contains("chat", StringComparison.OrdinalIgnoreCase);
-        _maxOutputTokens = int.TryParse(configuration["ClaudeConnectionAgentMaxTokens"], out var maxTokens)
-            ? maxTokens
-            : null;
-        var apiKey = configuration["ClaudeConnectionAgentApiKey"];
-        var client = string.IsNullOrWhiteSpace(apiKey)
-            ? new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
-            : new AzureOpenAIClient(new Uri(endpoint), new System.ClientModel.ApiKeyCredential(apiKey));
+        _modelName = fallbackDeploymentName;
+        _isReasoningModel = fallbackDeploymentName.Contains("gpt-5", StringComparison.OrdinalIgnoreCase)
+            && !fallbackDeploymentName.Contains("chat", StringComparison.OrdinalIgnoreCase);
+        _maxOutputTokens = null;
 
-#pragma warning disable OPENAI001
-        _agent = client
-            .GetResponsesClient()
-            .AsIChatClient(deploymentName)
+        var fallbackClient = string.IsNullOrWhiteSpace(fallbackApiKey)
+            ? new AzureOpenAIClient(new Uri(fallbackEndpoint), new DefaultAzureCredential())
+            : new AzureOpenAIClient(new Uri(fallbackEndpoint), new System.ClientModel.ApiKeyCredential(fallbackApiKey));
+
+        _agent = fallbackClient
+            .GetChatClient(fallbackDeploymentName)
             .AsAIAgent(instructions: Instructions, name: "StructuredLearningKnowledgeFactGenerationAgent");
-#pragma warning restore OPENAI001
     }
 
     public virtual bool IsConfigured => _agent is not null;

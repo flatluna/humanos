@@ -47,6 +47,20 @@ public sealed class PostStructuredLearningChatFunction
         /// single StructuredLearningDocument's own Engrams.</summary>
         public Guid? DocumentId { get; set; }
 
+        /// <summary>Single-engram scope for the Brain detail chat. When set,
+        /// retrieval uses only this section's text and does not search the
+        /// rest of the course.</summary>
+        public Guid? EngramId { get; set; }
+
+        /// <summary>The runtime session this chat turn belongs to (2026-10-06)
+        /// — set by the Brain detail panel's text agent so this turn's token
+        /// usage links to the same <see cref="HumanOS.Models.Capabilities.Studio.StructuredLearningEngramSession"/>
+        /// the Voice agent already uses, letting Brain-originated usage be
+        /// told apart from in-course usage (see
+        /// <see cref="HumanOS.Services.PlatformUsageDashboardService.GetBrainUsageMonthlyAsync"/>).
+        /// Null for every other chat surface (course page, topic/program chat).</summary>
+        public Guid? EngramSessionId { get; set; }
+
         /// <summary>Program-level agent scope — retrieves engrams across
         /// all courses belonging to this program.</summary>
         public Guid? ProgramId { get; set; }
@@ -62,7 +76,7 @@ public sealed class PostStructuredLearningChatFunction
             request.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken);
 
         if (body is null || string.IsNullOrWhiteSpace(body.Message)
-            || (body.TenantId == Guid.Empty && body.DocumentId is null && body.SubjectId is null && body.TopicId is null && body.ProgramId is null))
+            || (body.TenantId == Guid.Empty && body.DocumentId is null && body.EngramId is null && body.SubjectId is null && body.TopicId is null && body.ProgramId is null))
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
             request, HttpStatusCode.BadRequest, "InvalidRequest", "'message' and either 'tenantId', 'documentId', 'subjectId', 'topicId' or 'programId' are required.", cancellationToken);
@@ -82,7 +96,7 @@ public sealed class PostStructuredLearningChatFunction
         try
         {
             result = await _chatService.AskAsync(
-                body.TenantId, body.Message, history, cancellationToken, body.SubjectId, body.TopicId, body.DocumentId, body.PersonId, body.ProgramId);
+                body.TenantId, body.Message, history, cancellationToken, body.SubjectId, body.TopicId, body.DocumentId, body.PersonId, body.ProgramId, body.EngramId, body.EngramSessionId);
         }
         catch (InvalidOperationException ex)
         {

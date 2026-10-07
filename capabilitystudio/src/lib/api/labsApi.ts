@@ -16,6 +16,18 @@ export interface LabListItem {
   FechaCreacion: string;
   FechaActualizacion: string | null;
   RowVersion: string;
+  GenerationCost?: LabGenerationCost | null;
+}
+
+/** See HumanOS.SimulationLabs.Api LabGenerationCostResponse — only set for Labs created via the
+ * AI Lab Builder; a snapshot of the tokens/timing/estimated USD cost of the generation call. */
+export interface LabGenerationCost {
+  InputTokens: number;
+  OutputTokens: number;
+  CachedInputTokens: number;
+  ModelName?: string | null;
+  ElapsedMilliseconds: number;
+  EstimatedCostUsd: number;
 }
 
 export interface PagedResponse<T> {
@@ -115,6 +127,7 @@ export type LabDetail = LabListItem & {
   /** One of LAB_ARCHETYPES codes (e.g. 'JOB_INTERVIEW'), or null for Labs created before this
    * concept existed (treated as CLIENT_NEGOTIATION at runtime). Only present via Lab_Get. */
   Arquetipo?: string | null;
+  GenerationCost?: LabGenerationCost | null;
 };
 
 export interface LabVersionDetail {
@@ -126,6 +139,7 @@ export interface LabVersionDetail {
   DuracionMinutos: number;
   ScoreMinimo: number;
   Estatus: string;
+  RowVersion?: string;
 }
 
 export interface LabContentItem {
@@ -410,6 +424,18 @@ export async function updateObjective(idObjective: string, rowVersion: string, r
   return labsApiPatch<LabContentItem>(`/objectives/${encodeURIComponent(idObjective)}`, rowVersion, request);
 }
 
+export interface UpdateLabVersionContentRequest {
+  ObjetivoGeneral?: string;
+  InstruccionesParticipante?: string;
+}
+
+/** Edits the LabVersion's own general objective / participant instructions. DRAFT-only — see
+ * LabVersionService.UpdateAsync (throws LabVersionNotEditableException once approved/published).
+ * See LabVersion_Update (PATCH /lab-versions/{id}). */
+export async function updateLabVersion(idVersion: string, rowVersion: string, request: UpdateLabVersionContentRequest): Promise<LabVersionDetail> {
+  return labsApiPatch<LabVersionDetail>(`/lab-versions/${encodeURIComponent(idVersion)}`, rowVersion, request);
+}
+
 /** Only the fields relevant to "who's hiring / what's the job" content — the server accepts the
  * full LAB_Scenario field set (see UpdateScenarioRequest), this is the subset the Studio UI edits.
  * ALL of these fields are read by LabSimulationPromptBuilder and sent straight into the LIVE AI
@@ -612,6 +638,16 @@ export interface LabDraftContent {
   Criteria: CriterionDraft[];
 }
 
+export interface GenerateLabDraftCost {
+  InputTokens: number;
+  OutputTokens: number;
+  CachedInputTokens: number;
+  ModelName?: string;
+  ElapsedMilliseconds: number;
+  EstimatedCostUsd: number;
+  IsEstimate: boolean;
+}
+
 export interface GenerateLabDraftResponse {
   Status: 'DRAFT_READY_FOR_REVIEW' | 'NEEDS_INFORMATION';
   LabName?: string;
@@ -624,6 +660,7 @@ export interface GenerateLabDraftResponse {
   Warnings: string[];
   HumanReviewRequired: boolean;
   CorrelationId: string;
+  Cost?: GenerateLabDraftCost;
 }
 
 export async function generateLabDraft(request: GenerateLabDraftRequest): Promise<GenerateLabDraftResponse> {
@@ -644,6 +681,8 @@ export interface SaveLabDraftRequest {
   ScoreMinimo?: number;
   Language?: string;
   Draft: LabDraftContent;
+  /** Echoes GenerateLabDraftResponse.Cost back so it gets persisted onto the saved Lab. */
+  Cost?: GenerateLabDraftCost;
 }
 
 export interface SaveLabDraftResponse {

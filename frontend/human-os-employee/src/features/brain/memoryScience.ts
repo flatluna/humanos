@@ -170,12 +170,16 @@ export interface EngramCountHistoryPoint {
   events: string[];
 }
 
-/** Timezone-safe UTC-ms parse for backend datetime strings with no "Z"/
- * offset suffix (e.g. "2026-08-06T01:17:58.68") — the native `new Date(...)`
- * parser would otherwise treat them as LOCAL time. */
-function toUtcMs(dateString: string): number {
+/** Parses backend timestamps and returns the learner's local calendar date.
+ * Backend values without a timezone suffix are UTC, while offset-bearing
+ * values already carry their timezone information. */
+function toLocalDateKey(dateString: string): string {
   const hasTimezone = /[Zz]|[+-]\d{2}:\d{2}$/.test(dateString);
-  return new Date(hasTimezone ? dateString : `${dateString}Z`).getTime();
+  const date = new Date(hasTimezone ? dateString : `${dateString}Z`);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /** Builds a daily "engrams mastered" activity time series for the last
@@ -201,19 +205,16 @@ export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): E
   const points: EngramCountHistoryPoint[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const day = new Date(today.getTime() - i * DAY_MS);
-    // A node counts for THIS day if it was mastered any time up through the
-    // END of this calendar day — not just before its midnight start —
-    // otherwise a node mastered later today wouldn't count on today's point.
-    const endOfDayMs = day.getTime() + DAY_MS - 1;
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
     let cumulativeCount = 0;
     const events: string[] = [];
     let dailyScoreSum = 0;
     let dailyScoreCount = 0;
     for (const node of masteredNodes) {
-      const masteredAtMs = toUtcMs(node.lastCompletedDate);
-      if (masteredAtMs > endOfDayMs) continue; // not mastered yet as of this day
+      const masteredDateKey = toLocalDateKey(node.lastCompletedDate);
+      if (masteredDateKey > dayKey) continue; // not mastered yet as of this day
       cumulativeCount += 1;
-      const masteredToday = masteredAtMs >= day.getTime() && masteredAtMs <= endOfDayMs;
+      const masteredToday = masteredDateKey === dayKey;
       if (masteredToday) {
         events.push(node.name);
         if (typeof node.finalScore === 'number') {
@@ -223,7 +224,7 @@ export function computeEngramCountHistory(rootGroups: RootGroup[], days = 30): E
       }
     }
     points.push({
-      date: day.toISOString().slice(0, 10),
+      date: dayKey,
       cumulativeCount,
       dailyCount: events.length,
       avgScore: dailyScoreCount > 0 ? Math.round(dailyScoreSum / dailyScoreCount) : null,

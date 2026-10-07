@@ -1,251 +1,79 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { Sparkles, Headphones, Loader2, MessageSquareText, Trash2, X, Send } from 'lucide-react';
 import {
-  Sparkles,
-  Headphones,
-  Loader2,
-  MessageSquareText,
-  Bot,
-  Trash2,
-  X,
-  Send,
-  ArrowRight,
-} from 'lucide-react';
-import {
+  generateStructuredLearningWorkplaceApplication,
   getStructuredLearningWorkplaceApplication,
   postStructuredLearningWorkplaceChat,
   type WorkplaceApplicationDto,
+  type WorkplaceWorkedExample,
 } from '../api/structuredLearningRuntimeApi';
-import { getMyCqiProfile, type CqiProfileData } from '@/features/cqi-workspace/api/cqiApi';
 
-/** Groups a long flowing paragraph into readable chunks of N sentences each, purely for
- * on-screen display — the underlying text (and what's spoken in the audio) is unchanged. */
-function groupIntoParagraphs(text: string, sentencesPerParagraph = 2): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+(\s+|$)/g) ?? [text];
-  const paragraphs: string[] = [];
-  for (let i = 0; i < sentences.length; i += sentencesPerParagraph) {
-    paragraphs.push(sentences.slice(i, i + sentencesPerParagraph).join('').trim());
-  }
-  return paragraphs.length > 0 ? paragraphs : [text.trim()];
-}
-
-/** Splits agent output like "- point one\n- point two" into clean bullet items;
- * falls back to treating the whole string as a single item when there are no "- " markers. */
-function parseBulletLines(text: string): string[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^[-•]\s*/, ''));
-  return lines.length > 0 ? lines : [text.trim()];
-}
-
-function ZoomableImageByUrl({ src, alt, className }: { src: string; alt: string; className: string }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
-
+function ResponseText({ text }: { text: string }) {
   return (
-    <div className="group relative block w-full">
-      <button type="button" onClick={() => setOpen(true)} className="block w-full cursor-zoom-in" aria-label="Enlarge image">
-        <img src={src} alt={alt} className={className} />
-        <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-black/65 px-2 py-1 text-[10px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
-          Enlarge
-        </span>
-      </button>
-      {open && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setOpen(false)}
-        >
-          <div className="relative flex max-h-[95vh] max-w-[95vw] items-center justify-center" onClick={(event) => event.stopPropagation()}>
-            <img src={src} alt={alt} className="max-h-[90vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="absolute -right-2 -top-2 rounded-full border border-white/20 bg-slate-900 p-2 text-white shadow-lg hover:bg-slate-800 cursor-pointer"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+    <div className="space-y-3 break-words text-sm leading-7">
+      {text.split(/(```[\s\S]*?```)/g).filter(Boolean).map((part, index) =>
+        part.startsWith('```') ? (
+          <pre key={index} className="overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-teal-100">
+            <code>{part.replace(/^```[^\n]*\n?/, '').replace(/```$/, '').trim()}</code>
+          </pre>
+        ) : (
+          <p key={index} className="whitespace-pre-wrap">
+            {part.split(/(\*\*[^*]+\*\*)/g).map((span, i) =>
+              span.startsWith('**') && span.endsWith('**')
+                ? <strong key={i}>{span.slice(2, -2)}</strong>
+                : span
+            )}
+          </p>
+        )
       )}
     </div>
   );
 }
 
-function formatMentorInline(text: string): ReactNode {
-  const codeParts = text.split(/(`[^`]+`)/g);
-  return codeParts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-      return (
-        <code
-          key={i}
-          className="rounded bg-teal-950/80 border border-teal-500/30 px-1.5 py-0.5 text-teal-200 font-mono text-[11px]"
-        >
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
-    const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
-    return boldParts.map((bPart, j) => {
-      if (bPart.startsWith('**') && bPart.endsWith('**') && bPart.length >= 4) {
-        return (
-          <strong key={`${i}-${j}`} className="font-semibold text-slate-900 dark:text-white">
-            {bPart.slice(2, -2)}
-          </strong>
-        );
-      }
-      if (bPart.includes(' → ') || bPart.includes(' -> ')) {
-        const arrowTokens = bPart.split(/\s*(?:→|->)\s*/);
-        return arrowTokens.map((tok, k) => (
-          <span key={`${i}-${j}-${k}`}>
-            {tok}
-            {k < arrowTokens.length - 1 && (
-              <span className="inline-flex items-center justify-center mx-1.5 px-1.5 py-0.5 text-[10px] rounded-md bg-teal-500/20 text-teal-700 dark:text-teal-300 font-mono border border-teal-500/30 shadow-xs">
-                →
-              </span>
-            )}
-          </span>
-        ));
-      }
-      return bPart;
-    });
-  });
-}
-
-function MentorMessageContent({
-  text,
-  onPromptClick,
-  isEn,
-}: {
-  text: string;
-  onPromptClick?: (prompt: string) => void;
-  isEn: boolean;
-}) {
-  const codeBlocks = text.split(/(```[\s\S]*?```)/g);
-
+function WorkedExample({ example, index, isEn }: { example: WorkplaceWorkedExample; index: number; isEn: boolean }) {
   return (
-    <div className="space-y-3 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
-      {codeBlocks.map((block, bIdx) => {
-        if (block.startsWith('```') && block.endsWith('```')) {
-          const lines = block.slice(3, -3).trim().split('\n');
-          const firstLine = lines[0]?.trim();
-          const isLangHeader = /^[a-z0-9_-]+$/i.test(firstLine);
-          const codeLines = isLangHeader ? lines.slice(1) : lines;
-          return (
-            <pre
-              key={bIdx}
-              className="my-3 rounded-xl bg-slate-950 p-3.5 border border-teal-500/30 font-mono text-[11px] text-teal-200 overflow-x-auto shadow-inner"
-            >
-              <code>{codeLines.join('\n')}</code>
-            </pre>
-          );
-        }
-
-        const paragraphs = block.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-
-        return paragraphs.map((para, pIdx) => {
-          const lines = para.split('\n').map((l) => l.trim()).filter(Boolean);
-          const isListGroup = lines.length > 0 && lines.every((l) => /^[-*•]\s+|\d+[.)]\s+/.test(l));
-
-          if (isListGroup) {
-            return (
-              <ul key={`${bIdx}-${pIdx}`} className="space-y-2.5 my-3">
-                {lines.map((line, lIdx) => {
-                  const cleaned = line.replace(/^[-*•]\s+|\d+[.)]\s+/, '');
-                  const colonIndex = cleaned.indexOf(':');
-                  const hasTitle = colonIndex > 0 && colonIndex < 40;
-                  const title = hasTitle ? cleaned.slice(0, colonIndex + 1) : '';
-                  const body = hasTitle ? cleaned.slice(colonIndex + 1) : cleaned;
-
-                  return (
-                    <li
-                      key={lIdx}
-                      className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/[0.025] hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-colors shadow-xs"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-teal-500 mt-1.5 shrink-0 ring-4 ring-teal-400/20" />
-                      <div className="flex-1 text-slate-700 dark:text-slate-300 leading-relaxed">
-                        {hasTitle && (
-                          <span className="font-semibold text-teal-700 dark:text-teal-200 block sm:inline sm:mr-1.5">
-                            {formatMentorInline(title)}
-                          </span>
-                        )}
-                        {formatMentorInline(body)}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-          }
-
-          const isEndingQuestion =
-            para.endsWith('?') ||
-            /^(would you like|do you want|shall we|¿te gustaría|deseas|quieres)/i.test(para);
-
-          if (isEndingQuestion) {
-            return (
-              <div
-                key={`${bIdx}-${pIdx}`}
-                className="mt-3.5 rounded-2xl border border-teal-500/30 bg-gradient-to-r from-teal-50/80 via-white to-emerald-50/80 dark:from-teal-500/15 dark:via-slate-950 dark:to-emerald-500/15 p-3.5 shadow-md space-y-2"
-              >
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-300">
-                  <Sparkles className="h-3.5 w-3.5 text-teal-500 dark:text-teal-400" />
-                  <span>{isEn ? 'Suggested Next Step' : 'Siguiente paso sugerido'}</span>
-                </div>
-                <p className="text-teal-900 dark:text-teal-100 font-medium leading-relaxed">
-                  {formatMentorInline(para)}
-                </p>
-                {onPromptClick && (
-                  <button
-                    type="button"
-                    onClick={() => onPromptClick(para)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-400/30 bg-teal-500/10 hover:bg-teal-500/20 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 px-2.5 py-1 text-[11px] font-semibold text-teal-700 dark:text-teal-200 hover:text-teal-900 dark:hover:text-white transition-colors cursor-pointer"
-                  >
-                    <span>{isEn ? 'Send' : 'Enviar'}</span>
-                    <ArrowRight className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            );
-          }
-
-          return (
-            <p key={`${bIdx}-${pIdx}`} className="text-slate-700 dark:text-slate-200 leading-relaxed">
-              {formatMentorInline(para)}
-            </p>
-          );
-        });
-      })}
-    </div>
+    <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 dark:border-white/10 dark:bg-slate-900/70 space-y-5">
+      <div>
+        <span className="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">
+          {isEn ? `Worked example ${index + 1}` : `Ejemplo resuelto ${index + 1}`}
+        </span>
+        <h4 className="mt-1 text-lg font-bold">{example.Title}</h4>
+        <ResponseText text={example.Situation} />
+      </div>
+      <section>
+        <h5 className="mb-1 text-sm font-semibold">{isEn ? 'Inputs and assumptions' : 'Datos y supuestos'}</h5>
+        <ResponseText text={example.InputsAndAssumptions} />
+      </section>
+      <section>
+        <h5 className="mb-2 text-sm font-semibold">{isEn ? 'Step-by-step solution' : 'Soluci\u00f3n paso a paso'}</h5>
+        <ol className="list-decimal space-y-2 pl-5 text-sm leading-7">
+          {example.Steps.map((step, i) => <li key={i}><ResponseText text={step.replace(/^\d+[.)]\s*/, '')} /></li>)}
+        </ol>
+      </section>
+      <section>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h5 className="text-sm font-semibold">{isEn ? 'Practical artifact' : 'Ejemplo pr\u00e1ctico'}</h5>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{example.ArtifactLanguage}</span>
+        </div>
+        <pre className="max-w-full overflow-x-auto rounded-xl border border-teal-500/20 bg-slate-950 p-4 text-sm leading-6 text-teal-100">
+          <code>{example.Artifact}</code>
+        </pre>
+      </section>
+      <section className="rounded-xl bg-teal-50 p-4 dark:bg-teal-500/10">
+        <h5 className="mb-1 text-sm font-semibold text-teal-800 dark:text-teal-200">{isEn ? 'Expected result' : 'Resultado esperado'}</h5>
+        <ResponseText text={example.ExpectedResult} />
+      </section>
+      <section>
+        <h5 className="mb-1 text-sm font-semibold">{isEn ? 'How to validate it' : 'C\u00f3mo validarlo'}</h5>
+        <ResponseText text={example.Validation} />
+      </section>
+    </article>
   );
 }
 
-/**
- * "In your role" step (2026-09-22) — a per-student, per-engram AI-generated
- * workplace application scenario (audio + text + CQI-aware reflection),
- * originally built inline in StructuredLearningSectionPage.tsx. Extracted
- * here so the exact same dynamically-generated content can also be shown
- * inside the Brain modal's "In your role" tab (EngramDetailPanel.tsx)
- * without duplicating this ~700-line component.
- */
+/** Shared by the section page and the Brain modal's In Your Role tab. */
 export function WorkplaceApplicationStep({
-  sectionId,
-  personId,
-  courseLanguage,
-  onComplete,
-  isEn,
-  isStudent,
+  sectionId, personId, courseLanguage, onComplete, isEn, isStudent, engramSessionId,
 }: {
   sectionId: string;
   personId?: string;
@@ -253,670 +81,203 @@ export function WorkplaceApplicationStep({
   onComplete: () => void;
   isEn: boolean;
   isStudent: boolean;
+  engramSessionId?: string;
 }) {
   const [data, setData] = useState<WorkplaceApplicationDto | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [instructions, setInstructions] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [audioTimestamp, setAudioTimestamp] = useState<number>(Date.now());
+  const [audioTimestamp, setAudioTimestamp] = useState(Date.now());
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const [cqiProfile, setCqiProfile] = useState<CqiProfileData | null>(null);
-  const [isCqiModalOpen, setIsCqiModalOpen] = useState(false);
-
-  useEffect(() => {
-    if (isStudent || !personId) return;
-    let cancelled = false;
-    getMyCqiProfile(personId)
-      .then((res) => {
-        if (!cancelled) setCqiProfile(res.profile);
-      })
-      .catch(() => {
-        if (!cancelled) setCqiProfile(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [personId, isStudent]);
-
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatSessionId, setChatSessionId] = useState<string | undefined>();
+  const requestVersion = useRef(0);
+  const completeRef = useRef(onComplete);
+  const sessionRef = useRef(engramSessionId);
+  const instructionsEdited = useRef(false);
+  const inputId = useId();
   const activeLanguage = courseLanguage || (isEn ? 'en' : 'es');
 
-  const sendChatMessage = useCallback(async (textToSend?: string) => {
-    const msg = (textToSend ?? chatInput).trim();
-    if (!msg || chatLoading) return;
+  useEffect(() => { completeRef.current = onComplete; }, [onComplete]);
+  useEffect(() => { sessionRef.current = engramSessionId; }, [engramSessionId]);
 
-    setChatMessages((prev) => [...prev, { role: 'user', text: msg }]);
-    if (!textToSend) setChatInput('');
-    setChatLoading(true);
-
-    try {
-      const res = await postStructuredLearningWorkplaceChat(
-        sectionId,
-        msg,
-        chatSessionId || undefined,
-        personId || undefined,
-        activeLanguage
-      );
-      if (res.SessionId) setChatSessionId(res.SessionId);
-      setChatMessages((prev) => [...prev, { role: 'assistant', text: res.Reply }]);
-    } catch (err) {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: err instanceof Error ? `Error: ${err.message}` : String(err),
-        },
-      ]);
-    } finally {
-      setChatLoading(false);
-    }
-  }, [chatInput, chatLoading, sectionId, chatSessionId, personId, activeLanguage]);
-
-  const clearChat = useCallback(() => {
+  useEffect(() => {
+    const version = ++requestVersion.current;
+    setData(null);
+    setInstructions('');
+    instructionsEdited.current = false;
+    setError(null);
+    setLoading(true);
+    setIsChatOpen(false);
     setChatMessages([]);
+    setChatSessionId(undefined);
     setChatInput('');
-    setChatSessionId(null);
-  }, []);
+    setChatError(null);
+    setChatLoading(false);
+    getStructuredLearningWorkplaceApplication(sectionId, personId, activeLanguage, false, sessionRef.current)
+      .then((result) => {
+        if (version !== requestVersion.current) return;
+        setData(result);
+        if (result) {
+          if (!instructionsEdited.current) setInstructions(result.UserInstructions || '');
+          setAudioTimestamp(Date.now());
+          completeRef.current();
+        }
+      })
+      .catch((err: unknown) => {
+        if (version === requestVersion.current) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (version === requestVersion.current) setLoading(false);
+      });
+    return () => { ++requestVersion.current; };
+  }, [sectionId, personId, activeLanguage, engramSessionId]);
 
-  const fetchApplication = useCallback(async (force = false) => {
+  useEffect(() => {
+    if (!isChatOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsChatOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isChatOpen]);
+
+  async function generate(event: FormEvent) {
+    event.preventDefault();
+    const prompt = instructions.trim();
+    if (!prompt || loading) return;
+    const version = ++requestVersion.current;
     setLoading(true);
     setError(null);
-    // Wipe any previously shown content immediately — "Regenerate" must never leave the old
-    // scenario/images visible while the fresh one (which also purges the server-side cache) loads.
-    setData(null);
     try {
-      const res = await getStructuredLearningWorkplaceApplication(
-        sectionId,
-        personId || undefined,
-        activeLanguage,
-        force
+      const result = await generateStructuredLearningWorkplaceApplication(
+        sectionId, prompt, personId, activeLanguage, engramSessionId
       );
-      setData(res);
+      if (version !== requestVersion.current) return;
+      setData(result);
+      setInstructions((draft) => draft.trim() === prompt ? result.UserInstructions : draft);
       setAudioTimestamp(Date.now());
-      setHasLoaded(true);
-      onComplete();
+      setChatMessages([]);
+      setChatSessionId(undefined);
+      setChatError(null);
+      setChatLoading(false);
+      completeRef.current();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (version === requestVersion.current) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [sectionId, personId, activeLanguage, onComplete]);
+  }
+
+  async function sendChat(event: FormEvent) {
+    event.preventDefault();
+    const message = chatInput.trim();
+    if (!message || chatLoading) return;
+    const version = requestVersion.current;
+    setChatLoading(true);
+    setChatError(null);
+    setChatMessages((previous) => [...previous, { role: 'user', text: message }]);
+    setChatInput('');
+    try {
+      const result = await postStructuredLearningWorkplaceChat(sectionId, message, chatSessionId, personId, activeLanguage);
+      if (version !== requestVersion.current) return;
+      setChatSessionId(result.SessionId);
+      setChatMessages((previous) => [...previous, { role: 'assistant', text: result.Reply }]);
+    } catch (err) {
+      if (version === requestVersion.current) setChatError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (version === requestVersion.current) setChatLoading(false);
+    }
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in mt-4">
-      {!hasLoaded && !loading && (
-        <div className="rounded-3xl border border-teal-300 bg-gradient-to-br from-teal-50 via-white to-emerald-50 p-8 text-center shadow-lg dark:border-teal-500/30 dark:bg-gradient-to-br dark:from-teal-500/10 dark:via-slate-950/60 dark:to-emerald-500/10">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-300 mb-4">
-            <Sparkles className="h-7 w-7" />
-          </div>
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            {isEn ? 'Workplace Application in Your Role' : 'Caso Práctico en tu Puesto'}
-          </h3>
-          <p className="max-w-xl mx-auto text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
-            {isEn
-              ? 'Generate a real workplace application tailored to your role, tools, and SMART objectives. You will listen to a pre-recorded audio explanation created specifically for you and see how to apply this engram in your daily work.'
-              : 'Genera un caso de aplicación real personalizado a tu rol, tecnologías y objetivos SMART. Escucharás un audio pre-grabado creado exclusivamente para ti y verás cómo aplicar este engrama en tu trabajo diario.'}
-          </p>
-          {!isStudent && (
-            <p className="max-w-xl mx-auto text-xs text-teal-700 dark:text-teal-300 leading-relaxed mb-6 -mt-3">
+    <div className="mt-4 space-y-6 text-slate-800 dark:text-slate-200">
+      <form onSubmit={generate} className="rounded-3xl border border-teal-200 bg-gradient-to-br from-teal-50 via-white to-emerald-50 p-6 sm:p-8 dark:border-teal-500/30 dark:from-teal-500/10 dark:via-slate-950 dark:to-emerald-500/10">
+        <div className="mb-4 flex items-start gap-3">
+          <Sparkles className="mt-1 h-6 w-6 shrink-0 text-teal-600 dark:text-teal-300" />
+          <div>
+            <h3 className="text-xl font-bold">{isEn ? 'Apply this lesson your way' : 'Aplica esta lecci\u00f3n a tu caso'}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
               {isEn
-                ? '✨ We also draw on your own CQI assessment from HermanScience to help you maximize your learning and potential.'
-                : '✨ También nos apoyamos en tu propia evaluación CQI de HermanScience para ayudarte a maximizar tu aprendizaje y potencial.'}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => fetchApplication(false)}
-            disabled={loading}
-            className="inline-flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-          >
-            <Headphones className="h-4 w-4" />
-            <span>{isEn ? 'Generate and listen to workplace scenario for my role' : 'Generar y escuchar caso práctico para mi puesto'}</span>
-          </button>
-        </div>
-      )}
-
-      {loading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-3xl border border-teal-300 bg-white dark:border-teal-500/30 dark:bg-slate-900 p-8 text-center shadow-2xl">
-            <Loader2 className="mx-auto h-9 w-9 animate-spin text-teal-500 dark:text-teal-400 mb-4" />
-            <p className="text-sm font-bold text-slate-900 dark:text-white">
-              {isEn ? 'Generating your personalized workplace application...' : 'Generando tu caso práctico personalizado...'}
-            </p>
-            <ul className="mt-4 space-y-2 text-left text-xs text-slate-600 dark:text-slate-300">
-              <li className="flex items-start gap-2">
-                <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-teal-600 dark:text-teal-300" />
-                <span>{isEn ? 'Reading this engram and connecting it to your role, tools, and SMART objectives.' : 'Leyendo este engrama y conectándolo con tu rol, herramientas y objetivos SMART.'}</span>
-              </li>
-              {!isStudent && (
-                <li className="flex items-start gap-2">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-teal-600 dark:text-teal-300" />
-                  <span>{isEn ? 'Checking your HermanScience CQI profile to personalize reflection and growth guidance.' : 'Revisando tu perfil CQI de HermanScience para personalizar la reflexión y el crecimiento.'}</span>
-                </li>
-              )}
-              <li className="flex items-start gap-2">
-                <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-teal-600 dark:text-teal-300" />
-                <span>{isEn ? 'Writing your scenario, practical actions, reflection questions, and growth opportunity.' : 'Escribiendo tu escenario, acciones prácticas, preguntas de reflexión y oportunidad de crecimiento.'}</span>
-              </li>
-              {!isStudent && (
-                <li className="flex items-start gap-2">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-teal-600 dark:text-teal-300" />
-                  <span>{isEn ? 'Generating two worked-example illustrations with explanations, grounded in this lesson.' : 'Generando dos ilustraciones de ejemplo con explicaciones, basadas en esta lección.'}</span>
-                </li>
-              )}
-              <li className="flex items-start gap-2">
-                <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-teal-600 dark:text-teal-300" />
-                <span>{isEn ? 'Synthesizing the full narrated audio with your neural voice.' : 'Sintetizando el audio narrado completo con voz neuronal.'}</span>
-              </li>
-            </ul>
-            <p className="mt-4 text-[11px] text-slate-400 dark:text-slate-500">
-              {isEn ? 'This can take up to a minute — thanks for your patience.' : 'Esto puede tardar hasta un minuto — gracias por tu paciencia.'}
+                ? `Describe the problem you want to solve. Get a worked application for your ${isStudent ? 'studies and career preparation' : 'role'}, with code, calculations, formulas or ready-to-use text when appropriate.`
+                : `Describe el problema que quieres resolver. Recibe una aplicaci\u00f3n para ${isStudent ? 'tus estudios y preparaci\u00f3n profesional' : 'tu puesto'}, con c\u00f3digo, c\u00e1lculos, f\u00f3rmulas o textos listos para usar cuando corresponda.`}
             </p>
           </div>
         </div>
-      )}
-
-      {error && (
-        <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 text-center">
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={() => fetchApplication(false)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-100 dark:bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-800 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-500/30"
-          >
-            {isEn ? 'Retry' : 'Reintentar'}
+        <label htmlFor={inputId} className="mb-2 block text-sm font-semibold">{isEn ? 'Your instructions to the agent' : 'Tus instrucciones para el agente'}</label>
+        <textarea
+          id={inputId}
+          value={instructions}
+          onChange={(event) => { instructionsEdited.current = true; setInstructions(event.target.value); }}
+          maxLength={4000}
+          rows={5}
+          required
+          aria-describedby={`${inputId}-help`}
+          placeholder={isEn
+            ? 'How can I apply this knowledge to a finance problem? Show a realistic example with sample data, formulas and the expected result, explaining my contribution in my role.'
+            : '\u00bfC\u00f3mo aplico este conocimiento a un problema del \u00e1rea de finanzas? Muestra un ejemplo realista con datos de muestra, f\u00f3rmulas y el resultado esperado, explicando mi aportaci\u00f3n desde mi puesto.'}
+          className="w-full resize-y rounded-xl border border-slate-300 bg-white p-4 text-sm leading-6 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 dark:border-white/20 dark:bg-slate-900"
+        />
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p id={`${inputId}-help`} className="text-xs text-slate-500 dark:text-slate-400">
+            {isEn ? 'The latest result is saved for you and this lesson.' : 'Se guarda tu \u00faltimo resultado para esta lecci\u00f3n.'} {instructions.length}/4000
+          </p>
+          <button type="submit" disabled={loading || !instructions.trim()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {isEn ? 'Generate application' : 'Generar aplicaci\u00f3n'}
           </button>
         </div>
-      )}
+      </form>
 
-      {data && (
-        <div className="rounded-3xl border border-teal-200 bg-gradient-to-br from-teal-50/60 via-white to-emerald-50/60 p-6 sm:p-8 shadow-xl dark:border-teal-500/30 dark:bg-gradient-to-br dark:from-teal-500/10 dark:via-slate-950 dark:to-emerald-500/10 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-white/10 pb-4">
+      {loading && <p role="status" className="flex items-center gap-2 text-sm text-teal-700 dark:text-teal-300"><Loader2 className="h-4 w-4 animate-spin" />{isEn ? 'Preparing your application and worked examples...' : 'Preparando tu aplicaci\u00f3n y ejemplos resueltos...'}</p>}
+      {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">{error}<p className="mt-2">{isEn ? 'The request could not be completed. Submit your instructions to try again.' : 'No se pudo completar la petici\u00f3n. Env\u00eda tus instrucciones para reintentar.'}</p></div>}
+
+      {data && !loading && (
+        <div className="space-y-6">
+          <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
             <div>
-              <span className="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-100/80 px-3 py-1 text-[11px] font-semibold text-teal-800 dark:border-teal-400/40 dark:bg-teal-500/15 dark:text-teal-200">
-                <Sparkles className="h-3 w-3" /> {isEn ? 'Workplace Application' : 'Caso Práctico en tu Puesto'}
-              </span>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-2">{data.ScenarioTitle}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-300 mt-0.5">
-                {isEn ? `Personalized for ${data.StudentName} · ${data.RoleTitle}` : `Personalizado para ${data.StudentName} · ${data.RoleTitle}`}
-              </p>
+              <h2 className="text-2xl font-bold">{data.ScenarioTitle}</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{data.StudentName} &middot; {data.RoleTitle}</p>
             </div>
-            <div className="flex items-center gap-2">
-              {data.Tools.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 max-w-sm">
-                  {data.Tools.slice(0, 3).map((tool, i) => (
-                    <span key={i} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
-                      {tool}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => fetchApplication(true)}
-                disabled={loading}
-                title={isEn ? 'Regenerate workplace scenario' : 'Regenerar caso práctico'}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-              >
-                <Sparkles className="h-3 w-3 text-teal-600 dark:text-teal-300" />
-                <span>{isEn ? 'Regenerate workplace scenario' : 'Regenerar caso práctico'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Full-width Chat with Professor Button right above the Audio Player */}
-          <button
-            type="button"
-            onClick={() => setIsChatOpen(true)}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-teal-300 bg-gradient-to-r from-teal-500/10 via-slate-50 to-emerald-500/10 hover:from-teal-500/20 hover:to-emerald-500/20 dark:border-teal-500/40 dark:bg-gradient-to-r dark:from-teal-500/20 dark:via-slate-900 dark:to-emerald-500/20 dark:hover:from-teal-500/30 dark:hover:to-emerald-500/30 px-5 py-3 text-sm font-semibold text-teal-800 dark:text-teal-200 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-md"
-          >
-            <MessageSquareText className="h-4 w-4 text-teal-600 dark:text-teal-300" />
-            <span>{isEn ? 'Chat with Professor' : 'Preguntar al Profesor'}</span>
-          </button>
-
-          {cqiProfile && (
-            <button
-              type="button"
-              onClick={() => setIsCqiModalOpen(true)}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:hover:bg-white/10 px-5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-teal-600 dark:text-teal-300" />
-              <span>{isEn ? 'View my CQI Type Profile' : 'Ver mi Perfil de Tipo CQI'}</span>
-            </button>
-          )}
-
-          {/* Audio Player */}
-          {data.AudioUrl && (
-            <div className="rounded-2xl border border-teal-200 bg-slate-50 p-4 dark:border-teal-500/20 dark:bg-slate-900/80">
-              <div className="flex items-center gap-2 mb-2">
-                <Headphones className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                <span className="text-xs font-semibold text-teal-800 dark:text-teal-200">
-                  {isEn ? '🎙️ Workplace Application Audio (Explanation for you)' : '🎙️ Audio del Caso Práctico (Explicación para ti)'}
-                </span>
-              </div>
-              <audio
-                key={audioTimestamp}
-                controls
-                src={`${data.AudioUrl}${data.AudioUrl.includes('?') ? '&' : '?'}t=${audioTimestamp}`}
-                className="w-full"
-                onEnded={onComplete}
-              >
-                {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta el reproductor de audio.'}
-              </audio>
-            </div>
-          )}
-
-          {/* Text Scenario */}
-          <div className="space-y-3">
-            <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-              {isEn ? 'Scenario in your work environment' : 'Escenario en tu entorno laboral'}
-            </h4>
-            <div className="rounded-2xl border-l-4 border-teal-400 dark:border-teal-500/60 bg-slate-50/70 dark:bg-white/[0.03] pl-5 pr-4 py-4 space-y-3">
-              {groupIntoParagraphs(data.ScenarioText).map((paragraph, i) => (
-                <p key={i} className="text-sm leading-7 text-slate-700 dark:text-slate-300">
-                  {paragraph}
-                </p>
-              ))}
-            </div>
-          </div>
-
-          {data.PracticalActions.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-2 dark:border-white/10 dark:bg-white/[0.03]">
-              <h4 className="font-semibold text-xs uppercase tracking-wide text-teal-700 dark:text-teal-300">
-                {isEn ? 'Suggested practical actions in your projects' : 'Acciones prácticas sugeridas en tus proyectos'}
-              </h4>
-              <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                {data.PracticalActions.map((action, i) => (
-                  <li key={i}>{action}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {data.WhyThisMatters && (
-            <div className="space-y-3 pt-2">
-              <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-                {isEn ? 'Why This Matters' : 'Por Qué Esto Importa'}
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isEn
-                  ? 'Grounded in this lesson\u2019s content, your role/objectives, and your CQI strengths.'
-                  : 'Basado en el contenido de esta lecci\u00f3n, tu rol/objetivos y tus fortalezas CQI.'}
-              </p>
-              {cqiProfile?.anchorTypeName && (
-                <button
-                  type="button"
-                  onClick={() => setIsCqiModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-teal-300 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-500/20 transition-colors cursor-pointer"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  {isEn
-                    ? `See how these strengths connect to your ${cqiProfile.anchorTypeName} profile`
-                    : `Ve c\u00f3mo estas fortalezas se conectan con tu perfil ${cqiProfile.anchorTypeName}`}
-                </button>
-              )}
-              <ul className="list-disc pl-5 space-y-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                {parseBulletLines(data.WhyThisMatters).map((line, i) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ul>
-              {data.WhyThisMatters.toLowerCase().includes('hermanscience') && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {isEn ? 'Learn more about your CQI assessment at ' : 'Conoce más sobre tu evaluación CQI en '}
-                  <a
-                    href="https://hermanplatform.net/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-teal-700 dark:text-teal-300 underline hover:text-teal-800 dark:hover:text-teal-200"
-                  >
-                    hermanplatform.net
-                  </a>
-                  .
-                </p>
-              )}
-            </div>
-          )}
-
-          {!!data.ReflectionQuestions?.length && (
-            <div className="space-y-3 pt-2">
-              <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-                {isEn ? 'Personalized Reflection' : 'Reflexión Personalizada'}
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isEn
-                  ? 'These questions connect this lesson to your role, tools, objectives, and CQI strengths above.'
-                  : 'Estas preguntas conectan esta lecci\u00f3n con tu rol, herramientas, objetivos y las fortalezas CQI de arriba.'}
-              </p>
-              <ol className="space-y-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                {data.ReflectionQuestions.map((question, i) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="font-semibold text-teal-700 dark:text-teal-300">{i + 1}.</span>
-                    <span>{question.replace(/^\d+[.)]\s*/, '')}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          {data.GrowthOpportunity && (
-            <div className="space-y-3 pt-2">
-              <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-                {isEn ? 'Growth Opportunity' : 'Oportunidad de Crecimiento'}
-              </h4>
-              <ul className="list-disc pl-5 space-y-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                {parseBulletLines(data.GrowthOpportunity).map((line, i) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {!!data.KnowledgeConnections?.length && (
-            <div className="space-y-3 pt-2">
-              <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-                {isEn ? 'Knowledge Connections' : 'Conexiones de Conocimiento'}
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {data.KnowledgeConnections.map((tag, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-200"
-                  >
-                    ✓ {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* CQI Type recognition — inline, part of the same learning artifact (no popup). */}
-          {data.CqiTypeLabel && (
-            <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10 mt-2">
-              <div className="rounded-2xl border border-teal-200 bg-teal-50/70 dark:border-teal-500/20 dark:bg-teal-500/10 p-4">
-                <h4 className="font-semibold text-slate-900 dark:text-white text-sm mb-1 flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4 text-teal-600 dark:text-teal-300" />
-                  {isEn ? 'Learning and Working Preferences' : 'Preferencias de Aprendizaje y Trabajo'}
-                </h4>
-                <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                  {isEn
-                    ? 'Learning may work best when focused reflection can alternate with discussion, examples, and practical application. '
-                    : 'El aprendizaje puede funcionar mejor cuando la reflexión enfocada se alterna con discusión, ejemplos y aplicación práctica. '}
-                  {isEn
-                    ? `Your pattern most strongly aligns with ${data.CqiTypeLabel}.`
-                    : `Tu patrón se alinea más fuertemente con ${data.CqiTypeLabel}.`}
-                </p>
-                {data.CqiLearningAndWorkingPreferences && (
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">{data.CqiLearningAndWorkingPreferences}</p>
-                )}
-              </div>
-
-              {!!data.CqiExampleImageUrls?.length && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-base">
-                    {isEn ? 'More examples applied to your job' : 'Más ejemplos aplicados a tu puesto'}
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {data.CqiExampleImageUrls.map((url, i) => (
-                      <div key={i} className="rounded-2xl border border-slate-200 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.03] overflow-hidden">
-                        <ZoomableImageByUrl
-                          src={url}
-                          alt={isEn ? `Workplace example ${i + 1}` : `Ejemplo laboral ${i + 1}`}
-                          className="w-full object-cover"
-                        />
-                        {data.CqiExampleImageExplanations?.[i] && (
-                          <p className="p-4 text-base leading-relaxed text-slate-700 dark:text-slate-300">
-                            {data.CqiExampleImageExplanations[i]}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            <button type="button" onClick={() => setIsChatOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-300 px-4 py-2 text-sm font-semibold text-teal-800 dark:border-teal-500/40 dark:text-teal-200"><MessageSquareText className="h-4 w-4" />{isEn ? 'Ask the Professor' : 'Preguntar al Profesor'}</button>
+          </header>
+          {data.UserInstructions && <section className="rounded-xl border border-slate-200 p-4 dark:border-white/10"><h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">{isEn ? 'Request used for this result' : 'Petici\u00f3n utilizada para este resultado'}</h3><p className="whitespace-pre-wrap text-sm">{data.UserInstructions}</p></section>}
+          <section className="rounded-2xl bg-slate-50 p-5 dark:bg-white/[0.03] space-y-4">
+            <h3 className="text-lg font-semibold">{isEn ? 'How to apply it' : 'C\u00f3mo aplicarlo'}</h3>
+            <ResponseText text={data.ScenarioText} />
+            {data.AudioUrl && <div className="border-t border-slate-200 pt-4 dark:border-white/10"><p className="mb-2 flex items-center gap-2 text-xs font-semibold text-teal-700 dark:text-teal-300"><Headphones className="h-4 w-4" />{isEn ? 'Listen to the application overview' : 'Escucha el resumen de la aplicaci\u00f3n'}</p><audio key={audioTimestamp} controls src={`${data.AudioUrl}${data.AudioUrl.includes('?') ? '&' : '?'}t=${audioTimestamp}`} className="w-full" onEnded={onComplete} /></div>}
+          </section>
+          {data.WhyThisMatters && <section><h3 className="mb-3 text-lg font-semibold">{isEn ? 'Why This Matters' : 'Por qu\u00e9 esto importa'}</h3><ul className="list-disc space-y-2 pl-5">{data.WhyThisMatters.split(/\r?\n/).map((line) => line.trim().replace(/^[-*\u2022]\s*/, '')).filter(Boolean).map((line, i) => <li key={i}><ResponseText text={line} /></li>)}</ul></section>}
+          <section className="min-w-0 space-y-4"><h3 className="text-lg font-semibold">{isEn ? 'Real-world worked examples' : 'Ejemplos reales resueltos'}</h3>{data.WorkedExamples.map((example, i) => <WorkedExample key={i} example={example} index={i} isEn={isEn} />)}</section>
+          {data.PracticalActions.length > 0 && <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10"><h3 className="mb-3 font-semibold">{isEn ? 'Put it into practice' : 'Ll\u00e9valo a la pr\u00e1ctica'}</h3><ul className="list-disc space-y-2 pl-5">{data.PracticalActions.map((action, i) => <li key={i}><ResponseText text={action} /></li>)}</ul></section>}
+          {!!data.KnowledgeConnections?.length && <div className="flex flex-wrap gap-2">{data.KnowledgeConnections.map((tag, i) => <span key={i} className="rounded-full bg-teal-50 px-3 py-1 text-xs text-teal-800 dark:bg-teal-500/10 dark:text-teal-200">{tag}</span>)}</div>}
         </div>
       )}
 
-      {/* Slide-over Side Drawer for Q&A with Professor */}
-      {isChatOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/70 backdrop-blur-sm animate-fade-in flex justify-end">
-          <div className="w-full max-w-xl sm:max-w-2xl bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-teal-500/30 shadow-2xl flex flex-col h-full transform transition-transform duration-300 ease-out">
-            {/* Header */}
-            <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-100 text-teal-600 dark:bg-teal-500/20 dark:text-teal-300">
-                  <Bot className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
-                    {isEn ? 'Q&A with Professor' : 'Q&A con el Profesor'}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
-                    {data?.StudentName ? `Professor for ${data.StudentName}` : 'Personalized AI Professor'} · gpt-5-mini
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {chatMessages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearChat}
-                    title={isEn ? 'Clear chat' : 'Limpiar chat'}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-300 dark:border-white/10 dark:bg-white/5 dark:hover:bg-red-500/15 dark:hover:border-red-500/30 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-red-700 dark:text-slate-300 dark:hover:text-red-200 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    <span>{isEn ? 'Clear' : 'Limpiar'}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setIsChatOpen(false)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+      {isChatOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={isEn ? 'Ask the Professor' : 'Preguntar al Profesor'}>
+        <div className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl dark:bg-slate-900">
+          <header className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-white/10">
+            <h3 className="font-bold">{isEn ? 'Q&A with Professor' : 'Q&A con el Profesor'}</h3>
+            <div className="flex gap-2">
+              <button type="button" disabled={chatLoading} onClick={() => { setChatMessages([]); setChatSessionId(undefined); setChatError(null); }} aria-label={isEn ? 'Clear chat' : 'Limpiar chat'} className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><Trash2 className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setIsChatOpen(false)} aria-label={isEn ? 'Close' : 'Cerrar'} className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
             </div>
-
-            {/* Message Thread */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-              {chatMessages.length === 0 ? (
-                <div className="space-y-4 my-auto pt-6 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-600 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
-                    <MessageSquareText className="h-6 w-6" />
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 max-w-sm mx-auto leading-relaxed">
-                    {isEn
-                      ? 'Have questions about how to adapt this scenario to your tech stack, mitigate edge cases, or execute these actions? Ask your professor below.'
-                      : '¿Tienes dudas sobre cómo adaptar este caso a tu stack, riesgos a evitar o cómo ejecutar las acciones? Pregúntale a tu profesor aquí.'}
-                  </p>
-
-                  <div className="pt-2 flex flex-col gap-2 text-left">
-                    <button
-                      type="button"
-                      onClick={() => sendChatMessage(isEn ? 'How do I adapt this scenario to my current stack and constraints?' : '¿Cómo adapto este escenario a las restricciones de mi stack actual?')}
-                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
-                    >
-                      💡 {isEn ? 'How do I adapt this scenario to my current stack and constraints?' : '¿Cómo adapto este escenario a las restricciones de mi stack actual?'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => sendChatMessage(isEn ? 'What potential edge cases or risks should I watch out for?' : '¿Qué casos extremos o riesgos de seguridad debo prever?')}
-                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
-                    >
-                      🛡️ {isEn ? 'What potential edge cases or risks should I watch out for?' : '¿Qué casos extremos o riesgos de seguridad debo prever?'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => sendChatMessage(isEn ? 'Can you give me a step-by-step checklist to start this week?' : '¿Puedes darme una lista de pasos concretos para arrancar esta semana?')}
-                      className="text-left text-xs rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.08] p-3 text-teal-800 dark:text-teal-200 transition-colors cursor-pointer"
-                    >
-                      📋 {isEn ? 'Can you give me a step-by-step checklist to start this week?' : '¿Puedes darme una lista de pasos concretos para arrancar esta semana?'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                chatMessages.map((m, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
-                  >
-                    {m.role === 'user' ? (
-                      <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed bg-teal-600 text-white rounded-br-none shadow-md">
-                        {m.text}
-                      </div>
-                    ) : (
-                      <div className="w-full max-w-[96%] rounded-2xl p-4 text-xs leading-relaxed bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 text-slate-800 dark:text-slate-200 rounded-bl-none shadow-md">
-                        <MentorMessageContent text={m.text} onPromptClick={(opt) => sendChatMessage(opt)} isEn={isEn} />
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-
-              {chatLoading && (
-                <div className="flex items-center gap-2 text-xs text-teal-600 dark:text-teal-300 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-teal-500 dark:text-teal-400" />
-                  <span>Thinking...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Input Bar */}
-            <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/70">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  sendChatMessage();
-                }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder={isEn ? 'Ask a question about this scenario or implementation...' : 'Pregunta sobre la implementación, riesgos o pasos concretos...'}
-                  disabled={chatLoading}
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-teal-400"
-                />
-                <button
-                  type="submit"
-                  disabled={chatLoading || !chatInput.trim()}
-                  className="inline-flex items-center justify-center rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 p-2.5 text-white shadow-md transition-colors cursor-pointer"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
-            </div>
+          </header>
+          <div className="flex-1 space-y-4 overflow-y-auto p-5" aria-live="polite">
+            {chatMessages.length === 0 && <p className="text-sm text-slate-500">{isEn ? 'Ask about the example, formulas, code or how to adapt the solution.' : 'Pregunta sobre el ejemplo, las f\u00f3rmulas, el c\u00f3digo o c\u00f3mo adaptar la soluci\u00f3n.'}</p>}
+            {chatMessages.map((message, i) => <div key={i} className={`rounded-xl p-4 ${message.role === 'user' ? 'ml-8 bg-teal-50 dark:bg-teal-500/10' : 'mr-4 bg-slate-50 dark:bg-white/5'}`}><p className="mb-1 text-xs font-semibold">{message.role === 'user' ? (isEn ? 'You' : 'T\u00fa') : (isEn ? 'Professor' : 'Profesor')}</p><ResponseText text={message.text} /></div>)}
+            {chatLoading && <Loader2 className="h-5 w-5 animate-spin" />}
+            {chatError && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{chatError}</p>}
           </div>
+          <form onSubmit={sendChat} className="flex items-end gap-2 border-t border-slate-200 p-4 dark:border-white/10">
+            <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} rows={2} aria-label={isEn ? 'Your question' : 'Tu pregunta'} placeholder={isEn ? 'Ask a follow-up question...' : 'Escribe tu pregunta...'} className="flex-1 resize-none rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-white/20" />
+            <button type="submit" disabled={chatLoading || !chatInput.trim()} aria-label={isEn ? 'Send' : 'Enviar'} className="rounded-xl bg-teal-600 p-3 text-white disabled:opacity-50"><Send className="h-5 w-5" /></button>
+          </form>
         </div>
-      )}
-
-      {/* CQI Type Profile modal ("Anchor Foundation") */}
-      {isCqiModalOpen && cqiProfile && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm animate-fade-in flex items-start justify-center p-4 sm:p-8">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-teal-500/30 rounded-3xl shadow-2xl my-8">
-            <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50 rounded-t-3xl">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  {isEn ? 'Anchor Foundation' : 'Fundamento Ancla'}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{cqiProfile.anchorTypeName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCqiModalOpen(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-5 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-              {data?.WhyThisMatters && (
-                <p className="text-xs italic text-teal-700 dark:text-teal-300 border-b border-slate-200 dark:border-white/10 pb-4">
-                  {isEn
-                    ? "This foundation is what shapes the strengths called out in \u201cWhy This Matters\u201d for this lesson."
-                    : 'Este fundamento es lo que da forma a las fortalezas mencionadas en "Por Qu\u00e9 Esto Importa" para esta lecci\u00f3n.'}
-                </p>
-              )}
-              {cqiProfile.anchorDescription && <p>{cqiProfile.anchorDescription}</p>}
-
-              {cqiProfile.whatMayDrawAttention && (
-                <div className="space-y-1.5">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                    {isEn ? 'What may draw attention' : 'Qué puede llamar la atención'}
-                  </h4>
-                  <p>{cqiProfile.whatMayDrawAttention}</p>
-                </div>
-              )}
-
-              {cqiProfile.howChoicesMayTakeShape && (
-                <div className="space-y-1.5">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                    {isEn ? 'How choices may take shape' : 'Cómo pueden tomar forma las decisiones'}
-                  </h4>
-                  <p>{cqiProfile.howChoicesMayTakeShape}</p>
-                </div>
-              )}
-
-              {cqiProfile.workAndCommunication && (
-                <div className="space-y-1.5">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                    {isEn ? 'Work and communication' : 'Trabajo y comunicación'}
-                  </h4>
-                  <p>{cqiProfile.workAndCommunication}</p>
-                </div>
-              )}
-
-              {cqiProfile.whatMaySupportBalance && (
-                <div className="space-y-1.5">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                    {isEn ? 'What may support balance' : 'Qué puede apoyar el equilibrio'}
-                  </h4>
-                  <p>{cqiProfile.whatMaySupportBalance}</p>
-                </div>
-              )}
-
-              {cqiProfile.potentialStrengths.length > 0 && (
-                <div className="space-y-1.5">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                    {isEn ? 'Potential strengths' : 'Fortalezas potenciales'}
-                  </h4>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {cqiProfile.potentialStrengths.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {cqiProfile.patternsToWatchUnderPressure.length > 0 && (
-                <div className="space-y-1.5">
-                  <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                    {isEn ? 'Patterns to watch under pressure' : 'Patrones a observar bajo presión'}
-                  </h4>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {cqiProfile.patternsToWatchUnderPressure.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <a
-                href="/cqi-workspace"
-                className="inline-flex items-center gap-1 text-xs text-teal-700 dark:text-teal-300 underline hover:text-teal-800 dark:hover:text-teal-200"
-              >
-                {isEn ? 'Open full CQI Workspace' : 'Abrir Espacio de Trabajo CQI completo'}
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>}
     </div>
   );
 }

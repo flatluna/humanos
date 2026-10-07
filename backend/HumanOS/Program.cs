@@ -116,6 +116,7 @@ var host = new HostBuilder()
         }
 
         services.AddScoped<TenantService>();
+        services.AddScoped<HumanOS.Services.TenantQuotaService>();
         services.AddScoped<PersonService>();
         services.AddSingleton<EntraInvitationProvisioningService>();
         services.AddScoped<TenantInvitationService>();
@@ -157,6 +158,18 @@ var host = new HostBuilder()
         services.AddScoped<HumanOS.Storage.ProgramLogoStorageService>();
         services.AddScoped<HumanOS.Storage.TenantLogoStorageService>();
         services.AddScoped<HumanOS.Storage.PersonProfilePhotoStorageService>();
+        services.AddScoped<HumanOS.Services.TenantDeletionService>();
+        services.AddScoped<HumanOS.Services.TenantDashboardStatsService>();
+        services.AddScoped<HumanOS.Services.TenantCoursesService>();
+        services.AddScoped<HumanOS.Services.TenantCourseMediaBreakdownService>();
+        services.AddScoped<HumanOS.Services.TenantCourseTotalsService>();
+        services.AddScoped<HumanOS.Services.PlatformUsageDashboardService>();
+        services.AddScoped<HumanOS.Services.TenantMonthlyCostService>();
+        services.AddScoped<HumanOS.Services.TenantLabCostsService>();
+        services.AddScoped<HumanOS.Services.TenantLabVoiceCostService>();
+        services.AddScoped<HumanOS.Services.TenantLabEvaluationCostService>();
+        services.AddScoped<HumanOS.Services.TenantBuddyUsageService>();
+        services.AddScoped<HumanOS.Services.StructuredLearningCourseSummaryService>();
         services.AddScoped<GoalService>();
         services.AddScoped<MotivationService>();
         services.AddScoped<ProjectService>();
@@ -229,6 +242,7 @@ var host = new HostBuilder()
         // Buddy (2026-09-22) — main-page voice companion grounded in the
         // employee's own profile/skills/CQI/objectives/achievements.
         services.AddScoped<BuddyContextBuilder>();
+        services.AddScoped<BuddyAgentService>();
         services.AddSingleton<HumanOS.Agents.TecContigoAgent>();
         services.AddScoped<TecContigoContextBuilder>();
 
@@ -393,6 +407,15 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningTutorAgent>();
         services.AddSingleton<StructuredLearningChatService>();
 
+        // "Q&A with Professor" text tab (2026-10-01) — cheap, non-voice
+        // sibling of the Realtime voice professor, same section content +
+        // LEARNER CONTEXT grounding (see PostStructuredLearningQaChatFunction).
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningQaProfessorAgent>();
+        services.AddScoped<StructuredLearningQaProfessorChatService>();
+        services.AddScoped<StructuredLearningEngramUsageService>();
+        services.AddScoped<StructuredLearningEngramSessionService>();
+        services.AddScoped<StructuredLearningEngramStatsService>();
+
         // Master de Clases de Entidad (2026-08-14, Fase 1) — plain catalog
         // CRUD only, not yet wired into extraction (see the service's own
         // doc comment for the staged rollout plan).
@@ -512,7 +535,6 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationAgent>();
         // CQI-aware variant (2026-09-21) — used for business/employee tenants (not students);
         // lets the employee's CQI Workspace profile subtly influence tone/reflection/growth text.
-        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationCqiAgent>();
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceMentorAgent>();
         services.AddScoped<HumanOS.Services.StructuredLearningWorkplaceApplicationService>();
 
@@ -602,6 +624,7 @@ var host = new HostBuilder()
         // design discussion). Singleton: holds no per-request state, only
         // wraps IConfiguration + IHttpClientFactory (registered below).
         services.AddSingleton<RealtimeVoiceSessionService>();
+        services.AddSingleton<RealtimeVoiceUsageObserverService>();
 
         // Interactive Learning Runtime — Workflow checkpointing (Paso 3,
         // 2026-07-14, see /memories/repo/human-os-runtime-design.md).

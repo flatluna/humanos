@@ -3,6 +3,7 @@ using HumanOS.Contracts.EmployeeScoring;
 using HumanOS.Contracts.People;
 using HumanOS.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HumanOS.Services;
 
@@ -14,18 +15,51 @@ namespace HumanOS.Services;
 public sealed class EmployeeScoringProfileService
 {
     private readonly HumanOsDbContext _dbContext;
+    private readonly IMemoryCache _cache;
 
-    public EmployeeScoringProfileService(HumanOsDbContext dbContext)
+    /// <summary>Short TTL (2026-10-04) — every Realtime voice-tutor session mint
+    /// (one per Engram the student opens with voice, see LearnerContextBuilder/
+    /// BuddyContextBuilder) re-ran all ~10 DB round-trips in this method from
+    /// scratch, even though a student's role/manager/résumé/career-plan barely
+    /// changes between Engrams in the same study session. Caching the exact same
+    /// DTO for a few minutes removes that repeated DB load with ZERO change to
+    /// what gets built/returned (same object, same fields, same callers) — none
+    /// of this method's callers mutate the returned EmployeeScoringProfile, they
+    /// only read from it, so sharing the cached instance across callers within
+    /// the TTL is safe.</summary>
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(3);
+
+    public EmployeeScoringProfileService(HumanOsDbContext dbContext, IMemoryCache cache)
     {
         _dbContext = dbContext;
+        _cache = cache;
     }
 
     /// <summary>
     /// Builds and returns the complete employee scoring profile for the specified employee.
+    /// Cached for <see cref="CacheTtl"/> per employee — pass <paramref name="bypassCache"/>
+    /// true only when the caller just changed data this profile reflects (e.g. right after
+    /// accepting a new career plan) and needs the absolute latest state.
     /// </summary>
     public async Task<EmployeeScoringProfile> BuildProfileAsync(
         Guid employeeId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool bypassCache = false)
+    {
+        var cacheKey = $"EmployeeScoringProfile:{employeeId}";
+        if (!bypassCache && _cache.TryGetValue(cacheKey, out EmployeeScoringProfile? cached) && cached is not null)
+        {
+            return cached;
+        }
+
+        var profile = await BuildProfileCoreAsync(employeeId, cancellationToken);
+        _cache.Set(cacheKey, profile, CacheTtl);
+        return profile;
+    }
+
+    private async Task<EmployeeScoringProfile> BuildProfileCoreAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken)
     {
         var profile = new EmployeeScoringProfile
         {

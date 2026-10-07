@@ -19,6 +19,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSubject, setActiveSubject] = useState<string | null>(null);
   const [activeLanguage, setActiveLanguage] = useState<'es' | 'en' | null>(null);
+  const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'mine' | 'global'>('all');
   const [search, setSearch] = useState('');
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [selectedCapabilityIds, setSelectedCapabilityIds] = useState<Set<string>>(new Set());
@@ -59,6 +60,9 @@ export default function HomePage() {
     return capabilities.filter((c) => {
       if (activeSubject && c.SubjectCode !== activeSubject) return false;
       if (activeLanguage && (c.ContentLanguageCode ?? 'es') !== activeLanguage) return false;
+      const isMine = c.OwnerPersonId !== null || c.OwnerTenantId !== null;
+      if (ownershipFilter === 'mine' && !isMine) return false;
+      if (ownershipFilter === 'global' && isMine) return false;
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         if (!c.Name.toLowerCase().includes(q) && !(c.LearningSummary ?? '').toLowerCase().includes(q)) {
@@ -67,7 +71,7 @@ export default function HomePage() {
       }
       return true;
     });
-  }, [capabilities, activeSubject, activeLanguage, search]);
+  }, [capabilities, activeSubject, activeLanguage, ownershipFilter, search]);
 
   const filteredStructuredLearningDocuments = useMemo(() => {
     if (activeSubject) return [];
@@ -75,10 +79,15 @@ export default function HomePage() {
     if (activeLanguage) {
       docs = docs.filter((d) => (d.Language ?? 'es') === activeLanguage);
     }
+    if (ownershipFilter === 'mine') {
+      docs = docs.filter((d) => !d.IsGlobal);
+    } else if (ownershipFilter === 'global') {
+      docs = docs.filter((d) => d.IsGlobal);
+    }
     if (!search.trim()) return docs;
     const q = search.trim().toLowerCase();
     return docs.filter((d) => d.DocumentName.toLowerCase().includes(q));
-  }, [structuredLearningDocuments, activeSubject, activeLanguage, search]);
+  }, [structuredLearningDocuments, activeSubject, activeLanguage, ownershipFilter, search]);
 
   const unifiedCatalog = useMemo(() => {
     const items = [
@@ -144,10 +153,13 @@ export default function HomePage() {
             {t('home.titlePrefix')}{' '}
             <span className="shimmer-text">{t('home.titleHighlight')}</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
+          <p className="mx-auto mt-4 max-w-3xl text-base sm:text-lg text-slate-300 leading-relaxed">
             {t('home.subtitle')}
           </p>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
+          <p className="mx-auto mt-3 max-w-2xl text-sm sm:text-base text-slate-400">
+            {t('home.subtitleResult')}
+          </p>
+          <p className="mx-auto mt-4 max-w-xl text-xs sm:text-sm font-medium text-brand-400">
             {t('home.subtitleFunctional')}
           </p>
 
@@ -184,6 +196,12 @@ export default function HomePage() {
             })}
           </div>
         )}
+
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+          <SubjectPill label={t('home.ownershipAll')} active={ownershipFilter === 'all'} onClick={() => setOwnershipFilter('all')} />
+          <SubjectPill label={t('home.ownershipMine')} active={ownershipFilter === 'mine'} onClick={() => setOwnershipFilter('mine')} />
+          <SubjectPill label={t('home.ownershipGlobal')} active={ownershipFilter === 'global'} onClick={() => setOwnershipFilter('global')} />
+        </div>
 
         <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
           <SubjectPill label={t('home.allLanguages')} active={activeLanguage === null} onClick={() => setActiveLanguage(null)} />

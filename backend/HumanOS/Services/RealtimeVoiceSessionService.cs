@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -67,6 +68,80 @@ public sealed class RealtimeVoiceSessionService
         !string.IsNullOrWhiteSpace(_endpoint)
         && !string.IsNullOrWhiteSpace(_deploymentName)
         && !string.IsNullOrWhiteSpace(_apiKey);
+
+    public string DeploymentName => _deploymentName ?? string.Empty;
+
+    /// <summary>Proxies the browser's SDP offer to Azure instead of letting
+    /// the browser negotiate directly (2026-10-02) \u2014 this is the ONLY way
+    /// to learn the call's Azure-assigned call_id (returned as the
+    /// response's Location header), which is required to open a
+    /// server-side observer WebSocket for token usage (see
+    /// <see cref="RealtimeVoiceUsageObserverService"/>). The browser's own
+    /// WebRTC data channel is completely unaffected \u2014 media/ICE/DTLS stay
+    /// peer-to-peer browser\u2194Azure exactly as before, and
+    /// <paramref name="usesTools"/> still controls webrtcfilter the same
+    /// way <see cref="CreateEphemeralSessionAsync"/> did, so the browser
+    /// keeps receiving the exact same filtered/unfiltered event set it
+    /// always has \u2014 nothing new is exposed to it.</summary>
+    public async Task<(string AnswerSdp, string? CallId)> NegotiateSdpAsync(
+        string clientSecret, string sdpOffer, bool usesTools, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("RealtimeVoiceSessionService is not configured.");
+        }
+
+        var baseUri = _endpoint!.TrimEnd('/');
+        var requestUri = usesTools
+            ? $"{baseUri}/openai/v1/realtime/calls"
+            : $"{baseUri}/openai/v1/realtime/calls?webrtcfilter=on";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, requestUri)
+        {
+            Content = new StringContent(sdpOffer, Encoding.UTF8, "application/sdp")
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", clientSecret);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var answerSdp = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Azure OpenAI Realtime SDP negotiation failed ({(int)response.StatusCode}): {answerSdp}");
+        }
+
+        string? callId = null;
+        if (response.Headers.Location is { } location)
+        {
+            // Azure doesn't always return an ABSOLUTE Location header — when it
+            // comes back relative, Uri.Segments throws "This operation is not
+            // supported for a relative URI." (2026-10-03 fix: caused every Q&A
+            // voice session to fail with a 502). OriginalString works for both.
+            var raw = location.IsAbsoluteUri ? location.AbsolutePath : location.OriginalString;
+            callId = raw.TrimEnd('/').Split('/').LastOrDefault();
+        }
+
+        return (answerSdp, callId);
+    }
+
+    /// <summary>Opens the server-side observer WebSocket for a given call_id
+    /// (2026-10-02) \u2014 receives the FULL, unfiltered event stream (including
+    /// response.done's token usage) regardless of the webrtcfilter used on
+    /// the browser's own WebRTC connection. Caller owns reading frames;
+    /// this just establishes the authenticated connection.</summary>
+    public async Task<System.Net.WebSockets.ClientWebSocket> ConnectObserverWebSocketAsync(string callId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("RealtimeVoiceSessionService is not configured.");
+        }
+
+        var wsUri = new Uri(_endpoint!.Replace("https://", "wss://").TrimEnd('/') + $"/openai/v1/realtime?call_id={callId}");
+        var socket = new System.Net.WebSockets.ClientWebSocket();
+        socket.Options.SetRequestHeader("api-key", _apiKey);
+        await socket.ConnectAsync(wsUri, cancellationToken);
+        return socket;
+    }
 
     public sealed class EphemeralSession
     {

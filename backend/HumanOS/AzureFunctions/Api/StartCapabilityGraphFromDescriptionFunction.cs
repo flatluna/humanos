@@ -240,8 +240,28 @@ public sealed class StartCapabilityGraphFromDescriptionFunction
                 }
             }
 
+            // Studio sessions launched from a parent app with no HumanOS
+            // Person record (e.g. an NGO admin) carry their tenant directly
+            // via this header instead — see StartPdfCapabilityGraphFunction's
+            // identical fallback.
+            if (callerTenantId is null &&
+                request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+                Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId))
+            {
+                callerTenantId = studioTenantId;
+            }
+
             // Global/personal visibility (2026-08-06): see
-            // StartPdfCapabilityGraphFunction's identical IsGlobal handling.
+            // StartPdfCapabilityGraphFunction's identical IsGlobal handling,
+            // including the "no owner left behind" guard (2026-10-06).
+            if (!body.IsGlobal && callerPersonId is null && callerTenantId is null)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "CallerIdentityRequired",
+                    "Creating a non-global (personal/tenant) capability requires a resolvable caller identity (X-Azure-OID/X-Azure-TID or X-Studio-Tenant-Id).",
+                    cancellationToken);
+            }
+
             Guid? ownerPersonId = body.IsGlobal ? null : callerPersonId;
             Guid? ownerTenantId = body.IsGlobal ? null : callerTenantId;
 

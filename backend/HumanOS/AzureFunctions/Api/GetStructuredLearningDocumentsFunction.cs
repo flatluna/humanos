@@ -10,6 +10,8 @@ public sealed class StructuredLearningDocumentSummaryDto
 {
     public Guid StructuredLearningDocumentId { get; set; }
 
+    public Guid TenantId { get; set; }
+
     public string DocumentName { get; set; } = string.Empty;
 
     public string? ExecutiveSummary { get; set; }
@@ -28,6 +30,11 @@ public sealed class StructuredLearningDocumentSummaryDto
 
     /// <summary>"es"/"en" — see StructuredLearningLanguageHeuristic.</summary>
     public string Language { get; set; } = "es";
+
+    /// <summary>True when this document is available in the public student
+    /// catalog. Lets the Studio catalog's "Mis cursos / Globales" filter
+    /// tell a tenant-owned draft from a public one (2026-10-06).</summary>
+    public bool IsGlobal { get; set; }
 }
 
 /// <summary>
@@ -66,12 +73,19 @@ public sealed class GetStructuredLearningDocumentsFunction
 
         var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
         var tenantId = callerTenantId ?? (Guid.TryParse(query["tenantId"], out var parsedTenantId) ? parsedTenantId : (Guid?)null);
+
+        // Same global-vs-tenant visibility rule as the Capability catalog
+        // and the student-facing structured-learning catalog: a non-global
+        // document is only visible to the tenant that owns it. No caller
+        // tenant resolved -> only the public/official (IsGlobal) documents,
+        // never every tenant's private drafts.
         var documents = await _dbContext.StructuredLearningDocuments
             .AsNoTracking()
-            .Where(d => d.IsGlobal || d.TenantId == Guid.Empty || (tenantId != null && d.TenantId == tenantId) || tenantId == null)
+            .Where(d => d.IsGlobal || (tenantId != null && d.TenantId == tenantId))
             .Select(d => new
             {
                 d.StructuredLearningDocumentId,
+                d.TenantId,
                 d.DocumentName,
                 d.ExecutiveSummary,
                 d.CreatedDate,
@@ -86,7 +100,8 @@ public sealed class GetStructuredLearningDocumentsFunction
                     .FirstOrDefault(),
                 d.Category,
                 d.TargetSkill,
-                d.ConfigSnapshotJson
+                d.ConfigSnapshotJson,
+                d.IsGlobal
             })
             .OrderByDescending(d => d.CreatedDate)
             .ToListAsync(cancellationToken);
@@ -94,6 +109,7 @@ public sealed class GetStructuredLearningDocumentsFunction
         var result = documents.Select(d => new StructuredLearningDocumentSummaryDto
         {
             StructuredLearningDocumentId = d.StructuredLearningDocumentId,
+            TenantId = d.TenantId,
             DocumentName = d.DocumentName,
             ExecutiveSummary = d.ExecutiveSummary,
             CreatedDate = d.CreatedDate,
@@ -101,7 +117,8 @@ public sealed class GetStructuredLearningDocumentsFunction
             CoverIllustrationId = d.CoverIllustrationId,
             Category = d.Category,
             TargetSkill = d.TargetSkill,
-            Language = HumanOS.Services.StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName)
+            Language = HumanOS.Services.StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName),
+            IsGlobal = d.IsGlobal
         }).ToList();
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ArrowDown, ArrowUp, FlaskConical, Headphones, Drama, Rocket, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowDown, ArrowUp, FlaskConical, Headphones, Drama, Rocket, Loader2, DollarSign } from 'lucide-react';
 import {
   getLab,
   getLabContent,
@@ -10,6 +10,7 @@ import {
   reorderExpectedMoments,
   updateExpectedMoment,
   updateObjective,
+  updateLabVersion,
   updateScenario,
   updateSimulatedActor,
   publishLabScenario,
@@ -18,6 +19,7 @@ import {
   type LabContent,
   type LabContentItem,
   type LabDetail,
+  type LabVersionDetail,
   type TestedSkill,
   type TestedSkillEntity,
 } from '../lib/api/labsApi';
@@ -99,6 +101,26 @@ export default function LabDetailPage() {
               </div>
             );
           })()}
+          {lab.GenerationCost && (
+            <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 shrink-0 text-emerald-300" />
+                  <p className="text-sm font-semibold text-emerald-200">
+                    {isEs ? 'Costo de generación (AI Lab Builder)' : 'Generation cost (AI Lab Builder)'}
+                    {lab.GenerationCost.ModelName && <span className="ml-1.5 font-normal text-slate-400">· {lab.GenerationCost.ModelName}</span>}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-emerald-300">${lab.GenerationCost.EstimatedCostUsd.toFixed(4)} USD</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-4">
+                <div><span className="text-slate-500">{isEs ? 'Tokens entrada' : 'Input tokens'}: </span>{lab.GenerationCost.InputTokens.toLocaleString()}</div>
+                <div><span className="text-slate-500">{isEs ? 'Tokens salida' : 'Output tokens'}: </span>{lab.GenerationCost.OutputTokens.toLocaleString()}</div>
+                <div><span className="text-slate-500">{isEs ? 'Cacheados' : 'Cached'}: </span>{lab.GenerationCost.CachedInputTokens.toLocaleString()}</div>
+                <div><span className="text-slate-500">{isEs ? 'Tiempo' : 'Elapsed'}: </span>{(lab.GenerationCost.ElapsedMilliseconds / 1000).toFixed(1)}s</div>
+              </div>
+            </div>
+          )}
           {content?.Version && content.Actors.length > 0 && (
             <button
               type="button"
@@ -150,8 +172,18 @@ export default function LabDetailPage() {
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <ContentSection title={isEs ? 'Objetivo general' : 'General objective'} text={content.Version.ObjetivoGeneral} isEs={isEs} />
-                <ContentSection title={isEs ? 'Instrucciones para el participante' : 'Instructions for the participant'} text={content.Version.InstruccionesParticipante} isEs={isEs} />
+                {lab.Estatus === 'DRAFT' ? (
+                  <EditableVersionFields
+                    version={content.Version}
+                    isEs={isEs}
+                    onVersionChange={(updated) => setContent({ ...content, Version: { ...content.Version!, ...updated } })}
+                  />
+                ) : (
+                  <>
+                    <ContentSection title={isEs ? 'Objetivo general' : 'General objective'} text={content.Version.ObjetivoGeneral} isEs={isEs} />
+                    <ContentSection title={isEs ? 'Instrucciones para el participante' : 'Instructions for the participant'} text={content.Version.InstruccionesParticipante} isEs={isEs} />
+                  </>
+                )}
               </div>
               <ContentList title={isEs ? 'Etapas' : 'Stages'} items={content.Stages} isEs={isEs} />
               {lab.Estatus === 'DRAFT' ? (
@@ -293,6 +325,90 @@ function EditableObjectiveList({
 
 function ContentSection({ title, text, isEs }: { title: string; text: string; isEs: boolean }) {
   return <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4"><h3 className="text-sm font-medium text-teal-300">{title}</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{text || (isEs ? 'Sin información.' : 'No information.')}</p></div>;
+}
+
+/** DRAFT-only editor for LAB_LabVersion.ObjetivoGeneral/InstruccionesParticipante — previously
+ * read-only via two ContentSection cards. See LabVersionService.UpdateAsync (rejects once the
+ * version leaves DRAFT). */
+function EditableVersionFields({
+  version,
+  isEs,
+  onVersionChange,
+}: {
+  version: LabVersionDetail;
+  isEs: boolean;
+  onVersionChange: (updated: LabVersionDetail) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ ObjetivoGeneral: '', InstruccionesParticipante: '' });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  function startEdit() {
+    setDraft({
+      ObjetivoGeneral: version.ObjetivoGeneral ?? '',
+      InstruccionesParticipante: version.InstruccionesParticipante ?? '',
+    });
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await updateLabVersion(version.IdVersion, String(version.RowVersion ?? ''), draft);
+      onVersionChange(updated);
+      setEditing(false);
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <>
+        <div className="relative rounded-xl border border-white/10 bg-slate-950/40 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-sm font-medium text-teal-300">{isEs ? 'Objetivo general' : 'General objective'}</h3>
+            <button type="button" onClick={startEdit} className="shrink-0 rounded border border-teal-400/30 px-2 py-1 text-xs text-teal-300 hover:bg-teal-400/10">{isEs ? 'Editar' : 'Edit'}</button>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{version.ObjetivoGeneral || (isEs ? 'Sin información.' : 'No information.')}</p>
+        </div>
+        <ContentSection title={isEs ? 'Instrucciones para el participante' : 'Instructions for the participant'} text={version.InstruccionesParticipante} isEs={isEs} />
+      </>
+    );
+  }
+
+  return (
+    <div className="sm:col-span-2 space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-4">
+      {saveError && <p className="rounded-lg bg-red-500/10 p-2 text-xs text-red-300 border border-red-500/30">{saveError}</p>}
+      <div>
+        <label className="text-xs font-medium text-teal-300">{isEs ? 'Objetivo general' : 'General objective'}</label>
+        <textarea
+          value={draft.ObjetivoGeneral}
+          onChange={(e) => setDraft({ ...draft, ObjetivoGeneral: e.target.value })}
+          rows={3}
+          className="mt-1 w-full rounded border border-white/10 bg-slate-950/60 p-2 text-sm text-slate-200"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-teal-300">{isEs ? 'Instrucciones para el participante' : 'Instructions for the participant'}</label>
+        <textarea
+          value={draft.InstruccionesParticipante}
+          onChange={(e) => setDraft({ ...draft, InstruccionesParticipante: e.target.value })}
+          rows={3}
+          className="mt-1 w-full rounded border border-white/10 bg-slate-950/60 p-2 text-sm text-slate-200"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" disabled={saving} onClick={() => setEditing(false)} className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10">{isEs ? 'Cancelar' : 'Cancel'}</button>
+        <button type="button" disabled={saving} onClick={saveEdit} className="rounded border border-teal-400/30 px-2 py-1 text-xs text-teal-300 hover:bg-teal-400/10">{isEs ? 'Guardar' : 'Save'}</button>
+      </div>
+    </div>
+  );
 }
 
 /** DRAFT-only editor for LAB_Scenario — this is where "job description / hiring situation"

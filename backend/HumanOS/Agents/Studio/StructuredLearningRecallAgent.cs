@@ -97,6 +97,7 @@ public sealed class StructuredLearningRecallAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _deploymentName = string.Empty;
 
     public StructuredLearningRecallAgent(IConfiguration configuration)
     {
@@ -110,6 +111,8 @@ public sealed class StructuredLearningRecallAgent
             return;
         }
 
+        _deploymentName = deploymentName;
+
         AzureOpenAIClient client = string.IsNullOrWhiteSpace(apiKey)
             ? new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
             : new AzureOpenAIClient(new Uri(endpoint), new System.ClientModel.ApiKeyCredential(apiKey));
@@ -121,7 +124,7 @@ public sealed class StructuredLearningRecallAgent
 
     public bool IsConfigured => _agent is not null;
 
-    public async Task<StructuredLearningRecallTurnResponse> RunTurnAsync(string prompt, CancellationToken cancellationToken)
+    public async Task<StructuredLearningRecallAgentTurnResult> RunTurnAsync(string prompt, CancellationToken cancellationToken)
     {
         if (_agent is null)
         {
@@ -129,6 +132,25 @@ public sealed class StructuredLearningRecallAgent
         }
 
         var response = await _agent.RunAsync<StructuredLearningRecallTurnResponse>(prompt, cancellationToken: cancellationToken);
-        return response.Result;
+        return new StructuredLearningRecallAgentTurnResult
+        {
+            Turn = response.Result,
+            ModelName = _deploymentName,
+            InputTokens = (int)(response.Usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(response.Usage?.OutputTokenCount ?? 0),
+        };
     }
+}
+
+/// <summary>One Recall turn's result + real token usage from that call —
+/// see <see cref="StructuredLearningRecallAgent.RunTurnAsync"/>.</summary>
+public sealed class StructuredLearningRecallAgentTurnResult
+{
+    public StructuredLearningRecallTurnResponse Turn { get; set; } = null!;
+
+    public string ModelName { get; set; } = string.Empty;
+
+    public int InputTokens { get; set; }
+
+    public int OutputTokens { get; set; }
 }

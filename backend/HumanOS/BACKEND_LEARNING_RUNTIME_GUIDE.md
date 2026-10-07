@@ -16,6 +16,30 @@
 8. [Stages y transiciones de estado](#stages-y-transiciones-de-estado)
 9. [Assessment y validación](#assessment-y-validación)
 10. [Persistencia y checkpoints](#persistencia-y-checkpoints)
+11. [In Your Role: aplicaciones por instrucciones](#in-your-role-aplicaciones-por-instrucciones)
+
+---
+
+## In Your Role: aplicaciones por instrucciones
+
+La pestaña **In Your Role** usa `StructuredLearningWorkplaceApplicationAgent` tanto para empleados
+como para estudiantes. El agente conecta la lección con el puesto o el contexto académico y
+responde a la petición concreta del usuario; no consume perfiles CQI ni genera secciones de
+reflexión personalizada u oportunidad de crecimiento.
+
+- `GET /api/studio/structured-learning/sections/{sectionId}/workplace-application` recupera la
+  última aplicación guardada para `personId`. Si no existe o su esquema/idioma cambió, genera una
+  nueva conservando las instrucciones anteriores cuando estén disponibles.
+- `POST` a la misma ruta genera y reemplaza el resultado. El JSON contiene `personId`,
+  `userInstructions` (obligatorio, máximo 4000 caracteres), `languageCode` y `engramSessionId`.
+- La respuesta incluye `UserInstructions`, `WhyThisMatters` y `WorkedExamples`. Cada ejemplo
+  contiene situación, datos/supuestos, pasos, un artefacto utilizable (código, fórmulas, cálculos
+  o texto), resultado esperado y validación. Los datos inventados se identifican como ilustrativos.
+- El resultado y la petición se guardan en Data Lake por tenant, curso, lección y persona, con
+  `SchemaVersion = 7`. Un fallo de generación o guardado se devuelve como error, no como éxito.
+- El audio narra únicamente `ScenarioText`; los ejemplos, código y fórmulas se leen en pantalla.
+  El chat del profesor recibe también la petición y los ejemplos del resultado actual.
+- El componente compartido presenta este mismo flujo en la página de sección y en el modal Brain.
 
 ---
 

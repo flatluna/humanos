@@ -60,7 +60,7 @@ export default function LabDraftPreview({ response, requestContext }: LabDraftPr
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<SaveLabDraftResponse | null>(null);
 
-  const { Status, Draft, Questions, Warnings, LabName, TargetRole, Difficulty, ScoreMinimo, Language } = response;
+  const { Status, Draft, Questions, Warnings, LabName, TargetRole, Difficulty, ScoreMinimo, Language, Cost } = response;
 
   // Editable copy of the generated dialogues ("preguntas") — the admin can rewrite any field
   // here before saving; everything else in Draft stays as the agent generated it.
@@ -144,6 +144,7 @@ export default function LabDraftPreview({ response, requestContext }: LabDraftPr
         ScoreMinimo: ScoreMinimo ?? 7.00,
         Language: Language || requestContext?.LabLanguage || 'es-MX',
         Draft: { ...Draft, Dialogues: dialogues, Actors: actors },
+        Cost,
       });
       setSaveSuccess(result);
     } catch (err) {
@@ -265,6 +266,47 @@ export default function LabDraftPreview({ response, requestContext }: LabDraftPr
             </p>
           </div>
         </div>
+
+        {/* Generation cost — tokens in/out, timing and estimated USD, same convention as the
+            Studio cost dashboards (Capabilities / Structured Learning). */}
+        {Cost && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                {isEs ? 'Costo de generación' : 'Generation cost'}
+                {Cost.ModelName && <span className="ml-1.5 text-slate-500">· {Cost.ModelName}</span>}
+              </p>
+              <span className="text-sm font-bold text-emerald-300">
+                {Cost.IsEstimate ? '~' : ''}${Cost.EstimatedCostUsd.toFixed(4)} USD
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-4">
+              <div>
+                <span className="text-slate-500">{isEs ? 'Tokens entrada' : 'Input tokens'}: </span>
+                {Cost.InputTokens.toLocaleString()}
+              </div>
+              <div>
+                <span className="text-slate-500">{isEs ? 'Tokens salida' : 'Output tokens'}: </span>
+                {Cost.OutputTokens.toLocaleString()}
+              </div>
+              <div>
+                <span className="text-slate-500">{isEs ? 'Cacheados' : 'Cached'}: </span>
+                {Cost.CachedInputTokens.toLocaleString()}
+              </div>
+              <div>
+                <span className="text-slate-500">{isEs ? 'Tiempo' : 'Elapsed'}: </span>
+                {(Cost.ElapsedMilliseconds / 1000).toFixed(1)}s
+              </div>
+            </div>
+            {Cost.IsEstimate && (
+              <p className="mt-1.5 text-[10px] text-slate-500">
+                {isEs
+                  ? 'Costo estimado con tarifas por defecto (configura AgentPricing para tarifas reales de este modelo).'
+                  : 'Estimated with default rates (configure AgentPricing for real rates for this model).'}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Warnings if any */}
         {Warnings && Warnings.length > 0 && (

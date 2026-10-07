@@ -581,7 +581,7 @@ export default function StructuredLearningDocumentDetailPage() {
                 <select
                   value={selectedSubjectId}
                   onChange={(event) => handleSubjectChange(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                  className="input mt-2"
                 >
                   <option value="">{t('structuredLearningDetail.unassigned')}</option>
                   {subjects.map((subject) => (
@@ -596,7 +596,7 @@ export default function StructuredLearningDocumentDetailPage() {
                 <select
                   value={selectedTopicId}
                   onChange={(event) => setSelectedTopicId(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                  className="input mt-2"
                 >
                   <option value="">{t('structuredLearningDetail.unassigned')}</option>
                   {topics.map((topic) => (
@@ -741,7 +741,7 @@ export default function StructuredLearningDocumentDetailPage() {
                   <select
                     value={restartLanguage}
                     onChange={(e) => setRestartLanguage(e.target.value as 'es' | 'en')}
-                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                    className="input"
                   >
                     <option value="es">Español</option>
                     <option value="en">English</option>
@@ -757,7 +757,7 @@ export default function StructuredLearningDocumentDetailPage() {
                       value={restartFromEngram}
                       onChange={(e) => setRestartFromEngram(e.target.value)}
                       placeholder="From (e.g. 1)"
-                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                      className="input"
                     />
                     <span className="text-slate-500">to</span>
                     <input
@@ -766,7 +766,7 @@ export default function StructuredLearningDocumentDetailPage() {
                       value={restartToEngram}
                       onChange={(e) => setRestartToEngram(e.target.value)}
                       placeholder="To (e.g. 10)"
-                      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-brand-400"
+                      className="input"
                     />
                   </div>
                   <p className="mt-1 text-[11px] text-slate-500">Leave both blank to restart every engram in the course.</p>
@@ -891,7 +891,7 @@ export default function StructuredLearningDocumentDetailPage() {
               type="button"
               onClick={handleSaveVisibility}
               disabled={visibilityBusy}
-              className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {visibilityBusy ? t('structuredLearningVisibility.saving') : t('structuredLearningVisibility.save')}
             </button>
@@ -927,15 +927,16 @@ export default function StructuredLearningDocumentDetailPage() {
             </div>
           )}
 
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <select
               value={selectedProgramId}
               onChange={(e) => setSelectedProgramId(e.target.value)}
-              className="min-w-[220px] rounded-xl border border-white/10 bg-[#070b12] px-3 py-2 text-sm text-slate-100 outline-none ring-0 transition focus:border-brand-400"
+              className="input w-auto min-w-[260px] max-w-sm"
             >
               <option value="">Select a program</option>
               {programs
                 .filter((program) => !memberships.some((m) => m.ProgramId === program.ProgramId))
+                .filter((program) => !effectiveTenantId || !program.TenantId || program.TenantId.toLowerCase() === effectiveTenantId.toLowerCase())
                 .map((program) => (
                   <option key={program.ProgramId} value={program.ProgramId}>
                     {program.Name}

@@ -1,4 +1,5 @@
-import { apiGet, apiPost } from './httpClient';
+import { apiGet, apiPost, API_BASE_URL } from './httpClient';
+import { getIdentityHeaders } from '@/auth';
 import type { GamificationRewardBundleDto } from '../../gamification/types';
 
 /**
@@ -63,6 +64,7 @@ export interface StructuredLearningSectionDetail {
   SubchapterTitle: string;
   Text?: string;
   KnowledgeGraphRootEntityName?: string | null;
+  EstimatedMinutesToComplete?: number;
   Steps: StructuredLearningStepDetail[];
 }
 
@@ -72,6 +74,11 @@ export interface StructuredLearningDocumentDetail {
   ExecutiveSummary?: string | null;
   AssessmentQuestionType: string;
   Sections: StructuredLearningSectionDetail[];
+  ShowQaProfessorStep: boolean;
+  ShowDeepDiveAgentChat: boolean;
+  EnableQaProfessorVoice: boolean;
+  EnableDeepDiveAgentVoice: boolean;
+  IncludeWorkplaceApplicationStep: boolean;
 }
 
 export interface StructuredLearningDocumentSummary {
@@ -187,20 +194,24 @@ export interface SubmitStructuredLearningRecallAttemptResult {
 
 export function getStructuredLearningRecallState(
   sectionId: string,
-  personId: string
+  personId: string,
+  engramSessionId?: string
 ): Promise<SubmitStructuredLearningRecallAttemptResult> {
+  const qs = engramSessionId ? `&engramSessionId=${engramSessionId}` : '';
   return rGet<SubmitStructuredLearningRecallAttemptResult>(
-    `/studio/structured-learning/sections/${sectionId}/recall/state?personId=${personId}`
+    `/studio/structured-learning/sections/${sectionId}/recall/state?personId=${personId}${qs}`
   );
 }
 
 export function submitStructuredLearningRecallAttempt(
   sectionId: string,
   personId: string,
-  studentResponse?: string
+  studentResponse?: string,
+  engramSessionId?: string
 ): Promise<SubmitStructuredLearningRecallAttemptResult> {
+  const qs = engramSessionId ? `&engramSessionId=${engramSessionId}` : '';
   return rPost<SubmitStructuredLearningRecallAttemptResult>(
-    `/studio/structured-learning/sections/${sectionId}/recall/attempt?personId=${personId}`,
+    `/studio/structured-learning/sections/${sectionId}/recall/attempt?personId=${personId}${qs}`,
     { studentResponse: studentResponse ?? null }
   );
 }
@@ -260,10 +271,12 @@ export interface StructuredLearningAssessmentRoundState {
 
 export function startStructuredLearningAssessmentRound(
   sectionId: string,
-  personId: string
+  personId: string,
+  engramSessionId?: string
 ): Promise<StructuredLearningAssessmentRoundState> {
+  const qs = engramSessionId ? `&engramSessionId=${engramSessionId}` : '';
   return rPost<StructuredLearningAssessmentRoundState>(
-    `/studio/structured-learning/sections/${sectionId}/assessment/start-round?personId=${personId}`
+    `/studio/structured-learning/sections/${sectionId}/assessment/start-round?personId=${personId}${qs}`
   );
 }
 
@@ -296,11 +309,12 @@ export interface SubmitStructuredLearningAssessmentAnswerResult {
 
 export function submitStructuredLearningAssessmentAnswer(
   questionAttemptId: string,
-  studentAnswer: string
+  studentAnswer: string,
+  engramSessionId?: string
 ): Promise<SubmitStructuredLearningAssessmentAnswerResult> {
   return rPost<SubmitStructuredLearningAssessmentAnswerResult>(
     `/studio/structured-learning/assessment/questions/${questionAttemptId}/answer`,
-    { studentAnswer }
+    { studentAnswer, engramSessionId }
   );
 }
 
@@ -405,6 +419,17 @@ export function generateStructuredLearningConnections(sectionId: string): Promis
 
 // ==================== Workplace Application (Production / "In your role") ====================
 
+export interface WorkplaceWorkedExample {
+  Title: string;
+  Situation: string;
+  InputsAndAssumptions: string;
+  Steps: string[];
+  Artifact: string;
+  ArtifactLanguage: string;
+  ExpectedResult: string;
+  Validation: string;
+}
+
 export interface WorkplaceApplicationDto {
   SectionId: string;
   PersonId: string;
@@ -418,29 +443,51 @@ export interface WorkplaceApplicationDto {
   AudioUrl: string;
   LanguageCode: string;
   WhyThisMatters?: string;
-  ReflectionQuestions?: string[];
-  GrowthOpportunity?: string;
+  UserInstructions: string;
+  WorkedExamples: WorkplaceWorkedExample[];
   KnowledgeConnections?: string[];
-  CqiLeadingPatternType?: string | null;
-  CqiLeadingPatternName?: string | null;
-  CqiTypeLabel?: string | null;
-  CqiLearningAndWorkingPreferences?: string | null;
-  CqiExampleImageUrls?: string[];
-  CqiExampleImageExplanations?: string[];
 }
 
-export function getStructuredLearningWorkplaceApplication(
+export function generateStructuredLearningWorkplaceApplication(
+  sectionId: string,
+  userInstructions: string,
+  personId?: string,
+  languageCode?: string,
+  engramSessionId?: string
+): Promise<WorkplaceApplicationDto> {
+  return rPost<WorkplaceApplicationDto>(
+    `/studio/structured-learning/sections/${sectionId}/workplace-application`,
+    { personId, userInstructions, languageCode, engramSessionId }
+  );
+}
+
+export async function getStructuredLearningWorkplaceApplication(
   sectionId: string,
   personId?: string,
   languageCode?: string,
-  force = false
-): Promise<WorkplaceApplicationDto> {
+  force = false,
+  engramSessionId?: string
+): Promise<WorkplaceApplicationDto | null> {
   const query = new URLSearchParams();
   if (personId) query.set('personId', personId);
   if (languageCode) query.set('languageCode', languageCode);
   if (force) query.set('force', 'true');
+  if (engramSessionId) query.set('engramSessionId', engramSessionId);
   const qs = query.toString() ? `?${query.toString()}` : '';
-  return rGet<WorkplaceApplicationDto>(`/studio/structured-learning/sections/${sectionId}/workplace-application${qs}`);
+  const response = await fetch(`${API_BASE_URL}/studio/structured-learning/sections/${sectionId}/workplace-application${qs}`, {
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
+  });
+
+  if (!response.ok) {
+    let errorBody: { error?: string; message?: string } | null = null;
+    try { errorBody = await response.json(); } catch { /* not JSON */ }
+    if (response.status === 404 && errorBody?.error === 'WorkplaceApplicationNotGenerated') return null;
+    throw new Error(errorBody?.message ?? `Request failed with status ${response.status}`);
+  }
+
+  const text = await response.text();
+  if (!text.trim()) return null;
+  return toPascalCaseDeep(JSON.parse(text)) as WorkplaceApplicationDto;
 }
 
 export interface WorkplaceMentorChatResponse {
@@ -465,4 +512,3 @@ export function postStructuredLearningWorkplaceChat(
     }
   );
 }
-

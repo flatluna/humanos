@@ -20,19 +20,22 @@ public sealed class TecContigoContextBuilder
     private readonly CapabilityEnrollmentService _capabilityEnrollmentService;
     private readonly PersonResumeService _personResumeService;
     private readonly BadgeService _badgeService;
+    private readonly StructuredLearningEngramStatsService _engramStatsService;
 
     public TecContigoContextBuilder(
         HumanOsDbContext dbContext,
         PersonAcademicPreferencesService academicPreferencesService,
         CapabilityEnrollmentService capabilityEnrollmentService,
         PersonResumeService personResumeService,
-        BadgeService badgeService)
+        BadgeService badgeService,
+        StructuredLearningEngramStatsService engramStatsService)
     {
         _dbContext = dbContext;
         _academicPreferencesService = academicPreferencesService;
         _capabilityEnrollmentService = capabilityEnrollmentService;
         _personResumeService = personResumeService;
         _badgeService = badgeService;
+        _engramStatsService = engramStatsService;
     }
 
     public async Task<string> BuildAsync(Guid? personId, CancellationToken cancellationToken)
@@ -153,39 +156,11 @@ public sealed class TecContigoContextBuilder
         sb.AppendLine();
         sb.AppendLine("=== ENGRAM-BY-ENGRAM DETAIL (each Engram's own name and score) ===");
 
-        // Loaded as flat rows first (EF Core can't reliably translate an
-        // OrderBy().First() inside a GroupBy().Select() for this provider) —
-        // the "latest round per section" reduction happens in memory instead,
-        // which is fine given this is scoped to a single student.
-        var allRounds = await _dbContext.StructuredLearningAssessmentRounds
-            .AsNoTracking()
-            .Where(round => round.PersonId == personId)
-            .Select(round => new
-            {
-                round.StructuredLearningDocumentSectionId,
-                CourseName = round.Section.Document.DocumentName,
-                EngramTitle = round.Section.SubchapterTitle,
-                round.Section.SortOrder,
-                round.FinalScore,
-                Status = round.Status.ToString(),
-                round.CompletedDate,
-                round.CreatedDate,
-            })
-            .ToListAsync(cancellationToken);
-
-        var latestRoundsPerSection = allRounds
-            .GroupBy(round => round.StructuredLearningDocumentSectionId)
-            .Select(group => group.OrderByDescending(round => round.CreatedDate).First())
-            .Select(round => new
-            {
-                round.CourseName,
-                round.EngramTitle,
-                round.SortOrder,
-                round.FinalScore,
-                round.Status,
-                CompletedDate = round.CompletedDate ?? round.CreatedDate,
-            })
-            .ToList();
+        // Shared with BuddyContextBuilder (2026-10-03) — the "latest round
+        // per section" reduction lives once in
+        // StructuredLearningEngramStatsService.GetPersonEngramCompletionsAsync
+        // instead of being duplicated per context builder.
+        var latestRoundsPerSection = await _engramStatsService.GetPersonEngramCompletionsAsync(personId, cancellationToken);
 
         if (latestRoundsPerSection.Count == 0)
         {

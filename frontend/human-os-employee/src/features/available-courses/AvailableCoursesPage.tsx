@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookCheck,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
   Layers,
   PlayCircle,
@@ -21,16 +22,20 @@ import {
   getCapabilities,
 } from '@/features/capabilities/api/capabilitiesApi';
 import {
+  enrollStructuredLearningDocument,
   getEnrolledStructuredLearningDocuments,
 } from '@/features/capabilities/api/enrolledStructuredLearningApi';
 import {
   getStructuredLearningDocuments,
 } from '@/features/capabilities/api/structuredLearningRuntimeApi';
 import {
+  enrollCapability,
   getEnrolledCapabilities,
 } from '@/features/capabilities/api/enrolledCapabilitiesApi';
 import {
   getCourseProgramMembershipMap,
+  getEnrolledPrograms,
+  enrollProgram,
 } from '@/features/programs/api/programsApi';
 import { GraduationCap } from 'lucide-react';
 
@@ -57,6 +62,7 @@ export interface AvailableCourseCardItem {
    * forever), so this is the real signal a "started only" filter must use
    * instead of relying on status alone. */
   isEnrolled?: boolean;
+  enrolledDate?: string;
   gradient: string;
   programMembership?: { programId: string; programName: string } | null;
   /** "es"/"en" when known (Capabilities only, see Capability.ContentLanguageCode).
@@ -103,6 +109,11 @@ const CATEGORY_STYLES: Record<
 };
 
 const STATUS_BADGES: Record<string, { labelEs: string; labelEn: string; className: string }> = {
+  Enrolled: {
+    labelEs: 'Inscrito',
+    labelEn: 'Enrolled',
+    className: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/20 dark:border-amber-500/30 dark:text-amber-300',
+  },
   Completed: {
     labelEs: 'Completado',
     labelEn: 'Completed',
@@ -141,6 +152,8 @@ function detectLanguageHeuristic(sampleText: string): 'es' | 'en' {
 }
 
 export function AvailableCoursesPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { language } = useI18n();
   const isEn = language === 'en';
   const { user } = useAuth();
@@ -150,6 +163,8 @@ export function AvailableCoursesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState<'all' | 'es' | 'en'>('all');
   const [startedOnly, setStartedOnly] = useState(false);
+  const [startingCourseId, setStartingCourseId] = useState<string | null>(null);
+  const [startCourseError, setStartCourseError] = useState<string | null>(null);
 
   // Queries
   const planQuery = useQuery({
@@ -181,6 +196,12 @@ export function AvailableCoursesPage() {
     enabled: Boolean(personId),
   });
 
+  const enrolledProgramsQuery = useQuery({
+    queryKey: ['my-enrolled-programs-available', personId],
+    queryFn: () => getEnrolledPrograms(personId),
+    enabled: Boolean(personId),
+  });
+
   const publishedCapsQuery = useQuery({
     queryKey: ['published-caps-available'],
     queryFn: () => getCapabilities(),
@@ -197,6 +218,7 @@ export function AvailableCoursesPage() {
     enrolledSlQuery.isLoading ||
     publishedSlQuery.isLoading ||
     enrolledCapsQuery.isLoading ||
+    enrolledProgramsQuery.isLoading ||
     publishedCapsQuery.isLoading ||
     programMembershipQuery.isLoading;
 
@@ -329,6 +351,7 @@ export function AvailableCoursesPage() {
           existing.completedSectionCount = doc.completedSectionCount;
           existing.coverIllustrationId = doc.coverIllustrationId;
           existing.isEnrolled = true;
+          existing.enrolledDate = doc.enrolledDate;
           existing.contentLanguageCode = existing.contentLanguageCode ?? doc.language;
         } else {
           itemsMap.set(key, {
@@ -344,6 +367,7 @@ export function AvailableCoursesPage() {
             completedSectionCount: doc.completedSectionCount,
             status: 'Available',
             isEnrolled: true,
+            enrolledDate: doc.enrolledDate,
             gradient: CATEGORY_STYLES.general.gradient,
             contentLanguageCode: doc.language,
           });
@@ -387,11 +411,23 @@ export function AvailableCoursesPage() {
           existing.status = (cap.status as any) || existing.status;
           existing.nodeCount = cap.totalNodes;
           existing.isEnrolled = true;
+          existing.enrolledDate = cap.enrolledDate;
         }
       }
     }
 
-    // 7. Enrich with Program Membership (if course is part of a program)
+    // 7. Enrolled Programs
+    if (enrolledProgramsQuery.data) {
+      for (const program of enrolledProgramsQuery.data) {
+        const existing = itemsMap.get(`prog-${program.programId}`);
+        if (existing) {
+          existing.isEnrolled = true;
+          existing.enrolledDate = program.acceptedDate;
+        }
+      }
+    }
+
+    // 8. Enrich with Program Membership (if course is part of a program)
     const membershipMap = programMembershipQuery.data;
     if (membershipMap) {
       for (const item of itemsMap.values()) {
@@ -410,6 +446,7 @@ export function AvailableCoursesPage() {
     enrolledSlQuery.data,
     publishedSlQuery.data,
     enrolledCapsQuery.data,
+    enrolledProgramsQuery.data,
     programMembershipQuery.data,
     isEn,
   ]);
@@ -442,6 +479,33 @@ export function AvailableCoursesPage() {
   const inProgressCount = availableCourses.filter(
     (c) => c.status !== 'Completed' && (c.status === 'InProgress' || c.isEnrolled),
   ).length;
+
+  async function handleStartCourse(course: AvailableCourseCardItem) {
+    if (!personId || startingCourseId) return;
+
+    setStartingCourseId(course.id);
+    setStartCourseError(null);
+    try {
+      if (course.courseType === 'graph') {
+        await enrollCapability(personId, course.id);
+        await queryClient.invalidateQueries({ queryKey: ['my-enrolled-caps-available', personId] });
+      } else if (course.courseType === 'structured-learning') {
+        await enrollStructuredLearningDocument(personId, course.id);
+        await queryClient.invalidateQueries({ queryKey: ['my-enrolled-sl-available', personId] });
+      } else {
+        await enrollProgram(personId, course.id);
+        await queryClient.invalidateQueries({ queryKey: ['my-enrolled-programs-available', personId] });
+      }
+
+      navigate(course.targetUrl);
+    } catch {
+      setStartCourseError(
+        isEn ? 'We could not enroll you in this course. Please try again.' : 'No pudimos inscribirte en este curso. Inténtalo de nuevo.',
+      );
+    } finally {
+      setStartingCourseId(null);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 pb-16 sm:p-8">
@@ -554,6 +618,12 @@ export function AvailableCoursesPage() {
         </div>
       </div>
 
+      {startCourseError && (
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
+          {startCourseError}
+        </p>
+      )}
+
       {/* Course Cards Grid */}
       {filteredCourses.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
@@ -570,8 +640,10 @@ export function AvailableCoursesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredCourses.map((course) => {
-            const effectiveStatus = course.status === 'Available' && course.isEnrolled ? 'InProgress' : course.status;
-            const statusMeta = STATUS_BADGES[effectiveStatus] || STATUS_BADGES.Available;
+            const effectiveStatus = course.isEnrolled && course.status !== 'Completed' ? 'InProgress' : course.status;
+            const statusMeta = course.isEnrolled && effectiveStatus !== 'Completed'
+              ? STATUS_BADGES.Enrolled
+              : STATUS_BADGES[effectiveStatus] || STATUS_BADGES.Available;
 
             return (
               <div
@@ -666,6 +738,20 @@ export function AvailableCoursesPage() {
                         </span>
                       </div>
                     )}
+
+                    {course.isEnrolled && course.enrolledDate && (
+                      <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        <span>
+                          {isEn ? 'Enrolled' : 'Inscrito el'}{' '}
+                          {new Date(course.enrolledDate).toLocaleDateString(isEn ? 'en-US' : 'es-MX', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -691,19 +777,23 @@ export function AvailableCoursesPage() {
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                   ) : (
-                    <Link
-                      to={course.targetUrl}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 transition hover:brightness-110 hover:shadow-lg"
+                    <button
+                      type="button"
+                      onClick={() => void handleStartCourse(course)}
+                      disabled={!personId || startingCourseId !== null}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 transition hover:brightness-110 hover:shadow-lg disabled:cursor-wait disabled:opacity-60"
                     >
                       <PlayCircle className="h-4 w-4" />
                       <span>
-                        {effectiveStatus === 'Completed'
+                        {startingCourseId === course.id
+                          ? isEn ? 'Enrolling...' : 'Inscribiendo...'
+                          : effectiveStatus === 'Completed'
                           ? isEn ? 'Review Course' : 'Repasar Curso'
                           : effectiveStatus === 'InProgress'
                             ? isEn ? 'Continue Course' : 'Continuar Curso'
                             : isEn ? 'Start Course' : 'Iniciar Curso'}
                       </span>
-                    </Link>
+                    </button>
                   )}
                 </div>
               </div>

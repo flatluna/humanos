@@ -134,6 +134,7 @@ public sealed class ProgramService
         var program = new LearningProgram
         {
             ProgramId = Guid.NewGuid(),
+            TenantId = request.TenantId,
             Code = $"PROG-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
             Name = request.Name.Trim(),
             Description = request.Description?.Trim(),
@@ -469,6 +470,7 @@ public sealed class ProgramService
     private static ProgramResponse ToResponse(LearningProgram program) => new()
     {
         ProgramId = program.ProgramId,
+        TenantId = program.TenantId,
         Code = program.Code,
         Name = program.Name,
         Description = program.Description,

@@ -39,10 +39,15 @@ public sealed class StructuredLearningWorkplaceApplicationFunction
         var language = query["languageCode"] ?? query["language"] ?? query["targetLanguage"];
         var force = string.Equals(query["force"], "true", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(query["regenerate"], "true", StringComparison.OrdinalIgnoreCase);
+        Guid? engramSessionId = null;
+        if (Guid.TryParse(query["engramSessionId"], out var parsedSessionId))
+        {
+            engramSessionId = parsedSessionId;
+        }
 
         try
         {
-            var result = await _service.GetOrCreateAsync(sectionId, personId, language, force, cancellationToken);
+            var result = await _service.GetOrCreateAsync(sectionId, personId, language, force, engramSessionId, cancellationToken: cancellationToken);
             var response = await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);
             // Never let the browser (or any intermediary) reuse a stale cached copy of this
             // response — this endpoint has its own Data Lake caching layer already, and a
@@ -55,9 +60,66 @@ public sealed class StructuredLearningWorkplaceApplicationFunction
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.NotFound, "SectionNotFound", ex.Message, cancellationToken);
         }
+        catch (WorkplaceApplicationNotGeneratedException)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.NotFound, "WorkplaceApplicationNotGenerated",
+                "No workplace application has been generated yet for this section/person.", cancellationToken);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get/generate workplace application for section {SectionId}", sectionId);
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.InternalServerError, "WorkplaceApplicationFailed", ex.Message, cancellationToken);
+        }
+    }
+
+    public sealed class WorkplaceGenerateRequest
+    {
+        public Guid? PersonId { get; set; }
+        public string UserInstructions { get; set; } = string.Empty;
+        public string? LanguageCode { get; set; }
+        public Guid? EngramSessionId { get; set; }
+    }
+
+    [Function("PostStructuredLearningWorkplaceApplication")]
+    public async Task<HttpResponseData> RunGenerateAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "studio/structured-learning/sections/{sectionId:guid}/workplace-application")]
+        HttpRequestData request,
+        Guid sectionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await JsonSerializer.DeserializeAsync<WorkplaceGenerateRequest>(
+                request.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken);
+            if (body is null || string.IsNullOrWhiteSpace(body.UserInstructions)
+                || body.UserInstructions.Length > StructuredLearningWorkplaceApplicationService.MaxUserInstructionsLength)
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.BadRequest, "InvalidRequest",
+                    "'userInstructions' is required and cannot exceed 4000 characters.", cancellationToken);
+
+            var result = await _service.GetOrCreateAsync(sectionId, body.PersonId, body.LanguageCode,
+                forceRegenerate: true, engramSessionId: body.EngramSessionId,
+                userInstructions: body.UserInstructions, cancellationToken: cancellationToken);
+            var response = await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);
+            response.Headers.Add("Cache-Control", "no-store");
+            return response;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Invalid workplace generation request for section {SectionId}", sectionId);
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidRequest", "Invalid JSON request.", cancellationToken);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.NotFound, "SectionNotFound", ex.Message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate/save workplace application for section {SectionId}", sectionId);
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.InternalServerError, "WorkplaceApplicationFailed", ex.Message, cancellationToken);
         }

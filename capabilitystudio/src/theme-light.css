@@ -82,29 +82,57 @@
 }
 
 /* Inputs/selects: solid white surface, dark text, visible border on light background */
-[data-theme='light'] .input {
+[data-theme='light'] .input,
+[data-theme='light'] select,
+[data-theme='light'] input:not([type='checkbox']):not([type='radio']):not([type='submit']):not([type='button']),
+[data-theme='light'] textarea {
   background-color: #ffffff;
   color: #0f172a;
   border-color: #cbd5e1;
 }
 
-[data-theme='light'] .input::placeholder {
+[data-theme='light'] .input::placeholder,
+[data-theme='light'] input::placeholder,
+[data-theme='light'] textarea::placeholder {
   color: #94a3b8;
 }
 
+[data-theme='light'] select,
 [data-theme='light'] select.input {
   background-color: #ffffff;
   color: #0f172a;
+  border-color: #cbd5e1;
 }
 
+[data-theme='light'] select option,
 [data-theme='light'] select.input option {
   background-color: #ffffff;
   color: #0f172a;
 }
 
+[data-theme='light'] select option:checked,
 [data-theme='light'] select.input option:checked {
   background-color: rgb(var(--color-brand-500));
   color: #ffffff;
+}
+
+/* Checkbox & radio button contrast in light mode */
+[data-theme='light'] input[type='checkbox'],
+[data-theme='light'] input[type='radio'] {
+  border-color: #94a3b8;
+  background-color: #ffffff;
+}
+
+[data-theme='light'] input[type='checkbox']:checked,
+[data-theme='light'] input[type='radio']:checked {
+  border-color: rgb(var(--color-brand-500)) !important;
+  background-color: rgb(var(--color-brand-500)) !important;
+  color: #ffffff !important;
+}
+
+/* High-contrast dark text on bright buttons/badges (cyan, teal, amber, emerald) */
+[data-theme='light'] .text-slate-950 {
+  color: #020617 !important;
 }
 
 /* Color contrast fixes for semantic status/badge text — dark-mode pastel tones (emerald/teal/
@@ -129,6 +157,29 @@
 [data-theme='light'] .text-purple-200 { color: #5b21b6; }
 [data-theme='light'] .text-purple-300 { color: #6d28d9; }
 [data-theme='light'] .text-purple-400 { color: #7c3aed; }
+
+/* Knowledge Graph node palette (2026-10-06) — "Value" nodes used orange-100
+   text on an orange-tinted background, unreadable on light mode (looked
+   like near-invisible pale yellow-on-yellow); same fix pattern as the
+   emerald/teal/amber/purple sets above, extended to the remaining node
+   kinds (Document=sky, Rule=violet, Entity=slate) so every kind stays
+   legible in both themes. */
+[data-theme='light'] .text-orange-100 { color: #7c2d12; }
+[data-theme='light'] .text-orange-200 { color: #9a3412; }
+[data-theme='light'] .text-orange-300 { color: #c2410c; }
+[data-theme='light'] .text-orange-400 { color: #ea580c; }
+
+[data-theme='light'] .text-sky-100 { color: #0c4a6e; }
+[data-theme='light'] .text-sky-200 { color: #075985; }
+[data-theme='light'] .text-sky-300 { color: #0369a1; }
+[data-theme='light'] .text-sky-400 { color: #0284c7; }
+
+[data-theme='light'] .text-violet-100 { color: #4c1d95; }
+[data-theme='light'] .text-violet-200 { color: #5b21b6; }
+[data-theme='light'] .text-violet-300 { color: #6d28d9; }
+[data-theme='light'] .text-violet-400 { color: #7c3aed; }
+
+[data-theme='light'] .text-slate-100 { color: #0f172a; }
 
 [data-theme='light'] .text-brand-100 { color: rgb(30 40 118); }
 [data-theme='light'] .text-brand-200 { color: rgb(36 48 145); }
@@ -160,13 +211,76 @@
 [data-theme='light'] .border-brand-500\/40,
 [data-theme='light'] .border-brand-400\/40 { border-color: #a5b4fc; }
 
+/* Red / Danger status & button text contrast fixes for light mode */
+[data-theme='light'] .text-red-100 { color: #991b1b; }
+[data-theme='light'] .text-red-200 { color: #b91c1c; }
+[data-theme='light'] .text-red-300 { color: #dc2626; }
+[data-theme='light'] .text-red-400 { color: #ef4444; }
+
+[data-theme='light'] .bg-red-500\/5,
+[data-theme='light'] .bg-red-500\/10,
+[data-theme='light'] .bg-red-500\/15,
+[data-theme='light'] .bg-red-500\/20 {
+  background-color: #fee2e2;
+}
+
+[data-theme='light'] .border-red-500\/20,
+[data-theme='light'] .border-red-500\/30,
+[data-theme='light'] .border-red-400\/40,
+[data-theme='light'] .border-red-400\/50,
+[data-theme='light'] .border-red-400\/60 {
+  border-color: #fca5a5;
+}
+
+/* Rose status & text contrast fixes for light mode */
+[data-theme='light'] .text-rose-100 { color: #9f1239; }
+[data-theme='light'] .text-rose-200 { color: #be123c; }
+[data-theme='light'] .text-rose-300 { color: #e11d48; }
+[data-theme='light'] .text-rose-400 { color: #f43f5e; }
+[data-theme='light'] .bg-rose-500\/10 { background-color: #ffe4e6; }
+[data-theme='light'] .border-rose-400\/20 { border-color: #fda4af; }
+
+/* Cyan status & text contrast fixes for light mode */
+[data-theme='light'] .text-cyan-100 { color: #155e75; }
+[data-theme='light'] .text-cyan-200 { color: #0e7490; }
+[data-theme='light'] .text-cyan-300 { color: #0891b2; }
+[data-theme='light'] .text-cyan-400 { color: #0284c7; }
+[data-theme='light'] .bg-cyan-500\/10,
+[data-theme='light'] .bg-cyan-500\/20 { background-color: #cffafe; }
+[data-theme='light'] .border-cyan-400\/30,
+[data-theme='light'] .border-cyan-500\/20 { border-color: #a5f3fc; }
+
+/* Amber panel surfaces & borders in light mode */
+[data-theme='light'] .bg-amber-500\/10,
+[data-theme='light'] .bg-amber-500\/15,
+[data-theme='light'] .bg-amber-500\/20 { background-color: #fef3c7; }
+[data-theme='light'] .border-amber-400\/30,
+[data-theme='light'] .border-amber-400\/40,
+[data-theme='light'] .border-amber-500\/20,
+[data-theme='light'] .border-amber-500\/30 { border-color: #fcd34d; }
+
 /* Keep white text legible inside solid-colored buttons/badges/gradients */
+[data-theme='light'] .bg-gradient-to-r.from-brand-500.to-accent-500,
 [data-theme='light'] .bg-gradient-to-r.from-emerald-500.to-teal-500,
 [data-theme='light'] .bg-gradient-to-r.from-teal-500.to-emerald-500,
 [data-theme='light'] .bg-emerald-500.text-white,
 [data-theme='light'] [class*='from-brand-500'][class*='to-accent-500'],
 [data-theme='light'] [class*='from-brand-500'][class*='to-indigo-500'],
-[data-theme='light'] .bg-brand-500.text-white,
-[data-theme='light'] .bg-emerald-500 {
+[data-theme='light'] .bg-brand-500,
+[data-theme='light'] .bg-brand-600,
+[data-theme='light'] .bg-brand-700,
+[data-theme='light'] .bg-emerald-500,
+[data-theme='light'] .bg-emerald-600,
+[data-theme='light'] .bg-red-500,
+[data-theme='light'] .bg-red-600 {
+  color: #ffffff;
+}
+
+[data-theme='light'] .bg-brand-500 svg,
+[data-theme='light'] .bg-brand-600 svg,
+[data-theme='light'] .bg-emerald-500 svg,
+[data-theme='light'] .bg-emerald-600 svg,
+[data-theme='light'] .bg-red-500 svg,
+[data-theme='light'] .bg-red-600 svg {
   color: #ffffff;
 }

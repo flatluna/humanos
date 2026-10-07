@@ -24,6 +24,15 @@ public sealed class TenantService
                 cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Tenant>> GetAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Tenants
+            .AsNoTracking()
+            .OrderBy(tenant => tenant.Name)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Tenant?> GetBySlugAsync(
         string slug,
         CancellationToken cancellationToken = default)

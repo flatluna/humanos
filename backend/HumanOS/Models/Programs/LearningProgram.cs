@@ -16,6 +16,9 @@ public sealed class LearningProgram
 {
     public Guid ProgramId { get; set; }
 
+    /// <summary>Owning tenant for multi-tenant isolation. Null for legacy/global programs.</summary>
+    public Guid? TenantId { get; set; }
+
     public string Code { get; set; } = null!;
 
     public string Name { get; set; } = null!;

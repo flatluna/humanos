@@ -31,6 +31,11 @@ public sealed class HumanOsDbContext : DbContext
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
+    /// <summary>Per-tenant quota/limit overrides (Azure-style service
+    /// limits, 2026-10-04) — see <see cref="HumanOS.Models.Tenancy.TenantServiceQuota"/>
+    /// and <see cref="HumanOS.Services.QuotaCatalog"/>.</summary>
+    public DbSet<HumanOS.Models.Tenancy.TenantServiceQuota> TenantServiceQuotas => Set<HumanOS.Models.Tenancy.TenantServiceQuota>();
+
     public DbSet<Person> People => Set<Person>();
 
     public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
@@ -206,6 +211,16 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<CapabilityGenerationUsage> CapabilityGenerationUsages =>
         Set<CapabilityGenerationUsage>();
 
+    /// <summary>Per-call Buddy Realtime voice session durations (2026-10-01) —
+    /// see <see cref="Models.People.BuddySessionUsage"/>.</summary>
+    public DbSet<Models.People.BuddySessionUsage> BuddySessionUsages =>
+        Set<Models.People.BuddySessionUsage>();
+
+    /// <summary>Per-turn Buddy TEXT chat real token usage (2026-10-04) — see
+    /// <see cref="Models.People.BuddyChatUsage"/>.</summary>
+    public DbSet<Models.People.BuddyChatUsage> BuddyChatUsages =>
+        Set<Models.People.BuddyChatUsage>();
+
     /// <summary>On-demand "Profundizar" knowledge expansion cache, one row
     /// per node (2026-07-20) — see
     /// <see cref="CapabilityGraphNodeKnowledgeExpansion"/>.</summary>
@@ -257,6 +272,12 @@ public sealed class HumanOsDbContext : DbContext
     /// see <see cref="EngramReviewCompletion"/>.</summary>
     public DbSet<EngramReviewCompletion> EngramReviewCompletions =>
         Set<EngramReviewCompletion>();
+
+    /// <summary>Every "Reactivar Engrama" voice session's real duration,
+    /// regardless of whether it finished (2026-10-04) — see
+    /// <see cref="EngramReviewSessionUsage"/>.</summary>
+    public DbSet<EngramReviewSessionUsage> EngramReviewSessionUsages =>
+        Set<EngramReviewSessionUsage>();
 
     /// <summary>Impact score for an Engram evaluated for an Employee within a Course/Document —
     /// see <see cref="EngramImpactScore"/>.</summary>
@@ -430,10 +451,27 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<Models.Capabilities.Studio.StructuredLearningTopic> StructuredLearningTopics =>
         Set<Models.Capabilities.Studio.StructuredLearningTopic>();
 
+    /// <summary>One real student "entry" into an engram (2026-10-02) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningEngramSession"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningEngramSession> StructuredLearningEngramSessions =>
+        Set<Models.Capabilities.Studio.StructuredLearningEngramSession>();
+
+    /// <summary>Per-step start/completion timestamps within one engram
+    /// session (2026-10-02) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningEngramSessionStep"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningEngramSessionStep> StructuredLearningEngramSessionSteps =>
+        Set<Models.Capabilities.Studio.StructuredLearningEngramSessionStep>();
+
     /// <summary>Per-step token usage + elapsed time (2026-08-14) — see
     /// <see cref="Models.Capabilities.Studio.StructuredLearningGenerationUsage"/>.</summary>
     public DbSet<Models.Capabilities.Studio.StructuredLearningGenerationUsage> StructuredLearningGenerationUsages =>
         Set<Models.Capabilities.Studio.StructuredLearningGenerationUsage>();
+
+    /// <summary>Per-turn student runtime usage (Voice/Text "Q&A with
+    /// Professor", 2026-10-01) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningEngramRuntimeUsage"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningEngramRuntimeUsage> StructuredLearningEngramRuntimeUsages =>
+        Set<Models.Capabilities.Studio.StructuredLearningEngramRuntimeUsage>();
 
     /// <summary>Step 3 output — see <see cref="Models.Capabilities.Studio.StructuredLearningSectionStep"/>.</summary>
     public DbSet<Models.Capabilities.Studio.StructuredLearningSectionStep> StructuredLearningSectionSteps =>

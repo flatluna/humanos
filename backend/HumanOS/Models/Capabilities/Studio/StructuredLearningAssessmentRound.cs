@@ -34,6 +34,12 @@ public class StructuredLearningAssessmentRound
     /// (2026-08-13).</summary>
     public Guid? PersonId { get; set; }
 
+    /// <summary>The course-visit session this round happened during
+    /// (2026-10-02) — lets pass/fail counts be rolled up per real session,
+    /// not just lifetime-per-person. Null for rounds recorded before this
+    /// FK existed.</summary>
+    public Guid? StructuredLearningEngramSessionId { get; set; }
+
     public int RoundNumber { get; set; }
 
     public StructuredLearningAssessmentRoundStatus Status { get; set; } = StructuredLearningAssessmentRoundStatus.InProgress;

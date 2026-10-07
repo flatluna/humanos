@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkles, X } from 'lucide-react';
-import { requestBuddyVoiceSession, searchBuddyWeb } from '../api/buddyApi';
+import { requestBuddyVoiceSession, searchBuddyWeb, reportBuddySessionUsage } from '../api/buddyApi';
 
 type VoiceState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error';
 
@@ -37,8 +37,16 @@ export function BuddyVoiceModal({
   // Guards against the same Realtime tool call being reported twice (it can arrive via
   // both `response.output_item.done` and `response.done`) — only ever answer it once.
   const handledToolCallIdsRef = useRef<Set<string>>(new Set());
+  // Wall-clock start of the active call (2026-10-01) — used to report real
+  // session duration to the backend on teardown (see reportBuddySessionUsage).
+  const connectedAtRef = useRef<number | null>(null);
 
   const teardown = useCallback(() => {
+    if (connectedAtRef.current !== null) {
+      const durationSeconds = Math.round((Date.now() - connectedAtRef.current) / 1000);
+      reportBuddySessionUsage(durationSeconds);
+      connectedAtRef.current = null;
+    }
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -197,6 +205,7 @@ export function BuddyVoiceModal({
       const answerSdp = await sdpResponse.text();
       await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
+      connectedAtRef.current = Date.now();
       setState('connected');
     } catch (err) {
       console.error('BuddyVoiceModal: connection failed', err);

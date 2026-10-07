@@ -4,6 +4,7 @@ import { apiGet, apiPost, apiPut, apiDelete, apiPostFile } from './httpClient';
  * ProgramResponse.cs. */
 export interface BackendProgram {
   ProgramId: string;
+  TenantId?: string | null;
   Code: string;
   Name: string;
   Description: string | null;
@@ -41,6 +42,7 @@ export interface BackendProgramDetail extends BackendProgram {
 
 export interface SaveProgramInput {
   name: string;
+  tenantId?: string | null;
   description?: string | null;
   objectives?: string | null;
   requirements?: string | null;

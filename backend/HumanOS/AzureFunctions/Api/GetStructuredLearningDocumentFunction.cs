@@ -157,6 +157,20 @@ public sealed class StructuredLearningDocumentDetailResponse
 
     public bool ShowKnowledgeGraphToLearners { get; set; }
 
+    public bool ShowQaProfessorStep { get; set; }
+
+    public bool ShowDeepDiveAgentChat { get; set; }
+
+    public bool EnableQaProfessorVoice { get; set; }
+
+    public bool EnableDeepDiveAgentVoice { get; set; }
+
+    public bool IncludeWorkplaceApplicationStep { get; set; }
+
+    public string RecallGenerationMode { get; set; } = string.Empty;
+
+    public string AssessmentGenerationMode { get; set; } = string.Empty;
+
     public List<StructuredLearningSectionDetailDto> Sections { get; set; } = [];
 }
 
@@ -231,6 +245,13 @@ public sealed class GetStructuredLearningDocumentFunction
             ConfirmedDocumentType = document.ConfirmedDocumentType,
             DocumentTypeConfirmedByUser = document.DocumentTypeConfirmedByUser,
             ShowKnowledgeGraphToLearners = document.ShowKnowledgeGraphToLearners,
+            ShowQaProfessorStep = document.ShowQaProfessorStep,
+            ShowDeepDiveAgentChat = document.ShowDeepDiveAgentChat,
+            EnableQaProfessorVoice = document.EnableQaProfessorVoice,
+            EnableDeepDiveAgentVoice = document.EnableDeepDiveAgentVoice,
+            IncludeWorkplaceApplicationStep = document.IncludeWorkplaceApplicationStep,
+            RecallGenerationMode = document.RecallGenerationMode.ToString(),
+            AssessmentGenerationMode = document.AssessmentGenerationMode.ToString(),
             Sections = document.Sections
                 .OrderBy(s => s.SortOrder)
                 .Select(s => new StructuredLearningSectionDetailDto

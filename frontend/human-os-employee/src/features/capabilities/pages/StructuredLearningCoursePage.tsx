@@ -5,7 +5,6 @@ import {
   Lock,
   PlayCircle,
   Star,
-  ChevronDown,
   Menu,
   X,
   ListChecks,
@@ -16,6 +15,10 @@ import {
   Zap,
   Target,
   Info,
+  Check,
+  Clock,
+  ArrowRight,
+  Layers,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
@@ -26,11 +29,15 @@ import {
   type StructuredLearningSectionDetail,
 } from '../api/structuredLearningRuntimeApi';
 import {
+  getStructuredLearningCourseSessionCount,
+} from '../api/runtimeSessionApi';
+import {
   getEngramImpactScores,
   refreshEngramImpactScores,
   type EngramImpactScoreDto,
 } from '../api/engramImpactApi';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
+import { useCourseFocusModeStore } from '@/store/useCourseFocusModeStore';
 
 type SectionState = 'Locked' | 'Available' | 'Mastered';
 
@@ -75,6 +82,15 @@ export default function StructuredLearningCoursePage() {
   const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // Course focus mode (2026-10-02) — hides the sidebar and blocks all
+  // navigation while the student is inside this course, released only via
+  // the layout's "Exit course" button. Enabled for the whole lifetime of
+  // this page (and any engram reached from it).
+  const enterFocusMode = useCourseFocusModeStore((state) => state.enter);
+  useEffect(() => {
+    enterFocusMode();
+  }, [enterFocusMode]);
   const { language } = useI18n();
   const isEn = language === 'en';
   const personId = user?.personId ?? '';
@@ -86,6 +102,37 @@ export default function StructuredLearningCoursePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarQuery, setSidebarQuery] = useState('');
   const [showKnowledgeGraphPanel, setShowKnowledgeGraphPanel] = useState(false);
+
+  // The overview only reads a session created after learning content opens.
+  const [courseSessionId, setCourseSessionId] = useState<string | undefined>(undefined);
+  const [courseSessionStartedDate, setCourseSessionStartedDate] = useState<string | undefined>(undefined);
+  const [courseSessionCount, setCourseSessionCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!documentId) return;
+    setCourseSessionCount(null);
+    setCourseSessionId(undefined);
+    setCourseSessionStartedDate(undefined);
+
+    const storageKey = `structuredLearningCourseSession:${documentId}`;
+    const cached = sessionStorage.getItem(storageKey);
+    if (cached) {
+      const parsed = JSON.parse(cached) as { EngramSessionId: string; StartedDate: string };
+      setCourseSessionId(parsed.EngramSessionId);
+      setCourseSessionStartedDate(parsed.StartedDate);
+    }
+
+    if (!personId) return;
+    getStructuredLearningCourseSessionCount(personId, documentId)
+      .then((res) => {
+        setCourseSessionCount(res.SessionCount);
+        if (!cached && res.EngramSessionId && res.StartedDate) {
+          setCourseSessionId(res.EngramSessionId);
+          setCourseSessionStartedDate(res.StartedDate);
+        }
+      })
+      .catch((err) => console.warn('Could not load course session count:', err));
+  }, [documentId, personId]);
 
   // Impact scores state
   const [impactScores, setImpactScores] = useState<EngramImpactScoreDto[] | null>(null);
@@ -205,6 +252,16 @@ export default function StructuredLearningCoursePage() {
     return { total, mastered, percent: total > 0 ? Math.round((mastered / total) * 100) : 0 };
   }, [sections, passedBySectionId]);
 
+  const courseDurationStats = useMemo(() => {
+    const rawMinutes = sections.reduce((acc, s) => acc + (s.EstimatedMinutesToComplete || 6), 0);
+    const overheadMinutes = Math.round(rawMinutes * 0.10);
+    const totalMinutes = rawMinutes + overheadMinutes;
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    const durationFormatted = hours > 0 ? (mins > 0 ? `${hours}h ${mins}m` : `${hours}h`) : `${totalMinutes} min`;
+    return { rawMinutes, overheadMinutes, totalMinutes, durationFormatted };
+  }, [sections]);
+
   const normalizeForSearch = useCallback(
     (value: string) => value.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
     []
@@ -257,17 +314,66 @@ export default function StructuredLearningCoursePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 xl:max-w-7xl 2xl:max-w-[96rem]">
-      <Link to="/capabilities/job-skills" className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
+      {/* Persistent, well-sized session banner (2026-10-02) — shown inline
+          in the page flow (not a small floating badge easily hidden behind
+          other UI) so the session id + real server-recorded start time are
+          always clearly visible while on this course. */}
+      {(courseSessionId || courseSessionCount !== null) && (
+        <div className="mt-4 flex flex-col items-center justify-center gap-1 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-center dark:border-indigo-500/20 dark:bg-indigo-500/10">
+          {courseSessionId && (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <PlayCircle className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+              <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                {isEn ? 'Session' : 'Sesión'} <span className="font-mono">{courseSessionId.slice(0, 8)}</span>
+              </span>
+              {courseSessionStartedDate && (
+                <span className="text-sm text-indigo-700 dark:text-indigo-300">
+                  · {isEn ? 'started at' : 'inició a las'}{' '}
+                  {new Date(courseSessionStartedDate).toLocaleTimeString(isEn ? 'en-US' : 'es-MX', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+          )}
+          {courseSessionCount !== null && (
+            <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+              {isEn ? `Sessions with activity: ${courseSessionCount}` : `Sesiones con actividad: ${courseSessionCount}`}
+            </span>
+          )}
+        </div>
+      )}
+
+      <Link to="/capabilities/job-skills" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
         <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back to My Role' : 'Volver a Mi Puesto'}
       </Link>
 
       <div className="mt-4 text-center">
         <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">STRUCTURED LEARNING PATH</p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{document.DocumentName}</h1>
-        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 font-medium">🏔️ {isEn ? 'Climb section by section all the way to the top' : 'Escala sección por sección hasta la cima'}</p>
-        <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-400">
-          {sections.length} Engram{sections.length === 1 ? '' : 's'}
-        </p>
+        <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">{document.DocumentName}</h1>
+        <p className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">🏔️ {isEn ? 'Climb section by section all the way to the top' : 'Escala sección por sección hasta la cima'}</p>
+
+        {/* Total Course Duration & Stats with 10% Overhead */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-950/40 px-3.5 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 shadow-xs">
+            <Layers className="h-4 w-4 text-indigo-500" />
+            <span>{sections.length} Engram{sections.length === 1 ? '' : 's'}</span>
+          </span>
+
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-950/40 px-3.5 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 shadow-xs cursor-help"
+            title={isEn ? `Base time: ~${courseDurationStats.rawMinutes} min + 10% overhead (~${courseDurationStats.overheadMinutes} min) for reflection, active recall & notes` : `Tiempo base: ~${courseDurationStats.rawMinutes} min + 10% de margen (~${courseDurationStats.overheadMinutes} min) para reflexión, active recall y notas`}
+          >
+            <Clock className="h-4 w-4 text-amber-500" />
+            <span>{isEn ? 'Total duration:' : 'Duración total:'} <strong>~{courseDurationStats.durationFormatted}</strong></span>
+            <span className="text-[10px] font-semibold text-amber-700/80 dark:text-amber-300/80">
+              ({isEn ? 'incl. 10% overhead' : 'incl. 10% margen'})
+            </span>
+          </span>
+
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-xs">
+            <Sparkles className="h-4 w-4 text-purple-500" />
+            <span>{levels.length} {levels.length === 1 ? (isEn ? 'Chapter' : 'Capítulo') : (isEn ? 'Chapters' : 'Capítulos')}</span>
+          </span>
+        </div>
       </div>
 
       {/* Personalized Impact Analysis Banner */}
@@ -909,107 +1015,200 @@ export default function StructuredLearningCoursePage() {
           </aside>
         )}
 
-        <div className="flex flex-1 flex-col items-center rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 p-6 sm:p-8 shadow-sm">
-          {levels.map(([chapterTitle, list], levelIndex) => (
-            <div key={chapterTitle} id={`structured-learning-level-${levelIndex}`} className="flex w-full scroll-mt-6 flex-col items-center">
-              <div className="relative z-10 mb-6">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 shadow-sm">
-                  {chapterTitle}
-                </span>
-              </div>
+        <div className="flex flex-1 flex-col rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 p-4 sm:p-8 shadow-sm">
+          <div className="mx-auto w-full max-w-4xl space-y-10">
+            {levels.map(([chapterTitle, list], levelIndex) => (
+              <div
+                key={chapterTitle}
+                id={`structured-learning-level-${levelIndex}`}
+                className="scroll-mt-6"
+              >
+                {/* Chapter Header */}
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-white/10 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                      {levelIndex + 1}
+                    </span>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                      {chapterTitle}
+                    </h2>
+                  </div>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {list.length} {list.length === 1 ? 'Engram' : 'Engrams'}
+                  </span>
+                </div>
 
-              <div className="flex flex-wrap justify-center gap-x-6 gap-y-8">
-                {list.map((section) => {
-                  const index = sections.indexOf(section);
-                  const state = sectionState(section, index);
-                  const clickable = state !== 'Locked';
-                  const style = STATE_STYLES[state];
-                  const Icon = style.Icon;
-                  const isNextUp = section.StructuredLearningDocumentSectionId === nextUpSectionId;
-                  const scoreInfo = impactScoresByEngramId.get(section.StructuredLearningDocumentSectionId.toLowerCase());
+                {/* Engram Stepper List */}
+                <div className="space-y-4">
+                  {list.map((section, sectionIdx) => {
+                    const index = sections.indexOf(section);
+                    const state = sectionState(section, index);
+                    const clickable = state !== 'Locked';
+                    const isNextUp = section.StructuredLearningDocumentSectionId === nextUpSectionId;
+                    const isMastered = state === 'Mastered';
+                    const isLocked = state === 'Locked';
+                    const scoreInfo = impactScoresByEngramId.get(section.StructuredLearningDocumentSectionId.toLowerCase());
+                    const estimatedMin = section.EstimatedMinutesToComplete || 6;
+                    const previewSnippet = section.Text
+                      ? section.Text.replace(/[#*`_>]+/g, ' ').trim().slice(0, 150)
+                      : null;
 
-                  return (
-                    <div key={section.StructuredLearningDocumentSectionId} className="group relative flex w-32 sm:w-36 flex-col items-center gap-2 text-center">
-                      <button
-                        type="button"
-                        disabled={!clickable}
-                        onClick={() => goToSection(section, index)}
-                        className={`flex w-full flex-col items-center gap-2 text-center transition ${
-                          clickable ? 'cursor-pointer' : 'cursor-not-allowed'
-                        }`}
+                    return (
+                      <div
+                        key={section.StructuredLearningDocumentSectionId}
+                        className="group relative flex items-start gap-3 sm:gap-4"
                       >
-                        <div className="relative">
-                          {isNextUp && (
-                            <span className="pointer-events-none absolute -top-7 left-1/2 z-0 -translate-x-1/2 whitespace-nowrap rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
-                              {isEn ? 'START HERE' : 'INICIAR AQUÍ'}
-                            </span>
-                          )}
-                          {isNextUp && <span className="pointer-events-none absolute inset-0 -m-1.5 rounded-full border-2 border-indigo-500 animate-ping" />}
+                        {/* Stepper node indicator */}
+                        <div className="flex flex-col items-center">
                           <div
-                            className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 sm:h-20 sm:w-20 ${style.ring} ${style.bubble} ${
-                              state !== 'Locked' ? 'transition-transform group-hover:scale-105 shadow-md' : 'opacity-60'
+                            className={`flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl border-2 font-bold text-sm transition-all shadow-sm ${
+                              isMastered
+                                ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-400/80 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                : isNextUp
+                                ? 'border-indigo-500 bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-4 ring-indigo-500/20'
+                                : clickable
+                                ? 'border-indigo-300 dark:border-indigo-500/40 bg-indigo-50/50 dark:bg-white/[0.04] text-indigo-600 dark:text-indigo-400'
+                                : 'border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] text-slate-400 dark:text-slate-500'
                             }`}
                           >
-                            <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${style.icon}`} fill={state === 'Mastered' ? 'currentColor' : 'none'} />
+                            {isMastered ? (
+                              <Check className="h-5 w-5 stroke-[2.5]" />
+                            ) : isLocked ? (
+                              <Lock className="h-4 w-4" />
+                            ) : isNextUp ? (
+                              <Sparkles className="h-5 w-5" />
+                            ) : (
+                              <span>{String(index + 1).padStart(2, '0')}</span>
+                            )}
+                          </div>
+                          {sectionIdx < list.length - 1 && (
+                            <div className="my-1.5 h-12 w-0.5 bg-slate-200 dark:bg-white/10 group-hover:bg-indigo-400/40 transition-colors" />
+                          )}
+                        </div>
 
-                            {/* Impact Score Pill on Bubble Corner */}
-                            {scoreInfo && (
-                              <span
-                                className={`absolute -bottom-1 -right-1 flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-black shadow-md ring-2 ring-white dark:ring-slate-900 ${
-                                  scoreInfo.tier === 'Critical'
-                                    ? 'bg-gradient-to-br from-rose-500 to-red-600 text-white'
-                                    : scoreInfo.tier === 'Important'
-                                    ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white'
-                                    : scoreInfo.tier === 'Refresher'
-                                    ? 'bg-gradient-to-br from-sky-400 to-indigo-500 text-white'
-                                    : 'bg-slate-400 dark:bg-slate-600 text-white'
-                                }`}
-                                title={`${scoreInfo.tier} Impact (${scoreInfo.score}/100)`}
-                              >
-                                {scoreInfo.score}
+                        {/* Engram Card */}
+                        <div
+                          role={clickable ? 'button' : undefined}
+                          tabIndex={clickable ? 0 : undefined}
+                          onClick={() => clickable && goToSection(section, index)}
+                          onKeyDown={(e) => {
+                            if (clickable && (e.key === 'Enter' || e.key === ' ')) {
+                              e.preventDefault();
+                              goToSection(section, index);
+                            }
+                          }}
+                          className={`relative flex-1 rounded-2xl border p-4 sm:p-5 text-left transition-all duration-200 ${
+                            isNextUp
+                              ? 'border-indigo-300 dark:border-indigo-500/50 bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/50 dark:from-indigo-950/20 dark:via-slate-900 dark:to-purple-950/20 shadow-lg shadow-indigo-500/5 ring-1 ring-indigo-400/30 hover:-translate-y-0.5 hover:shadow-xl cursor-pointer'
+                              : isMastered
+                              ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-500/[0.02] hover:-translate-y-0.5 hover:border-emerald-300 dark:hover:border-emerald-400/60 cursor-pointer shadow-xs'
+                              : clickable
+                              ? 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] hover:-translate-y-0.5 hover:border-indigo-300 dark:hover:border-white/20 hover:shadow-md cursor-pointer'
+                              : 'border-slate-200/60 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.01] opacity-60 cursor-not-allowed'
+                          }`}
+                        >
+                          {/* Header row: Index pill + Title + Status/Impact badge */}
+                          <div className="flex flex-wrap items-center justify-between gap-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-2 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                Engram {index + 1}
                               </span>
+                              {isNextUp && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
+                                  {isEn ? 'START HERE' : 'INICIAR AQUÍ'}
+                                </span>
+                              )}
+                              {scoreInfo && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedEngramForReason(scoreInfo);
+                                  }}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold transition hover:scale-105 shadow-xs ${
+                                    scoreInfo.tier === 'Critical'
+                                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-500/30'
+                                      : scoreInfo.tier === 'Important'
+                                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30'
+                                      : scoreInfo.tier === 'Refresher'
+                                      ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30'
+                                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                                  title={`${scoreInfo.tier} Impact (${scoreInfo.score}/100) — click for details`}
+                                >
+                                  {scoreInfo.tier === 'Critical' && <Flame className="h-3 w-3 text-rose-600 dark:text-rose-400" />}
+                                  {scoreInfo.tier === 'Important' && <Zap className="h-3 w-3 text-amber-600 dark:text-amber-400" />}
+                                  {scoreInfo.tier === 'Refresher' && <RefreshCw className="h-3 w-3 text-sky-600 dark:text-sky-400" />}
+                                  <span>{scoreInfo.tier} ({scoreInfo.score})</span>
+                                  <Info className="h-3 w-3 opacity-60" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {isMastered && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 dark:border-emerald-500/30 bg-emerald-100/70 dark:bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                                  <Check className="h-3.5 w-3.5" />
+                                  {isEn ? 'Mastered' : 'Dominado'}
+                                </span>
+                              )}
+                              {isLocked && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-2.5 py-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                  <Lock className="h-3 w-3" />
+                                  {isEn ? 'Locked' : 'Bloqueado'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Title */}
+                          <h3 className="mt-2 text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                            {section.SubchapterTitle}
+                          </h3>
+
+                          {/* Preview snippet */}
+                          {previewSnippet && (
+                            <p className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                              {previewSnippet}...
+                            </p>
+                          )}
+
+                          {/* Footer with stages & action CTA */}
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-white/5 pt-3">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                              <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                                <Clock className="h-3.5 w-3.5 text-amber-500" />
+                                ~{estimatedMin} min
+                              </span>
+                              <span className="text-slate-300 dark:text-slate-600">·</span>
+                              <div className="hidden sm:flex items-center gap-1.5 text-[11px]">
+                                <span className="rounded bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 text-slate-700 dark:text-slate-300 font-medium">💡 {isEn ? 'Hypothesis' : 'Hipótesis'}</span>
+                                <span>›</span>
+                                <span className="rounded bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 text-slate-700 dark:text-slate-300 font-medium">📖 Deep Dive</span>
+                                <span>›</span>
+                                <span className="rounded bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 text-slate-700 dark:text-slate-300 font-medium">🧠 Recall</span>
+                                <span>›</span>
+                                <span className="rounded bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 text-slate-700 dark:text-slate-300 font-medium">📝 Quiz</span>
+                              </div>
+                            </div>
+
+                            {clickable && (
+                              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+                                <span>
+                                  {isMastered ? (isEn ? 'Review' : 'Repasar') : isNextUp ? (isEn ? 'Continue Engram' : 'Continuar Engram') : (isEn ? 'Start' : 'Iniciar')}
+                                </span>
+                                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                              </div>
                             )}
                           </div>
                         </div>
-                        <p className={`line-clamp-2 text-xs font-semibold leading-tight ${style.label}`}>{section.SubchapterTitle}</p>
-                      </button>
-
-                      {/* Interactive Impact Reason Pill / Button */}
-                      {scoreInfo && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEngramForReason(scoreInfo)}
-                          className={`group/badge mt-0.5 inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold transition hover:scale-105 shadow-xs ${
-                            scoreInfo.tier === 'Critical'
-                              ? 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300'
-                              : scoreInfo.tier === 'Important'
-                              ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300'
-                              : scoreInfo.tier === 'Refresher'
-                              ? 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/50 border border-sky-200 dark:border-sky-500/30 text-sky-700 dark:text-sky-300'
-                              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          {scoreInfo.tier === 'Critical' && <Flame className="h-2.5 w-2.5 text-rose-500 flex-none" />}
-                          {scoreInfo.tier === 'Important' && <Zap className="h-2.5 w-2.5 text-amber-500 flex-none" />}
-                          {scoreInfo.tier === 'Refresher' && <RefreshCw className="h-2.5 w-2.5 text-sky-500 flex-none" />}
-                          <span className="truncate">{scoreInfo.tier}</span>
-                          <Info className="h-2.5 w-2.5 opacity-60 group-hover/badge:opacity-100 flex-none" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {levelIndex < levels.length - 1 && (
-                <div className="my-6 flex w-full max-w-xs items-center gap-3">
-                  <div className="h-px flex-1 bg-amber-400/50 dark:bg-amber-400/40" />
-                  <ChevronDown className="h-4 w-4 flex-none text-amber-500 dark:text-amber-400/70" />
-                  <div className="h-px flex-1 bg-amber-400/50 dark:bg-amber-400/40" />
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

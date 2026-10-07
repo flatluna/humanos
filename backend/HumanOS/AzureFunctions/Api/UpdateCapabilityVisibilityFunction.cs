@@ -59,6 +59,17 @@ public sealed class UpdateCapabilityVisibilityFunction
             }
         }
 
+        // Studio sessions launched from a parent app with no HumanOS Person
+        // record (e.g. an NGO admin) carry their tenant directly via this
+        // header instead — same fallback as the creation endpoints and
+        // GetCapabilitiesFunction's read side.
+        if (callerTenantId is null &&
+            request.Headers.TryGetValues("X-Studio-Tenant-Id", out var studioTenantValues) &&
+            Guid.TryParse(studioTenantValues.FirstOrDefault(), out var studioTenantId))
+        {
+            callerTenantId = studioTenantId;
+        }
+
         var result = await _capabilityService.UpdateVisibilityAsync(
             capabilityId, body.IsGlobal, callerPersonId, callerTenantId, cancellationToken);
 

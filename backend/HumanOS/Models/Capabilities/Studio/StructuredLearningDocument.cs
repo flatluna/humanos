@@ -155,6 +155,55 @@ public sealed class StructuredLearningDocument
 
     public int? AssessmentQuestionsPerRound { get; set; }
 
+    // ---- Learner-facing feature toggles + static/dynamic question
+    // generation (2026-10-06) — set once at Step 3 of the Studio wizard
+    // ("Course design"), some editable later from the course settings
+    // screen. ----
+
+    /// <summary>Whether the "Q&amp;A with the professor" trigger (voice or
+    /// text — both share this single on/off switch) is offered to students
+    /// during the Learn/Teaching step. Defaults true (existing behavior
+    /// unchanged).</summary>
+    public bool ShowQaProfessorStep { get; set; } = true;
+
+    /// <summary>Whether "Speak with your agent about this example" (the
+    /// voice tutor embedded in Deep Dive cards) is offered to students.
+    /// When false, learners can still answer Deep Dive cards in writing.
+    /// Defaults true (existing behavior unchanged).</summary>
+    public bool ShowDeepDiveAgentChat { get; set; } = true;
+
+    /// <summary>Designer cost lever (2026-10-06): when true (default,
+    /// existing behavior), the QA Professor trigger offers BOTH text and
+    /// real-time voice (student picks). When false, ONLY the cheap text
+    /// chat is offered — the voice option is hidden entirely, saving the
+    /// real-time voice session cost. Ignored when
+    /// <see cref="ShowQaProfessorStep"/> is false (nothing is shown at
+    /// all).</summary>
+    public bool EnableQaProfessorVoice { get; set; } = true;
+
+    /// <summary>Same cost lever as <see cref="EnableQaProfessorVoice"/>,
+    /// applied to Deep Dive's "Speak with your agent about this example".
+    /// When false, only the text chat is offered for Deep Dive cards (the
+    /// typed-answer box is unaffected either way). Ignored when
+    /// <see cref="ShowDeepDiveAgentChat"/> is false.</summary>
+    public bool EnableDeepDiveAgentVoice { get; set; } = true;
+
+    /// <summary>Whether the "In your role" workplace-application step is
+    /// generated/shown at all for this course. Defaults true (existing
+    /// behavior unchanged).</summary>
+    public bool IncludeWorkplaceApplicationStep { get; set; } = true;
+
+    /// <summary>Static (fixed at course-creation time, same for every
+    /// student, max 3 items per engram, cheaper) vs. Dynamic (generated on
+    /// demand per student/attempt, more variety, costs an LLM call every
+    /// time). Defaults Dynamic.</summary>
+    public StructuredLearningGenerationMode RecallGenerationMode { get; set; } = StructuredLearningGenerationMode.Dynamic;
+
+    /// <summary>Same Static/Dynamic choice as <see cref="RecallGenerationMode"/>,
+    /// applied to the Assessment step's questions (max 3 per engram when
+    /// Static). Defaults Dynamic.</summary>
+    public StructuredLearningGenerationMode AssessmentGenerationMode { get; set; } = StructuredLearningGenerationMode.Dynamic;
+
     public DateTime CreatedDate { get; set; }
 
     // ---- Document Type Detection Engine (2026-08-17, Paso 1) —

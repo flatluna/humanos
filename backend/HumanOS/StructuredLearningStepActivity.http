@@ -1,0 +1,33 @@
+@baseUrl = http://localhost:7071/api
+@sessionId = 00000000-0000-0000-0000-000000000001
+@sectionId = 00000000-0000-0000-0000-000000000002
+
+### Cumulative checkpoint (replace session/section IDs with a real visit)
+POST {{baseUrl}}/structured-learning/engram-sessions/{{sessionId}}/sections/{{sectionId}}/steps/Hypothesis/activity
+Content-Type: application/json
+
+{
+  "intervalId": "00000000-0000-0000-0000-000000000003",
+  "elapsedMilliseconds": 5000,
+  "stopped": false
+}
+
+### Pause or exit; repeating this request must not double the duration
+POST {{baseUrl}}/structured-learning/engram-sessions/{{sessionId}}/sections/{{sectionId}}/steps/Hypothesis/activity
+Content-Type: application/json
+
+{
+  "intervalId": "00000000-0000-0000-0000-000000000003",
+  "elapsedMilliseconds": 5500,
+  "stopped": true
+}
+
+### Invalid duration returns 400
+POST {{baseUrl}}/structured-learning/engram-sessions/{{sessionId}}/sections/{{sectionId}}/steps/Hypothesis/activity
+Content-Type: application/json
+
+{
+  "intervalId": "00000000-0000-0000-0000-000000000003",
+  "elapsedMilliseconds": -1,
+  "stopped": true
+}

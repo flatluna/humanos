@@ -41,6 +41,20 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
         public StructuredLearningAssessmentQuestionType AssessmentQuestionType { get; set; } = StructuredLearningAssessmentQuestionType.MultipleChoice;
 
         public int? AssessmentQuestionsPerRound { get; set; }
+
+        public bool ShowQaProfessorStep { get; set; } = true;
+
+        public bool ShowDeepDiveAgentChat { get; set; } = true;
+
+        public bool EnableQaProfessorVoice { get; set; } = true;
+
+        public bool EnableDeepDiveAgentVoice { get; set; } = true;
+
+        public bool IncludeWorkplaceApplicationStep { get; set; } = true;
+
+        public StructuredLearningGenerationMode RecallGenerationMode { get; set; } = StructuredLearningGenerationMode.Dynamic;
+
+        public StructuredLearningGenerationMode AssessmentGenerationMode { get; set; } = StructuredLearningGenerationMode.Dynamic;
     }
 
     [Function("UpdateStructuredLearningPedagogyConfig")]
@@ -71,10 +85,22 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
                 request, HttpStatusCode.BadRequest, "InvalidRequest", "'recallItemsRequired' must be between 1 and 10.", cancellationToken);
         }
 
+        if (body.RecallGenerationMode == StructuredLearningGenerationMode.Static && body.RecallItemsRequired is > 3)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidRequest", "'recallItemsRequired' must be 3 or fewer when 'recallGenerationMode' is 'Static'.", cancellationToken);
+        }
+
         if (body.AssessmentQuestionsPerRound is < 1 or > 10)
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request, HttpStatusCode.BadRequest, "InvalidRequest", "'assessmentQuestionsPerRound' must be between 1 and 10.", cancellationToken);
+        }
+
+        if (body.AssessmentGenerationMode == StructuredLearningGenerationMode.Static && body.AssessmentQuestionsPerRound is > 3)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.BadRequest, "InvalidRequest", "'assessmentQuestionsPerRound' must be 3 or fewer when 'assessmentGenerationMode' is 'Static'.", cancellationToken);
         }
 
         var document = await _dbContext.StructuredLearningDocuments
@@ -94,6 +120,13 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
         document.IncludeAssessmentStep = body.IncludeAssessmentStep;
         document.AssessmentQuestionType = body.AssessmentQuestionType;
         document.AssessmentQuestionsPerRound = body.AssessmentQuestionsPerRound;
+        document.ShowQaProfessorStep = body.ShowQaProfessorStep;
+        document.ShowDeepDiveAgentChat = body.ShowDeepDiveAgentChat;
+        document.EnableQaProfessorVoice = body.EnableQaProfessorVoice;
+        document.EnableDeepDiveAgentVoice = body.EnableDeepDiveAgentVoice;
+        document.IncludeWorkplaceApplicationStep = body.IncludeWorkplaceApplicationStep;
+        document.RecallGenerationMode = body.RecallGenerationMode;
+        document.AssessmentGenerationMode = body.AssessmentGenerationMode;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

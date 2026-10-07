@@ -27,6 +27,7 @@ import {
   Lock,
   MessageSquareText,
   ArrowRight,
+  PlayCircle,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
@@ -53,9 +54,15 @@ import {
   type LearnerProfileSummaryDto,
 } from '../api/engramImpactApi';
 import { apiImageUrl } from '../api/httpClient';
+import {
+  startStructuredLearningCourseSession,
+} from '../api/runtimeSessionApi';
+import { useStructuredLearningStepTiming } from '../hooks/useStructuredLearningStepTiming';
 import VoiceTutorAgent from '../components/VoiceTutorAgent';
+import ProfessorTextChat from '../components/ProfessorTextChat';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { WorkplaceApplicationStep } from '../components/WorkplaceApplicationPanel';
+import { useCourseFocusModeStore } from '@/store/useCourseFocusModeStore';
 import { RewardCelebration } from '@/features/gamification/components/RewardCelebration';
 import { ReflectionPause } from '@/features/gamification/components/ReflectionPause';
 import type { GamificationRewardBundleDto } from '@/features/gamification/types';
@@ -301,6 +308,13 @@ export default function StructuredLearningSectionPage() {
   const isEn = language === 'en';
   const personId = user?.personId ?? '';
 
+  // Course focus mode (2026-10-02) — same guard as StructuredLearningCoursePage,
+  // enabled here too in case the student lands directly on an engram.
+  const enterFocusMode = useCourseFocusModeStore((state) => state.enter);
+  useEffect(() => {
+    enterFocusMode();
+  }, [enterFocusMode]);
+
   const [document, setDocument] = useState<StructuredLearningDocumentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -341,6 +355,11 @@ export default function StructuredLearningSectionPage() {
     setMaxReachedIndex(0);
     setIsSectionCompleted(false);
   }, [sectionId]);
+
+  // The course session starts only after this section has a learning step.
+  const [engramSessionId, setEngramSessionId] = useState<string | undefined>(undefined);
+  const [engramSessionStartedDate, setEngramSessionStartedDate] = useState<string | undefined>(undefined);
+  const [sessionDocumentId, setSessionDocumentId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!sectionId || !personId) return;
@@ -389,8 +408,37 @@ export default function StructuredLearningSectionPage() {
     [currentSection]
   );
   const currentStep = steps[stepIndex] ?? null;
+  const hasLearningStep = currentStep !== null;
   const isFirstStep = stepIndex === 0;
   const isLastStep = stepIndex === steps.length - 1;
+
+  useEffect(() => {
+    if (!documentId || !hasLearningStep) return;
+    const storageKey = `structuredLearningCourseSession:${documentId}`;
+    const cached = sessionStorage.getItem(storageKey);
+    if (cached) {
+      const parsed = JSON.parse(cached) as { EngramSessionId: string; StartedDate: string };
+      setEngramSessionId(parsed.EngramSessionId);
+      setEngramSessionStartedDate(parsed.StartedDate);
+      setSessionDocumentId(documentId);
+      return;
+    }
+
+    let cancelled = false;
+    startStructuredLearningCourseSession(documentId, personId || undefined)
+      .then((res) => {
+        sessionStorage.setItem(storageKey, JSON.stringify(res));
+        if (cancelled) return;
+        setEngramSessionId(res.EngramSessionId);
+        setEngramSessionStartedDate(res.StartedDate);
+        setSessionDocumentId(documentId);
+      })
+      .catch((err) => console.warn('Could not start course session:', err));
+
+    return () => { cancelled = true; };
+  }, [documentId, hasLearningStep, personId]);
+
+  useStructuredLearningStepTiming(sessionDocumentId === documentId ? engramSessionId : undefined, sectionId, currentStep?.StepType);
 
   useEffect(() => {
     if (!currentStep) return;
@@ -403,16 +451,42 @@ export default function StructuredLearningSectionPage() {
     setMaxReachedIndex((m) => Math.max(m, stepIndex + 1));
   }, [stepIndex]);
 
+  // Recall regression (2026-10-06): when a student exhausts every attempt on
+  // a Recall item without mastering it, the step must send them back to
+  // Learn to review instead of pretending there's "a next question" that
+  // doesn't exist. Re-locks Deep dive/Recall/Assessment until re-earned.
+  const regressToTeaching = useCallback(() => {
+    const teachingIndex = steps.findIndex((s) => s.StepType === 'Teaching');
+    if (teachingIndex < 0) return;
+    setStepIndex(teachingIndex);
+    setMaxReachedIndex(teachingIndex);
+  }, [steps]);
+
   const canAdvancePastCurrentStep = isSectionCompleted || stepIndex < maxReachedIndex;
+
+  // Anti-cheat lock (2026-10-06): once a student has reached Recall, Learn
+  // and Deep dive must stay locked for the rest of this section's active
+  // attempt — otherwise they could flip back to re-read the material while
+  // answering a Recall question that's supposed to test unaided memory.
+  // Already-completed sections (free review mode) are exempt.
+  const recallStepIndex = useMemo(() => steps.findIndex((s) => s.StepType === 'Recall'), [steps]);
+  const isAntiCheatLocked = useCallback(
+    (index: number) =>
+      !isSectionCompleted && recallStepIndex >= 0 && maxReachedIndex >= recallStepIndex && index < recallStepIndex,
+    [isSectionCompleted, recallStepIndex, maxReachedIndex]
+  );
 
   function goToStep(index: number) {
     if (!isSectionCompleted && index > maxReachedIndex) return;
+    if (isAntiCheatLocked(index)) return;
     setStepIndex(index);
   }
 
   function goPrevious() {
     if (!isFirstStep) {
-      setStepIndex((i) => i - 1);
+      const prevIndex = stepIndex - 1;
+      if (isAntiCheatLocked(prevIndex)) return;
+      setStepIndex(prevIndex);
       return;
     }
     if (previousSection) {
@@ -453,9 +527,27 @@ export default function StructuredLearningSectionPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Persistent, well-sized session banner (2026-10-02) — shown inline
+          in the page flow so the session id + real server-recorded time
+          this engram was opened are always clearly visible. */}
+      {engramSessionId && (
+        <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-center dark:border-indigo-500/20 dark:bg-indigo-500/10">
+          <PlayCircle className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+          <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+            {isEn ? 'Session' : 'Sesión'} <span className="font-mono">{engramSessionId.slice(0, 8)}</span>
+          </span>
+          {engramSessionStartedDate && (
+            <span className="text-sm text-indigo-700 dark:text-indigo-300">
+              · {isEn ? 'course started at' : 'curso inició a las'}{' '}
+              {new Date(engramSessionStartedDate).toLocaleTimeString(isEn ? 'en-US' : 'es-MX', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      )}
+
       <Link
         to={`/structured-learning/${documentId}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition"
+        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition"
       >
         <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back to course map' : 'Volver al mapa del curso'}
       </Link>
@@ -536,14 +628,14 @@ export default function StructuredLearningSectionPage() {
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <span>
                     {isEn
-                      ? `ðŸŽ¯ Personalized for you${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`
-                      : `ðŸŽ¯ Personalizado para ti${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`}
+                      ? `🎯 Personalized for you${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`
+                      : `🎯 Personalizado para ti${learnerProfile?.employeeName ? `, ${learnerProfile.employeeName}` : ''}`}
                   </span>
                 </h3>
                 {learnerProfile?.roleTitle && (
                   <p className="text-[11px] text-indigo-700 dark:text-indigo-300/80 font-medium">
                     {learnerProfile.roleTitle}
-                    {learnerProfile.yearsOfExperience ? ` Â· ${learnerProfile.yearsOfExperience}+ ${isEn ? 'years exp' : 'aÃ±os exp'}` : ''}
+                    {learnerProfile.yearsOfExperience ? ` · ${learnerProfile.yearsOfExperience}+ ${isEn ? 'years exp' : 'años de exp'}` : ''}
                   </p>
                 )}
               </div>
@@ -582,8 +674,8 @@ export default function StructuredLearningSectionPage() {
               {currentEngramScore.tier === 'Refresher' || currentEngramScore.score < 55 ? (
                 <p className="mt-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300/90">
                   {isEn
-                    ? 'ðŸ’¡ You already demonstrated foundation in this area â€” the tutor will move fast and focus on team alignment.'
-                    : 'ðŸ’¡ Ya dominas la base de este tema segÃºn tu perfil â€” el tutor avanzarÃ¡ con agilidad para alinear con los estÃ¡ndares del equipo.'}
+                    ? '💡 You already demonstrated foundation in this area — the tutor will move fast and focus on team alignment.'
+                    : '💡 Ya dominas la base de este tema según tu perfil — el tutor avanzará con agilidad para alinear con los estándares del equipo.'}
                 </p>
               ) : null}
             </div>
@@ -596,7 +688,7 @@ export default function StructuredLearningSectionPage() {
               <span>
                 {isEn
                   ? `AI Tutor is personalized for your ${learnerProfile.roleTitle ? `${learnerProfile.roleTitle} ` : ''}role and experience level.`
-                  : `El Tutor IA estÃ¡ personalizado para tu rol ${learnerProfile.roleTitle ? `de ${learnerProfile.roleTitle} ` : ''}y nivel de experiencia.`}
+                  : `El Tutor IA está personalizado para tu rol ${learnerProfile.roleTitle ? `de ${learnerProfile.roleTitle} ` : ''}y nivel de experiencia.`}
               </span>
             </div>
           )}
@@ -877,6 +969,7 @@ export default function StructuredLearningSectionPage() {
           freeNavigation={isSectionCompleted}
           onSelectStep={goToStep}
           isEn={isEn}
+          isAntiCheatLocked={isAntiCheatLocked}
         />
       )}
 
@@ -896,6 +989,13 @@ export default function StructuredLearningSectionPage() {
             onNext={() => goNext(true)}
             isEn={isEn}
             isStudent={learnerProfile?.isStudent ?? false}
+            engramSessionId={engramSessionId}
+            showQaProfessorStep={document.ShowQaProfessorStep}
+            showDeepDiveAgentChat={document.ShowDeepDiveAgentChat}
+            enableQaProfessorVoice={document.EnableQaProfessorVoice}
+            enableDeepDiveAgentVoice={document.EnableDeepDiveAgentVoice}
+            showWorkplaceApplicationStep={document.IncludeWorkplaceApplicationStep}
+            onRegressToTeaching={regressToTeaching}
           />
         ) : (
           <p className="text-sm text-slate-500">{isEn ? 'No steps yet.' : 'No hay pasos aÃºn.'}</p>
@@ -905,7 +1005,7 @@ export default function StructuredLearningSectionPage() {
       <div className="mt-8 flex items-center justify-between gap-3">
         <button
           type="button"
-          disabled={isFirstStep && !previousSection}
+          disabled={(isFirstStep && !previousSection) || isAntiCheatLocked(stepIndex - 1)}
           onClick={goPrevious}
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:bg-white/[0.06]"
         >
@@ -934,6 +1034,7 @@ function StepProgress({
   freeNavigation,
   onSelectStep,
   isEn,
+  isAntiCheatLocked,
 }: {
   steps: StructuredLearningStepDetail[];
   currentIndex: number;
@@ -941,6 +1042,7 @@ function StepProgress({
   freeNavigation: boolean;
   onSelectStep: (index: number) => void;
   isEn: boolean;
+  isAntiCheatLocked: (index: number) => boolean;
 }) {
   const orderedSteps = [...steps].sort((a, b) => STEP_ORDER.indexOf(a.StepType) - STEP_ORDER.indexOf(b.StepType));
 
@@ -951,7 +1053,7 @@ function StepProgress({
         const Icon = meta.Icon;
         const isDone = index < currentIndex;
         const isActive = index === currentIndex;
-        const isReachable = freeNavigation || index <= maxReachedIndex;
+        const isReachable = (freeNavigation || index <= maxReachedIndex) && !isAntiCheatLocked(index);
         return (
           <div key={step.StructuredLearningSectionStepId} className="flex flex-1 items-center">
             <button
@@ -998,6 +1100,13 @@ function StepContent({
   onNext,
   isEn,
   isStudent,
+  engramSessionId,
+  showQaProfessorStep,
+  showDeepDiveAgentChat,
+  enableQaProfessorVoice,
+  enableDeepDiveAgentVoice,
+  showWorkplaceApplicationStep,
+  onRegressToTeaching,
 }: {
   step: StructuredLearningStepDetail;
   allSteps?: StructuredLearningStepDetail[];
@@ -1011,8 +1120,23 @@ function StepContent({
   onNext?: () => void;
   isEn: boolean;
   isStudent: boolean;
+  engramSessionId?: string;
+  showQaProfessorStep: boolean;
+  showDeepDiveAgentChat: boolean;
+  /** Course design toggle (2026-10-06) — set by the course designer, NOT a
+   * student choice: when false, the QA Professor trigger is TEXT-ONLY (no
+   * voice tab offered at all), to save the realtime voice session cost. */
+  enableQaProfessorVoice: boolean;
+  /** Same designer-only cost lever as enableQaProfessorVoice, for Deep
+   * Dive's "speak with your agent". */
+  enableDeepDiveAgentVoice: boolean;
+  /** Course design toggle (2026-10-06) — hides the "In your role"
+   * (Production step) entirely when the designer turned it off. */
+  showWorkplaceApplicationStep: boolean;
+  onRegressToTeaching: () => void;
 }) {
   const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('videos');
+  const [qaMode, setQaMode] = useState<'voice' | 'text'>(enableQaProfessorVoice ? 'voice' : 'text');
   const [isAudioFinished, setIsAudioFinished] = useState(false);
   const [audioProgressPercent, setAudioProgressPercent] = useState(0);
 
@@ -1063,6 +1187,9 @@ function StepContent({
   return (
     <div className="space-y-4">
       {step.StepType === 'Teaching' && (
+        <StepIllustration stepDataJson={step.StepDataJson} />
+      )}
+      {step.StepType === 'Teaching' && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-1.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
           {hasVideos && (
             <button
@@ -1101,29 +1228,31 @@ function StepContent({
             {hasAudio && isAudioFinished && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300 ml-1" />}
           </button>
 
-          <button
-            type="button"
-            disabled={!canGoToQa}
-            onClick={() => {
-              if (!canGoToQa) return;
-              setTeachingSubStep('qa');
-            }}
-            title={!canGoToQa ? (isEn ? 'Watch all videos first' : 'Mira todos los videos primero') : undefined}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
-              teachingSubStep === 'qa'
-                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/25'
-                : !canGoToQa
-                ? 'cursor-not-allowed opacity-40 text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.02]'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
-            }`}
-          >
-            {!canGoToQa ? <Lock className="h-4 w-4 text-amber-500" /> : <Bot className="h-4 w-4 text-indigo-400" />}
-            <span>{isEn ? (hasVideos ? '3. Q&A with Professor' : '2. Q&A with Professor') : (hasVideos ? '3. Q&A con Profesor' : '2. Q&A con Profesor')}</span>
-          </button>
+          {showQaProfessorStep && (
+            <button
+              type="button"
+              disabled={!canGoToQa}
+              onClick={() => {
+                if (!canGoToQa) return;
+                setTeachingSubStep('qa');
+              }}
+              title={!canGoToQa ? (isEn ? 'Watch all videos first' : 'Mira todos los videos primero') : undefined}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-xs font-semibold transition-all ${
+                teachingSubStep === 'qa'
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/25'
+                  : !canGoToQa
+                  ? 'cursor-not-allowed opacity-40 text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.02]'
+                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/[0.05]'
+              }`}
+            >
+              {!canGoToQa ? <Lock className="h-4 w-4 text-amber-500" /> : <Bot className="h-4 w-4 text-indigo-400" />}
+              <span>{isEn ? (hasVideos ? '3. Q&A with Professor' : '2. Q&A with Professor') : (hasVideos ? '3. Q&A con Profesor' : '2. Q&A con Profesor')}</span>
+            </button>
+          )}
         </div>
       )}
 
-      {step.StepType === 'Teaching' && teachingSubStep === 'qa' ? (
+      {step.StepType === 'Teaching' && teachingSubStep === 'qa' && showQaProfessorStep ? (
         <div className="space-y-4 animate-fade-in">
           <div className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-violet-50/50 p-6 shadow-xl dark:border-indigo-500/30 dark:bg-gradient-to-br dark:from-indigo-500/10 dark:via-slate-950/40 dark:to-violet-500/10">
             <div className="flex items-center gap-3 mb-4">
@@ -1132,7 +1261,9 @@ function StepContent({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  {isEn ? 'Interactive Voice Q&A with Professor' : 'Q&A por Voz con el Profesor'}
+                  {enableQaProfessorVoice
+                    ? (isEn ? 'Interactive Voice Q&A with Professor' : 'Q&A por Voz con el Profesor')
+                    : (isEn ? 'Q&A with Professor' : 'Q&A con el Profesor')}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300">
                   {isEn
@@ -1142,13 +1273,50 @@ function StepContent({
               </div>
             </div>
 
-            <VoiceTutorAgent
-              structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
-              personId={personId}
-              startLabel={isEn ? 'Start Q&A with Professor' : 'Iniciar Q&A con el Profesor'}
-              isQaMode={true}
-              autoConnect={true}
-            />
+            {enableQaProfessorVoice && (
+            <div className="flex gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setQaMode('voice')}
+                className={`flex-1 rounded-xl py-2 text-xs font-semibold transition-all ${
+                  qaMode === 'voice'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20'
+                    : 'border border-indigo-200 text-slate-600 hover:bg-indigo-50 dark:border-indigo-500/20 dark:text-slate-300 dark:hover:bg-indigo-500/10'
+                }`}
+              >
+                {isEn ? 'Voice Professor' : 'Profesor de Voz'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setQaMode('text')}
+                className={`flex-1 rounded-xl py-2 text-xs font-semibold transition-all ${
+                  qaMode === 'text'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20'
+                    : 'border border-indigo-200 text-slate-600 hover:bg-indigo-50 dark:border-indigo-500/20 dark:text-slate-300 dark:hover:bg-indigo-500/10'
+                }`}
+              >
+                {isEn ? 'Text Professor' : 'Profesor de Texto'}
+              </button>
+            </div>
+            )}
+
+            {enableQaProfessorVoice && qaMode === 'voice' ? (
+              <VoiceTutorAgent
+                structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
+                personId={personId}
+                startLabel={isEn ? 'Start Q&A with Professor' : 'Iniciar Q&A con el Profesor'}
+                isQaMode={true}
+                autoConnect={true}
+                engramSessionId={engramSessionId}
+              />
+            ) : (
+              <ProfessorTextChat
+                structuredLearningSectionStepId={step.StructuredLearningSectionStepId}
+                personId={personId}
+                isEn={isEn}
+                engramSessionId={engramSessionId}
+              />
+            )}
 
             <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/[0.05]">
               <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -1350,20 +1518,22 @@ function StepContent({
                     {isEn ? 'You can move on whenever you like' : 'Puedes avanzar cuando quieras'}
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setTeachingSubStep('qa')}
-                  className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
-                >
-                  <span>{isEn ? 'Go to Q&A' : 'Ir a Q&A'}</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </button>
+                {showQaProfessorStep && (
+                  <button
+                    type="button"
+                    onClick={() => setTeachingSubStep('qa')}
+                    className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+                  >
+                    <span>{isEn ? 'Go to Q&A' : 'Ir a Q&A'}</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           )}
 
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900/80">
-            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && (
+            {step.StepType === 'Hypothesis' && (
               <StepIllustration stepDataJson={step.StepDataJson} />
             )}
             <div className="px-5 py-6 sm:px-8 sm:py-8">
@@ -1386,14 +1556,16 @@ function StepContent({
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       {isEn ? 'You can move on whenever you like' : 'Puedes avanzar cuando quieras'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setTeachingSubStep('qa')}
-                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <MessageSquareText className="h-4 w-4" />
-                      <span>{isEn ? 'Ask Professor (Q&A)' : 'Preguntar al Profesor'}</span>
-                    </button>
+                    {showQaProfessorStep && (
+                      <button
+                        type="button"
+                        onClick={() => setTeachingSubStep('qa')}
+                        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <MessageSquareText className="h-4 w-4" />
+                        <span>{isEn ? 'Ask Professor (Q&A)' : 'Preguntar al Profesor'}</span>
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -1403,12 +1575,16 @@ function StepContent({
                   sectionId={sectionId}
                   stepId={step.StructuredLearningSectionStepId}
                   stepDataJson={step.StepDataJson}
+                  personId={personId}
                   onComplete={onComplete}
                   isEn={isEn}
+                  engramSessionId={engramSessionId}
+                  showDeepDiveAgentChat={showDeepDiveAgentChat}
+                  enableDeepDiveAgentVoice={enableDeepDiveAgentVoice}
                 />
               )}
 
-              {step.StepType === 'Production' && (
+              {step.StepType === 'Production' && showWorkplaceApplicationStep && (
                 <WorkplaceApplicationStep
                   key={sectionId}
                   sectionId={sectionId}
@@ -1417,11 +1593,12 @@ function StepContent({
                   onComplete={onComplete}
                   isEn={isEn}
                   isStudent={isStudent}
+                  engramSessionId={engramSessionId}
                 />
               )}
 
               {step.StepType === 'Recall' && (
-                <RecallPractice sectionId={sectionId} personId={personId} onComplete={onComplete} isEn={isEn} />
+                <RecallPractice sectionId={sectionId} personId={personId} onComplete={onComplete} isEn={isEn} engramSessionId={engramSessionId} onRegressToTeaching={onRegressToTeaching} />
               )}
 
               {step.StepType === 'Assessment' && (
@@ -1433,6 +1610,7 @@ function StepContent({
                   questionType={questionType}
                   onComplete={onComplete}
                   isEn={isEn}
+                  engramSessionId={engramSessionId}
                 />
               )}
             </div>
@@ -1667,14 +1845,24 @@ function ZoomableIllustration({ illustrationId, alt, className }: { illustration
 function DeepDiveQuiz({
   stepId,
   stepDataJson,
+  personId,
   onComplete,
   isEn,
+  engramSessionId,
+  showDeepDiveAgentChat,
+  enableDeepDiveAgentVoice,
 }: {
   sectionId?: string;
   stepId: string;
   stepDataJson: string;
+  personId: string;
   onComplete: () => void;
   isEn: boolean;
+  engramSessionId?: string;
+  showDeepDiveAgentChat: boolean;
+  /** Course design toggle (2026-10-06), designer-only — when false, the
+   * Deep Dive agent chat is TEXT-ONLY, no voice tab offered. */
+  enableDeepDiveAgentVoice: boolean;
 }) {
   let cards: DeepDiveCard[] = [];
   try {
@@ -1685,6 +1873,7 @@ function DeepDiveQuiz({
 
   const completedRef = useRef(false);
   const [cardIndex, setCardIndex] = useState(0);
+  const [cardTalkMode, setCardTalkMode] = useState<'voice' | 'text'>(enableDeepDiveAgentVoice ? 'voice' : 'text');
 
   const markCompleteOnce = () => {
     if (!completedRef.current) {
@@ -1743,13 +1932,57 @@ function DeepDiveQuiz({
         <p className="text-base font-bold text-slate-900 dark:text-white">{freeCard.Title}</p>
         <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">{freeCard.Text}</p>
 
-        <VoiceTutorAgent
-          structuredLearningSectionStepId={stepId}
-          exampleCardIndex={cardIndex}
-          reviewOnly
-          autoConnect={false}
-          compact
-        />
+        <div className="mt-3 flex gap-2">
+          {showDeepDiveAgentChat && enableDeepDiveAgentVoice && (
+            <>
+              <button
+                type="button"
+                onClick={() => setCardTalkMode('voice')}
+                className={`flex-1 rounded-lg py-1.5 text-[11px] font-semibold transition-all ${
+                  cardTalkMode === 'voice'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm'
+                    : 'border border-indigo-200 text-slate-600 hover:bg-indigo-50 dark:border-indigo-500/20 dark:text-slate-300 dark:hover:bg-indigo-500/10'
+                }`}
+              >
+                {isEn ? 'Voice Professor' : 'Profesor de Voz'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCardTalkMode('text')}
+                className={`flex-1 rounded-lg py-1.5 text-[11px] font-semibold transition-all ${
+                  cardTalkMode === 'text'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm'
+                    : 'border border-indigo-200 text-slate-600 hover:bg-indigo-50 dark:border-indigo-500/20 dark:text-slate-300 dark:hover:bg-indigo-500/10'
+                }`}
+              >
+                {isEn ? 'Text Professor' : 'Profesor de Texto'}
+              </button>
+            </>
+          )}
+        </div>
+
+        {showDeepDiveAgentChat && (
+          enableDeepDiveAgentVoice && cardTalkMode === 'voice' ? (
+            <VoiceTutorAgent
+              structuredLearningSectionStepId={stepId}
+              exampleCardIndex={cardIndex}
+              reviewOnly
+              autoConnect={false}
+              compact
+              engramSessionId={engramSessionId}
+            />
+          ) : (
+            <div className="mt-3">
+              <ProfessorTextChat
+                structuredLearningSectionStepId={stepId}
+                personId={personId}
+                isEn={isEn}
+                exampleCardIndex={cardIndex}
+                engramSessionId={engramSessionId}
+              />
+            </div>
+          )
+        )}
       </div>
       <div className="flex items-center justify-between gap-3 pt-2">
         <button
@@ -1787,11 +2020,15 @@ function RecallPractice({
   personId,
   onComplete,
   isEn,
+  engramSessionId,
+  onRegressToTeaching,
 }: {
   sectionId: string;
   personId: string;
   onComplete: () => void;
   isEn: boolean;
+  engramSessionId?: string;
+  onRegressToTeaching: () => void;
 }) {
   const startedRef = useRef(false);
   const completedRef = useRef(false);
@@ -1803,6 +2040,7 @@ function RecallPractice({
   const [itemsRequired, setItemsRequired] = useState(3);
   const [complete, setComplete] = useState(false);
   const [lastMastered, setLastMastered] = useState<boolean | null>(null);
+  const [regressingToTeaching, setRegressingToTeaching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const markCompleteOnce = () => {
@@ -1816,7 +2054,7 @@ function RecallPractice({
   useEffect(() => {
     if (startedRef.current || !personId) return;
     startedRef.current = true;
-    getStructuredLearningRecallState(sectionId, personId)
+    getStructuredLearningRecallState(sectionId, personId, engramSessionId)
       .then((result) => {
         setQuestion(result.NextQuestion);
         setItemsRequired(result.ItemsRequired);
@@ -1827,18 +2065,34 @@ function RecallPractice({
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [sectionId, personId]);
 
+  // Exhausted every attempt without mastering the item (2026-10-06): the
+  // backend has already wiped this student's Recall progress for the
+  // section, so there is no "next question" to show — send them back to
+  // Learn to review instead, same as reading "ItemFailed" used to promise
+  // in the docs but never actually did for this runtime.
+  useEffect(() => {
+    if (!regressingToTeaching) return;
+    const timer = setTimeout(() => onRegressToTeaching(), 2600);
+    return () => clearTimeout(timer);
+  }, [regressingToTeaching, onRegressToTeaching]);
+
   async function handleSubmit() {
     if (!response.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
-      const result = await submitStructuredLearningRecallAttempt(sectionId, personId, response);
-      setQuestion(result.NextQuestion);
+      const result = await submitStructuredLearningRecallAttempt(sectionId, personId, response, engramSessionId);
       setItemsMastered(result.ItemsMastered);
       setItemsRequired(result.ItemsRequired);
       setAttemptsUsed(result.AttemptsUsedForItem);
       setLastMastered(result.MasteredThisAttempt);
       setResponse('');
+      if (result.ItemFailed) {
+        setRegressingToTeaching(true);
+        setQuestion(null);
+        return;
+      }
+      setQuestion(result.NextQuestion);
       if (result.Complete) {
         markCompleteOnce();
       } else {
@@ -1853,9 +2107,20 @@ function RecallPractice({
 
   if (error) return <p className="mt-3 text-sm text-red-300">{error}</p>;
 
+  if (regressingToTeaching) {
+    return (
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {isEn
+          ? "You've used all your attempts without mastering this yet - taking you back to Learn to review before trying again."
+          : 'Usaste todos tus intentos sin lograrlo todavia - te llevamos de regreso a Learn para repasar antes de volver a intentarlo.'}
+      </div>
+    );
+  }
+
   if (complete) {
     return (
-      <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200">
         <CheckCircle2 className="h-4 w-4" /> {isEn ? 'Recall completed! Great work.' : 'Â¡EvocaciÃ³n completada! Excelente trabajo.'}
       </div>
     );
@@ -1888,6 +2153,13 @@ function RecallPractice({
       {lastMastered === true && (
         <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{isEn ? 'âœ“ Great explanation!' : 'âœ“ Â¡Excelente explicaciÃ³n!'}</p>
       )}
+      {lastMastered === false && (
+        <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+          {isEn
+            ? 'Not quite yet - try again, covering the point(s) you missed.'
+            : 'Aun no - intenta de nuevo, cubriendo los puntos que te faltaron.'}
+        </p>
+      )}
       <p className="text-sm font-medium leading-relaxed text-slate-800 dark:text-slate-200">{question}</p>
       <textarea
         value={response}
@@ -1917,6 +2189,7 @@ function AssessmentPractice({
   questionType,
   onComplete,
   isEn,
+  engramSessionId,
 }: {
   sectionId: string;
   personId: string;
@@ -1925,6 +2198,7 @@ function AssessmentPractice({
   questionType: string;
   onComplete: () => void;
   isEn: boolean;
+  engramSessionId?: string;
 }) {
   const completedRef = useRef(false);
   const [round, setRound] = useState<StructuredLearningAssessmentRoundState | null | undefined>(undefined);
@@ -1958,7 +2232,7 @@ function AssessmentPractice({
     setSubmitting(true);
     setError(null);
     try {
-      const state = await startStructuredLearningAssessmentRound(sectionId, personId);
+      const state = await startStructuredLearningAssessmentRound(sectionId, personId, engramSessionId);
       setRound(state);
       setRoundResult(null);
       setLastGrade(null);
@@ -1981,7 +2255,8 @@ function AssessmentPractice({
     try {
       const result = await submitStructuredLearningAssessmentAnswer(
         round.CurrentQuestion.StructuredLearningAssessmentQuestionAttemptId,
-        answer
+        answer,
+        engramSessionId
       );
       setLastGrade(result.Grade);
       setSelectedOption(null);
@@ -2054,7 +2329,9 @@ function AssessmentPractice({
     return (
       <div
         className={`mt-3 rounded-xl border p-4 text-sm ${
-          passed ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-red-400/30 bg-red-500/10 text-red-200'
+          passed
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+            : 'border-red-200 bg-red-50 text-red-800 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200'
         }`}
       >
         <p className="font-semibold">
@@ -2094,15 +2371,15 @@ function AssessmentPractice({
   const q = round.CurrentQuestion;
   const gradeColor =
     lastGrade?.Correctness === 'Correct'
-      ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200'
       : lastGrade?.Correctness === 'PartiallyCorrect'
-        ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
-        : 'border-red-400/30 bg-red-500/10 text-red-200';
+        ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
+        : 'border-red-200 bg-red-50 text-red-800 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200';
 
   return (
     <div className="mt-3 space-y-3">
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-        {isEn ? `Question ${q.QuestionIndex + 1} of ${round.TotalQuestions} (Round ${round.RoundNumber})` : `Pregunta ${q.QuestionIndex + 1} de ${round.TotalQuestions} (Ronda ${round.RoundNumber})`}
+        {isEn ? `Question ${q.QuestionIndex} of ${round.TotalQuestions} (Round ${round.RoundNumber})` : `Pregunta ${q.QuestionIndex} de ${round.TotalQuestions} (Ronda ${round.RoundNumber})`}
       </p>
       <p className="text-sm font-semibold text-slate-900 dark:text-white leading-relaxed">{q.QuestionText}</p>
 
@@ -2152,4 +2429,3 @@ function AssessmentPractice({
     </div>
   );
 }
-

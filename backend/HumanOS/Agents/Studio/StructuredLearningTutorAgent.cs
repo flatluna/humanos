@@ -98,12 +98,15 @@ public sealed class StructuredLearningTutorAgent
         """;
 
     private readonly AIAgent? _agent;
+    private readonly string _deploymentName;
 
     public StructuredLearningTutorAgent(IConfiguration configuration)
     {
         var endpoint = configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];
+
+        _deploymentName = deploymentName ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deploymentName))
         {
@@ -122,7 +125,20 @@ public sealed class StructuredLearningTutorAgent
 
     public bool IsConfigured => _agent is not null;
 
-    public async Task<StructuredLearningChatAnswer> AnswerAsync(string prompt, CancellationToken cancellationToken = default)
+    /// <summary>Real per-call token usage alongside the structured answer
+    /// (2026-10-04) — previously discarded entirely, which meant this
+    /// agent's LLM cost (every /ai-agents chat turn) never showed up
+    /// anywhere on the cost dashboard/Simulations baseline. See
+    /// <see cref="HumanOS.Services.StructuredLearningChatService"/>'s
+    /// caller for how this is now persisted via <c>StructuredLearningEngramUsageService</c>.</summary>
+    public sealed class ChatAnswerResult
+    {
+        public StructuredLearningChatAnswer Answer { get; set; } = null!;
+
+        public HumanOS.Agents.Studio.AgentTokenUsage TokenUsage { get; set; } = null!;
+    }
+
+    public async Task<ChatAnswerResult> AnswerAsync(string prompt, CancellationToken cancellationToken = default)
     {
         if (_agent is null)
         {
@@ -132,6 +148,17 @@ public sealed class StructuredLearningTutorAgent
         }
 
         var response = await _agent.RunAsync<StructuredLearningChatAnswer>(prompt, cancellationToken: cancellationToken);
-        return response.Result;
+
+        var usage = response.Usage;
+        var tokenUsage = new HumanOS.Agents.Studio.AgentTokenUsage
+        {
+            AgentName = "StructuredLearningTutorAgent",
+            ModelName = _deploymentName,
+            InputTokens = (int)(usage?.InputTokenCount ?? 0),
+            OutputTokens = (int)(usage?.OutputTokenCount ?? 0),
+            CachedInputTokens = (int)(usage?.CachedInputTokenCount ?? 0)
+        };
+
+        return new ChatAnswerResult { Answer = response.Result, TokenUsage = tokenUsage };
     }
 }

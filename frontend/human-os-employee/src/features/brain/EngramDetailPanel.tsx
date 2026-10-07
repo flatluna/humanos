@@ -23,8 +23,15 @@ import {
   ArrowRight,
   Download,
   Volume2,
+  MessageCircle,
+  Mic,
 } from 'lucide-react';
-import { getNodeSummary, type NodeSummaryDto } from '@/features/capabilities/api/runtimeSessionApi';
+import {
+  closeStructuredLearningEngramSession,
+  getNodeSummary,
+  startStructuredLearningEngramSession,
+  type NodeSummaryDto,
+} from '@/features/capabilities/api/runtimeSessionApi';
 import {
   getStructuredLearningDocument,
   getStructuredLearningSectionSummary,
@@ -39,6 +46,7 @@ import { API_BASE_URL } from '@/features/capabilities/api/httpClient';
 import { getLearnerProfile } from '@/features/capabilities/api/engramImpactApi';
 import EngramReviewAgent from '@/features/capabilities/components/EngramReviewAgent';
 import VoiceTutorAgent from '@/features/capabilities/components/VoiceTutorAgent';
+import { EngramTextAgent } from './EngramTextAgent';
 import { WorkplaceApplicationStep } from '@/features/capabilities/components/WorkplaceApplicationPanel';
 import { KnowledgeFactsPanel } from '@/features/capabilities/components/KnowledgeGraphSection';
 import { getRetrievability } from './memoryScience';
@@ -372,6 +380,10 @@ export function EngramDetailPanel({
   const [isStudent, setIsStudent] = useState(false);
   const [activeTab, setActiveTab] = useState<'learn' | 'memory' | 'rewards' | 'role' | 'cards' | 'facts' | 'practice'>('learn');
   const [engramOpen, setEngramOpen] = useState(false);
+  const [engramAgentMode, setEngramAgentMode] = useState<'text' | 'voice' | null>(null);
+  const [engramSessionId, setEngramSessionId] = useState<string | null>(null);
+  const [engramSessionError, setEngramSessionError] = useState<string | null>(null);
+  const [startingEngramSession, setStartingEngramSession] = useState(false);
   const [cardModalIndex, setCardModalIndex] = useState<number | null>(null);
   const [cardAgentActive, setCardAgentActive] = useState(false);
   const [showOriginalText, setShowOriginalText] = useState(false);
@@ -388,8 +400,24 @@ export function EngramDetailPanel({
     setShowOriginalText(false);
     setRewardBreakdownOpen(false);
     setActiveTab('learn');
+    setEngramSessionId(null);
 
     if (neuron.isStructuredLearning) {
+      // Tag EVERY tab's agent usage (Learn chat/voice, "In your role", etc.)
+      // for this engram visit as Brain-originated from the moment it opens
+      // (2026-10-06) — not just when Voice/Text is clicked — so "In your
+      // role" generation started without first using Learn's chat still
+      // attributes correctly to the "Mi Cerebro" usage dashboard panel.
+      // Best-effort: never blocks rendering if it fails.
+      startStructuredLearningEngramSession(
+        neuron.structuredLearningSectionId,
+        personId,
+        neuron.structuredLearningDocumentId,
+        'BrainReview',
+      )
+        .then((session) => setEngramSessionId(session.EngramSessionId))
+        .catch(() => undefined);
+
       setSummary(null);
       setSlSummary(null);
       setSlDeepDiveCards([]);
@@ -434,8 +462,8 @@ export function EngramDetailPanel({
           const hypothesisStep = section?.Steps.find((s) => s.StepType === 'Hypothesis');
           const recallStep = section?.Steps.find((s) => s.StepType === 'Recall');
           const productionStep = section?.Steps.find((s) => s.StepType === 'Production');
-          setSlTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
           setSlDeepDiveStepId(deepDiveStep?.StructuredLearningSectionStepId ?? null);
+          setSlTeachingStepId(teachingStep?.StructuredLearningSectionStepId ?? null);
           setSlHasTeachingAudio(Boolean(
             teachingStep?.StepDataJson && (teachingStep.StepDataJson.includes('SpeechStoragePath') || teachingStep.StepDataJson.includes('ProfessorLecture'))
           ));
@@ -520,6 +548,74 @@ export function EngramDetailPanel({
     if (deepDiveCards.length === 0) return;
     setCardAgentActive(false);
     setCardModalIndex(Math.floor(Math.random() * deepDiveCards.length));
+  }
+
+  async function openTextAgentForEngram() {
+    setEngramAgentMode('text');
+    setEngramOpen(true);
+    // Session is already started when the engram opened (see the
+    // neuron-change effect above) — reuse it so a visit never creates more
+    // than one session no matter how many tabs/agents the student uses.
+    if (neuron.isStructuredLearning && !engramSessionId) {
+      try {
+        const session = await startStructuredLearningEngramSession(
+          neuron.structuredLearningSectionId,
+          personId,
+          neuron.structuredLearningDocumentId,
+          'BrainReview',
+        );
+        setEngramSessionId(session.EngramSessionId);
+      } catch {
+        // Usage tagging is best-effort — the chat still works untagged.
+      }
+    }
+  }
+
+  async function openVoiceAgentForEngram() {
+    if (!neuron.isStructuredLearning || startingEngramSession) return;
+    setStartingEngramSession(true);
+    setEngramSessionError(null);
+    try {
+      // Reuse the session created when the engram opened, if it already
+      // exists — only start a new one as a fallback.
+      const sessionId = engramSessionId ?? (await startStructuredLearningEngramSession(
+        neuron.structuredLearningSectionId,
+        personId,
+        neuron.structuredLearningDocumentId,
+        'BrainReview',
+      )).EngramSessionId;
+      setEngramSessionId(sessionId);
+      setEngramAgentMode('voice');
+      setEngramOpen(true);
+    } catch (error) {
+      setEngramSessionError(
+        error instanceof Error
+          ? error.message
+          : language === 'en'
+            ? 'Could not start the voice session.'
+            : 'No se pudo iniciar la sesión de voz.',
+      );
+    } finally {
+      setStartingEngramSession(false);
+    }
+  }
+
+  async function closeAgentForEngram() {
+    setEngramOpen(false);
+    setEngramAgentMode(null);
+    const sessionId = engramSessionId;
+    setEngramSessionId(null);
+    if (sessionId) {
+      await closeStructuredLearningEngramSession(sessionId).catch((error) => {
+        setEngramSessionError(
+          error instanceof Error
+            ? error.message
+            : language === 'en'
+              ? 'Could not close the voice session.'
+              : 'No se pudo cerrar la sesión de voz.',
+        );
+      });
+    }
   }
 
   function handleSelectChapterEngram(section: StructuredLearningSectionDetail) {
@@ -839,6 +935,7 @@ export function EngramDetailPanel({
                   onComplete={() => undefined}
                   isEn={language === 'en'}
                   isStudent={isStudent}
+                  engramSessionId={engramSessionId ?? undefined}
                 />
               ) : activeImpact ? (
                 <div className="overflow-hidden rounded-2xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/10 via-indigo-500/[0.03] to-white/[0.02] p-3.5 shadow-sm">
@@ -899,14 +996,41 @@ export function EngramDetailPanel({
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setEngramOpen(true)}
-            className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Sparkles className="h-4 w-4" />
-            {t('brain.talkWithAgent')}
-          </button>
+          {neuron.isStructuredLearning ? (
+            <div className="mt-6 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={openTextAgentForEngram}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <MessageCircle className="h-4 w-4" />
+                {language === 'en' ? 'Text' : 'Texto'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void openVoiceAgentForEngram()}
+                disabled={startingEngramSession}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
+              >
+                <Mic className="h-4 w-4" />
+                {startingEngramSession
+                  ? language === 'en' ? 'Starting…' : 'Iniciando…'
+                  : language === 'en' ? 'Voice' : 'Voz'}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={openTextAgentForEngram}
+              className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-accent-500/25 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Sparkles className="h-4 w-4" />
+              {t('brain.talkWithAgent')}
+            </button>
+          )}
+          {engramSessionError && (
+            <p className="mt-2 text-xs text-red-300">{engramSessionError}</p>
+          )}
 
           {activeTab === 'facts' && neuron.isStructuredLearning && slKnowledgeFacts && slKnowledgeFacts.KnowledgeFacts.length > 0 && (
             <div className="mt-4">
@@ -1145,12 +1269,12 @@ export function EngramDetailPanel({
 
       {engramOpen &&
         (neuron.isStructuredLearning ? (
-          slTeachingStepId && (
+          engramAgentMode === 'voice' ? (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-              <div className="relative w-full max-w-3xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
                 <button
                   type="button"
-                  onClick={() => setEngramOpen(false)}
+                  onClick={() => void closeAgentForEngram()}
                   className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
                   aria-label={language === 'en' ? 'Close' : 'Cerrar'}
                 >
@@ -1165,10 +1289,24 @@ export function EngramDetailPanel({
                   />
                 )}
                 <div className="mt-4">
-                  <VoiceTutorAgent structuredLearningSectionStepId={slTeachingStepId} />
+                  {slTeachingStepId && (
+                    <VoiceTutorAgent
+                      structuredLearningSectionStepId={slTeachingStepId}
+                      personId={personId}
+                      engramSessionId={engramSessionId ?? undefined}
+                    />
+                  )}
                 </div>
               </div>
             </div>
+          ) : (
+            <EngramTextAgent
+              documentId={neuron.structuredLearningDocumentId}
+              engramId={neuron.structuredLearningSectionId}
+              title={neuron.name}
+              onClose={() => void closeAgentForEngram()}
+              engramSessionId={engramSessionId ?? undefined}
+            />
           )
         ) : (
           <EngramReviewAgent personId={personId} capabilityGraphNodeId={neuron.capabilityGraphNodeId} onExit={() => setEngramOpen(false)} />

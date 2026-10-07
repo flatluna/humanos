@@ -11,6 +11,8 @@ namespace HumanOS.AzureFunctions.Api;
 public sealed class SubmitStructuredLearningAssessmentAnswerRequest
 {
     public string StudentAnswer { get; set; } = string.Empty;
+
+    public Guid? EngramSessionId { get; set; }
 }
 
 public sealed class StructuredLearningAssessmentAnswerGradeDto
@@ -88,7 +90,7 @@ public sealed class SubmitStructuredLearningAssessmentAnswerFunction
 
         try
         {
-            var result = await _engine.SubmitAnswerAsync(_dbContext, questionAttemptId, body.StudentAnswer, cancellationToken);
+            var result = await _engine.SubmitAnswerAsync(_dbContext, questionAttemptId, body.StudentAnswer, body.EngramSessionId, cancellationToken);
             var response = new SubmitStructuredLearningAssessmentAnswerResponse
             {
                 Grade = new StructuredLearningAssessmentAnswerGradeDto

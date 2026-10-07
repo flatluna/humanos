@@ -130,7 +130,7 @@ export default function StructuredLearningRunProgressPage() {
             <ResultStat icon={Hash} label={t('structuredLearningRunProgress.tokens')} value={status.Result.TotalTokens} />
           </div>
 
-          <KnowledgeGraphSection documentId={status.Result.StructuredLearningDocumentId} />
+          <KnowledgeGraphSection documentId={status.Result.StructuredLearningDocumentId} canRegenerateFacts />
 
           <PedagogySection documentId={status.Result.StructuredLearningDocumentId} />
         </div>

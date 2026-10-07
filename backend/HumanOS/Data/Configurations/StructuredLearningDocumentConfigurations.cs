@@ -101,6 +101,38 @@ public sealed class StructuredLearningDocumentConfiguration
             .HasDefaultValue(StructuredLearningAssessmentQuestionType.MultipleChoice)
             .IsRequired();
 
+        builder.Property(x => x.ShowQaProfessorStep)
+            .HasDefaultValue(true)
+            .IsRequired();
+
+        builder.Property(x => x.ShowDeepDiveAgentChat)
+            .HasDefaultValue(true)
+            .IsRequired();
+
+        builder.Property(x => x.EnableQaProfessorVoice)
+            .HasDefaultValue(true)
+            .IsRequired();
+
+        builder.Property(x => x.EnableDeepDiveAgentVoice)
+            .HasDefaultValue(true)
+            .IsRequired();
+
+        builder.Property(x => x.IncludeWorkplaceApplicationStep)
+            .HasDefaultValue(true)
+            .IsRequired();
+
+        builder.Property(x => x.RecallGenerationMode)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValue(StructuredLearningGenerationMode.Dynamic)
+            .IsRequired();
+
+        builder.Property(x => x.AssessmentGenerationMode)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValue(StructuredLearningGenerationMode.Dynamic)
+            .IsRequired();
+
         builder.Property(x => x.CreatedDate)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("SYSUTCDATETIME()")
@@ -191,6 +223,12 @@ public sealed class StructuredLearningDocumentSectionConfiguration
             .HasMaxLength(128);
 
         builder.Property(x => x.ConfigSnapshotJson)
+            .HasColumnType("nvarchar(max)");
+
+        builder.Property(x => x.StaticRecallItemsJson)
+            .HasColumnType("nvarchar(max)");
+
+        builder.Property(x => x.StaticAssessmentQuestionsJson)
             .HasColumnType("nvarchar(max)");
 
         builder.Property(x => x.Statements)
@@ -933,6 +971,9 @@ public sealed class StructuredLearningAssessmentRoundConfiguration
 
         builder.HasIndex(x => new { x.PersonId, x.StructuredLearningDocumentSectionId })
             .HasDatabaseName("IX_StructuredLearningAssessmentRound_Person_SectionId");
+
+        builder.HasIndex(x => x.StructuredLearningEngramSessionId)
+            .HasDatabaseName("IX_StructuredLearningAssessmentRound_SessionId");
     }
 }
 
@@ -1033,6 +1074,9 @@ public sealed class StructuredLearningRecallAttemptConfiguration
 
         builder.HasIndex(x => new { x.PersonId, x.StructuredLearningDocumentSectionId })
             .HasDatabaseName("IX_StructuredLearningRecallAttempt_Person_SectionId");
+
+        builder.HasIndex(x => x.StructuredLearningEngramSessionId)
+            .HasDatabaseName("IX_StructuredLearningRecallAttempt_SessionId");
     }
 }
 

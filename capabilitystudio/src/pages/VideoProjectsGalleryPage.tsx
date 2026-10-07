@@ -125,7 +125,7 @@ export default function VideoProjectsGalleryPage() {
       {pendingDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" onClick={() => (deletingId ? null : setPendingDelete(null))}>
           <div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12141c] p-6 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-3 flex items-center gap-2 text-rose-300">

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Mic, Bot, Sparkles, X, Image as ImageIcon } from 'lucide-react';
-import { requestEngramReviewSession, requestGeneratedVisualAidImage, searchNodeKnowledge } from '../api/runtimeSessionApi';
+import { requestEngramReviewSession, requestGeneratedVisualAidImage, searchNodeKnowledge, reportEngramReviewUsage, completeEngramReview } from '../api/runtimeSessionApi';
 import { API_BASE_URL } from '../api/httpClient';
 import { useI18n } from '../i18n/useI18n';
 
@@ -139,8 +139,18 @@ export default function EngramReviewAgent({
   // generating endless extra responses (the Agent never stops talking, and
   // the mic never gets a chance to re-enable). Track handled call_ids here.
   const handledToolCallIdsRef = useRef<Set<string>>(new Set());
+  // Cost-tracking (2026-10-04) — wall-clock call start, used to report real
+  // voice duration on teardown regardless of whether the lesson was fully
+  // reviewed (a student is never obligated to see everything — real cost
+  // must reflect actual consumption, not just full completions).
+  const connectedAtRef = useRef<number | null>(null);
 
   const teardown = useCallback(() => {
+    if (connectedAtRef.current !== null) {
+      const durationSeconds = (Date.now() - connectedAtRef.current) / 1000;
+      connectedAtRef.current = null;
+      reportEngramReviewUsage(personId, capabilityGraphNodeId, durationSeconds);
+    }
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -161,7 +171,7 @@ export default function EngramReviewAgent({
     setEphemeralAid(null);
     setEphemeralAidVisible(false);
     setState('idle');
-  }, []);
+  }, [personId, capabilityGraphNodeId]);
 
 
   useEffect(() => teardown, [teardown]);
@@ -427,6 +437,18 @@ export default function EngramReviewAgent({
             continue;
           }
 
+          if (item.name === 'complete_review') {
+            // Signals the Agent genuinely walked the student through the
+            // ENTIRE lesson — the Brain page's memory-refresh signal, NOT
+            // the cost ledger (duration is always reported on teardown
+            // regardless of completion, see reportEngramReviewUsage above).
+            handledToolCallIdsRef.current.add(callId);
+            console.log('[EngramReviewAgent] complete_review called');
+            completeEngramReview(personId, capabilityGraphNodeId);
+            sendToolResult(callId, JSON.stringify({ success: true }));
+            continue;
+          }
+
           if (item.name !== 'show_visual_aid') continue;
           let args: {
             kind?: string;
@@ -513,6 +535,7 @@ export default function EngramReviewAgent({
       const answerSdp = await sdpResponse.text();
       await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
+      connectedAtRef.current = Date.now();
       setState('connected');
     } catch (err) {
       console.error('EngramReviewAgent: connection failed', err);

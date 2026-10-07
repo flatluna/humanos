@@ -549,7 +549,7 @@ export default function VideoProductionsPage() {
             <select
               value={videoModel}
               onChange={(event) => setVideoModel(event.target.value as 'veo' | 'veo-lite' | 'omni' | 'kling')}
-              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400/50"
+              className="input"
             >
               <option value="veo">Google Veo (fast, 720p)</option>
               <option value="veo-lite">Google Veo Lite (cheapest Veo tier)</option>
@@ -712,7 +712,7 @@ export default function VideoProductionsPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
           onClick={() => (deletingProduction ? null : setConfirmingDelete(false))}
         >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#12141c] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-3 flex items-center gap-2 text-rose-300">
               <Trash2 className="h-5 w-5" />
               <h2 className="text-lg font-semibold text-white">{t('videoProductions.deleteConfirmTitle')}</h2>

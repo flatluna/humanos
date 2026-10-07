@@ -93,6 +93,14 @@ export default function LabsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  {lab.GenerationCost && (
+                    <span
+                      className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
+                      title={isEn ? 'AI Lab Builder generation cost' : 'Costo de generación con AI Lab Builder'}
+                    >
+                      ${lab.GenerationCost.EstimatedCostUsd.toFixed(4)}
+                    </span>
+                  )}
                   <span className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[lab.Estatus]}`}>
                     {lab.Estatus}
                   </span>

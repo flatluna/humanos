@@ -22,17 +22,20 @@ public sealed class BuddyContextBuilder
     private readonly EmployeeScoringProfileService _profileService;
     private readonly PersonCqiProfileService _cqiProfileService;
     private readonly CapabilityEnrollmentService _capabilityEnrollmentService;
+    private readonly StructuredLearningEngramStatsService _engramStatsService;
 
     public BuddyContextBuilder(
         HumanOsDbContext dbContext,
         EmployeeScoringProfileService profileService,
         PersonCqiProfileService cqiProfileService,
-        CapabilityEnrollmentService capabilityEnrollmentService)
+        CapabilityEnrollmentService capabilityEnrollmentService,
+        StructuredLearningEngramStatsService engramStatsService)
     {
         _dbContext = dbContext;
         _profileService = profileService;
         _cqiProfileService = cqiProfileService;
         _capabilityEnrollmentService = capabilityEnrollmentService;
+        _engramStatsService = engramStatsService;
     }
 
     /// <summary>
@@ -50,7 +53,7 @@ public sealed class BuddyContextBuilder
 
         if (employeeId.HasValue && employeeId.Value != Guid.Empty)
         {
-            var (block, tenant, role) = await BuildEmployeeContextBlockAsync(employeeId.Value, cancellationToken);
+            var (block, tenant, role) = await BuildEmployeeContextBlockAsync(employeeId.Value, isEnglish, cancellationToken);
             contextBlock = block;
             roleTitle = role;
             if (tenant is not null)
@@ -63,8 +66,17 @@ public sealed class BuddyContextBuilder
         return BuildPersonaInstructions(contextBlock, personName, isEnglish, companyName, companyDescription, roleTitle);
     }
 
-    private async Task<(string? Block, Tenant? Tenant, string? RoleTitle)> BuildEmployeeContextBlockAsync(Guid employeeId, CancellationToken cancellationToken)
+    private async Task<(string? Block, Tenant? Tenant, string? RoleTitle)> BuildEmployeeContextBlockAsync(Guid employeeId, bool isEnglish, CancellationToken cancellationToken)
     {
+        // Bilingual static labels (2026-10-03) — the underlying DB field VALUES (role
+        // titles, objective text, résumé content) are whatever language they were
+        // entered in and can't be translated here without an extra LLM call, but the
+        // labels themselves must match isEnglish so the context block is never a wall
+        // of English text wrapped around a Spanish conversation (or vice versa) — see
+        // BuildPersonaInstructions' "MIXED-LANGUAGE CONTEXT" hard rule for how Buddy
+        // is told to handle any remaining English field values while speaking Spanish.
+        string L(string en, string es) => isEnglish ? en : es;
+
         var person = await _dbContext.People
             .AsNoTracking()
             .Include(p => p.Department)
@@ -93,61 +105,63 @@ public sealed class BuddyContextBuilder
         var enrolledCapabilities = await _capabilityEnrollmentService.GetEnrolledCapabilitiesAsync(employeeId, cancellationToken);
 
         var sb = new StringBuilder();
-        sb.AppendLine("=== EMPLOYEE PROFILE (grounded facts — never invent anything beyond this) ===");
+        sb.AppendLine(L(
+            "=== EMPLOYEE PROFILE (grounded facts — never invent anything beyond this) ===",
+            "=== PERFIL DEL EMPLEADO (datos verificados — nunca inventes nada más que esto) ==="));
         if (!string.IsNullOrWhiteSpace(profile.EmployeeName))
         {
-            sb.AppendLine($"- Name: {profile.EmployeeName}");
+            sb.AppendLine($"- {L("Name", "Nombre")}: {profile.EmployeeName}");
         }
         if (!string.IsNullOrWhiteSpace(person.Email))
         {
-            sb.AppendLine($"- Company email: {person.Email}");
+            sb.AppendLine($"- {L("Company email", "Correo de la empresa")}: {person.Email}");
         }
         if (!string.IsNullOrWhiteSpace(profile.RoleTitle))
         {
-            sb.AppendLine($"- Role: {profile.RoleTitle}");
+            sb.AppendLine($"- {L("Role", "Puesto")}: {profile.RoleTitle}");
         }
-        sb.AppendLine($"- Department: {person.Department?.Name ?? "Not yet assigned"}");
+        sb.AppendLine($"- {L("Department", "Departamento")}: {person.Department?.Name ?? L("Not yet assigned", "Aún no asignado")}");
         if (!string.IsNullOrWhiteSpace(person.Department?.Description))
         {
-            sb.AppendLine($"- Department description: {person.Department!.Description}");
+            sb.AppendLine($"- {L("Department description", "Descripción del departamento")}: {person.Department!.Description}");
         }
-        sb.AppendLine($"- Manager (boss): {managerProfile ?? person.Manager?.Email ?? "Not yet assigned"}");
+        sb.AppendLine($"- {L("Manager (boss)", "Jefe/manager")}: {managerProfile ?? person.Manager?.Email ?? L("Not yet assigned", "Aún no asignado")}");
 
         // Full job description (2026-09-28) — the real JobRole record assigned to this
         // person, not just the title/purpose already folded into EmployeeScoringProfileService.
         var jobRole = person.JobRole;
         if (jobRole is not null)
         {
-            sb.AppendLine("- FULL JOB DESCRIPTION for this employee's role:");
-            if (!string.IsNullOrWhiteSpace(jobRole.LevelLabel)) sb.AppendLine($"  * Level: {jobRole.LevelLabel}");
-            if (!string.IsNullOrWhiteSpace(jobRole.Purpose)) sb.AppendLine($"  * Purpose: {jobRole.Purpose}");
-            if (!string.IsNullOrWhiteSpace(jobRole.Summary)) sb.AppendLine($"  * Summary: {jobRole.Summary}");
+            sb.AppendLine($"- {L("FULL JOB DESCRIPTION for this employee's role:", "DESCRIPCIÓN COMPLETA DEL PUESTO de este empleado:")}");
+            if (!string.IsNullOrWhiteSpace(jobRole.LevelLabel)) sb.AppendLine($"  * {L("Level", "Nivel")}: {jobRole.LevelLabel}");
+            if (!string.IsNullOrWhiteSpace(jobRole.Purpose)) sb.AppendLine($"  * {L("Purpose", "Propósito")}: {jobRole.Purpose}");
+            if (!string.IsNullOrWhiteSpace(jobRole.Summary)) sb.AppendLine($"  * {L("Summary", "Resumen")}: {jobRole.Summary}");
             var responsibilities = DeserializeStringList(jobRole.ResponsibilitiesJson);
-            if (responsibilities.Count > 0) sb.AppendLine($"  * Responsibilities: {string.Join("; ", responsibilities)}");
-            if (!string.IsNullOrWhiteSpace(jobRole.RequiredExperience)) sb.AppendLine($"  * Required experience: {jobRole.RequiredExperience}");
-            if (!string.IsNullOrWhiteSpace(jobRole.RequiredEducation)) sb.AppendLine($"  * Required education: {jobRole.RequiredEducation}");
+            if (responsibilities.Count > 0) sb.AppendLine($"  * {L("Responsibilities", "Responsabilidades")}: {string.Join("; ", responsibilities)}");
+            if (!string.IsNullOrWhiteSpace(jobRole.RequiredExperience)) sb.AppendLine($"  * {L("Required experience", "Experiencia requerida")}: {jobRole.RequiredExperience}");
+            if (!string.IsNullOrWhiteSpace(jobRole.RequiredEducation)) sb.AppendLine($"  * {L("Required education", "Educación requerida")}: {jobRole.RequiredEducation}");
             var requiredCerts = DeserializeStringList(jobRole.RequiredCertificationsJson);
-            if (requiredCerts.Count > 0) sb.AppendLine($"  * Required certifications: {string.Join(", ", requiredCerts)}");
+            if (requiredCerts.Count > 0) sb.AppendLine($"  * {L("Required certifications", "Certificaciones requeridas")}: {string.Join(", ", requiredCerts)}");
             var technicalSkills = DeserializeStringList(jobRole.TechnicalSkillsJson);
-            if (technicalSkills.Count > 0) sb.AppendLine($"  * Required technical skills: {string.Join(", ", technicalSkills)}");
+            if (technicalSkills.Count > 0) sb.AppendLine($"  * {L("Required technical skills", "Habilidades técnicas requeridas")}: {string.Join(", ", technicalSkills)}");
             var softSkills = DeserializeStringList(jobRole.SoftSkillsJson);
-            if (softSkills.Count > 0) sb.AppendLine($"  * Required soft skills: {string.Join(", ", softSkills)}");
+            if (softSkills.Count > 0) sb.AppendLine($"  * {L("Required soft skills", "Habilidades blandas requeridas")}: {string.Join(", ", softSkills)}");
             var tools = DeserializeStringList(jobRole.ToolsJson);
-            if (tools.Count > 0) sb.AppendLine($"  * Tools used: {string.Join(", ", tools)}");
+            if (tools.Count > 0) sb.AppendLine($"  * {L("Tools used", "Herramientas utilizadas")}: {string.Join(", ", tools)}");
             var dailyActivities = DeserializeStringList(jobRole.DailyActivitiesJson);
-            if (dailyActivities.Count > 0) sb.AppendLine($"  * Daily activities: {string.Join("; ", dailyActivities)}");
+            if (dailyActivities.Count > 0) sb.AppendLine($"  * {L("Daily activities", "Actividades diarias")}: {string.Join("; ", dailyActivities)}");
             var kpis = DeserializeStringList(jobRole.PerformanceIndicatorsJson);
-            if (kpis.Count > 0) sb.AppendLine($"  * Performance indicators: {string.Join("; ", kpis)}");
+            if (kpis.Count > 0) sb.AppendLine($"  * {L("Performance indicators", "Indicadores de desempeño")}: {string.Join("; ", kpis)}");
             var outcomes = DeserializeStringList(jobRole.ExpectedOutcomesJson);
-            if (outcomes.Count > 0) sb.AppendLine($"  * Expected outcomes: {string.Join("; ", outcomes)}");
-            if (!string.IsNullOrWhiteSpace(jobRole.WorkModality)) sb.AppendLine($"  * Work modality: {jobRole.WorkModality}");
-            if (!string.IsNullOrWhiteSpace(jobRole.WorkSchedule)) sb.AppendLine($"  * Work schedule: {jobRole.WorkSchedule}");
-            if (!string.IsNullOrWhiteSpace(jobRole.EmploymentType)) sb.AppendLine($"  * Employment type: {jobRole.EmploymentType}");
+            if (outcomes.Count > 0) sb.AppendLine($"  * {L("Expected outcomes", "Resultados esperados")}: {string.Join("; ", outcomes)}");
+            if (!string.IsNullOrWhiteSpace(jobRole.WorkModality)) sb.AppendLine($"  * {L("Work modality", "Modalidad de trabajo")}: {jobRole.WorkModality}");
+            if (!string.IsNullOrWhiteSpace(jobRole.WorkSchedule)) sb.AppendLine($"  * {L("Work schedule", "Horario de trabajo")}: {jobRole.WorkSchedule}");
+            if (!string.IsNullOrWhiteSpace(jobRole.EmploymentType)) sb.AppendLine($"  * {L("Employment type", "Tipo de empleo")}: {jobRole.EmploymentType}");
         }
 
         if (profile.ActiveObjectives.Count > 0)
         {
-            sb.AppendLine("- Active SMART objectives:");
+            sb.AppendLine($"- {L("Active SMART objectives:", "Objetivos SMART activos:")}");
             foreach (var objective in profile.ActiveObjectives.Take(5))
             {
                 sb.AppendLine($"  * {objective.Title}");
@@ -156,7 +170,7 @@ public sealed class BuddyContextBuilder
 
         if (cqi.Profile is not null && !string.IsNullOrWhiteSpace(cqi.Profile.LeadingPatternName))
         {
-            sb.AppendLine($"- CQI leading pattern (cognitive/behavioral style): {cqi.Profile.LeadingPatternName} ({cqi.Profile.LeadingPatternType})");
+            sb.AppendLine($"- {L("CQI leading pattern (cognitive/behavioral style)", "Patrón CQI predominante (estilo cognitivo/conductual)")}: {cqi.Profile.LeadingPatternName} ({cqi.Profile.LeadingPatternType})");
         }
 
         // Gamification (points/level/streak) — shown on the /achievements page but previously never
@@ -165,10 +179,15 @@ public sealed class BuddyContextBuilder
             .FirstOrDefaultAsync(pp => pp.PersonId == employeeId, cancellationToken);
         if (playerProfile is not null)
         {
-            sb.AppendLine(
-                $"- Gamification: {playerProfile.TotalPoints} pts, Level {playerProfile.CurrentLevel} " +
-                $"({playerProfile.CurrentLevelName}), current streak {playerProfile.CurrentStreakDays} day(s), " +
-                $"longest streak {playerProfile.LongestStreakDays} day(s)");
+            sb.AppendLine(isEnglish
+                ? $"- Gamification: {playerProfile.TotalPoints} pts, Level {playerProfile.CurrentLevel} " +
+                  $"({playerProfile.CurrentLevelName}), current streak {playerProfile.CurrentStreakDays} day(s), " +
+                  $"longest streak {playerProfile.LongestStreakDays} day(s), " +
+                  $"{playerProfile.TotalEngramsMastered} Engrams mastered overall"
+                : $"- Gamificación: {playerProfile.TotalPoints} pts, Nivel {playerProfile.CurrentLevel} " +
+                  $"({playerProfile.CurrentLevelName}), racha actual {playerProfile.CurrentStreakDays} día(s), " +
+                  $"racha más larga {playerProfile.LongestStreakDays} día(s), " +
+                  $"{playerProfile.TotalEngramsMastered} engramas dominados en total");
         }
 
         var earnedBadgeCodes = await _dbContext.PlayerBadges.AsNoTracking()
@@ -183,16 +202,25 @@ public sealed class BuddyContextBuilder
                 .ToListAsync(cancellationToken);
         if (earnedBadgeNames.Count > 0)
         {
-            sb.AppendLine($"- Badges earned: {string.Join(", ", earnedBadgeNames)}");
+            sb.AppendLine($"- {L("Badges earned", "Medallas obtenidas")}: {string.Join(", ", earnedBadgeNames)}");
         }
 
         var completedCount = enrolledCapabilities.Count(c => c.Status == "Completed");
-        sb.AppendLine($"- Classes completed: {completedCount} of {enrolledCapabilities.Count} enrolled");
+        sb.AppendLine($"- {L("Classes completed", "Clases completadas")}: {completedCount} {L("of", "de")} {enrolledCapabilities.Count} {L("enrolled", "inscritas")}");
         if (completedCount > 0)
         {
             var completedNames = enrolledCapabilities.Where(c => c.Status == "Completed").Select(c => c.Name).Take(10);
-            sb.AppendLine($"  * Completed: {string.Join(", ", completedNames)}");
+            sb.AppendLine($"  * {L("Completed", "Completadas")}: {string.Join(", ", completedNames)}");
         }
+
+        // Structured Learning / Engrams progress (2026-10-03) — "Classes completed" above
+        // only covers legacy Capability Graph enrollments and is empty/misleading for
+        // employees whose real courses are all Structured Learning documents (the vast
+        // majority today). Buddy otherwise had zero visibility into these engrams even
+        // though playerProfile.TotalEngramsMastered already counts them — this lists them
+        // by name/score/date so Buddy can answer "how many engrams have I completed"
+        // concretely instead of saying it found nothing.
+        await AppendStructuredLearningEngramDetailAsync(sb, employeeId, isEnglish, L, cancellationToken);
 
         // Résumé (2026-09-22) — previously gathered but never passed to Buddy, even though it's
         // the richest source of the employee's OWN words about their background.
@@ -202,37 +230,37 @@ public sealed class BuddyContextBuilder
         {
             if (!string.IsNullOrWhiteSpace(resume.ProfessionalSummary))
             {
-                sb.AppendLine($"- Professional summary (in their own words): {resume.ProfessionalSummary}");
+                sb.AppendLine($"- {L("Professional summary (in their own words)", "Resumen profesional (en sus propias palabras)")}: {resume.ProfessionalSummary}");
             }
             if (!string.IsNullOrWhiteSpace(resume.ProfessionalObjective))
             {
-                sb.AppendLine($"- Professional objective: {resume.ProfessionalObjective}");
+                sb.AppendLine($"- {L("Professional objective", "Objetivo profesional")}: {resume.ProfessionalObjective}");
             }
             var resumeSkills = DeserializeStringList(resume.SkillsJson);
             if (resumeSkills.Count > 0)
             {
-                sb.AppendLine($"- Skills listed on résumé: {string.Join(", ", resumeSkills.Take(15))}");
+                sb.AppendLine($"- {L("Skills listed on résumé", "Habilidades listadas en el currículum")}: {string.Join(", ", resumeSkills.Take(15))}");
             }
             var workExperience = DeserializeStringList(resume.WorkExperienceJson);
             if (workExperience.Count > 0)
             {
-                sb.AppendLine("- Work experience:");
+                sb.AppendLine($"- {L("Work experience:", "Experiencia laboral:")}");
                 foreach (var item in workExperience.Take(5)) sb.AppendLine($"  * {item}");
             }
             var education = DeserializeStringList(resume.EducationJson);
             if (education.Count > 0)
             {
-                sb.AppendLine($"- Education: {string.Join("; ", education.Take(5))}");
+                sb.AppendLine($"- {L("Education", "Educación")}: {string.Join("; ", education.Take(5))}");
             }
             var certifications = DeserializeStringList(resume.CertificationsJson);
             if (certifications.Count > 0)
             {
-                sb.AppendLine($"- Certifications on résumé: {string.Join(", ", certifications)}");
+                sb.AppendLine($"- {L("Certifications on résumé", "Certificaciones en el currículum")}: {string.Join(", ", certifications)}");
             }
             var languages = DeserializeStringList(resume.LanguagesJson);
             if (languages.Count > 0)
             {
-                sb.AppendLine($"- Languages on résumé: {string.Join(", ", languages)}");
+                sb.AppendLine($"- {L("Languages on résumé", "Idiomas en el currículum")}: {string.Join(", ", languages)}");
             }
             if (!string.IsNullOrWhiteSpace(resume.LinkedInUrl))
             {
@@ -246,7 +274,7 @@ public sealed class BuddyContextBuilder
         var gapSkills = DeserializeStringList(careerPlan?.GapSkillsJson);
         if (gapSkills.Count > 0)
         {
-            sb.AppendLine($"- Skill gaps identified by their career plan (areas to grow into): {string.Join(", ", gapSkills.Take(10))}");
+            sb.AppendLine($"- {L("Skill gaps identified by their career plan (areas to grow into)", "Brechas de habilidades identificadas por su plan de carrera (áreas por desarrollar)")}: {string.Join(", ", gapSkills.Take(10))}");
         }
 
         // Motivations the employee selected in their Growth Plan.
@@ -256,7 +284,7 @@ public sealed class BuddyContextBuilder
             .ToListAsync(cancellationToken);
         if (motivationNames.Count > 0)
         {
-            sb.AppendLine($"- What motivates them: {string.Join(", ", motivationNames)}");
+            sb.AppendLine($"- {L("What motivates them", "Qué lo/la motiva")}: {string.Join(", ", motivationNames)}");
         }
 
         // Projects they're assigned to.
@@ -266,10 +294,40 @@ public sealed class BuddyContextBuilder
             .ToListAsync(cancellationToken);
         if (projects.Count > 0)
         {
-            sb.AppendLine($"- Projects: {string.Join(", ", projects.Select(p => $"{p.Name} ({p.Status})"))}");
+            sb.AppendLine($"- {L("Projects", "Proyectos")}: {string.Join(", ", projects.Select(p => $"{p.Name} ({p.Status})"))}");
         }
 
         return (sb.ToString(), tenant, profile.RoleTitle);
+    }
+
+    /// <summary>Appends the real Structured Learning engram completions for this
+    /// employee — course name, engram title, score, status, and how long ago —
+    /// same per-engram level of detail as <see cref="TecContigoContextBuilder"/>'s
+    /// own ENGRAM-BY-ENGRAM DETAIL section, since Buddy previously had no visibility
+    /// into Structured Learning progress at all (only legacy Capability Graph
+    /// enrollments via <see cref="CapabilityEnrollmentService"/>). Shares the same
+    /// query as TecContigoContextBuilder via
+    /// <see cref="StructuredLearningEngramStatsService.GetPersonEngramCompletionsAsync"/>
+    /// instead of duplicating it here (2026-10-03).</summary>
+    private async Task AppendStructuredLearningEngramDetailAsync(
+        StringBuilder sb, Guid employeeId, bool isEnglish, Func<string, string, string> L, CancellationToken cancellationToken)
+    {
+        var latestRoundsPerSection = await _engramStatsService.GetPersonEngramCompletionsAsync(employeeId, cancellationToken);
+        if (latestRoundsPerSection.Count == 0) return;
+
+        var passedCount = latestRoundsPerSection.Count(r => r.Status == "Passed");
+        sb.AppendLine($"- {L("Structured Learning Engrams completed", "Engramas de Structured Learning completados")}: {passedCount} {L("of", "de")} {latestRoundsPerSection.Count} {L("attempted", "intentados")}");
+
+        foreach (var group in latestRoundsPerSection.GroupBy(row => row.CourseName).OrderBy(group => group.Key))
+        {
+            sb.AppendLine($"  * {L("Course", "Curso")} \"{group.Key}\":");
+            foreach (var engram in group.OrderBy(row => row.SortOrder))
+            {
+                var scoreText = engram.FinalScore.HasValue ? $"{engram.FinalScore.Value}%" : L("not scored yet", "sin calificar aún");
+                var daysAgo = Math.Max(0, (int)(DateTime.UtcNow - engram.CompletedDate).TotalDays);
+                sb.AppendLine($"    - \"{engram.EngramTitle}\" — {scoreText} — {engram.Status} — {daysAgo} {L("day(s) ago", "día(s) atrás")}.");
+            }
+        }
     }
 
     /// <summary>Deserializes one of this app's ubiquitous "JSON string[]" columns
@@ -345,7 +403,20 @@ public sealed class BuddyContextBuilder
                 - Keep answers short, warm and conversational — this is a spoken conversation, not a
                   lecture.
                 - Never grade the employee or claim to affect their progress/reviews.
-                - LANGUAGE — HARD RULE: speak ONLY in English, every turn.
+                - LANGUAGE — ADAPTIVE RULE: start this conversation in English (your opening greeting
+                  above is in English). After that, ALWAYS speak in whatever language the employee is
+                  currently using or has asked you to use — Spanish, English, or any other language —
+                  and keep switching fluidly every time they switch or explicitly request a different
+                  language, mid-conversation included. Never refuse to speak a language they ask for and
+                  never lecture them about language choice. If their language is unclear or mixed, default
+                  back to English.
+                - MIXED-LANGUAGE CONTEXT: some of the EMPLOYEE PROFILE facts below (role titles, résumé
+                  text, objectives, skills, project names) may be written in a different language than
+                  the one you're currently speaking, since employees enter their own data in their own
+                  words. This never dictates what language YOU speak — translate/paraphrase that
+                  information into whatever language the conversation is currently in when you say it
+                  aloud. Only keep untranslatable proper nouns as-is (the employee's own name, company
+                  name, product/tool names, certifications).
 
                 ANTI-HALLUCINATION — HARD RULE:
                 - NEVER invent facts about the employee, their manager, the company, or their job that are
@@ -440,7 +511,20 @@ public sealed class BuddyContextBuilder
             - Mantén las respuestas breves, cálidas y conversacionales — esto es una conversación hablada,
               no una clase.
             - Nunca calificas al empleado ni afirmas poder afectar su progreso o evaluaciones.
-            - IDIOMA — REGLA DURA: habla ÚNICAMENTE en español, en todos los turnos.
+            - IDIOMA — REGLA ADAPTABLE: comienza esta conversación en español (tu saludo inicial de arriba
+              está en español). Después, habla SIEMPRE en el idioma que el empleado esté usando en ese
+              momento o el que te pida — español, inglés o cualquier otro idioma — y cambia con fluidez
+              cada vez que él cambie o te pida explícitamente otro idioma, incluso a mitad de la
+              conversación. Nunca te niegues a hablar el idioma que te pida ni le des una explicación sobre
+              tu elección de idioma. Si su idioma no es claro o está mezclado, vuelve por defecto al
+              español.
+            - CONTEXTO EN OTRO IDIOMA: algunos de los datos del PERFIL DEL EMPLEADO de abajo (puestos,
+              texto del currículum, objetivos, habilidades, nombres de proyectos) pueden estar escritos en
+              un idioma distinto al que estás hablando en ese momento, porque los empleados capturan su
+              propia información en sus propias palabras. Esto nunca determina en qué idioma hablas TÚ —
+              traduce o parafrasea esa información al idioma actual de la conversación cuando la digas en
+              voz alta. Solo conserva tal cual los nombres propios intraducibles (el nombre del empleado,
+              el nombre de la empresa, nombres de productos/herramientas, certificaciones).
 
             ANTI-ALUCINACIÓN — REGLA DURA:
             - NUNCA inventes datos sobre el empleado, su jefe, la empresa o su trabajo que no estén

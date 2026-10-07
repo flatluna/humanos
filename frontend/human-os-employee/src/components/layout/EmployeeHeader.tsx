@@ -63,7 +63,14 @@ export function EmployeeHeader() {
           <Menu className="h-5 w-5" />
         </button>
 
-        <img src="/HumanOSLogo.png" alt="Human OS" className="h-11 w-auto max-w-[9rem] object-contain object-left" />
+        <div className="flex flex-col items-start leading-tight">
+          <span className="font-black text-xl tracking-tight text-slate-900 dark:text-white">
+            Engrams<span className="text-brand-600 dark:text-brand-400">IQ</span>
+          </span>
+          <p className="italic text-[11px] font-semibold text-brand-600 dark:text-brand-400">
+            {language === 'en' ? 'Human intelligence, strengthened by AI' : 'Inteligencia humana, fortalecida por IA'}
+          </p>
+        </div>
         {user?.isAcademicTenant ? (
           <img src="/TecMOnterreyLogo.png" alt="Tecnológico de Monterrey" className="h-10 w-auto max-w-[9rem] object-contain object-left" />
         ) : (
@@ -73,11 +80,6 @@ export function EmployeeHeader() {
             </span>
           )
         )}
-        <div>
-          <p className="text-sm font-semibold text-slate-900 dark:text-white">Human OS</p>
-          <p className="text-xs text-slate-500 dark:text-white/50">Aprendizaje basado en ciencia de la memoria: repetición espaciada y curva del olvido</p>
-          <p className="italic text-xs font-semibold text-brand-600 dark:text-brand-300">Use AI to protect what is human from AI &mdash; Usa IA para proteger lo humano de la IA</p>
-        </div>
       </div>
 
       {/* Centered Human OS agent launcher — deliberately loud (yellow pulse +
@@ -89,11 +91,11 @@ export function EmployeeHeader() {
       <button
         type="button"
         onClick={openAgentPanel}
-        aria-label={language === 'en' ? 'Ask Human OS' : 'Pregúntale a Human OS'}
+        aria-label={language === 'en' ? 'Ask EngramsIQ' : 'Pregúntale a EngramsIQ'}
         className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border-2 border-yellow-400 bg-white px-4 py-1.5 text-sm font-semibold text-slate-800 shadow-lg animate-humanOsAgentPulse transition-transform hover:scale-105 dark:bg-slate-900 dark:text-white sm:flex"
       >
         <MessageCircle className="h-4 w-4 text-yellow-500" />
-        {language === 'en' ? 'Ask Human OS' : 'Pregúntale a Human OS'}
+        {language === 'en' ? 'Ask EngramsIQ' : 'Pregúntale a EngramsIQ'}
       </button>
 
       <div className="flex items-center gap-3">

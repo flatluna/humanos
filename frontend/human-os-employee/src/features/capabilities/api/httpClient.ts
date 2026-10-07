@@ -29,11 +29,12 @@ export async function apiGet<T>(path: string): Promise<T> {
   return handleResponse<T>(response);
 }
 
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+export async function apiPost<T>(path: string, body?: unknown, keepalive = false): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getIdentityHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
+    keepalive,
   });
   return handleResponse<T>(response);
 }

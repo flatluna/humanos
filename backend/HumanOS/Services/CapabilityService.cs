@@ -527,7 +527,7 @@ public sealed class CapabilityService
             return CapabilityVisibilityUpdateResult.NotFound;
         }
 
-        if (!isGlobal && callerPersonId is null)
+        if (!isGlobal && callerPersonId is null && callerTenantId is null)
         {
             return CapabilityVisibilityUpdateResult.CallerIdentityRequired;
         }

@@ -51,3 +51,29 @@ export async function searchBuddyWeb(query: string): Promise<string> {
   const data = await apiPost<{ text?: string }>('/humanos/buddy/web-search', { query });
   return data.text ?? 'No relevant web results were found.';
 }
+
+/** Reports how long a Buddy voice call lasted once it ends (2026-10-01) —
+ * Buddy connects browser-to-Azure directly over WebRTC, so the backend never
+ * otherwise sees real call duration. Fire-and-forget: a failure here should
+ * never disrupt the user closing the modal. See PostBuddySessionUsageFunction. */
+export function reportBuddySessionUsage(durationSeconds: number): void {
+  if (durationSeconds <= 0) return;
+  apiPost('/humanos/buddy/session-usage', { durationSeconds }).catch(() => undefined);
+}
+
+export interface BuddyChatHistoryEntry {
+  role: 'student' | 'agent';
+  text: string;
+}
+
+export function postBuddyChat(
+  message: string,
+  history: BuddyChatHistoryEntry[],
+  languageCode: string,
+): Promise<{ message: string }> {
+  return apiPost<{ message: string }>('/humanos/buddy/chat', {
+    message,
+    languageCode,
+    history,
+  });
+}

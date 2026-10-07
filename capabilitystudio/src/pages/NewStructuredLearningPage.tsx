@@ -15,10 +15,17 @@ import {
   ListTree,
   Sparkles,
   Trash2,
+  Settings,
+  Lightbulb,
+  BookOpenText,
+  Briefcase,
+  RotateCcw,
+  ClipboardCheck,
 } from 'lucide-react';
 import {
   startStructuredLearningExtraction,
   type StructuredLearningAssessmentQuestionType,
+  type StructuredLearningGenerationMode,
   type StructuredLearningExtractionRunStatus,
 } from '../lib/api/structuredLearningApi';
 import {
@@ -112,6 +119,35 @@ export default function NewStructuredLearningPage() {
   const [includeAssessmentStep, setIncludeAssessmentStep] = useState(true);
   const [assessmentQuestionType, setAssessmentQuestionType] = useState<StructuredLearningAssessmentQuestionType>('MultipleChoice');
   const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState('');
+
+  // Course design toggles (2026-10-06) — learner-facing features the
+  // designer can turn on/off per course, plus the Static/Dynamic
+  // Recall+Assessment generation-cost lever.
+  const [showQaProfessorStep, setShowQaProfessorStep] = useState(true);
+  const [showDeepDiveAgentChat, setShowDeepDiveAgentChat] = useState(true);
+  // Cost levers (2026-10-06): designer-only, NOT student-facing — lets
+  // the designer offer only the cheap text chat (no realtime voice option
+  // at all) to save the voice session cost. Defaults true (existing
+  // behavior: voice offered alongside text) for backward compatibility.
+  const [enableQaProfessorVoice, setEnableQaProfessorVoice] = useState(true);
+  const [enableDeepDiveAgentVoice, setEnableDeepDiveAgentVoice] = useState(true);
+  const [recallGenerationMode, setRecallGenerationMode] = useState<StructuredLearningGenerationMode>('Dynamic');
+  const [assessmentGenerationMode, setAssessmentGenerationMode] = useState<StructuredLearningGenerationMode>('Dynamic');
+
+  // Course design tabs (2026-10-06) — the flat wall of fields was confusing;
+  // split into one tab per pedagogical step so designers configure each
+  // piece (Hypothesis / Learn / In your role / Recall / Assessment) in
+  // isolation, plus a General tab for the settings that aren't tied to a
+  // single step.
+  type CourseDesignTab = 'general' | 'hypothesis' | 'learn' | 'inYourRole' | 'recall' | 'assessment';
+  const [courseDesignTab, setCourseDesignTab] = useState<CourseDesignTab>('general');
+  const ALL_COURSE_DESIGN_TABS: CourseDesignTab[] = ['general', 'hypothesis', 'learn', 'inYourRole', 'recall', 'assessment'];
+  // Forces designers to at least open every tab (especially Recall/Assessment,
+  // whose Static/Dynamic choice affects generation cost) before they can
+  // leave Course design — 'general' starts pre-visited since it's the
+  // default landing tab.
+  const [visitedCourseDesignTabs, setVisitedCourseDesignTabs] = useState<Set<CourseDesignTab>>(new Set(['general']));
+  const hasVisitedAllCourseDesignTabs = ALL_COURSE_DESIGN_TABS.every((tab) => visitedCourseDesignTabs.has(tab));
 
   // Knowledge Graph opt-in (2026-08-14): split into two independent
   // phases — entities (nodes) and connections (edges) — the designer can
@@ -422,6 +458,13 @@ export default function NewStructuredLearningPage() {
           assessmentQuestionsPerRound.trim() === '' ? null : Number.parseInt(assessmentQuestionsPerRound, 10),
         includeKnowledgeGraphEntities,
         includeKnowledgeGraphConnections: includeKnowledgeGraphEntities && includeKnowledgeGraphConnections,
+        showQaProfessorStep,
+        showDeepDiveAgentChat,
+        enableQaProfessorVoice,
+        enableDeepDiveAgentVoice,
+        includeWorkplaceApplicationStep: includeProductionStep,
+        recallGenerationMode,
+        assessmentGenerationMode,
         confirmedDocumentType,
         expandSparseContent,
         contentExpansionModel,
@@ -727,260 +770,409 @@ export default function NewStructuredLearningPage() {
             <p className="mt-1 text-slate-400">{t('newStructuredLearning.step4Subtitle')}</p>
           </div>
 
-          {courseType !== 'enterprise' ? (
-            <Field label={t('newCapability.pedagogicalAudienceLabel')} hint={t('newCapability.pedagogicalAudienceHint')}>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { value: 'Standard' as const, label: t('newCapability.audienceStandard') },
-                  { value: 'YoungLearner' as const, label: t('newCapability.audienceYoungLearner') },
-                ].map((option) => {
-                  const active = pedagogicalAudience === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setPedagogicalAudience(option.value)}
-                      className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                        active
-                          ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                          : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+          {/* Course design tabs (2026-10-06) — one tab per pedagogical step
+              instead of a long wall of mixed fields. */}
+          <div className="flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/[0.02] p-1.5">
+            {(
+              [
+                { value: 'general' as const, label: t('newStructuredLearning.tabGeneral'), Icon: Settings },
+                { value: 'hypothesis' as const, label: t('newStructuredLearning.tabHypothesis'), Icon: Lightbulb },
+                { value: 'learn' as const, label: t('newStructuredLearning.tabLearn'), Icon: BookOpenText },
+                { value: 'inYourRole' as const, label: t('newStructuredLearning.tabInYourRole'), Icon: Briefcase },
+                { value: 'recall' as const, label: t('newStructuredLearning.tabRecall'), Icon: RotateCcw },
+                { value: 'assessment' as const, label: t('newStructuredLearning.tabAssessment'), Icon: ClipboardCheck },
+              ]
+            ).map((tab) => {
+              const active = courseDesignTab === tab.value;
+              const visited = visitedCourseDesignTabs.has(tab.value);
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => {
+                    setCourseDesignTab(tab.value);
+                    setVisitedCourseDesignTabs((prev) => new Set(prev).add(tab.value));
+                  }}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    active
+                      ? 'bg-gradient-to-r from-brand-500 to-indigo-500 text-white shadow-md shadow-brand-500/20'
+                      : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
+                  }`}
+                >
+                  <tab.Icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                  {visited && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {!hasVisitedAllCourseDesignTabs && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-300">
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              {t('newStructuredLearning.courseDesignVisitAllTabsHint')}
+            </p>
+          )}
+
+          {courseDesignTab === 'general' && (
+            <div className="space-y-6 animate-fade-in">
+              {courseType !== 'enterprise' ? (
+                <Field label={t('newCapability.pedagogicalAudienceLabel')} hint={t('newCapability.pedagogicalAudienceHint')}>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'Standard' as const, label: t('newCapability.audienceStandard') },
+                      { value: 'YoungLearner' as const, label: t('newCapability.audienceYoungLearner') },
+                    ].map((option) => {
+                      const active = pedagogicalAudience === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setPedagogicalAudience(option.value)}
+                          className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                            active
+                              ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                              : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 text-xs text-slate-300">
+                  <span className="font-semibold text-white">Audiencia pedagógica:</span> Estándar (Adultos / Profesional). <span className="text-slate-400 font-normal">Young Learners (K-1/K-2) no aplica para cursos corporativos.</span>
+                </div>
+              )}
+
+              <Field label="Nivel de contenido" hint="Ajusta la profundidad del contenido según la seniority del puesto — no cambia el tono, solo qué tanto se explica desde cero vs. cuánto se asume ya dominado.">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'L100' as const, label: 'L100 · Fundacional', hint: 'Sin conocimiento previo' },
+                    { value: 'L200' as const, label: 'L200 · Intermedio', hint: 'Más ejemplos aplicados' },
+                    { value: 'L300' as const, label: 'L300 · Avanzado', hint: 'Trade-offs y arquitectura' },
+                  ].map((option) => {
+                    const active = courseLevel === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setCourseLevel(option.value)}
+                        className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                          active
+                            ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                            : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                        }`}
+                      >
+                        <div>{option.label}</div>
+                        <div className="mt-0.5 text-[11px] font-normal text-slate-400">{option.hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
+              <div className="border-t border-white/10 pt-6">
+                <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step6Title')}</h3>
+                <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step6Subtitle')}</p>
               </div>
-            </Field>
-          ) : (
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 text-xs text-slate-300">
-              <span className="font-semibold text-white">Audiencia pedagógica:</span> Estándar (Adultos / Profesional). <span className="text-slate-400 font-normal">Young Learners (K-1/K-2) no aplica para cursos corporativos.</span>
+
+              <Field label={t('newStructuredLearning.knowledgeGraphLabel')} hint={t('newStructuredLearning.knowledgeGraphHint')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeKnowledgeGraphEntities}
+                    onChange={(e) => {
+                      setIncludeKnowledgeGraphEntities(e.target.checked);
+                      setIncludeKnowledgeGraphConnections(e.target.checked);
+                    }}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.knowledgeGraphToggle')}
+                </label>
+              </Field>
+
+              <div className="border-t border-white/10 pt-6">
+                <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.perplexitySearchTitle')}</h3>
+                <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.perplexitySearchSubtitle')}</p>
+              </div>
+
+              <div className="space-y-4 rounded-xl border-2 border-emerald-500/40 bg-emerald-500/[0.06] p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 shrink-0 text-emerald-400" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                    {t('newStructuredLearning.perplexitySearchBadge')}
+                  </p>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">{t('newStructuredLearning.perplexitySearchHint')}</p>
+
+                <Field label={t('newStructuredLearning.usePerplexitySearchLabel')}>
+                  <label className="flex items-center gap-2.5 text-sm text-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={usePerplexitySearch}
+                      onChange={(e) => setUsePerplexitySearch(e.target.checked)}
+                      className="h-4 w-4 shrink-0 rounded border-emerald-400/40 bg-white/[0.02] accent-emerald-500 checked:!border-emerald-500 checked:!bg-emerald-500 text-emerald-500 focus:ring-2 focus:ring-emerald-400/50"
+                    />
+                    <span className="font-medium text-emerald-200">{t('newStructuredLearning.usePerplexitySearchToggle')}</span>
+                  </label>
+                </Field>
+              </div>
             </div>
           )}
 
-          <Field label="Nivel de contenido" hint="Ajusta la profundidad del contenido según la seniority del puesto — no cambia el tono, solo qué tanto se explica desde cero vs. cuánto se asume ya dominado.">
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: 'L100' as const, label: 'L100 · Fundacional', hint: 'Sin conocimiento previo' },
-                { value: 'L200' as const, label: 'L200 · Intermedio', hint: 'Más ejemplos aplicados' },
-                { value: 'L300' as const, label: 'L300 · Avanzado', hint: 'Trade-offs y arquitectura' },
-              ].map((option) => {
-                const active = courseLevel === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setCourseLevel(option.value)}
-                    className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                      active
-                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                    }`}
-                  >
-                    <div>{option.label}</div>
-                    <div className="mt-0.5 text-[11px] font-normal text-slate-400">{option.hint}</div>
-                  </button>
-                );
-              })}
+          {courseDesignTab === 'hypothesis' && (
+            <div className="space-y-6 animate-fade-in">
+              <Field label={t('newStructuredLearning.includeHypothesisStepLabel')} hint={t('newStructuredLearning.includeHypothesisStepHint')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeHypothesisStep}
+                    onChange={(e) => setIncludeHypothesisStep(e.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.includeHypothesisStepToggle')}
+                </label>
+              </Field>
             </div>
-          </Field>
+          )}
 
-          <Field label={t('newCapability.maxDeepDiveCardsLabel')} hint={t('newCapability.maxDeepDiveCardsHint')}>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              step={1}
-              value={maxDeepDiveCardsPerNode}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value, 10);
-                setMaxDeepDiveCardsPerNode(Number.isNaN(parsed) ? 1 : Math.max(1, Math.min(10, parsed)));
-              }}
-              className="input"
-            />
-          </Field>
+          {courseDesignTab === 'learn' && (
+            <div className="space-y-6 animate-fade-in">
+              <Field label={t('newCapability.maxDeepDiveCardsLabel')} hint={t('newCapability.maxDeepDiveCardsHint')}>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={maxDeepDiveCardsPerNode}
+                  onChange={(e) => {
+                    const parsed = Number.parseInt(e.target.value, 10);
+                    setMaxDeepDiveCardsPerNode(Number.isNaN(parsed) ? 1 : Math.max(1, Math.min(10, parsed)));
+                  }}
+                  className="input"
+                />
+              </Field>
 
-          <Field label={t('newCapability.includeProductionStepLabel')} hint={t('newCapability.includeProductionStepHint')}>
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={includeProductionStep}
-                onChange={(e) => setIncludeProductionStep(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
-              />
-              {includeProductionStep
-                ? t('newCapability.includeProductionStepOn')
-                : t('newCapability.includeProductionStepOff')}
-            </label>
-          </Field>
+              <Field label={t('newStructuredLearning.showQaProfessorStepLabel')} hint={t('newStructuredLearning.showQaProfessorStepHint')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={showQaProfessorStep}
+                    onChange={(e) => setShowQaProfessorStep(e.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.showQaProfessorStepToggle')}
+                </label>
+                <label className={`mt-2 flex items-center gap-2 pl-6 text-xs ${showQaProfessorStep ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <input
+                    type="checkbox"
+                    checked={enableQaProfessorVoice}
+                    disabled={!showQaProfessorStep}
+                    onChange={(e) => setEnableQaProfessorVoice(e.target.checked)}
+                    className="h-3.5 w-3.5 shrink-0 rounded border-white/20 bg-white/[0.02] accent-accent-500 checked:!border-accent-500 checked:!bg-accent-500 focus:ring-2 focus:ring-accent-400/50 disabled:opacity-40"
+                  />
+                  {t('newStructuredLearning.enableQaProfessorVoiceToggle')}
+                </label>
+              </Field>
 
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step5Title')}</h3>
-            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step5Subtitle')}</p>
-          </div>
-
-          <div className="space-y-4 rounded-xl border-2 border-brand-400/50 bg-brand-500/[0.07] p-4 shadow-[0_0_0_1px_rgba(99,102,241,0.15)]">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 shrink-0 text-brand-300" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand-300">
-                {t('newStructuredLearning.accessibilityStepsBadge')}
-              </p>
+              <Field label={t('newStructuredLearning.showDeepDiveAgentChatLabel')} hint={t('newStructuredLearning.showDeepDiveAgentChatHint')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={showDeepDiveAgentChat}
+                    onChange={(e) => setShowDeepDiveAgentChat(e.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.showDeepDiveAgentChatToggle')}
+                </label>
+                <label className={`mt-2 flex items-center gap-2 pl-6 text-xs ${showDeepDiveAgentChat ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <input
+                    type="checkbox"
+                    checked={enableDeepDiveAgentVoice}
+                    disabled={!showDeepDiveAgentChat}
+                    onChange={(e) => setEnableDeepDiveAgentVoice(e.target.checked)}
+                    className="h-3.5 w-3.5 shrink-0 rounded border-white/20 bg-white/[0.02] accent-accent-500 checked:!border-accent-500 checked:!bg-accent-500 focus:ring-2 focus:ring-accent-400/50 disabled:opacity-40"
+                  />
+                  {t('newStructuredLearning.enableDeepDiveAgentVoiceToggle')}
+                </label>
+              </Field>
             </div>
-            <p className="text-xs text-slate-400">{t('newStructuredLearning.accessibilityStepsHint')}</p>
+          )}
 
-            <Field label={t('newStructuredLearning.includeHypothesisStepLabel')} hint={t('newStructuredLearning.includeHypothesisStepHint')}>
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeHypothesisStep}
-                  onChange={(e) => setIncludeHypothesisStep(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
-                />
-                {t('newStructuredLearning.includeHypothesisStepToggle')}
-              </label>
-            </Field>
-
-            <Field label={t('newStructuredLearning.includeRecallStepLabel')}>
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeRecallStep}
-                  onChange={(e) => setIncludeRecallStep(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
-                />
-                {t('newStructuredLearning.includeRecallStepToggle')}
-              </label>
-            </Field>
-
-            <Field label={t('newCapability.recallItemsRequiredLabel')} hint={t('newCapability.recallItemsRequiredHint')}>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                step={1}
-                placeholder={t('newCapability.useDefaultPlaceholder')}
-                value={recallItemsRequired}
-                onChange={(e) => setRecallItemsRequired(e.target.value)}
-                disabled={!includeRecallStep}
-                className="input"
-              />
-            </Field>
-
-            <Field label={t('newStructuredLearning.includeAssessmentStepLabel')}>
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeAssessmentStep}
-                  onChange={(e) => setIncludeAssessmentStep(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
-                />
-                {t('newStructuredLearning.includeAssessmentStepToggle')}
-              </label>
-            </Field>
-          </div>
-
-          <Field label={t('newStructuredLearning.assessmentQuestionTypeLabel')}>
-            <div className="grid grid-cols-2 gap-2" style={includeAssessmentStep ? undefined : { opacity: 0.5, pointerEvents: 'none' }}>
-              {(
-                [
-                  { value: 'MultipleChoice' as const, label: t('newStructuredLearning.assessmentQuestionTypeMultipleChoice') },
-                  { value: 'OpenEnded' as const, label: t('newStructuredLearning.assessmentQuestionTypeOpenEnded') },
-                ]
-              ).map((option) => {
-                const active = assessmentQuestionType === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setAssessmentQuestionType(option.value)}
-                    className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? 'border-brand-400/60 bg-brand-500/10 text-white'
-                        : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+          {courseDesignTab === 'inYourRole' && (
+            <div className="space-y-6 animate-fade-in">
+              <Field label={t('newStructuredLearning.includeWorkplaceApplicationStepLabel')} hint={t('newCapability.includeProductionStepHint')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeProductionStep}
+                    onChange={(e) => setIncludeProductionStep(e.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.includeWorkplaceApplicationStepToggle')}
+                </label>
+              </Field>
             </div>
-          </Field>
+          )}
 
-          <Field
-            label={t('newCapability.assessmentQuestionsPerRoundLabel')}
-            hint={t('newCapability.assessmentQuestionsPerRoundHint')}
-          >
-            <input
-              type="number"
-              min={1}
-              max={10}
-              step={1}
-              placeholder={t('newCapability.useDefaultPlaceholder')}
-              value={assessmentQuestionsPerRound}
-              onChange={(e) => setAssessmentQuestionsPerRound(e.target.value)}
-              disabled={!includeAssessmentStep}
-              className="input"
-            />
-          </Field>
+          {courseDesignTab === 'recall' && (
+            <div className="space-y-6 animate-fade-in">
+              <Field label={t('newStructuredLearning.includeRecallStepLabel')} hint={t('newStructuredLearning.includeRecallStepHint')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeRecallStep}
+                    onChange={(e) => setIncludeRecallStep(e.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.includeRecallStepToggle')}
+                </label>
+              </Field>
 
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.step6Title')}</h3>
-            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step6Subtitle')}</p>
-          </div>
-
-          <Field label={t('newStructuredLearning.knowledgeGraphEntitiesLabel')} hint={t('newStructuredLearning.knowledgeGraphEntitiesHint')}>
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={includeKnowledgeGraphEntities}
-                onChange={(e) => setIncludeKnowledgeGraphEntities(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
-              />
-              {t('newStructuredLearning.knowledgeGraphEntitiesToggle')}
-            </label>
-          </Field>
-
-          <Field label={t('newStructuredLearning.knowledgeGraphConnectionsLabel')} hint={t('newStructuredLearning.knowledgeGraphConnectionsHint')}>
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={includeKnowledgeGraphConnections}
-                onChange={(e) => setIncludeKnowledgeGraphConnections(e.target.checked)}
-                disabled={!includeKnowledgeGraphEntities}
-                className="h-4 w-4 rounded border-white/20 bg-white/[0.02] disabled:opacity-40"
-              />
-              {t('newStructuredLearning.knowledgeGraphConnectionsToggle')}
-            </label>
-          </Field>
-
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.perplexitySearchTitle')}</h3>
-            <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.perplexitySearchSubtitle')}</p>
-          </div>
-
-          <div className="space-y-4 rounded-xl border-2 border-emerald-500/40 bg-emerald-500/[0.06] p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]">
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 shrink-0 text-emerald-400" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
-                {t('newStructuredLearning.perplexitySearchBadge')}
-              </p>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">{t('newStructuredLearning.perplexitySearchHint')}</p>
-
-            <Field label={t('newStructuredLearning.usePerplexitySearchLabel')}>
-              <label className="flex items-center gap-2.5 text-sm text-slate-200 cursor-pointer">
+              <Field label={t('newCapability.recallItemsRequiredLabel')} hint={t('newCapability.recallItemsRequiredHint')}>
                 <input
-                  type="checkbox"
-                  checked={usePerplexitySearch}
-                  onChange={(e) => setUsePerplexitySearch(e.target.checked)}
-                  className="h-4 w-4 rounded border-emerald-400/40 bg-white/[0.02] text-emerald-500 focus:ring-emerald-400"
+                  type="number"
+                  min={1}
+                  max={recallGenerationMode === 'Static' ? 3 : 10}
+                  step={1}
+                  placeholder={t('newCapability.useDefaultPlaceholder')}
+                  value={recallItemsRequired}
+                  onChange={(e) => setRecallItemsRequired(e.target.value)}
+                  disabled={!includeRecallStep}
+                  className="input"
                 />
-                <span className="font-medium text-emerald-200">{t('newStructuredLearning.usePerplexitySearchToggle')}</span>
-              </label>
-            </Field>
-          </div>
+              </Field>
 
-          <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} />
+              <Field label={t('newStructuredLearning.recallGenerationModeLabel')} hint={t('newStructuredLearning.recallGenerationModeHint')}>
+                <div className="grid grid-cols-2 gap-2" style={includeRecallStep ? undefined : { opacity: 0.5, pointerEvents: 'none' }}>
+                  {(
+                    [
+                      { value: 'Dynamic' as const, label: t('newStructuredLearning.generationModeDynamic') },
+                      { value: 'Static' as const, label: t('newStructuredLearning.generationModeStatic') },
+                    ]
+                  ).map((option) => {
+                    const active = recallGenerationMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setRecallGenerationMode(option.value);
+                          if (option.value === 'Static' && recallItemsRequired.trim() !== '' && Number.parseInt(recallItemsRequired, 10) > 3) {
+                            setRecallItemsRequired('3');
+                          }
+                        }}
+                        className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                            : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+          )}
+
+          {courseDesignTab === 'assessment' && (
+            <div className="space-y-6 animate-fade-in">
+              <Field label={t('newStructuredLearning.includeAssessmentStepLabel')}>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeAssessmentStep}
+                    onChange={(e) => setIncludeAssessmentStep(e.target.checked)}
+                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                  />
+                  {t('newStructuredLearning.includeAssessmentStepToggle')}
+                </label>
+              </Field>
+
+              <Field label={t('newStructuredLearning.assessmentQuestionTypeLabel')}>
+                <div className="grid grid-cols-2 gap-2" style={includeAssessmentStep ? undefined : { opacity: 0.5, pointerEvents: 'none' }}>
+                  {(
+                    [
+                      { value: 'MultipleChoice' as const, label: t('newStructuredLearning.assessmentQuestionTypeMultipleChoice') },
+                      { value: 'OpenEnded' as const, label: t('newStructuredLearning.assessmentQuestionTypeOpenEnded') },
+                    ]
+                  ).map((option) => {
+                    const active = assessmentQuestionType === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setAssessmentQuestionType(option.value)}
+                        className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                            : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
+              <Field
+                label={t('newCapability.assessmentQuestionsPerRoundLabel')}
+                hint={t('newCapability.assessmentQuestionsPerRoundHint')}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={assessmentGenerationMode === 'Static' ? 3 : 10}
+                  step={1}
+                  placeholder={t('newCapability.useDefaultPlaceholder')}
+                  value={assessmentQuestionsPerRound}
+                  onChange={(e) => setAssessmentQuestionsPerRound(e.target.value)}
+                  disabled={!includeAssessmentStep}
+                  className="input"
+                />
+              </Field>
+
+              <Field label={t('newStructuredLearning.assessmentGenerationModeLabel')} hint={t('newStructuredLearning.assessmentGenerationModeHint')}>
+                <div className="grid grid-cols-2 gap-2" style={includeAssessmentStep ? undefined : { opacity: 0.5, pointerEvents: 'none' }}>
+                  {(
+                    [
+                      { value: 'Dynamic' as const, label: t('newStructuredLearning.generationModeDynamic') },
+                      { value: 'Static' as const, label: t('newStructuredLearning.generationModeStatic') },
+                    ]
+                  ).map((option) => {
+                    const active = assessmentGenerationMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setAssessmentGenerationMode(option.value);
+                          if (option.value === 'Static' && assessmentQuestionsPerRound.trim() !== '' && Number.parseInt(assessmentQuestionsPerRound, 10) > 3) {
+                            setAssessmentQuestionsPerRound('3');
+                          }
+                        }}
+                        className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? 'border-brand-400/60 bg-brand-500/10 text-white'
+                            : 'border-white/10 bg-white/[0.02] text-slate-300 hover:border-white/20'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+          )}
+
+          <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} nextDisabled={!hasVisitedAllCourseDesignTabs} />
         </div>
       )}
 

@@ -62,8 +62,28 @@ public sealed class GenerateStructuredLearningConnectionsFunction
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            // The SDK's own exception.Message is often empty for 400s — pull
+            // the raw HTTP response body so the real cause is actually
+            // visible (2026-10-06, same diagnostics as the bulk pipeline's
+            // [KG-DEBUG] logging in StructuredLearningExtractionService).
+            var rawDetail = exception.Message;
+            if (exception is System.ClientModel.ClientResultException clientEx)
+            {
+                try
+                {
+                    var rawResponse = clientEx.GetRawResponse();
+                    if (rawResponse?.Content is not null)
+                    {
+                        rawDetail = rawResponse.Content.ToString();
+                    }
+                }
+                catch { /* best-effort diagnostics only */ }
+            }
+            Console.WriteLine($"[KG-DEBUG] manual connection extraction FAILED for section {sectionId}: {exception}\n[KG-DEBUG] raw response body: {rawDetail}");
+
             return await FunctionResponseFactory.ErrorResponseAsync(
-                request, HttpStatusCode.UnprocessableEntity, "ConnectionExtractionFailed", exception.Message, cancellationToken);
+                request, HttpStatusCode.UnprocessableEntity, "ConnectionExtractionFailed",
+                string.IsNullOrWhiteSpace(rawDetail) ? exception.Message : rawDetail, cancellationToken);
         }
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, new GenerateStructuredLearningConnectionsResponseDto

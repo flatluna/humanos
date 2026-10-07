@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Bot, Sparkles } from 'lucide-react';
-import { requestVoiceTutorSession } from '../api/runtimeSessionApi';
+import { requestVoiceTutorSession, reportStructuredLearningVoiceUsage, reportAiAgentVoiceUsage, negotiateStructuredLearningVoiceSdp } from '../api/runtimeSessionApi';
 import { useI18n } from '../i18n/useI18n';
 
 type VoiceState = 'idle' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error';
@@ -44,6 +44,7 @@ export default function VoiceTutorAgent({
   isQaMode = false,
   autoConnect = true,
   compact = false,
+  engramSessionId,
 }: {
   /** Live-session path: the student is actually on (or has already completed) this step. */
   learningSessionStepId?: string;
@@ -71,6 +72,10 @@ export default function VoiceTutorAgent({
   isQaMode?: boolean;
   autoConnect?: boolean;
   compact?: boolean;
+  /** The real engram visit (StructuredLearningEngramSession) this voice
+   * call is happening during (2026-10-02) — attaches reported usage to
+   * that session instead of a lifetime-per-person bucket. */
+  engramSessionId?: string;
 }) {
   const { t, language } = useI18n();
 
@@ -108,6 +113,11 @@ export default function VoiceTutorAgent({
   // (double-answering re-triggers the model into generating extra
   // responses).
   const handledToolCallIdsRef = useRef<Set<string>>(new Set());
+  // Cost-tracking (2026-10-01) — wall-clock call start, used to report real
+  // voice duration to the backend on teardown (see
+  // StructuredLearningEngramUsageService). Only meaningful for the
+  // Structured Learning Q&A path (structuredLearningSectionStepId set).
+  const connectedAtRef = useRef<number | null>(null);
 
   const teardown = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -121,8 +131,25 @@ export default function VoiceTutorAgent({
     localStreamRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
+    if (structuredLearningSectionStepId && connectedAtRef.current !== null) {
+      const durationSeconds = Math.round((Date.now() - connectedAtRef.current) / 1000);
+      connectedAtRef.current = null;
+      if (durationSeconds > 0) {
+        reportStructuredLearningVoiceUsage(structuredLearningSectionStepId, durationSeconds, personId, engramSessionId).catch(() => undefined);
+      }
+    } else if (aiAgentQuestion && connectedAtRef.current !== null) {
+      // Free-roaming /ai-agents "Talk about this" voice call — no step to
+      // anchor on, so it reports to its own endpoint instead (2026-10-04
+      // fix — this branch previously didn't exist, so this usage was never
+      // recorded at all).
+      const durationSeconds = Math.round((Date.now() - connectedAtRef.current) / 1000);
+      connectedAtRef.current = null;
+      if (durationSeconds > 0) {
+        reportAiAgentVoiceUsage(durationSeconds, personId, aiAgentQuestion.documentId).catch(() => undefined);
+      }
+    }
     setState('idle');
-  }, []);
+  }, [structuredLearningSectionStepId, personId, engramSessionId, aiAgentQuestion]);
 
   useEffect(() => teardown, [teardown]);
 
@@ -365,22 +392,41 @@ export default function VoiceTutorAgent({
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
 
-      const sdpResponse = await fetch(session.RealtimeCallsUrl, {
-        method: 'POST',
-        body: offer.sdp,
-        headers: {
-          Authorization: `Bearer ${session.ClientSecret}`,
-          'Content-Type': 'application/sdp',
-        },
-      });
+      // Structured Learning voice paths (2026-10-02) proxy the SDP offer
+      // through our backend instead of straight to Azure, so the backend
+      // learns the call's call_id and can open its own token-usage
+      // observer (see RealtimeVoiceUsageObserverService). Every other
+      // voice path (Graph blueprint, AI Agents "talk about this") still
+      // negotiates directly against Azure, unchanged.
+      let answerSdp: string;
+      if (structuredLearningSectionStepId) {
+        // Mirrors VoiceTutorSessionFunction's own DeepDive-tools rule —
+        // only a non-review DeepDive card gets the mark_explanation_understood tool.
+        const usesTools = exampleCardIndex !== undefined && !(isReviewOnly || reviewOnly);
+        const sdpResult = await negotiateStructuredLearningVoiceSdp(
+          structuredLearningSectionStepId, session.ClientSecret, offer.sdp!, usesTools, personId, engramSessionId
+        );
+        answerSdp = sdpResult.Sdp;
+      } else {
+        const sdpResponse = await fetch(session.RealtimeCallsUrl, {
+          method: 'POST',
+          body: offer.sdp,
+          headers: {
+            Authorization: `Bearer ${session.ClientSecret}`,
+            'Content-Type': 'application/sdp',
+          },
+        });
 
-      if (!sdpResponse.ok) {
-        throw new Error(`No se pudo negociar la sesión de voz (status ${sdpResponse.status}).`);
+        if (!sdpResponse.ok) {
+          throw new Error(`No se pudo negociar la sesión de voz (status ${sdpResponse.status}).`);
+        }
+
+        answerSdp = await sdpResponse.text();
       }
 
-      const answerSdp = await sdpResponse.text();
       await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
+      connectedAtRef.current = Date.now();
       setState('connected');
     } catch (err) {
       console.error('VoiceTutorAgent: connection failed', err);
@@ -403,6 +449,7 @@ export default function VoiceTutorAgent({
     onExplanationAccepted,
     exampleCardIndex,
     isQaMode,
+    engramSessionId,
     monitorRemoteAudioLevel,
     teardown,
   ]);

@@ -1,5 +1,6 @@
 import { apiGet, apiPost } from './httpClient';
 import { apiClient } from '@/api';
+import type { StepActivity } from '../hooks/visibleStepTimer';
 
 /**
  * Client for the Runtime V1 "instructor-runtime" HTTP API — drives a
@@ -242,6 +243,165 @@ export function requestVoiceTutorSession(
   );
 }
 
+// === "Q&A with Professor" text tab (2026-10-01) === Cheap, non-voice
+// sibling of the Q&A Realtime voice session above — same grounding
+// (section content + full LEARNER CONTEXT incl. the student's own
+// Hypothesis answer, built server-side), just a plain request/response
+// turn instead of a WebRTC session. Stateless — resend the running
+// history each call, same convention as every other chat endpoint here.
+export interface QaProfessorChatHistoryEntry {
+  Role: 'Student' | 'Professor';
+  Text: string;
+}
+
+export function requestStructuredLearningQaChat(
+  structuredLearningSectionStepId: string,
+  message: string,
+  history: QaProfessorChatHistoryEntry[],
+  personId?: string,
+  exampleCardIndex?: number,
+  engramSessionId?: string
+): Promise<{ Message: string }> {
+  return rPost<{ Message: string }>(`/structured-learning/sections/steps/${structuredLearningSectionStepId}/qa-chat`, {
+    PersonId: personId,
+    Message: message,
+    History: history,
+    ExampleCardIndex: exampleCardIndex,
+    EngramSessionId: engramSessionId,
+  });
+}
+
+/** Reports a completed Voice "Q&A with Professor" call's wall-clock
+ * duration — see StructuredLearningEngramUsageService. Fire-and-forget
+ * from the caller's perspective; never blocks/affects the UI. */
+export function reportStructuredLearningVoiceUsage(
+  structuredLearningSectionStepId: string,
+  durationSeconds: number,
+  personId?: string,
+  engramSessionId?: string
+): Promise<unknown> {
+  return rPost(`/structured-learning/sections/steps/${structuredLearningSectionStepId}/voice-usage`, {
+    PersonId: personId,
+    DurationSeconds: durationSeconds,
+    EngramSessionId: engramSessionId,
+  });
+}
+
+/** Reports a completed /ai-agents "Talk about this" Realtime voice call's
+ * wall-clock duration (2026-10-04) — the free-roaming voice follow-up has
+ * no StructuredLearningSectionStep to anchor on, so it posts to its own
+ * endpoint instead of reportStructuredLearningVoiceUsage above. Previously
+ * this call simply never happened (a confirmed measurement gap) — see
+ * PostAiAgentVoiceUsageFunction. Fire-and-forget, never blocks the UI. */
+export function reportAiAgentVoiceUsage(
+  durationSeconds: number,
+  personId?: string,
+  documentId?: string
+): Promise<unknown> {
+  return rPost('/ai-agents/voice-usage', {
+    PersonId: personId,
+    DocumentId: documentId,
+    DurationSeconds: durationSeconds,
+  });
+}
+
+// === Engram session tracking (2026-10-02) === One session id per real
+// "entry" into an engram — created once when the student opens it, then
+// attached to every Voice/Text Professor usage report and step start/
+// complete event for that visit. See StructuredLearningEngramSessionService.
+export function startStructuredLearningEngramSession(
+  sectionId: string,
+  personId?: string,
+  documentId?: string,
+  source?: string
+): Promise<{ EngramSessionId: string; StartedDate: string }> {
+  return rPost<{ EngramSessionId: string; StartedDate: string }>(`/structured-learning/sections/${sectionId}/engram-session`, {
+    PersonId: personId,
+    StructuredLearningDocumentId: documentId,
+    Source: source,
+  });
+}
+
+const pendingCourseSessionStarts = new Map<string, Promise<{ EngramSessionId: string; StartedDate: string }>>();
+
+/** Starts a course session when the learner opens a section with content. */
+export function startStructuredLearningCourseSession(documentId: string, personId?: string): Promise<{ EngramSessionId: string; StartedDate: string }> {
+  const key = `${personId ?? ''}:${documentId}`;
+  const pending = pendingCourseSessionStarts.get(key);
+  if (pending) return pending;
+
+  const request = rPost<{ EngramSessionId: string; StartedDate: string }>(`/structured-learning/documents/${documentId}/course-session`, {
+    PersonId: personId,
+  });
+  pendingCourseSessionStarts.set(key, request);
+  request.then(
+    () => { if (pendingCourseSessionStarts.get(key) === request) pendingCourseSessionStarts.delete(key); },
+    () => { if (pendingCourseSessionStarts.get(key) === request) pendingCourseSessionStarts.delete(key); },
+  );
+  return request;
+}
+
+export function getStructuredLearningCourseSessionCount(personId: string, documentId: string): Promise<{
+  SessionCount: number;
+  EngramSessionId: string | null;
+  StartedDate: string | null;
+}> {
+  return rGet<{ SessionCount: number; EngramSessionId: string | null; StartedDate: string | null }>(
+    `/people/${personId}/structured-learning/${documentId}/course-sessions/count`
+  );
+}
+
+export function reportStructuredLearningEngramStepStart(engramSessionId: string, sectionId: string, stepType: string): Promise<unknown> {
+  return rPost(`/structured-learning/engram-sessions/${engramSessionId}/sections/${sectionId}/steps/${stepType}/start`);
+}
+
+export function reportStructuredLearningEngramStepComplete(engramSessionId: string, sectionId: string, stepType: string): Promise<unknown> {
+  return rPost(`/structured-learning/engram-sessions/${engramSessionId}/sections/${sectionId}/steps/${stepType}/complete`);
+}
+
+let pendingStepActivity: Promise<unknown> = Promise.resolve();
+
+export function reportStructuredLearningEngramStepActivity(
+  sessionId: string, sectionId: string, stepType: string, activity: StepActivity,
+): Promise<unknown> {
+  const send = () => apiPost(
+    `/structured-learning/engram-sessions/${sessionId}/sections/${sectionId}/steps/${stepType}/activity`,
+    activity, true,
+  );
+  // Order interval creation, checkpoints and exits, including React StrictMode remounts.
+  const request = pendingStepActivity.then(send, send);
+  pendingStepActivity = request;
+  return request;
+}
+
+/** Closes out the whole course session (2026-10-02) — call when the student
+ * explicitly exits the course, so entry count/total time/duration are correct. */
+export function closeStructuredLearningEngramSession(engramSessionId: string): Promise<unknown> {
+  return rPost(`/structured-learning/engram-sessions/${engramSessionId}/close`);
+}
+
+/** Proxies the browser's SDP offer through our backend instead of straight
+ * to Azure (2026-10-02) \u2014 lets the backend learn the call's call_id and
+ * open its own token-usage observer (see RealtimeVoiceUsageObserverService).
+ * The browser's own WebRTC connection is otherwise unaffected. Structured
+ * Learning voice paths only (Hypothesis/Teaching/QA/DeepDive). */
+export function negotiateStructuredLearningVoiceSdp(
+  structuredLearningSectionStepId: string,
+  clientSecret: string,
+  sdp: string,
+  usesTools: boolean,
+  personId?: string,
+  engramSessionId?: string
+): Promise<{ Sdp: string }> {
+  return rPost<{ Sdp: string }>(`/structured-learning/sections/steps/${structuredLearningSectionStepId}/voice-session/sdp`, {
+    ClientSecret: clientSecret,
+    Sdp: sdp,
+    UsesTools: usesTools,
+    PersonId: personId,
+    EngramSessionId: engramSessionId,
+  });
+}
+
 // === "Reactivar Engrama" (2026-07-24) === A second, distinct Agent
 // presence shown alongside "Practicar de nuevo" on an already-Mastered
 // node's summary screen — a full-lesson active-recall STUDY conversation
@@ -258,6 +418,34 @@ export function requestEngramReviewSession(
     CapabilityGraphNodeId: target.capabilityGraphNodeId,
     ExampleCardIndex: target.exampleCardIndex,
   });
+}
+
+/** Reports REAL "Reactivar Engrama" voice-session duration (2026-10-04) —
+ * called on EVERY session teardown, regardless of whether the student
+ * finished the whole lesson, only reviewed one Deep Dive card, or closed
+ * early. Real cost must track actual consumption, never "did they finish
+ * everything" — mirrors reportBuddySessionUsage's fire-and-forget pattern. */
+export function reportEngramReviewUsage(
+  personId: string, capabilityGraphNodeId: string, durationSeconds: number
+): void {
+  if (durationSeconds <= 0) return;
+  rPost('/instructor-runtime/tutor/engram-review-usage', {
+    PersonId: personId,
+    CapabilityGraphNodeId: capabilityGraphNodeId,
+    DurationSeconds: Math.round(durationSeconds),
+  }).catch(() => undefined);
+}
+
+/** Logs one completed full "Reactivar Engrama" voice review (2026-10-04) —
+ * called ONLY when the Agent itself invokes the complete_review Realtime
+ * tool, signaling it walked the student through the ENTIRE lesson. This is
+ * the Brain page's memory-refresh signal, NOT the cost ledger (see
+ * reportEngramReviewUsage for that) — fire-and-forget, same reasoning. */
+export function completeEngramReview(personId: string, capabilityGraphNodeId: string): void {
+  rPost('/instructor-runtime/tutor/engram-review-complete', {
+    PersonId: personId,
+    CapabilityGraphNodeId: capabilityGraphNodeId,
+  }).catch(() => undefined);
 }
 
 // On-demand image generation (2026-07-24) for the show_visual_aid tool's

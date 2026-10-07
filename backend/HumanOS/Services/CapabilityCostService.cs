@@ -36,9 +36,9 @@ public sealed class CapabilityCostService
             .AsNoTracking()
             .Where(c => c.CapabilityGraph != null);
 
-        if (tenantId != null)
+        if (tenantId != null && tenantId != Guid.Empty)
         {
-            capQuery = capQuery.Where(c => c.OwnerTenantId == null || c.OwnerTenantId == tenantId);
+            capQuery = capQuery.Where(c => c.OwnerTenantId == tenantId.Value);
         }
 
         var capabilities = await capQuery

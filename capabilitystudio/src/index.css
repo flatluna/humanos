@@ -153,7 +153,20 @@ body {
   box-shadow: 0 0 0 2px rgb(var(--color-brand-500) / 0.3);
 }
 
-/* Fix select/combobox visibility in dark mode */
+/* Fix select/combobox visibility across all themes */
+select {
+  @apply text-white bg-slate-800;
+}
+
+select option {
+  @apply text-white bg-slate-800;
+}
+
+select option:checked {
+  background-color: rgb(var(--color-brand-500));
+  color: rgb(var(--color-ink));
+}
+
 select.input {
   @apply text-white bg-slate-800;
 }

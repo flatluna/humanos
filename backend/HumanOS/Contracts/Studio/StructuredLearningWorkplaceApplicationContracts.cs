@@ -25,9 +25,7 @@ public sealed class StructuredLearningWorkplaceApplicationContext
     public bool IsStudent { get; set; }
     public string? StudentAcademicProfileSummary { get; set; }
 
-    /// <summary>CQI Workspace profile for the employee (non-student businesses only) — null
-    /// when not uploaded/available. Consumed only by <see cref="HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationCqiAgent"/>.</summary>
-    public HumanOS.Contracts.People.CqiProfileData? CqiProfile { get; set; }
+    public string UserInstructions { get; set; } = string.Empty;
 }
 
 public sealed class StructuredLearningWorkplaceApplicationResult
@@ -39,16 +37,21 @@ public sealed class StructuredLearningWorkplaceApplicationResult
     public string RelevanceSummary { get; set; } = string.Empty;
     public string LanguageCode { get; set; } = "es";
 
-    // --- CQI-aware employee sections (empty for the plain/student agent) ---
     public string WhyThisMatters { get; set; } = string.Empty;
-    public List<string> ReflectionQuestions { get; set; } = [];
-    public string GrowthOpportunity { get; set; } = string.Empty;
+    public List<StructuredLearningWorkedExample> WorkedExamples { get; set; } = [];
     public List<string> KnowledgeConnections { get; set; } = [];
+}
 
-    /// <summary>Exactly 2 short grounded paragraphs explaining a concrete worked example of applying
-    /// this engram in the employee's role — paired 1:1 with the 2 generated CQI Type 6 example images
-    /// (index 0/1). Empty for the plain/student agent.</summary>
-    public List<string> ExampleImageExplanations { get; set; } = [];
+public sealed class StructuredLearningWorkedExample
+{
+    public string Title { get; set; } = string.Empty;
+    public string Situation { get; set; } = string.Empty;
+    public string InputsAndAssumptions { get; set; } = string.Empty;
+    public List<string> Steps { get; set; } = [];
+    public string Artifact { get; set; } = string.Empty;
+    public string ArtifactLanguage { get; set; } = string.Empty;
+    public string ExpectedResult { get; set; } = string.Empty;
+    public string Validation { get; set; } = string.Empty;
 }
 
 public sealed class StructuredLearningWorkplaceApplicationResponse
@@ -65,36 +68,27 @@ public sealed class StructuredLearningWorkplaceApplicationResponse
     public string AudioUrl { get; set; } = string.Empty;
     public string LanguageCode { get; set; } = "es";
 
-    // --- CQI-aware employee sections (empty for the plain/student agent) ---
+    public string UserInstructions { get; set; } = string.Empty;
     public string WhyThisMatters { get; set; } = string.Empty;
-    public List<string> ReflectionQuestions { get; set; } = [];
-    public string GrowthOpportunity { get; set; } = string.Empty;
+    public List<StructuredLearningWorkedExample> WorkedExamples { get; set; } = [];
     public List<string> KnowledgeConnections { get; set; } = [];
 
-    /// <summary>Bumped whenever the CQI agent's output format/rules change materially — cached
+    /// <summary>Bumped whenever the agent's output format/rules change materially — cached
     /// responses with an older (or missing/0) version are treated as stale and regenerated.</summary>
     public int SchemaVersion { get; set; }
+}
 
-    // --- CQI Type 6 ("The Verifier") recognition — employee/business tenants only, shown inline ---
+/// <summary>Generated scenario + real token usage from one agent call — see
+/// <see cref="HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationAgent.GenerateScenarioAsync"/>
+/// Only produced when the agent actually runs (never on a cache hit),
+/// so cost is only ever counted once per real generation.</summary>
+public sealed class StructuredLearningWorkplaceApplicationAgentResult
+{
+    public StructuredLearningWorkplaceApplicationResult Result { get; set; } = null!;
 
-    /// <summary>E.g. "Type 6" — set only when the employee's CQI leading pattern is Type 6.</summary>
-    public string? CqiLeadingPatternType { get; set; }
+    public string ModelName { get; set; } = string.Empty;
 
-    /// <summary>E.g. "The Verifier".</summary>
-    public string? CqiLeadingPatternName { get; set; }
+    public int InputTokens { get; set; }
 
-    /// <summary>Code-generated label sentence naming the type/pattern (e.g. "Type 6: The Verifier") —
-    /// the agent's own text never names the type, but this line is shown plainly inline on the page.</summary>
-    public string? CqiTypeLabel { get; set; }
-
-    /// <summary>The employee's own "Learning and Working Preferences" CQI text, shown inline on the page.</summary>
-    public string? CqiLearningAndWorkingPreferences { get; set; }
-
-    /// <summary>Two additional generated example images (job-role-specific applications of this
-    /// engram), served via GetStructuredLearningWorkplaceApplicationCqiExampleImage.</summary>
-    public List<string> CqiExampleImageUrls { get; set; } = [];
-
-    /// <summary>Explanation text paired 1:1 (by index) with <see cref="CqiExampleImageUrls"/> —
-    /// what each image depicts and how it expands on the lesson, so the images are never shown bare.</summary>
-    public List<string> CqiExampleImageExplanations { get; set; } = [];
+    public int OutputTokens { get; set; }
 }

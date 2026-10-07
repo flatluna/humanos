@@ -21,6 +21,7 @@ import { apiImageUrl } from '../lib/api/httpClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DeleteCapabilityModal from '../components/DeleteCapabilityModal';
 import { getSubjectGradient, getSubjectIcon } from '../lib/subjectVisuals';
+import { useAuth } from '../auth/AuthContext';
 
 const LEARN_APP_BASE_URL = 'http://localhost:3001';
 
@@ -28,6 +29,8 @@ export default function CapabilityDetailPage() {
   const { t, i18n } = useTranslation();
   const { capabilityId } = useParams<{ capabilityId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const effectiveTenantId = user?.tenantId ?? sessionStorage.getItem('humanos.studio.inheritedTenantId') ?? null;
   const [capability, setCapability] = useState<BackendCapability | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -237,6 +240,7 @@ export default function CapabilityDetailPage() {
               <option value="">{t('capabilityDetail.addToProgramPlaceholder')}</option>
               {allPrograms
                 .filter((p) => !memberships.some((m) => m.ProgramId === p.ProgramId))
+                .filter((p) => !effectiveTenantId || !p.TenantId || p.TenantId.toLowerCase() === effectiveTenantId.toLowerCase())
                 .map((p) => (
                   <option key={p.ProgramId} value={p.ProgramId}>
                     {p.Name}

@@ -19,6 +19,7 @@ import { TecContigoHub, LearningExecutiveSummary } from '@/features/tec-contigo'
 import { TecContigoAgentChat } from '@/features/tec-contigo/TecContigoAgentChat';
 import { TecContigoVoiceModal } from '@/features/tec-contigo/TecContigoVoiceModal';
 import { BuddyVoiceModal } from './components/BuddyVoiceModal';
+import { BuddyTextChatModal } from './components/BuddyTextChatModal';
 
 type GreetingKey = 'morning' | 'afternoon' | 'evening';
 
@@ -237,6 +238,7 @@ export function TodayPage() {
   const [showEngramVideo, setShowEngramVideo] = useState(false);
   const [addedProgramIds, setAddedProgramIds] = useState<Set<string>>(() => new Set());
   const [isBuddyOpen, setIsBuddyOpen] = useState(false);
+  const [isBuddyTextOpen, setIsBuddyTextOpen] = useState(false);
   const [isTecBotOpen, setIsTecBotOpen] = useState(false);
   const [isTecBotVoiceOpen, setIsTecBotVoiceOpen] = useState(false);
   const { user } = useAuth();
@@ -640,6 +642,13 @@ export function TodayPage() {
                   <div className="mt-5 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
                     <button
                       type="button"
+                      onClick={() => setIsBuddyTextOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-5 py-2.5 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50 dark:border-blue-400/30 dark:bg-white/5 dark:text-blue-300 dark:hover:bg-white/10"
+                    >
+                      <span>{language === 'es' ? 'Escríbele a Buddy' : 'Chat with Buddy'}</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setIsBuddyOpen(true)}
                       className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-700"
                     >
@@ -656,6 +665,13 @@ export function TodayPage() {
         <BuddyVoiceModal
           open={isBuddyOpen}
           onClose={() => setIsBuddyOpen(false)}
+          personName={displayName}
+          language={language === 'en' ? 'en' : 'es'}
+        />
+
+        <BuddyTextChatModal
+          open={isBuddyTextOpen}
+          onClose={() => setIsBuddyTextOpen(false)}
           personName={displayName}
           language={language === 'en' ? 'en' : 'es'}
         />

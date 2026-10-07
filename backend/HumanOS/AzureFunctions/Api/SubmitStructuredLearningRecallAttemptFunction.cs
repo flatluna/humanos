@@ -77,10 +77,11 @@ public sealed class SubmitStructuredLearningRecallAttemptFunction
 
         var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
         Guid? personId = Guid.TryParse(query["personId"], out var parsedPersonId) ? parsedPersonId : null;
+        Guid? engramSessionId = Guid.TryParse(query["engramSessionId"], out var parsedSessionId) ? parsedSessionId : null;
 
         try
         {
-            var result = await _engine.SubmitAttemptAsync(_dbContext, sectionId, body?.StudentResponse, personId, cancellationToken);
+            var result = await _engine.SubmitAttemptAsync(_dbContext, sectionId, body?.StudentResponse, personId, engramSessionId, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(request, new SubmitStructuredLearningRecallAttemptResponse
             {
                 Started = result.Started,

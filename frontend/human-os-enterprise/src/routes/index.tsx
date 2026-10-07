@@ -64,6 +64,10 @@ export const router = createBrowserRouter([
           import('@/pages/ProcessLearningWizardPage').then((m) => ({ Component: m.ProcessLearningWizardPage })),
       },
       {
+        path: 'programar-cursos',
+        lazy: () => import('@/pages/LearningProgramsPage').then((m) => ({ Component: m.LearningProgramsPage })),
+      },
+      {
         path: 'procesos',
         lazy: () =>
           import('@/pages/ProcessLearningWizardPage').then((m) => ({ Component: m.ProcessLearningWizardPage })),

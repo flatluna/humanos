@@ -16,6 +16,9 @@ public sealed class ProgramConfiguration : IEntityTypeConfiguration<LearningProg
         builder.Property(x => x.ProgramId)
             .HasDefaultValueSql("NEWID()");
 
+        builder.Property(x => x.TenantId)
+            .IsRequired(false);
+
         builder.Property(x => x.Code)
             .HasMaxLength(200)
             .IsRequired();
@@ -53,5 +56,14 @@ public sealed class ProgramConfiguration : IEntityTypeConfiguration<LearningProg
         builder.HasIndex(x => x.Code)
             .IsUnique()
             .HasDatabaseName("UX_Program_Code");
+
+        builder.HasOne<HumanOS.Models.Tenancy.Tenant>()
+            .WithMany()
+            .HasForeignKey(x => x.TenantId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .HasConstraintName("FK_Program_Tenant");
+
+        builder.HasIndex(x => x.TenantId)
+            .HasDatabaseName("IX_Program_TenantId");
     }
 }

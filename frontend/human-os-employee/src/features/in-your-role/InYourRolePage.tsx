@@ -6,15 +6,13 @@ import { useAuth } from '@/auth/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { LoadingBackdrop } from '@/components/ui/LoadingBackdrop';
 import { useI18n } from '@/features/capabilities/i18n/useI18n';
-import { getSkills } from '@/features/capabilities/api/skillsApi';
-import { getEnrolledCapabilities } from '@/features/capabilities/api/enrolledCapabilitiesApi';
 import { getJobRole } from '@/features/profile/api/jobRoleApi';
+import { getProgramById, getPrograms } from '@/features/programs/api/programsApi';
 
 export function InYourRolePage() {
   const { user } = useAuth();
   const { language } = useI18n();
   const isEn = language === 'en';
-  const personId = user?.personId ?? '';
   const [activeRequirement, setActiveRequirement] = useState<{ title: string; description: string; href?: string; external?: boolean; available?: boolean; engramProgress?: { mastered: number; total: number } } | null>(null);
 
   const jobRoleQuery = useQuery({
@@ -22,65 +20,71 @@ export function InYourRolePage() {
     queryFn: () => getJobRole(user!.jobRoleId!),
     enabled: Boolean(user?.jobRoleId),
   });
-  const skillsQuery = useQuery({
-    queryKey: ['skills', user?.tenantId, 'in-your-role'],
-    queryFn: () => getSkills(user!.tenantId!),
-    enabled: Boolean(user?.tenantId),
-  });
-  const enrolledQuery = useQuery({
-    queryKey: ['enrolled-capabilities', personId, 'in-your-role'],
-    queryFn: () => getEnrolledCapabilities(personId),
-    enabled: Boolean(personId),
-  });
-
-  /** Matches a required-skill or process name (from the role's ongoing plan)
-   * against the tenant's Skill catalog for its real description, a
-   * capability link, and engram progress, falling back to a plain
-   * "Coming soon" entry when no Skill row exists yet for that name. */
-  const matchRequirement = useMemo(() => {
-    const enrolledByCapabilityId = new Map((enrolledQuery.data ?? []).map((item) => [item.capabilityId, item]));
-    const skillsByLowerName = new Map((skillsQuery.data ?? []).map((skill) => [skill.name.trim().toLowerCase(), skill]));
-    return (name: string) => {
-      const skill = skillsByLowerName.get(name.trim().toLowerCase());
-      const enrolled = skill?.matchedCapabilityId ? enrolledByCapabilityId.get(skill.matchedCapabilityId) : undefined;
+  const roleTitle = jobRoleQuery.data?.title || user?.jobRoleTitle || (isEn ? 'Your role' : 'Tu puesto');
+  const scheduledProgramQuery = useQuery({
+    queryKey: ['scheduled-every-day-program', roleTitle],
+    queryFn: async () => {
+      const programs = await getPrograms();
+      const program = programs.find((item) => item.name === `${roleTitle} · Every day`);
+      if (!program) return null;
+      const detail = await getProgramById(program.programId);
+      let pendingCourses: Array<{ capabilityId: string; capabilityName: string; capabilityCode: string; sortOrder: number }> = [];
+      if (detail.requirements) {
+        try {
+          const metadata = JSON.parse(detail.requirements) as { scheduledRoleSkills?: Array<{ capabilityId: string; capabilityName: string; capabilityCode: string; sortOrder: number }> };
+          pendingCourses = (metadata.scheduledRoleSkills ?? []).filter((course) => Boolean(course.capabilityId && course.capabilityName));
+        } catch (error) {
+          console.error('Could not parse scheduled every-day courses:', error);
+        }
+      }
+      const existingIds = new Set(detail.capabilities.map((course) => course.capabilityId));
       return {
-        name,
-        description: skill?.description ?? null,
-        matchedCapabilityId: skill?.matchedCapabilityId ?? null,
-        matchedCourseType: skill?.matchedCourseType ?? null,
-        status: enrolled?.status,
-        engramProgress: enrolled ? { mastered: enrolled.masteredNodes, total: enrolled.totalNodes } : undefined,
+        ...detail,
+        capabilities: [
+          ...detail.capabilities,
+          ...pendingCourses
+            .filter((course) => !existingIds.has(course.capabilityId))
+            .map((course) => ({
+              ...course,
+              programCapabilityId: `pending-${course.capabilityId}`,
+              subjectCode: null,
+              isRequired: true,
+              phaseLabel: null,
+              objectives: null,
+              requirements: null,
+              levelCount: 0,
+              nodeCount: 0,
+              hasCoverImage: false,
+              courseType: 'RoleSkill',
+            })),
+        ].sort((a, b) => a.sortOrder - b.sortOrder),
       };
-    };
-  }, [enrolledQuery.data, skillsQuery.data]);
+    },
+    enabled: Boolean(roleTitle),
+  });
 
-  // Grow With Us muestra exactamente las capacidades seleccionadas por RRHH
-  // para el plan continuo del rol, no todo el catálogo general del puesto.
+  const scheduledCourses = useMemo(() => (scheduledProgramQuery.data?.capabilities ?? []).map((course) => ({
+    name: course.capabilityName,
+    description: course.objectives ?? course.requirements ?? null,
+    matchedCapabilityId: course.capabilityId,
+    matchedCourseType: course.courseType === 'StructuredLearning' ? 'structured-learning' as const : 'graph' as const,
+    status: undefined,
+  })), [scheduledProgramQuery.data?.capabilities]);
+
   const technicalCapabilities = useMemo(() => {
-    const role = jobRoleQuery.data;
-    const rawList = role?.inYourRoleTechnicalSkills ?? [];
-    return rawList.map(matchRequirement).sort(sortReadyFirst);
-  }, [jobRoleQuery.data, matchRequirement]);
+    const softNames = new Set((jobRoleQuery.data?.softSkills ?? []).map((name) => name.trim().toLowerCase()));
+    return scheduledCourses.filter((course) => !softNames.has(course.name.trim().toLowerCase())).sort(sortReadyFirst);
+  }, [jobRoleQuery.data?.softSkills, scheduledCourses]);
 
   const softCapabilities = useMemo(() => {
-    const role = jobRoleQuery.data;
-    const rawList = role?.inYourRoleSoftSkills ?? [];
-    return rawList.map(matchRequirement).sort(sortReadyFirst);
-  }, [jobRoleQuery.data, matchRequirement]);
+    const softNames = new Set((jobRoleQuery.data?.softSkills ?? []).map((name) => name.trim().toLowerCase()));
+    return scheduledCourses.filter((course) => softNames.has(course.name.trim().toLowerCase())).sort(sortReadyFirst);
+  }, [jobRoleQuery.data?.softSkills, scheduledCourses]);
 
-  const roleProcesses = useMemo(() => {
-    const role = jobRoleQuery.data;
-    const rawList = role?.inYourRoleDepartmentProcesses ?? [];
-    return rawList.map(matchRequirement).sort(sortReadyFirst);
-  }, [jobRoleQuery.data, matchRequirement]);
+  const roleProcesses: RequirementMatch[] = [];
+  const hrProcesses: RequirementMatch[] = [];
 
-  const hrProcesses = useMemo(() => {
-    const role = jobRoleQuery.data;
-    const rawList = role?.inYourRoleHrProcesses ?? [];
-    return rawList.map(matchRequirement).sort(sortReadyFirst);
-  }, [jobRoleQuery.data, matchRequirement]);
-
-  if (jobRoleQuery.isLoading || skillsQuery.isLoading) {
+  if (jobRoleQuery.isLoading || scheduledProgramQuery.isLoading) {
     return <LoadingBackdrop title={isEn ? 'Loading your role capabilities...' : 'Cargando las capacidades de tu puesto...'} description={isEn ? 'Loading required skills for your role.' : 'Cargando las habilidades requeridas para tu puesto.'} />;
   }
 

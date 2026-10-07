@@ -35,4 +35,14 @@ public sealed class TenantLogoStorageService
         var blob = _blobServiceClient.GetBlobContainerClient(ContainerName).GetBlobClient($"{tenantId:D}/logo/logo");
         return await blob.DownloadStreamingAsync(cancellationToken: cancellationToken);
     }
+
+    /// <summary>Deletes a tenant's logo blob if present — best-effort,
+    /// never throws (used by TenantDeletionService).</summary>
+    public async Task<bool> DeleteLogoAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null) return false;
+        var blob = _blobServiceClient.GetBlobContainerClient(ContainerName).GetBlobClient($"{tenantId:D}/logo/logo");
+        var response = await blob.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+        return response.Value;
+    }
 }

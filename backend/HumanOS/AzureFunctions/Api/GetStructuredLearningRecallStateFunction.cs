@@ -54,10 +54,11 @@ public sealed class GetStructuredLearningRecallStateFunction
 
         var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
         Guid? personId = Guid.TryParse(query["personId"], out var parsedPersonId) ? parsedPersonId : null;
+        Guid? engramSessionId = Guid.TryParse(query["engramSessionId"], out var parsedSessionId) ? parsedSessionId : null;
 
         try
         {
-            var result = await _engine.GetCurrentStateAsync(_dbContext, sectionId, personId, cancellationToken);
+            var result = await _engine.GetCurrentStateAsync(_dbContext, sectionId, personId, engramSessionId, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(request, new GetStructuredLearningRecallStateResponse
             {
                 Started = result.Started,
