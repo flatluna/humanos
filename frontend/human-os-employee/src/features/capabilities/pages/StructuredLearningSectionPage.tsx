@@ -1167,6 +1167,26 @@ function StepContent({
     step.StepDataJson && (step.StepDataJson.includes('SpeechStoragePath') || step.StepDataJson.includes('ProfessorLecture'))
   );
 
+  // Synced image+audio scenes (2026-10-08): when the lecture was generated with
+  // real per-scene illustration prompts, prefer the scene player (one image per
+  // narrated clip, perfectly in sync) over the old single-image + whole-lecture-audio
+  // presentation. Falls back to the old presentation for lectures generated before
+  // this feature existed (no Scenes, or only the single-scene/no-ImagePrompt shape).
+  const scenesForPlayer = useMemo(() => {
+    if (step.StepType !== 'Teaching' || !step.StepDataJson) return [];
+    try {
+      const parsed = JSON.parse(step.StepDataJson) as {
+        Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+      };
+      const scenes = parsed.Scenes ?? [];
+      const hasRealMedia = scenes.some((s) => s.IllustrationId || s.AudioStoragePath);
+      return scenes.length > 1 && hasRealMedia ? scenes : [];
+    } catch {
+      return [];
+    }
+  }, [step.StepType, step.StepDataJson]);
+  const hasScenes = scenesForPlayer.length > 0;
+
   const canGoToListen = areVideosFinished;
   // Q&A unlocks as soon as the recorded lecture tab is reached â€” no need
   // to wait for the audio to finish playing.
@@ -1174,19 +1194,19 @@ function StepContent({
 
   useEffect(() => {
     if (step.StepType !== 'Teaching') return;
-    const audioDone = !hasAudio || isAudioFinished;
+    const audioDone = !hasAudio || hasScenes || isAudioFinished;
     const videosDone = !hasVideos || areVideosFinished;
     if ((audioDone && videosDone) || teachingSubStep === 'qa') {
       onComplete();
     }
-  }, [step.StepType, hasAudio, isAudioFinished, hasVideos, areVideosFinished, teachingSubStep, onComplete]);
+  }, [step.StepType, hasAudio, hasScenes, isAudioFinished, hasVideos, areVideosFinished, teachingSubStep, onComplete]);
 
   const audioCacheKey = `${step.StepDataJson?.length || 0}_${step.Content.length}`;
   const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?v=${encodeURIComponent(audioCacheKey)}`;
 
   return (
     <div className="space-y-4">
-      {step.StepType === 'Teaching' && (
+      {step.StepType === 'Teaching' && !hasScenes && (
         <StepIllustration stepDataJson={step.StepDataJson} />
       )}
       {step.StepType === 'Teaching' && (
@@ -1467,7 +1487,22 @@ function StepContent({
         </div>
       ) : (
         <>
-          {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && (
+          {step.StepType === 'Teaching' && !teachingShowsVideo && hasScenes && (
+            <SyncedLectureScenePlayer
+              sectionId={sectionId}
+              scenes={scenesForPlayer}
+              isAudioFinished={isAudioFinished}
+              isEn={isEn}
+              onAllScenesFinished={() => {
+                setIsAudioFinished(true);
+                setAudioProgressPercent(100);
+              }}
+              onContinue={() => setTeachingSubStep('qa')}
+              showContinue={showQaProfessorStep}
+            />
+          )}
+
+          {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && !hasScenes && (
             <div className="flex flex-col gap-2 rounded-2xl border border-emerald-300 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1723,6 +1758,114 @@ interface DeepDiveCard {
   Emoji?: string | null;
   IllustrationId?: string | null;
   IllustrationIds?: string[] | null;
+}
+
+/** Synced image+audio "storyboard" player for the Teaching step (2026-10-08) —
+ * each scene gets its OWN short audio clip + OWN illustration (see
+ * StructuredLearningProfessorLectureService), so swapping the image exactly when
+ * the current clip ends gives perfect sync with zero timestamp alignment needed.
+ * Auto-advances to the next scene on `onEnded`; manual Prev/Next also available. */
+function SyncedLectureScenePlayer({
+  sectionId,
+  scenes,
+  isAudioFinished,
+  isEn,
+  onAllScenesFinished,
+  onContinue,
+  showContinue,
+}: {
+  sectionId?: string;
+  scenes: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+  isAudioFinished: boolean;
+  isEn: boolean;
+  onAllScenesFinished: () => void;
+  onContinue: () => void;
+  showContinue: boolean;
+}) {
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const scene = scenes[sceneIndex];
+  const isLastScene = sceneIndex === scenes.length - 1;
+
+  const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?scene=${sceneIndex}&v=${encodeURIComponent(scene?.AudioStoragePath ?? String(sceneIndex))}`;
+
+  function goNext() {
+    if (sceneIndex < scenes.length - 1) {
+      setSceneIndex((i) => i + 1);
+    } else {
+      onAllScenesFinished();
+    }
+  }
+
+  function goPrevious() {
+    if (sceneIndex > 0) setSceneIndex((i) => i - 1);
+  }
+
+  if (!scene) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-300 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Volume2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+            {isEn ? 'Pre-recorded Neural Lecture' : 'Clase Magistral con Voz Neuronal'}
+          </span>
+        </div>
+        <span className="rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-500/20 dark:border-emerald-500/40 dark:text-emerald-300">
+          {sceneIndex + 1} / {scenes.length}
+        </span>
+      </div>
+
+      {scene.IllustrationId && (
+        <ZoomableIllustration
+          illustrationId={scene.IllustrationId}
+          alt=""
+          className="h-72 w-full rounded-xl bg-slate-100 dark:bg-slate-950/50 object-contain object-center"
+        />
+      )}
+
+      <audio key={audioUrl} controls autoPlay className="w-full h-10 rounded-lg accent-emerald-500" src={audioUrl} onEnded={goNext}>
+        {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducción de audio.'}
+      </audio>
+
+      <div className="flex items-center justify-between pt-1 text-xs text-slate-500 dark:text-slate-400 border-t border-emerald-200 dark:border-emerald-500/20">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={goPrevious}
+            disabled={sceneIndex === 0}
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ← {isEn ? 'Back' : 'Atrás'}
+          </button>
+          <button type="button" onClick={goNext} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">
+            {isLastScene ? (isEn ? 'Finish' : 'Terminar') : (isEn ? 'Next' : 'Siguiente')} →
+          </button>
+        </div>
+
+        {isAudioFinished ? (
+          showContinue ? (
+            <button
+              type="button"
+              onClick={onContinue}
+              className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+            >
+              <span>{isEn ? 'Go to Q&A' : 'Ir a Q&A'}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <span className="text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-1">
+              <Check className="h-3.5 w-3.5" /> {isEn ? 'Lecture completed' : 'Clase terminada'}
+            </span>
+          )
+        ) : (
+          <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <Lock className="h-3.5 w-3.5" /> {isEn ? 'Listen to continue' : 'Escucha para continuar'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {

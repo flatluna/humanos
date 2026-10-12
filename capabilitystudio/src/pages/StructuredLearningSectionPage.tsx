@@ -32,6 +32,7 @@ import {
   Bot,
   Lock,
   Clock,
+  Star,
 } from 'lucide-react';
 import {
   getStructuredLearningDocument,
@@ -754,6 +755,46 @@ function StepContent({
     step.StepDataJson && (step.StepDataJson.includes('SpeechStoragePath') || step.StepDataJson.includes('ProfessorLecture'))
   );
 
+  // Synced image+audio scenes (2026-10-08): when the lecture was generated with
+  // real per-scene illustration prompts, prefer the scene player (one image per
+  // narrated clip, perfectly in sync) over the old single-image + whole-lecture-audio
+  // presentation. Falls back to the old presentation for lectures generated before
+  // this feature existed (no Scenes, or only the single-scene/no-ImagePrompt shape).
+  const scenesForPlayer = useMemo(() => {
+    if (step.StepType !== 'Teaching' || !step.StepDataJson) return [];
+    try {
+      const parsed = JSON.parse(step.StepDataJson) as {
+        Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+      };
+      const scenes = parsed.Scenes ?? [];
+      const hasRealMedia = scenes.some((s) => s.IllustrationId || s.AudioStoragePath);
+      return scenes.length > 1 && hasRealMedia ? scenes : [];
+    } catch {
+      return [];
+    }
+  }, [step.StepType, step.StepDataJson]);
+  const hasScenes = scenesForPlayer.length > 0;
+
+  // Engram Cards (2026-10-08) — YoungLearner-only "Aprende" sequential
+  // experience: one atomic concept per card (e.g. "Perro", "Gato"), each
+  // auto-played and locked in order. Only ever present in StepDataJson for
+  // documents whose PedagogicalAudience is "YoungLearner" (see
+  // StructuredLearningEngramCardService's own gate) — absent (empty array)
+  // for every "Standard" (enterprise) document, which keeps falling back to
+  // Scenes/the old presentation exactly as before. When both "Cards" and
+  // "Scenes" happen to be present, Cards takes priority (it is the more
+  // specific, newer YoungLearner presentation).
+  const cardsForPlayer = useMemo(() => {
+    if (step.StepType !== 'Teaching' || !step.StepDataJson) return [];
+    try {
+      const parsed = JSON.parse(step.StepDataJson) as { Cards?: EngramCardData[] };
+      return parsed.Cards ?? [];
+    } catch {
+      return [];
+    }
+  }, [step.StepType, step.StepDataJson]);
+  const hasCards = cardsForPlayer.length > 0;
+
   // 2026-10-06: students can move on to the next Learn sub-step (videos/Q&A/Deep
   // Dive) without having to finish listening to the whole lecture audio first.
   const canGoToVideos = true;
@@ -1088,7 +1129,48 @@ function StepContent({
         </div>
       ) : (
         <>
-          {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && (
+          {step.StepType === 'Teaching' && !teachingShowsVideo && hasCards && (
+            <EngramCardSequencePlayer
+              sectionId={sectionId}
+              cards={cardsForPlayer}
+              language={courseLanguage}
+              isAudioFinished={isAudioFinished}
+              onAllCardsFinished={() => {
+                setIsAudioFinished(true);
+                setAudioProgressPercent(100);
+              }}
+              onContinue={() => {
+                if (hasVideos) {
+                  setTeachingSubStep('videos');
+                } else {
+                  goToQaOrFinishTeaching();
+                }
+              }}
+              continueLabel={hasVideos ? t('structuredLearningCourse.teachingGoToVideosStep') : showQaProfessorStep ? t('structuredLearningCourse.teachingGoToQaStep') : t('common.continue')}
+            />
+          )}
+
+          {step.StepType === 'Teaching' && !teachingShowsVideo && !hasCards && hasScenes && (
+            <SyncedLectureScenePlayer
+              sectionId={sectionId}
+              scenes={scenesForPlayer}
+              isAudioFinished={isAudioFinished}
+              onAllScenesFinished={() => {
+                setIsAudioFinished(true);
+                setAudioProgressPercent(100);
+              }}
+              onContinue={() => {
+                if (hasVideos) {
+                  setTeachingSubStep('videos');
+                } else {
+                  goToQaOrFinishTeaching();
+                }
+              }}
+              continueLabel={hasVideos ? t('structuredLearningCourse.teachingGoToVideosStep') : showQaProfessorStep ? t('structuredLearningCourse.teachingGoToQaStep') : t('common.continue')}
+            />
+          )}
+
+          {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && !hasScenes && !hasCards && (
             <div className="flex flex-col gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1171,7 +1253,7 @@ function StepContent({
           )}
 
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/30 shadow-2xl shadow-black/10">
-            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo)) && <StepIllustration stepDataJson={step.StepDataJson} />}
+            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo && !hasScenes && !hasCards)) && <StepIllustration stepDataJson={step.StepDataJson} />}
             <div className="px-5 py-6 sm:px-8 sm:py-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-400">{t(`structuredLearningCourse.${meta.labelKey}`)}</p>
               {step.StepType === 'Hypothesis' && step.Content && (
@@ -4135,6 +4217,660 @@ interface DeepDiveCard {
   /** Ordered step-by-step illustrations (e.g. a math derivation) — when
    * present, shown instead of the single IllustrationId as a sequence. */
   IllustrationIds?: string[] | null;
+}
+
+/** Shape of one entry in Teaching step's StepDataJson "Cards" array — mirrors
+ * HumanOS.Models.Capabilities.Studio.EngramCard 1:1 (2026-10-08). */
+interface EngramCardData {
+  Id: string;
+  Title: string;
+  Type: string;
+  Sound?: string | null;
+  Verb?: string | null;
+  ImagePrompt?: string | null;
+  IllustrationId?: string | null;
+  AudioStoragePath?: string | null;
+  ProfessorLine?: string | null;
+  Explanation?: string | null;
+  Example?: string | null;
+  RecognitionCue?: string | null;
+  RecognitionCueAudioStoragePath?: string | null;
+  SoundEffectLabel?: string | null;
+  SoundEffectStoragePath?: string | null;
+  Facts: string[];
+  Question?: string | null;
+  Children?: string[] | null;
+  SourceEntityId?: string | null;
+  SourceKnowledgeFactIds: string[];
+  IsComposedExample?: boolean;
+  PatternSourceFactId?: string | null;
+}
+
+/** YoungLearner-only "Aprende" sequential Engram Card player (2026-10-08) —
+ * each card is one atomic concept (e.g. "Perro"), auto-played and LOCKED in
+ * order: the student cannot open the next card until the current one's audio
+ * finishes (same gating pattern as SyncedLectureScenePlayer, just one concept
+ * card at a time instead of one narration beat). Renders a different
+ * "Experiencia" layout depending on the card's Type (Concept/Grouping/Skill/
+ * SocialSkill/Story/Vocabulary) — see EngramCardExperience below. */
+function EngramCardSequencePlayer({
+  sectionId,
+  cards,
+  language,
+  isAudioFinished,
+  onAllCardsFinished,
+  onContinue,
+  continueLabel,
+}: {
+  sectionId?: string;
+  cards: EngramCardData[];
+  language?: 'es' | 'en';
+  isAudioFinished: boolean;
+  onAllCardsFinished: () => void;
+  onContinue: () => void;
+  continueLabel: string;
+}) {
+  const { t } = useTranslation();
+  const [cardIndex, setCardIndex] = useState(0);
+  const [unlockedUpTo, setUnlockedUpTo] = useState(0);
+  // Grouping card's tap-to-select game (2026-10-08) — the card's own intro
+  // audio ("Vamos a jugar...") must finish BEFORE the game appears; reset
+  // whenever the student navigates to a different card.
+  const [groupingIntroDone, setGroupingIntroDone] = useState(false);
+  const [groupingSolved, setGroupingSolved] = useState(false);
+  // Sequential narration -> real sound effect playback (2026-10-09) — these
+  // are two SEPARATE audio files (never byte-concatenated server-side, since
+  // Azure Speech TTS and ElevenLabs encode with different MPEG parameters
+  // and naive concatenation silently failed to decode past the first
+  // segment). Reset whenever the student navigates to a different card.
+  const [narrationDone, setNarrationDone] = useState(false);
+  const card = cards[cardIndex];
+  const isLastCard = cardIndex === cards.length - 1;
+  const isCurrentCardUnlocked = cardIndex <= unlockedUpTo;
+  const isGroupingGame = card?.Type === 'Grouping' && (card.Children?.length ?? 0) >= 2;
+
+  useEffect(() => {
+    setGroupingIntroDone(false);
+    setGroupingSolved(false);
+    setNarrationDone(false);
+  }, [cardIndex]);
+
+  const audioUrl = card?.AudioStoragePath
+    ? `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?card=${cardIndex}&v=${encodeURIComponent(card.AudioStoragePath)}`
+    : null;
+  const soundEffectUrl = card?.SoundEffectStoragePath
+    ? `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?card=${cardIndex}&variant=sfx&v=${encodeURIComponent(card.SoundEffectStoragePath)}`
+    : null;
+
+  function goNext() {
+    setUnlockedUpTo((prev) => Math.max(prev, cardIndex + 1));
+    if (cardIndex < cards.length - 1) {
+      setCardIndex((i) => i + 1);
+    } else {
+      onAllCardsFinished();
+    }
+  }
+
+  function goPrevious() {
+    if (cardIndex > 0) setCardIndex((i) => i - 1);
+  }
+
+  function goToCard(index: number) {
+    if (index <= unlockedUpTo) setCardIndex(index);
+  }
+
+  if (!card) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Volume2 className="h-4 w-4 text-emerald-400" />
+          <span className="text-sm font-semibold text-emerald-300">{card.Title}</span>
+          {card.IsComposedExample && (
+            <span
+              title="Ejemplo compuesto por IA a partir de un patrón aprobado — aún no es un Fact de Studio."
+              className="rounded-full border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+            >
+              Ejemplo IA
+            </span>
+          )}
+        </div>
+        <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+          {cardIndex + 1} / {cards.length}
+        </span>
+      </div>
+
+      {/* Card dots — only cards already unlocked (audio finished) are clickable,
+          same "cannot skip ahead" rule SyncedLectureScenePlayer enforces via
+          onContinue's isAudioFinished gate, but per-card here instead of
+          whole-step. */}
+      <div className="flex items-center gap-1.5">
+        {cards.map((c, i) => (
+          <button
+            key={c.Id}
+            type="button"
+            onClick={() => goToCard(i)}
+            disabled={i > unlockedUpTo}
+            className={`h-1.5 flex-1 rounded-full transition-colors ${
+              i === cardIndex
+                ? 'bg-emerald-400'
+                : i <= unlockedUpTo
+                  ? 'bg-emerald-500/40 hover:bg-emerald-500/60 cursor-pointer'
+                  : 'bg-slate-700 cursor-not-allowed'
+            }`}
+            aria-label={`${c.Title} (${i + 1}/${cards.length})`}
+          />
+        ))}
+      </div>
+
+      {card.IllustrationId && (
+        <ZoomableIllustration
+          illustrationId={card.IllustrationId}
+          alt=""
+          className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center"
+        />
+      )}
+
+      <EngramCardExperience card={card} />
+
+      {audioUrl ? (
+        <>
+          <audio
+            key={audioUrl}
+            controls
+            autoPlay
+            className="w-full h-10 rounded-lg accent-emerald-500"
+            src={audioUrl}
+            onEnded={() => {
+              if (soundEffectUrl) {
+                // Real sound effect still to play (2026-10-09) — a SEPARATE
+                // audio element/file, never appended to this one (see
+                // soundEffectUrl's comment above for why).
+                setNarrationDone(true);
+              } else if (isGroupingGame) {
+                setGroupingIntroDone(true);
+              } else {
+                goNext();
+              }
+            }}
+          >
+            Your browser does not support audio playback.
+          </audio>
+          {soundEffectUrl && narrationDone && (
+            <audio
+              key={soundEffectUrl}
+              controls
+              autoPlay
+              className="w-full h-10 rounded-lg accent-amber-500"
+              src={soundEffectUrl}
+              onEnded={isGroupingGame ? () => setGroupingIntroDone(true) : goNext}
+            >
+              Your browser does not support audio playback.
+            </audio>
+          )}
+        </>
+      ) : (
+        // No audio for this card (synthesis failed/not configured) — never
+        // block the student forever: unlock the next card immediately,
+        // except for a Grouping game, which still needs to show its tap
+        // interaction regardless of whether the intro audio played.
+        isGroupingGame
+          ? (isCurrentCardUnlocked || <AutoUnlockOnMount onUnlock={() => setGroupingIntroDone(true)} />)
+          : (isCurrentCardUnlocked || <AutoUnlockOnMount onUnlock={goNext} />)
+      )}
+
+      {isGroupingGame && groupingIntroDone && (
+        <EngramGroupingGame
+          groupingCard={card}
+          allCards={cards}
+          sectionId={sectionId}
+          language={language}
+          onSolved={() => {
+            setGroupingSolved(true);
+            goNext();
+          }}
+        />
+      )}
+
+      <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-emerald-500/20">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={goPrevious}
+            disabled={cardIndex === 0}
+            className="text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ← {t('common.back') || 'Back'}
+          </button>
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={!audioUrl || (isGroupingGame && !groupingSolved)}
+            className="text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {isLastCard ? (t('common.finish') || 'Finish') : (t('common.continue') || 'Next')} →
+          </button>
+        </div>
+
+        {isAudioFinished ? (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="inline-flex items-center gap-1 font-semibold text-emerald-300 hover:text-emerald-200 cursor-pointer transition-colors"
+          >
+            <span>{continueLabel}</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <span className="text-amber-300/90 flex items-center gap-1">
+            <Lock className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Fires onUnlock once, right after mount — used only as a fallback so a
+ * card with no audio (synthesis failed) never permanently blocks the
+ * student from advancing. */
+function AutoUnlockOnMount({ onUnlock }: { onUnlock: () => void }) {
+  useEffect(() => {
+    onUnlock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
+/** Flying-stars reward animation (2026-10-08) — mounted only when the
+ * student gets a Grouping game round correct, auto-removes itself after
+ * the burst finishes. Purely decorative/pointer-events-none so it never
+ * blocks the "✅ Correcto" feedback or the (now-disabled) option buttons
+ * underneath it. */
+function CelebrationStars() {
+  const stars = useMemo(
+    () =>
+      Array.from({ length: 10 }, (_, i) => {
+        const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
+        const distance = 60 + Math.random() * 70;
+        return {
+          id: i,
+          tx: Math.cos(angle) * distance,
+          ty: Math.sin(angle) * distance - 20,
+          delay: Math.random() * 150,
+          size: 14 + Math.random() * 14,
+        };
+      }),
+    [],
+  );
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center overflow-visible">
+      <style>{`
+        @keyframes engramStarBurst {
+          0% { opacity: 1; transform: translate(0, 0) scale(0.5) rotate(0deg); }
+          100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.3) rotate(180deg); }
+        }
+      `}</style>
+      {stars.map((star) => (
+        <Star
+          key={star.id}
+          className="absolute fill-amber-300 text-amber-300"
+          style={{
+            width: star.size,
+            height: star.size,
+            // @ts-expect-error -- custom properties consumed by the engramStarBurst keyframes above
+            '--tx': `${star.tx}px`,
+            '--ty': `${star.ty}px`,
+            animation: `engramStarBurst 900ms ease-out ${star.delay}ms forwards`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Grouping card's interactive tap-to-select recognition game (2026-10-08) —
+ * domain-agnostic: plays ONE referenced Concept card's RecognitionCue audio
+ * at random, then shows EVERY referenced card again, FULL-SIZE (reusing
+ * their already-generated illustrations — zero extra image cost), as
+ * tappable options. The student physically taps the one they think matches;
+ * wrong taps get gentle "try again" feedback with unlimited retries (no
+ * punitive attempt cap, same forgiving philosophy as DeepDiveLoopGate);
+ * correct tap calls onSolved() once. */
+function EngramGroupingGame({
+  groupingCard,
+  allCards,
+  sectionId,
+  language,
+  onSolved,
+}: {
+  groupingCard: EngramCardData;
+  allCards: EngramCardData[];
+  sectionId?: string;
+  language?: 'es' | 'en';
+  onSolved: () => void;
+}) {
+  const { t } = useTranslation();
+  const options = useMemo(
+    () => (groupingCard.Children ?? [])
+      .map((id) => allCards.find((c) => c.Id === id))
+      .filter((c): c is EngramCardData => Boolean(c)),
+    [groupingCard.Children, allCards],
+  );
+  const playableOptions = useMemo(
+    () => options.filter((c) => Boolean(c.SoundEffectStoragePath || c.RecognitionCueAudioStoragePath)),
+    [options],
+  );
+
+  // Pick the round's target once per Grouping card instance (stable across
+  // re-renders of this same card) — never re-pick on every render, or a
+  // wrong-answer re-render would silently change the correct answer.
+  const [targetId] = useState<string | null>(() =>
+    playableOptions.length > 0
+      ? playableOptions[Math.floor(Math.random() * playableOptions.length)].Id
+      : null,
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isCorrect, setIsCorrect] = useState(false);
+  // Profe's spoken reaction per tap (2026-10-08) — "step 1" (text+TTS) of
+  // the eventual live voice agent; see
+  // StructuredLearningEngramCardGameReactionAgent. Null while loading or
+  // before any tap.
+  const [reactionAudioUrl, setReactionAudioUrl] = useState<string | null>(null);
+  const [isReactionLoading, setIsReactionLoading] = useState(false);
+
+  const targetCard = options.find((c) => c.Id === targetId);
+  const targetIndex = targetCard ? allCards.findIndex((c) => c.Id === targetCard.Id) : -1;
+  // Prefer the REAL recorded sound effect (2026-10-09 — "¿qué sonido escuchaste?"
+  // should play the actual bell/cow/train, not a spoken clue describing it) —
+  // fall back to the spoken RecognitionCue only for cards with no real sound
+  // effect (e.g. a color/shape concept with no inherent sound).
+  const cueAudioUrl = targetCard && targetIndex >= 0
+    ? targetCard.SoundEffectStoragePath
+      ? `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?card=${targetIndex}&variant=sfx&v=${encodeURIComponent(targetCard.SoundEffectStoragePath)}`
+      : targetCard.RecognitionCueAudioStoragePath
+        ? `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?card=${targetIndex}&variant=cue&v=${encodeURIComponent(targetCard.RecognitionCueAudioStoragePath)}`
+        : null
+    : null;
+
+  // Revoke the previous reaction audio's object URL whenever it changes/unmounts
+  // — these are generated client-side blobs, never uploaded to Data Lake.
+  useEffect(() => () => {
+    if (reactionAudioUrl) URL.revokeObjectURL(reactionAudioUrl);
+  }, [reactionAudioUrl]);
+
+  async function handleTap(optionId: string) {
+    if (isCorrect || isReactionLoading || !targetCard) return; // already solved or mid-reaction, ignore
+    setSelectedId(optionId);
+    const tappedCard = options.find((c) => c.Id === optionId);
+    const tappedIsCorrect = optionId === targetId;
+
+    setIsReactionLoading(true);
+    try {
+      const response = await fetch('http://localhost:7071/api/studio/structured-learning/engram-cards/grouping-reaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          CorrectTitle: targetCard.Title,
+          CorrectCue: targetCard.RecognitionCue ?? null,
+          TappedTitle: tappedCard?.Title ?? optionId,
+          IsCorrect: tappedIsCorrect,
+          Language: language ?? 'es',
+        }),
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        setReactionAudioUrl(URL.createObjectURL(blob));
+      }
+    } catch {
+      // Best-effort — a failed reaction call must never block the game; the
+      // visual red/green feedback below still works without audio.
+    } finally {
+      setIsReactionLoading(false);
+    }
+
+    if (tappedIsCorrect) {
+      setIsCorrect(true);
+      onSolved();
+    }
+  }
+
+  if (!targetCard || options.length < 2) return null;
+
+  return (
+    <div className="relative flex flex-col gap-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3">
+      {isCorrect && <CelebrationStars />}
+
+      {isReactionLoading && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-slate-950/80 backdrop-blur-sm">
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20 border border-emerald-400/40">
+            <Bot className="h-6 w-6 text-emerald-300" />
+            <Loader2 className="absolute -right-1 -top-1 h-5 w-5 animate-spin text-emerald-300" />
+          </div>
+          <p className="text-xs font-semibold text-emerald-200">
+            {t('structuredLearningCourse.engramGroupingGameThinking') || 'Profe está pensando...'}
+          </p>
+        </div>
+      )}
+
+      {cueAudioUrl && (
+        <audio key={cueAudioUrl} controls autoPlay className="w-full h-9 rounded-lg accent-sky-500" src={cueAudioUrl}>
+          Your browser does not support audio playback.
+        </audio>
+      )}
+
+      <p className="text-xs font-medium text-sky-200">
+        {t('structuredLearningCourse.engramGroupingGamePrompt') || 'Toca la imagen correcta:'}
+      </p>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {options.map((option) => {
+          const isSelectedWrong = selectedId === option.Id && option.Id !== targetId;
+          const isSelectedRight = isCorrect && option.Id === targetId;
+          return (
+            <button
+              key={option.Id}
+              type="button"
+              onClick={() => handleTap(option.Id)}
+              disabled={isCorrect || isReactionLoading}
+              className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-2 transition-colors ${
+                isSelectedRight
+                  ? 'border-emerald-400 bg-emerald-500/20'
+                  : isSelectedWrong
+                    ? 'border-rose-400 bg-rose-500/20'
+                    : 'border-white/10 bg-white/[0.04] hover:border-sky-400/50 hover:bg-sky-500/10'
+              } ${isCorrect || isReactionLoading ? 'cursor-default' : 'cursor-pointer'}`}
+            >
+              {option.IllustrationId && (
+                <img
+                  src={apiImageUrl(`/illustrations/structured-learning/${option.IllustrationId}/image`)}
+                  alt={option.Title}
+                  className="h-24 w-full rounded-lg bg-slate-950/50 object-contain object-center pointer-events-none"
+                />
+              )}
+              <span className="text-xs font-medium text-slate-200">{option.Title}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {reactionAudioUrl && (
+        <audio key={reactionAudioUrl} autoPlay src={reactionAudioUrl} className="w-full h-9 rounded-lg accent-sky-500" controls>
+          Your browser does not support audio playback.
+        </audio>
+      )}
+
+      {selectedId && !isCorrect && !isReactionLoading && (
+        <p className="text-xs font-semibold text-rose-300">
+          {t('structuredLearningCourse.engramGroupingGameRetry') || 'Intenta de nuevo. ¡Tú puedes!'}
+        </p>
+      )}
+      {isCorrect && (
+        <p className="text-xs font-semibold text-emerald-300">
+          {t('structuredLearningCourse.engramGroupingGameCorrect') || '¡Correcto! Muy bien.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Renders the "Experiencia" body for one Engram Card, shaped by its Type —
+ * same six types EngramCard's backend model documents (Concept/Grouping/
+ * Skill/SocialSkill/Story/Vocabulary). Purely presentational — no state. */
+function EngramCardExperience({ card }: { card: EngramCardData }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl bg-slate-950/40 p-3">
+      {card.Sound && (
+        <p className="text-sm text-slate-200">
+          🔊 {t('structuredLearningCourse.engramCardSoundLabel') || 'Sonido'}: <span className="font-bold">{card.Sound}</span>
+          {card.Verb && <span className="text-slate-400"> &middot; {card.Verb}</span>}
+        </p>
+      )}
+
+      {card.Explanation && card.Example ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-sm italic text-emerald-200">
+            💡 {t('structuredLearningCourse.engramCardExplanationLabel') || 'Explicación'}: &ldquo;{card.Explanation}&rdquo;
+          </p>
+          <p className="text-sm italic text-sky-200">
+            ✅ {t('structuredLearningCourse.engramCardExampleLabel') || 'Ejemplo'}: &ldquo;{card.Example}&rdquo;
+          </p>
+        </div>
+      ) : (
+        card.ProfessorLine && (
+          <p className="text-sm italic text-emerald-200">🎤 {t('structuredLearningCourse.engramCardProfessorLabel') || 'Profe'}: &ldquo;{card.ProfessorLine}&rdquo;</p>
+        )
+      )}
+
+      {card.Facts.length > 0 && (
+        <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-300">
+          {card.Facts.map((fact, i) => (
+            <li key={i}>{fact}</li>
+          ))}
+        </ul>
+      )}
+
+      {/* Grouping cards' Children render as the REAL tap-to-select game
+          (EngramGroupingGame, rendered by EngramCardSequencePlayer once this
+          card's intro audio finishes) — never a static, non-interactive list
+          here, which would just repeat the same Ids with nothing to do. */}
+
+      {card.Question && (
+        <p className="pt-1 text-sm font-semibold text-amber-200">❓ {card.Question}</p>
+      )}
+    </div>
+  );
+}
+
+/** Synced image+audio "storyboard" player for the Teaching step (2026-10-08) —
+ * each scene gets its OWN short audio clip + OWN illustration (see
+ * StructuredLearningProfessorLectureService), so swapping the image exactly when
+ * the current clip ends gives perfect sync with zero timestamp alignment needed.
+ * Auto-advances to the next scene on `onEnded`; manual Prev/Next also available.
+ * Calls onAllScenesFinished() once after the LAST scene's clip ends (mirrors the
+ * old single-audio onEnded behavior used to gate advancing past Teaching). */
+function SyncedLectureScenePlayer({
+  sectionId,
+  scenes,
+  isAudioFinished,
+  onAllScenesFinished,
+  onContinue,
+  continueLabel,
+}: {
+  sectionId?: string;
+  scenes: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+  isAudioFinished: boolean;
+  onAllScenesFinished: () => void;
+  onContinue: () => void;
+  continueLabel: string;
+}) {
+  const { t } = useTranslation();
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const scene = scenes[sceneIndex];
+  const isLastScene = sceneIndex === scenes.length - 1;
+
+  const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?scene=${sceneIndex}&v=${encodeURIComponent(scene?.AudioStoragePath ?? String(sceneIndex))}`;
+
+  function goNext() {
+    if (sceneIndex < scenes.length - 1) {
+      setSceneIndex((i) => i + 1);
+    } else {
+      onAllScenesFinished();
+    }
+  }
+
+  function goPrevious() {
+    if (sceneIndex > 0) setSceneIndex((i) => i - 1);
+  }
+
+  if (!scene) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Volume2 className="h-4 w-4 text-emerald-400" />
+          <span className="text-sm font-semibold text-emerald-300">
+            {t('structuredLearningCourse.teachingAudioTitle')}
+          </span>
+        </div>
+        <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
+          {sceneIndex + 1} / {scenes.length}
+        </span>
+      </div>
+
+      {scene.IllustrationId && (
+        <ZoomableIllustration
+          illustrationId={scene.IllustrationId}
+          alt=""
+          className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center"
+        />
+      )}
+
+      <audio key={audioUrl} controls autoPlay className="w-full h-10 rounded-lg accent-emerald-500" src={audioUrl} onEnded={goNext}>
+        Your browser does not support audio playback.
+      </audio>
+
+      <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-emerald-500/20">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={goPrevious}
+            disabled={sceneIndex === 0}
+            className="text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ← {t('common.back') || 'Back'}
+          </button>
+          <button
+            type="button"
+            onClick={goNext}
+            className="text-slate-400 hover:text-white"
+          >
+            {isLastScene ? (t('common.finish') || 'Finish') : (t('common.continue') || 'Next')} →
+          </button>
+        </div>
+
+        {isAudioFinished ? (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="inline-flex items-center gap-1 font-semibold text-emerald-300 hover:text-emerald-200 cursor-pointer transition-colors"
+          >
+            <span>{continueLabel}</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <span className="text-amber-300/90 flex items-center gap-1">
+            <Lock className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {

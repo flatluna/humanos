@@ -121,6 +121,35 @@ public sealed class StructuredLearningProfessorLectureContext
     /// Target language code ("en" or "es"). Defaults to "en" if not specified.
     /// </summary>
     public string TargetLanguage { get; set; } = "en";
+
+    /// <summary>"YoungLearner" (EngramsIQ Family/Kindergarten-K12 market) or
+    /// "Standard"/null (Enterprise, adult professionals) — mirrors
+    /// StructuredLearningDocument.PedagogicalAudience (2026-10-08). Switches
+    /// the lecture's register from a university-professor masterclass to a
+    /// warm, simple, direct-to-the-child read-aloud story.</summary>
+    public string? PedagogicalAudience { get; set; }
+}
+
+/// <summary>One narrated "beat"/scene of the lecture (2026-10-08 — image+audio
+/// sync feature): the professor's script segmented into ordered chunks, each
+/// paired with its own illustration prompt, so the student-facing player can
+/// show a different image exactly when each scene's own audio clip plays —
+/// perfect sync by construction (each scene gets its own short audio file,
+/// no word/sentence-boundary timestamp alignment needed). Concatenating every
+/// scene's <see cref="SceneText"/> (joined with a space) must reproduce
+/// <see cref="StructuredLearningProfessorLectureResult.SpokenLectureScript"/>
+/// verbatim.</summary>
+public sealed class LectureSceneDto
+{
+    /// <summary>This scene's slice of the spoken lecture — one or more
+    /// complete sentences, never a sentence fragment (so its own standalone
+    /// TTS audio clip sounds natural on its own).</summary>
+    public string SceneText { get; set; } = string.Empty;
+
+    /// <summary>Image-generation prompt describing ONLY this scene's visual
+    /// moment (e.g. "two sheep in a green field"), in third person, with no
+    /// text/letters/numbers requested in the image.</summary>
+    public string ImagePrompt { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -134,6 +163,12 @@ public sealed class StructuredLearningProfessorLectureResult
     /// bullet asterisks, or visual markup — written explicitly for speech synthesis (TTS).
     /// </summary>
     public string SpokenLectureScript { get; set; } = string.Empty;
+
+    /// <summary>Ordered scene breakdown of <see cref="SpokenLectureScript"/> for the
+    /// synced image+audio player (2026-10-08) — see <see cref="LectureSceneDto"/>.
+    /// May be empty for lectures generated before this feature existed; callers must
+    /// fall back to the old single-image/single-audio-file presentation in that case.</summary>
+    public List<LectureSceneDto> Scenes { get; set; } = [];
 
     /// <summary>
     /// A short 1-2 sentence hook highlighting the personal relevance of this class for the student.

@@ -30,6 +30,14 @@ export interface StartStructuredLearningExtractionRequest {
    * outline, as returned by previewCapabilityOutline — REQUIRED for Step 2
    * (unlike the Graph/Traditional pipelines, where it's optional). */
   approvedOutline: CapabilityOutlineChapter[];
+  /** (2026-10-08) The ORIGINAL, untrimmed outline — only needed when
+   * `approvedOutline` had chapters/lessons DELETED by the caller (e.g. the
+   * Academic Course Generator's Review step letting an educator test with
+   * just one lesson). Used purely to compute correct text-slice boundaries
+   * so the last surviving lesson doesn't wrongly absorb every deleted
+   * lesson's text. Omit when nothing was deleted from the detected/approved
+   * outline. */
+  fullOutlineForBoundaries?: CapabilityOutlineChapter[] | null;
   /** Only used together with approvedOutline from the "Texto/idea" entry
    * point — see pdfPipelineApi.ts's identical field for the full rationale. */
   preExpandedDocumentText?: string | null;
@@ -862,6 +870,9 @@ export interface StructuredLearningDocumentSummary {
   CoverIllustrationId: string | null;
   Category?: string | null;
   TargetSkill?: string | null;
+  /** "YoungLearner" (EngramsIQ Family market) or "Standard"/null (Enterprise) —
+   * see StructuredLearningDocument.PedagogicalAudience (2026-10-08). */
+  PedagogicalAudience?: string | null;
   /** "es"/"en" — see StructuredLearningLanguageHeuristic (server-side). */
   Language?: string;
   /** True when this document is in the public/official catalog. Lets the

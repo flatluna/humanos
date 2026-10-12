@@ -123,6 +123,7 @@ var host = new HostBuilder()
         services.AddScoped<DepartmentService>();
         services.AddScoped<JobRoleService>();
         services.AddScoped<SkillService>();
+        services.AddScoped<HumanOS.Services.Family.FamilyCapabilityService>();
         services.AddScoped<ResponsibilityService>();
         services.AddScoped<CertificationService>();
         services.AddScoped<ToolService>();
@@ -338,6 +339,8 @@ var host = new HostBuilder()
         // (keeps in-memory runs alive across HTTP calls) — see
         // /memories/repo/humanstudio-multiagent-vision.md.
         services.AddSingleton<HumanOS.Agents.Studio.IdeaToDocumentAgent>();
+        services.AddSingleton<HumanOS.Agents.Family.FamilyCurriculumAgent>();
+        services.AddSingleton<HumanOS.Agents.Family.ProfesorExpertAgent>();
         // Describes embedded page images (scanned pages, diagrams, photos)
         // in detailed text so image-only/image-heavy PDF pages still reach
         // Curador/GraphArchitect with real content (2026-07-23) — see
@@ -530,6 +533,20 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningProfessorLectureAgent>();
         services.AddScoped<StructuredLearningProfessorLectureService>();
 
+        // Engram Card Agent (2026-10-08) — YoungLearner-only "Aprende" sequential card
+        // experience (one atomic concept per card, e.g. "Perro"/"Gato"), derived from the
+        // section's already-approved Entities/Knowledge Facts. No-ops entirely for
+        // "Standard" (enterprise) documents — see StructuredLearningEngramCardService's
+        // own PedagogicalAudience gate.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningEngramCardGenerationAgent>();
+        services.AddScoped<StructuredLearningEngramCardService>();
+
+        // Grouping game reaction agent (2026-10-08) — stateless, DB-free "step 1"
+        // (text+TTS) spoken reaction per tap in the Engram Card Grouping recognition
+        // game. Correctness is always judged client-side/deterministically; this
+        // agent only phrases Profe's warm reaction naturally.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningEngramCardGameReactionAgent>();
+
         // Workplace Application Agent (2026-09-06) — generates a personalized real-world
         // workplace case and pre-recorded neural audio tailored to the student's role and SMART objectives.
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningWorkplaceApplicationAgent>();
@@ -617,6 +634,11 @@ var host = new HostBuilder()
         // Singleton: holds no per-request state, same rationale as
         // TutorAgent above.
         services.AddSingleton<AzureSpeechService>();
+
+        // Real, non-human sound-effect generation via ElevenLabs (2026-10-08) —
+        // separate from AzureSpeechService above (speech only). Singleton: holds
+        // no per-request state.
+        services.AddSingleton<ElevenLabsSoundEffectService>();
 
         // Voice Tutor — ephemeral Azure OpenAI Realtime (gpt-realtime-mini
         // or similar) session minting (2026-07-21, see

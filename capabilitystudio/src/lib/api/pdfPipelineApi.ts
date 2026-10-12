@@ -356,17 +356,22 @@ export type DocumentTypeName =
  * runs ONLY text extraction + detection, WITHOUT the expensive
  * Curador/GraphArchitect/illustrations pipeline, so the designer can
  * review/approve the plan (Paso 5) before any real generation happens.
- * Pass either a PDF (fileName + contentBase64) or an idea/text description
+ * Pass either a PDF (fileName + contentBase64), an idea/text description
  * (text + capabilityName — expanded via IdeaToDocumentAgent first, see
  * ExpandedDocumentText above, so detection runs against the real
- * generated document instead of the raw one-sentence idea). Optional
- * `documentType` (2026-08-17): when the designer already confirmed a type
- * in the wizard, pass it to skip re-classification and use its dedicated
- * chapter-splitting strategy (Law/Contract/Procedure/ResearchPaper). */
+ * generated document instead of the raw one-sentence idea), or an
+ * already-complete document (alreadyExpandedText — e.g. the Academic
+ * Course Generator's ProfesorExpert output) that must be used VERBATIM,
+ * with only chapter/node detection run against it and NO rewriting.
+ * Optional `documentType` (2026-08-17): when the designer already
+ * confirmed a type in the wizard, pass it to skip re-classification and
+ * use its dedicated chapter-splitting strategy (Law/Contract/Procedure/
+ * ResearchPaper). */
 export function previewCapabilityOutline(
   request:
     | { fileName: string; contentBase64: string; documentType?: DocumentTypeName }
     | { text: string; capabilityName: string; languageCode?: 'es' | 'en'; strictSyllabusMode?: boolean; documentType?: DocumentTypeName }
+    | { alreadyExpandedText: string; documentType?: DocumentTypeName }
 ): Promise<CapabilityOutlinePreviewResult> {
   return apiPost<CapabilityOutlinePreviewResult>('/studio/capability-graph/preview-outline', request);
 }

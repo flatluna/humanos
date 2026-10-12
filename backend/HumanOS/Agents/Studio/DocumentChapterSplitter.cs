@@ -32,11 +32,31 @@ public static class DocumentChapterSplitter
     /// the designer approved (possibly hand-edited), never re-inventing or
     /// re-detecting them.
     /// </summary>
+    /// <param name="fullOutlineForBoundaries">(2026-10-08) The ORIGINAL,
+    /// untrimmed outline the designer started from, used ONLY to compute
+    /// correct end-of-slice boundaries. Required whenever <paramref
+    /// name="approvedOutline"/> may have had chapters/nodes DELETED (e.g.
+    /// the Academic Course Generator's Review step lets an educator delete
+    /// lessons to test cheaply with just one) — without it, the LAST
+    /// surviving node's slice would wrongly extend to the end of the
+    /// entire document instead of stopping where the next (deleted) node
+    /// used to begin, silently absorbing every deleted node's text (and
+    /// exploding token/cost usage for what looks like "just one lesson").
+    /// Null/omitted falls back to using <paramref name="approvedOutline"/>
+    /// itself for boundaries (correct and unchanged for the normal case
+    /// where nothing was deleted from the detected/approved outline).</param>
     public static List<RawMaterialItem> BuildMaterialsFromApprovedOutline(
-        RawMaterialItem source, List<CapabilityOutlineChapterDto> approvedOutline)
+        RawMaterialItem source,
+        List<CapabilityOutlineChapterDto> approvedOutline,
+        List<CapabilityOutlineChapterDto>? fullOutlineForBoundaries = null)
     {
+        var keptTitles = new HashSet<(string Chapter, string Node)>(
+            approvedOutline.SelectMany(c => c.Nodes.Select(n => (c.Title, n.Title))));
+
+        var boundarySourceOutline = fullOutlineForBoundaries ?? approvedOutline;
+
         var boundaries = new List<(string NodeTitle, string ChapterTitle, int Index)>();
-        foreach (var chapter in approvedOutline)
+        foreach (var chapter in boundarySourceOutline)
         {
             foreach (var node in chapter.Nodes)
             {
@@ -64,6 +84,15 @@ public static class DocumentChapterSplitter
         var result = new List<RawMaterialItem>();
         for (var i = 0; i < boundaries.Count; i++)
         {
+            // Only emit a RawMaterialItem for nodes the caller actually kept —
+            // but boundaries (start AND end) are always computed against the
+            // FULL original outline above, so a kept node's end never wrongly
+            // swallows text belonging to a node that was deleted after it.
+            if (!keptTitles.Contains((boundaries[i].ChapterTitle, boundaries[i].NodeTitle)))
+            {
+                continue;
+            }
+
             var start = boundaries[i].Index;
             var end = i + 1 < boundaries.Count ? boundaries[i + 1].Index : source.Content.Length;
             var nodeText = source.Content[start..end];

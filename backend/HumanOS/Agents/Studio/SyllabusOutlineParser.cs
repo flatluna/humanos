@@ -116,6 +116,21 @@ public static class SyllabusOutlineParser
         @"^[\-\*•\s]*\**\s*(?<major>\d+)\.(?<minor>\d+)\.?\s*[:\-–]?\s*(?<title>.+?)\**\s*$",
         RegexOptions.Compiled);
 
+    /// <summary>Keyword-prefixed subsection convention (2026-10-08) — e.g.
+    /// "Lección 1. La visita al bosque", "Lesson 2: ..." — same purpose as
+    /// <see cref="SubsectionRegex"/>'s "1.1"/"1.2" numeric-dot convention,
+    /// for documents (chiefly YoungLearner/Academic courses) that number
+    /// lessons plainly ("Lección N") instead of with a module-qualified
+    /// decimal. Tried as a FALLBACK only when <see cref="SubsectionRegex"/>
+    /// doesn't match a given line (see <see cref="ParseKeywordHeadings"/>),
+    /// so documents already using the numeric-dot convention are entirely
+    /// unaffected — purely additive, zero behavior change for any existing
+    /// document/course (enterprise or academic) that already parsed
+    /// correctly before this.</summary>
+    private static readonly Regex SubsectionKeywordRegex = new(
+        @"^[#\s]*\**\s*(?<keyword>Lecci[oó]n|Lesson|Clase|Class)\s+(?<number>\d+)\s*[:\-–.]?\s*(?<title>.*?)\**\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>Matches one dot-leader Table of Contents entry ANYWHERE in
     /// the text (not anchored to a line start/end) — e.g. "1.1 Purpose of
     /// the Policy .......... 1". Used by <see cref="ParseFlatDotLeaderToc"/>
@@ -313,6 +328,26 @@ public static class SyllabusOutlineParser
                     Title = CollapseInternalWhitespace(subsectionMatch.Groups["title"].Value),
                     StartOffset = offset
                 });
+            }
+            else
+            {
+                // Keyword-prefixed lesson convention fallback (2026-10-08) — e.g.
+                // "Lección 1. La visita al bosque" instead of "1.1 ...". Only tried
+                // when the numeric-dot SubsectionRegex above didn't match, so an
+                // already-working numeric-dot document's parsing is bit-for-bit
+                // unchanged.
+                var keywordSubsectionMatch = currentModule is not null && candidate.Length > 0
+                    ? SubsectionKeywordRegex.Match(candidate)
+                    : Match.Empty;
+                if (keywordSubsectionMatch.Success)
+                {
+                    currentModule!.Subsections.Add(new SyllabusSubsection
+                    {
+                        Number = keywordSubsectionMatch.Groups["number"].Value,
+                        Title = CollapseInternalWhitespace(keywordSubsectionMatch.Groups["title"].Value),
+                        StartOffset = offset
+                    });
+                }
             }
 
             offset += line.Length + 1;

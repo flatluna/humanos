@@ -15,6 +15,8 @@ import NewTraditionalCoursePage from './pages/NewTraditionalCoursePage';
 import TraditionalRunProgressPage from './pages/TraditionalRunProgressPage';
 import TraditionalCoursePage from './pages/TraditionalCoursePage';
 import NewStructuredLearningPage from './pages/NewStructuredLearningPage';
+import NewAcademicLearningPage from './pages/NewAcademicLearningPage';
+import AcademicLearningCatalogPage from './pages/AcademicLearningCatalogPage';
 import StructuredLearningRunProgressPage from './pages/StructuredLearningRunProgressPage';
 import StructuredLearningDocumentDetailPage from './pages/StructuredLearningDocumentDetailPage';
 import StructuredLearningCoursePage from './pages/StructuredLearningCoursePage';
@@ -55,6 +57,8 @@ export default function App() {
           <Route path="/traditional-runs/:runId" element={<TraditionalRunProgressPage />} />
           <Route path="/capabilities/:capabilityId/traditional-course" element={<TraditionalCoursePage />} />
           <Route path="/new-structured-learning" element={<NewStructuredLearningPage />} />
+          <Route path="/new-academic-learning" element={<NewAcademicLearningPage />} />
+          <Route path="/academic-learning-catalog" element={<AcademicLearningCatalogPage />} />
           <Route path="/structured-learning-runs/:runId" element={<StructuredLearningRunProgressPage />} />
           <Route path="/structured-learning/:documentId" element={<StructuredLearningDocumentDetailPage />} />
           <Route path="/structured-learning/:documentId/course" element={<StructuredLearningCoursePage />} />

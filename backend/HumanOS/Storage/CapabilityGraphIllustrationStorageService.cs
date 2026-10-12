@@ -152,6 +152,199 @@ public sealed class CapabilityGraphIllustrationStorageService
         return blobPath;
     }
 
+    /// <summary>Same as <see cref="UploadLectureAudioAsync(Guid,Guid,Guid,Stream,string,CancellationToken)"/>
+    /// but for ONE scene's own short audio clip (2026-10-08 — synced image+audio Teaching
+    /// player): path is keyed by sceneIndex so every scene's clip coexists side by side
+    /// under {tenantId}/{capabilityId}/{nodeId}/speech/scene-{sceneIndex:D2}.mp3, instead of
+    /// all scenes overwriting the single "lecture.mp3" path.</summary>
+    public async Task<string> UploadLectureSceneAudioAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        int sceneIndex,
+        Stream audioContent,
+        string contentType = "audio/mpeg",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/speech/scene-{sceneIndex:D2}.mp3";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            audioContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>Same idea as <see cref="UploadLectureSceneAudioAsync"/> but for
+    /// one YoungLearner Engram Card's own short "Profe" audio clip (2026-10-08),
+    /// under {tenantId}/{capabilityId}/{nodeId}/speech/card-{cardIndex:D2}.mp3 —
+    /// a separate path segment from "scene-" so a Teaching step that happens to
+    /// carry both Scenes and Cards never has its blobs collide.</summary>
+    public async Task<string> UploadLectureCardAudioAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        int cardIndex,
+        Stream audioContent,
+        string contentType = "audio/mpeg",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/speech/card-{cardIndex:D2}.mp3";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            audioContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>Same idea as <see cref="UploadLectureCardAudioAsync"/> but for
+    /// one Concept card's domain-agnostic RecognitionCue clip (2026-10-08 —
+    /// see EngramCard.RecognitionCue), under
+    /// {tenantId}/{capabilityId}/{nodeId}/speech/card-{cardIndex:D2}-cue.mp3 —
+    /// a separate blob so playing the cue alone (for a later Grouping card's
+    /// tap-to-select game) never also plays this card's full Explanation and
+    /// gives away the answer.</summary>
+    public async Task<string> UploadCardRecognitionCueAudioAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        int cardIndex,
+        Stream audioContent,
+        string contentType = "audio/mpeg",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/speech/card-{cardIndex:D2}-cue.mp3";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            audioContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>Same idea as <see cref="UploadCardRecognitionCueAudioAsync"/>
+    /// but for one card's standalone real sound-effect clip (2026-10-08 — see
+    /// EngramCard.SoundEffectLabel/SoundEffectStoragePath), under
+    /// {tenantId}/{capabilityId}/{nodeId}/speech/card-{cardIndex:D2}-sfx.mp3 —
+    /// stored separately from the combined narration+effect clip at
+    /// AudioStoragePath so the effect alone can be replayed/reused later
+    /// (e.g. by a future recognition game).</summary>
+    public async Task<string> UploadCardSoundEffectAudioAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        int cardIndex,
+        Stream audioContent,
+        string contentType = "audio/mpeg",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/speech/card-{cardIndex:D2}-sfx.mp3";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            audioContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
+    /// <summary>Same idea as <see cref="UploadIllustrationAsync"/> but for one
+    /// YoungLearner Engram Card's own illustration (2026-10-08), under
+    /// {tenantId}/{capabilityId}/{nodeId}/image-card-{cardIndex:D2}.png — a
+    /// separate filename prefix from "image-" (Scenes) so both can coexist.</summary>
+    public async Task<string> UploadCardIllustrationAsync(
+        Guid tenantId,
+        Guid capabilityId,
+        Guid nodeId,
+        int cardIndex,
+        Stream imageContent,
+        string contentType = "image/png",
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobServiceClient is null)
+        {
+            throw new InvalidOperationException(
+                "Data Lake storage is not configured. Set the 'DataLakeStorage' " +
+                "connection string application setting.");
+        }
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(ContainerName);
+        await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var blobPath = $"{tenantId:D}/{capabilityId:D}/{nodeId:D}/image-card-{cardIndex:D2}.png";
+        var blobClient = containerClient.GetBlobClient(blobPath);
+
+        await blobClient.UploadAsync(
+            imageContent,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
+            },
+            cancellationToken);
+
+        return blobPath;
+    }
+
     /// <summary>
     /// Uploads a personalized workplace application audio file to Azure Data Lake
     /// under {tenantId}/{capabilityId}/{nodeId}/workplace/{personId}/application.mp3.

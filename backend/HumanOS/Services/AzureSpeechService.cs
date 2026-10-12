@@ -23,7 +23,7 @@ namespace HumanOS.Services;
 /// likely to work through restrictive networks/proxies than a raw
 /// WebSocket upgrade.
 /// </remarks>
-public sealed class AzureSpeechService
+public sealed partial class AzureSpeechService
 {
     private static readonly HttpClient HttpClient = new();
 
@@ -41,8 +41,11 @@ public sealed class AzureSpeechService
     /// <summary>
     /// Synthesizes <paramref name="text"/> into MP3 audio bytes using the
     /// given neural voice (e.g. "es-MX-DaliaNeural"). Plain text is
-    /// escaped into SSML — SSML prosody controls (pace/pitch/pauses) are
-    /// a future enhancement, not needed for the MVP.
+    /// escaped into SSML. SSML prosody/break tags (2026-10-08) are inserted
+    /// automatically from sentence punctuation to fix "robotic, no pauses"
+    /// feedback on the Spanish neural voices — plain punctuation alone was
+    /// not giving the synthesizer enough of a breathing gap between
+    /// sentences.
     /// </summary>
     public async Task<byte[]> SynthesizeAsync(
         string text, string voiceName, CancellationToken cancellationToken)
@@ -62,9 +65,10 @@ public sealed class AzureSpeechService
         var ssml =
             $"""
             <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{locale}">
-              <voice xml:lang="{locale}" name="{voiceName}">{SecurityElement.Escape(text)}</voice>
+              <voice xml:lang="{locale}" name="{voiceName}"><prosody rate="-8%">{InsertNaturalPauses(SecurityElement.Escape(text))}</prosody></voice>
             </speak>
             """;
+
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post, $"https://{_region}.tts.speech.microsoft.com/cognitiveservices/v1");
@@ -107,4 +111,20 @@ public sealed class AzureSpeechService
 
         return await response.Content.ReadAsStringAsync(cancellationToken);
     }
+
+    /// <summary>Inserts short SSML &lt;break&gt; pauses after sentence-ending
+    /// and comma punctuation so narration breathes naturally instead of
+    /// running sentences together in a flat, robotic cadence — applied to
+    /// already-XML-escaped text (punctuation characters are never escaped,
+    /// so this is safe to run after <see cref="SecurityElement.Escape"/>).</summary>
+    private static string InsertNaturalPauses(string escapedText) =>
+        NaturalPauseSentenceEnd().Replace(
+            NaturalPauseComma().Replace(escapedText, "$1<break time=\"180ms\"/> "),
+            "$1<break time=\"450ms\"/> ");
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"([.!?…])\s+")]
+    private static partial System.Text.RegularExpressions.Regex NaturalPauseSentenceEnd();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(,)\s+")]
+    private static partial System.Text.RegularExpressions.Regex NaturalPauseComma();
 }

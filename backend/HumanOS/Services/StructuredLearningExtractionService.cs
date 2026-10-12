@@ -319,7 +319,8 @@ public sealed class StructuredLearningExtractionService
         bool strictSyllabusMode,
         Action<string> reportProgress,
         CancellationToken cancellationToken,
-        StructuredLearningCreationOptions? creationOptions = null)
+        StructuredLearningCreationOptions? creationOptions = null,
+        List<CapabilityOutlineChapterDto>? fullOutlineForBoundaries = null)
     {
         string documentText;
         if (!string.IsNullOrWhiteSpace(preExpandedDocumentText))
@@ -334,7 +335,7 @@ public sealed class StructuredLearningExtractionService
         }
 
         return await RunFromDocumentTextAsync(
-            documentText, documentName, null, tenantId, sessionId, approvedOutline, reportProgress, cancellationToken, creationOptions);
+            documentText, documentName, null, tenantId, sessionId, approvedOutline, reportProgress, cancellationToken, creationOptions, fullOutlineForBoundaries);
     }
 
     private async Task<StructuredLearningExtractionResult> RunFromDocumentTextAsync(
@@ -346,7 +347,8 @@ public sealed class StructuredLearningExtractionService
         List<CapabilityOutlineChapterDto> approvedOutline,
         Action<string> reportProgress,
         CancellationToken cancellationToken,
-        StructuredLearningCreationOptions? creationOptions = null)
+        StructuredLearningCreationOptions? creationOptions = null,
+        List<CapabilityOutlineChapterDto>? fullOutlineForBoundaries = null)
     {
         if (string.IsNullOrWhiteSpace(documentText))
         {
@@ -361,7 +363,7 @@ public sealed class StructuredLearningExtractionService
         reportProgress("Localizando secciones aprobadas");
 
         var source = new RawMaterialItem { Type = RawMaterialType.Pdf, Label = documentName, Content = documentText };
-        var sectionItems = DocumentChapterSplitter.BuildMaterialsFromApprovedOutline(source, approvedOutline);
+        var sectionItems = DocumentChapterSplitter.BuildMaterialsFromApprovedOutline(source, approvedOutline, fullOutlineForBoundaries);
 
         // Opt-in content expansion (2026-08-17) — a set of (ChapterTitle,
         // NodeTitle) pairs the designer's outline flagged as sparse

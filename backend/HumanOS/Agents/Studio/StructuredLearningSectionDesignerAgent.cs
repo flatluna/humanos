@@ -61,6 +61,27 @@ public sealed class StructuredLearningSectionStepDto
 
     /// <summary>ONLY for StepType=DeepDive.</summary>
     public List<StructuredLearningExampleCardDto>? ExampleCards { get; set; }
+
+    /// <summary>Per-scene audio+image pairs for the Teaching step's synced
+    /// lecture player (2026-10-08) — set by StructuredLearningPedagogyService
+    /// after splitting ProfessorLecture.Scenes into individually-narrated,
+    /// individually-illustrated clips. Null/empty falls back to the single
+    /// whole-lecture audio + IllustrationId (old behavior).</summary>
+    public List<StructuredLearningLectureSceneDto>? Scenes { get; set; }
+}
+
+/// <summary>One persisted scene (own audio clip + own illustration) for the
+/// Teaching step's synced lecture player — mirrors the anonymous shape
+/// StructuredLearningProfessorLectureService already persists, promoted to a
+/// real type so StructuredLearningPedagogyService can build the exact same
+/// shape for every Academic/YoungLearner (and Standard) course.</summary>
+public sealed class StructuredLearningLectureSceneDto
+{
+    public int SceneIndex { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public string? ImagePrompt { get; set; }
+    public Guid? IllustrationId { get; set; }
+    public string? AudioStoragePath { get; set; }
 }
 
 public sealed class HypothesisQuestionDto

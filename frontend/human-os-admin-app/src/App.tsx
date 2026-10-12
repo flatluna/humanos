@@ -3,6 +3,8 @@ import { Activity, BarChart3, Bell, BookOpen, BookOpenCheck, Bot, Brain, Buildin
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AuthGate } from './auth/AuthGate';
 import { useAuth } from './auth/AuthContext';
+import { FamilySkillsAdminPage } from './FamilySkillsAdminPage';
+import { FamilySkillsWizardPage } from './FamilySkillsWizardPage';
 
 const navigation = {
   es: [
@@ -12,6 +14,7 @@ const navigation = {
     { label: 'Actividad', icon: Activity, path: '/activity' },
     { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
     { label: 'Business Case', icon: BarChart3, path: '/business-case' },
+    { label: 'Family Skills', icon: Layers3, path: '/family-skills' },
   ],
   en: [
     { label: 'Overview', icon: LayoutDashboard, path: '/' },
@@ -20,6 +23,7 @@ const navigation = {
     { label: 'Activity', icon: Activity, path: '/activity' },
     { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
     { label: 'Business Case', icon: BarChart3, path: '/business-case' },
+    { label: 'Family Skills', icon: Layers3, path: '/family-skills' },
   ],
 } as const;
 
@@ -72,6 +76,8 @@ function App() {
             <Route path="/business-customers" element={<BusinessCustomersPage isEnglish={isEnglish} />} />
             <Route path="/simulations" element={<SimulationsPage isEnglish={isEnglish} />} />
             <Route path="/business-case" element={<BusinessCasePage isEnglish={isEnglish} />} />
+            <Route path="/family-skills" element={<FamilySkillsAdminPage isEnglish={isEnglish} />} />
+            <Route path="/family-skills/wizard" element={<FamilySkillsWizardPage isEnglish={isEnglish} />} />
             <Route path="/tenants/:tenantId" element={<TenantDetailPage isEnglish={isEnglish} />} />
             <Route path="/tenants/:tenantId/people/:personId" element={<PersonDetailPage isEnglish={isEnglish} />} />
             <Route path="/tenants/:tenantId/people/:personId/brain/:courseId" element={<PersonBrainCourseDetailPage isEnglish={isEnglish} />} />

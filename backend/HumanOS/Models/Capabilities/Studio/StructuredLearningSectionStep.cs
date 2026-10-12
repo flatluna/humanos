@@ -29,7 +29,19 @@ public sealed class StructuredLearningSectionStep
     /// <see cref="Content"/> unless they also carry an illustration id.
     /// Same lightweight "metadata-as-JSON-blob" convention as Graph's
     /// <see cref="HumanOS.Models.Capabilities.Graph.ExampleCard"/> (no
-    /// separate DB table per sub-item type).</summary>
+    /// separate DB table per sub-item type).
+    ///
+    /// Teaching step, YoungLearner documents only (2026-10-08): MAY also
+    /// carry a "Cards" key — an ordered array of <see cref="EngramCard"/>,
+    /// the sequential "Aprende" experience (one atomic concept per card,
+    /// auto-played and locked in order — see
+    /// <see cref="HumanOS.Agentic.Runtime.DeepDiveLoopGate"/> for the
+    /// analogous sequential-mastery gate already used by DeepDive). Only
+    /// populated when the owning document's
+    /// <see cref="StructuredLearningDocument.PedagogicalAudience"/> is
+    /// "YoungLearner"; absent (student falls back to "Scenes"/<see
+    /// cref="Content"/>) for every "Standard" (enterprise) document —
+    /// existing behavior for those documents is fully unchanged.</summary>
     public string? StepDataJson { get; set; }
 
     /// <summary>Only meaningful for StepType=Recall (2026-08-10) — the most

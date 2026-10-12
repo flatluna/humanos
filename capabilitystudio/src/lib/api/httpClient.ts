@@ -111,3 +111,48 @@ function toPascalCaseDeep(value: unknown): unknown {
 export function apiImageUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
+
+/** "Raw" variants — skip the camelCase→PascalCase conversion above. Use
+ * these only for API modules whose DTOs are deliberately typed camelCase
+ * to match the backend's wire format 1:1 (e.g. academicCourseApi.ts),
+ * instead of this app's usual PascalCase convention. */
+async function handleResponseRaw<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const body = (await response.json()) as ApiErrorBody;
+      message = body.message ?? message;
+    } catch {
+      // Response body wasn't JSON; keep the generic status message.
+    }
+    throw new Error(message);
+  }
+
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export async function apiGetRaw<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
+  });
+  return handleResponseRaw<T>(response);
+}
+
+export async function apiPostRaw<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getIdentityHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return handleResponseRaw<T>(response);
+}
+
+export async function apiDeleteRaw<T = void>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json', ...getIdentityHeaders() },
+  });
+  return handleResponseRaw<T>(response);
+}

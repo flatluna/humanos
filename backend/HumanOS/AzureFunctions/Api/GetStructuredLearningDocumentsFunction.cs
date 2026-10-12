@@ -28,6 +28,11 @@ public sealed class StructuredLearningDocumentSummaryDto
 
     public string? TargetSkill { get; set; }
 
+    /// <summary>"YoungLearner" (EngramsIQ Family market — parents/kids/young
+    /// people educating at home) or "Standard"/null (Enterprise). Lets the
+    /// catalog card show which market this course belongs to (2026-10-08).</summary>
+    public string? PedagogicalAudience { get; set; }
+
     /// <summary>"es"/"en" — see StructuredLearningLanguageHeuristic.</summary>
     public string Language { get; set; } = "es";
 
@@ -100,6 +105,7 @@ public sealed class GetStructuredLearningDocumentsFunction
                     .FirstOrDefault(),
                 d.Category,
                 d.TargetSkill,
+                d.PedagogicalAudience,
                 d.ConfigSnapshotJson,
                 d.IsGlobal
             })
@@ -117,6 +123,7 @@ public sealed class GetStructuredLearningDocumentsFunction
             CoverIllustrationId = d.CoverIllustrationId,
             Category = d.Category,
             TargetSkill = d.TargetSkill,
+            PedagogicalAudience = d.PedagogicalAudience,
             Language = HumanOS.Services.StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName),
             IsGlobal = d.IsGlobal
         }).ToList();

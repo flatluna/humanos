@@ -110,7 +110,8 @@ public sealed class StructuredLearningExtractionOrchestrator
         string? preExpandedDocumentText,
         string languageCode,
         bool strictSyllabusMode,
-        StructuredLearningCreationOptions? creationOptions = null)
+        StructuredLearningCreationOptions? creationOptions = null,
+        List<CapabilityOutlineChapterDto>? fullOutlineForBoundaries = null)
     {
         var runId = Guid.NewGuid();
         ClaimActiveRunSlotOrThrow(runId);
@@ -134,7 +135,8 @@ public sealed class StructuredLearningExtractionOrchestrator
                     strictSyllabusMode,
                     step => session.UpdateStatus(StructuredLearningExtractionRunStatus.Running(runId, step)),
                     CancellationToken.None,
-                    creationOptions);
+                    creationOptions,
+                    fullOutlineForBoundaries);
 
                 session.UpdateStatus(StructuredLearningExtractionRunStatus.Completed(runId, result));
             }

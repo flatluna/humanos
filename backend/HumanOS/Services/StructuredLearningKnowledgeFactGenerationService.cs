@@ -22,7 +22,7 @@ public sealed class StructuredLearningKnowledgeFactGenerationResult
 /// <summary>Step 5 application service: builds a reduced request from one
 /// persisted Engram/Graph, validates the proposal, then replaces its facts
 /// atomically. It never invokes pedagogy or persists MissingGraphFacts.</summary>
-public sealed class StructuredLearningKnowledgeFactGenerationService
+public sealed partial class StructuredLearningKnowledgeFactGenerationService
 {
     private readonly StructuredLearningKnowledgeFactGenerationAgent _agent;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
@@ -124,6 +124,7 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
             // previously turned a single bad fact into zero facts for the
             // entire Engram.
             var (rawResponse, usage) = await _agent.GenerateRawWithUsageAsync(request, cancellationToken);
+            RepairMojibakeInPlace(rawResponse);
             stopwatch.Stop();
             try
             {
@@ -330,6 +331,59 @@ public sealed class StructuredLearningKnowledgeFactGenerationService
 
     private static string NormalizeWhitespace(string value) =>
         string.Join(' ', value.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>Repairs a reproducible mojibake bug observed in gpt-5-mini's
+    /// Spanish-language structured-output responses for this agent
+    /// (2026-10-08): strict JSON-schema constrained decoding occasionally
+    /// drops a Latin accented character and replaces it with a literal
+    /// " XX" (a space + its 2-digit Latin-1/CP1252 hex byte, no leading
+    /// zero) — e.g. "imágenes" becomes "im E1genes", "relación" becomes
+    /// "relaci F3n". Every Evidence fragment then fails its exact
+    /// substring-of-SourceText check, so EVERY fact with an accented word
+    /// gets silently dropped, turning any Spanish Engram into 0 Knowledge
+    /// Facts. Only touches known Spanish-accent byte codes glued directly
+    /// to surrounding letters (never English/ASCII text, never a real
+    /// standalone token like a product code) to avoid false positives.</summary>
+    internal static string RepairMojibake(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !value.Contains(' '))
+        {
+            return value;
+        }
+
+        return MojibakeHexPattern().Replace(value, match =>
+        {
+            var hex = match.Groups["hex"].Value.ToUpperInvariant();
+            return Latin1AccentByHex.TryGetValue(hex, out var ch) ? ch.ToString() : match.Value;
+        });
+    }
+
+    private static void RepairMojibakeInPlace(StructuredLearningKnowledgeFactGenerationResponse response)
+    {
+        foreach (var fact in response.KnowledgeFacts)
+        {
+            fact.Statement = RepairMojibake(fact.Statement);
+            for (var i = 0; i < fact.Evidence.Count; i++)
+            {
+                fact.Evidence[i] = RepairMojibake(fact.Evidence[i]);
+            }
+        }
+        foreach (var missing in response.MissingGraphFacts)
+        {
+            missing.Statement = RepairMojibake(missing.Statement);
+        }
+    }
+
+    private static readonly Dictionary<string, char> Latin1AccentByHex = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["C1"] = 'Á', ["C9"] = 'É', ["CD"] = 'Í', ["D3"] = 'Ó', ["DA"] = 'Ú',
+        ["E1"] = 'á', ["E9"] = 'é', ["ED"] = 'í', ["F3"] = 'ó', ["FA"] = 'ú',
+        ["D1"] = 'Ñ', ["F1"] = 'ñ', ["DC"] = 'Ü', ["FC"] = 'ü',
+        ["A1"] = '¡', ["BF"] = '¿',
+    };
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?<=\p{L}) (?<hex>[A-Fa-f0-9]{2})(?=\p{L})")]
+    private static partial System.Text.RegularExpressions.Regex MojibakeHexPattern();
 
     private static string ResolveLanguage(string? documentConfigJson, string? sectionConfigJson, string? sampleText, ILogger logger, Guid engramId)
     {

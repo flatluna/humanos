@@ -70,6 +70,17 @@ public sealed class PreviewCapabilityOutlineFunction
         /// IdeaToDocumentAgent for the expansion.</summary>
         public string? CapabilityName { get; set; }
 
+        /// <summary>Alternate entry point (2026-10-07) for callers that already
+        /// have a COMPLETE, final document (e.g. the Academic Course Generator's
+        /// ProfesorExpert agent output) and must NOT have it rewritten/summarized
+        /// by IdeaToDocumentAgent — unlike <see cref="Text"/>, this is used EXACTLY
+        /// as given: only chapter/node detection runs against it, no expansion.
+        /// Mutually exclusive with <see cref="Text"/> and <see cref="ContentBase64"/>.
+        /// The response's ExpandedDocumentText simply echoes this value back, so the
+        /// caller submits it unchanged as PreExpandedDocumentText afterwards, same as
+        /// the idea/text flow.</summary>
+        public string? AlreadyExpandedText { get; set; }
+
         /// <summary>Optional, only used together with <see cref="Text"/> —
         /// "es" or "en", defaults to "es". See
         /// StartCapabilityGraphFromDescriptionFunction's identical field.</summary>
@@ -105,14 +116,15 @@ public sealed class PreviewCapabilityOutlineFunction
 
         var hasPdf = body is not null && !string.IsNullOrWhiteSpace(body.ContentBase64) && !string.IsNullOrWhiteSpace(body.FileName);
         var hasText = body is not null && !string.IsNullOrWhiteSpace(body.Text);
+        var hasAlreadyExpandedText = body is not null && !string.IsNullOrWhiteSpace(body.AlreadyExpandedText);
 
-        if (body is null || (!hasPdf && !hasText))
+        if (body is null || (!hasPdf && !hasText && !hasAlreadyExpandedText))
         {
             return await FunctionResponseFactory.ErrorResponseAsync(
                 request,
                 HttpStatusCode.BadRequest,
                 "InvalidRequest",
-                "Either ('fileName' + 'contentBase64') or 'text' is required.",
+                "Either ('fileName' + 'contentBase64'), 'text', or 'alreadyExpandedText' is required.",
                 cancellationToken);
         }
 
@@ -137,6 +149,23 @@ public sealed class PreviewCapabilityOutlineFunction
                     cancellationToken);
             }
             documentType = parsedType;
+        }
+
+        // "Already expanded" entry point (2026-10-07): the caller already has a
+        // COMPLETE, final document (e.g. the Academic Course Generator's
+        // ProfesorExpert output) — run ONLY chapter/node detection against it,
+        // never IdeaToDocumentAgent, so the real authored content is never
+        // rewritten/summarized.
+        if (hasAlreadyExpandedText)
+        {
+            var alreadyExpandedResult = await CapabilityOutlinePreviewService.PreviewAsync(
+                body!.AlreadyExpandedText!,
+                _tocExtraction,
+                cancellationToken,
+                documentType);
+            alreadyExpandedResult.ExpandedDocumentText = body.AlreadyExpandedText;
+
+            return await FunctionResponseFactory.SuccessResponseAsync(request, alreadyExpandedResult, cancellationToken: cancellationToken);
         }
 
         // "Texto/idea" entry point (2026-08-07): expand the idea into a

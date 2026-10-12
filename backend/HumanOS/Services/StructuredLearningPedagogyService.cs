@@ -53,6 +53,19 @@ public sealed class StructuredLearningPedagogyService
 {
     private const int DefaultMaxConcurrentSections = 3;
 
+    /// <summary>Style guidance for per-scene Teaching illustrations — same
+    /// wording as StructuredLearningProfessorLectureService's own constants,
+    /// duplicated locally for the same reason that service documents (avoid
+    /// coupling two otherwise-independent illustration pipelines together).</summary>
+    private const string ProfessorLectureKidsSceneIllustrationStyle =
+        "A simple, warm, child-friendly educational illustration for a K-12 learning app. " +
+        "Flat design, soft cheerful colors, single clear focal scene, friendly and age-appropriate, " +
+        "professional children's book / cartoon illustration style.";
+
+    private const string ProfessorLectureStandardSceneIllustrationStyle =
+        "A clean, professional educational illustration for an adult/professional learning app. " +
+        "Photorealistic or clean diagrammatic style as appropriate to the subject, single clear focal composition.";
+
     private readonly StructuredLearningSectionDesignerAgent _designer;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly IConfiguration _configuration;
@@ -294,7 +307,17 @@ public sealed class StructuredLearningPedagogyService
                 s => s.SetProperty(x => x.PedagogyStatus, StructuredLearningPedagogyStatus.Generating),
                 cancellationToken);
 
-        var includeDeepDiveStep = document.MaxDeepDiveCardsPerNode is > 0;
+        // DeepDive disabled for YoungLearner courses (2026-10-09) — its
+        // interaction model (open-ended conversational walkthrough, the
+        // student types/speaks a free-form reply the AI grades live) does
+        // not fit a pre-reading 5-to-6-year-old; the "Learn" step's Engram
+        // Cards already provide an equivalent Explanation -> Example ->
+        // Practice walkthrough correctly adapted for this audience (audio
+        // narration, real sound effects, tap-to-select recognition game).
+        // Never affects Standard (enterprise) courses, which keep DeepDive
+        // exactly as before whenever MaxDeepDiveCardsPerNode > 0.
+        var includeDeepDiveStep = document.MaxDeepDiveCardsPerNode is > 0
+            && document.PedagogicalAudience != "YoungLearner";
         var includeHypothesisStep = ReadIncludeHypothesisStep(document.ConfigSnapshotJson);
 
         // Snapshot every existing engram artifact BEFORE regenerating
@@ -858,7 +881,8 @@ public sealed class StructuredLearningPedagogyService
                     TeachingContent = teachingStep.Content,
                     IllustrationDescription = teachingStep.IllustrationPrompt,
                     DomainOrTopic = document.Category ?? document.TargetSkill,
-                    TargetLanguage = languageCode
+                    TargetLanguage = languageCode,
+                    PedagogicalAudience = document.PedagogicalAudience
                 };
 
                 var lectureGeneration = await _professorLectureAgent.GenerateLectureAsync(context, cancellationToken);
@@ -915,8 +939,8 @@ public sealed class StructuredLearningPedagogyService
                     var voiceName = isEnglish
                         ? "en-US-AndrewNeural"
                         : isSpanish
-                        ? "es-MX-CecilioNeural"
-                        : (languageCode.StartsWith("es", StringComparison.OrdinalIgnoreCase) ? "es-MX-CecilioNeural" : "en-US-AndrewNeural");
+                        ? "es-MX-JorgeNeural"
+                        : (languageCode.StartsWith("es", StringComparison.OrdinalIgnoreCase) ? "es-MX-JorgeNeural" : "en-US-AndrewNeural");
 
                     var ttsStopwatch = System.Diagnostics.Stopwatch.StartNew();
                     var audioBytes = await _speechService.SynthesizeAsync(speechText, voiceName, cancellationToken);
@@ -932,6 +956,108 @@ public sealed class StructuredLearningPedagogyService
                         cancellationToken: cancellationToken);
 
                     teachingStep.SpeechStoragePath = storagePath;
+
+                    // Synced image+audio Teaching player (2026-10-08): the agent splits the
+                    // same lecture into ordered Scenes, each with its own ImagePrompt — when
+                    // those prompts are real (not just the single-scene fallback with no
+                    // prompt), generate ONE short audio clip + ONE illustration PER SCENE so
+                    // the student-facing player can swap images exactly when each clip ends,
+                    // with perfect sync by construction. Mirrors
+                    // StructuredLearningProfessorLectureService.GenerateLectureForSectionAsync's
+                    // own scene block — every Academic/YoungLearner (and Standard) course
+                    // generated through THIS pedagogy pipeline now gets the same treatment,
+                    // instead of only courses generated through the separate manual
+                    // "/professor-lecture" endpoint.
+                    var hasRealScenes = lecture is not null && (lecture.Scenes.Count > 1 ||
+                        (lecture.Scenes.Count == 1 && !string.IsNullOrWhiteSpace(lecture.Scenes[0].ImagePrompt)));
+                    if (hasRealScenes && _imageService.IsConfigured)
+                    {
+                        var styleGuidance = document.PedagogicalAudience == "YoungLearner"
+                            ? ProfessorLectureKidsSceneIllustrationStyle
+                            : ProfessorLectureStandardSceneIllustrationStyle;
+                        var scenes = new List<StructuredLearningLectureSceneDto>();
+
+                        for (var i = 0; i < lecture!.Scenes.Count; i++)
+                        {
+                            var scene = lecture.Scenes[i];
+                            Guid? sceneIllustrationId = null;
+                            string? sceneAudioPath = null;
+
+                            try
+                            {
+                                var sceneAudioBytes = await _speechService.SynthesizeAsync(scene.SceneText, voiceName, cancellationToken);
+                                using var sceneAudioStream = new MemoryStream(sceneAudioBytes);
+                                sceneAudioPath = await _illustrationStorage.UploadLectureSceneAudioAsync(
+                                    section.TenantId,
+                                    document.StructuredLearningDocumentId,
+                                    section.StructuredLearningDocumentSectionId,
+                                    i,
+                                    sceneAudioStream,
+                                    contentType: "audio/mpeg",
+                                    cancellationToken: cancellationToken);
+                            }
+                            catch
+                            {
+                                // Best-effort: a missing scene clip falls back to the whole-lecture audio.
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(scene.ImagePrompt))
+                            {
+                                try
+                                {
+                                    var fullPrompt = $"{styleGuidance} Scene: {scene.ImagePrompt}. No text, no letters, no numbers, no words in the image.";
+                                    var generated = await _imageService.GenerateAsync(fullPrompt, null, cancellationToken);
+                                    using var imageStream = generated.ImageBytes.ToStream();
+                                    var imagePath = await _illustrationStorage.UploadIllustrationAsync(
+                                        section.TenantId,
+                                        document.StructuredLearningDocumentId,
+                                        section.StructuredLearningDocumentSectionId,
+                                        i,
+                                        imageStream,
+                                        cancellationToken: cancellationToken);
+
+                                    var sceneIllustrationEntity = new StructuredLearningIllustration
+                                    {
+                                        StructuredLearningIllustrationId = Guid.NewGuid(),
+                                        StructuredLearningDocumentSectionId = section.StructuredLearningDocumentSectionId,
+                                        StoragePath = imagePath,
+                                        Prompt = fullPrompt,
+                                        Caption = scene.SceneText,
+                                        Purpose = StructuredLearningIllustrationPurpose.Teaching,
+                                        ImageModel = generated.ImageModel,
+                                        Width = generated.Width,
+                                        Height = generated.Height,
+                                        CreatedDate = DateTime.UtcNow
+                                    };
+                                    dbContext.StructuredLearningIllustrations.Add(sceneIllustrationEntity);
+                                    sceneIllustrationId = sceneIllustrationEntity.StructuredLearningIllustrationId;
+                                }
+                                catch
+                                {
+                                    // Best-effort: a missing scene image falls back to no image for that scene.
+                                }
+                            }
+
+                            scenes.Add(new StructuredLearningLectureSceneDto
+                            {
+                                SceneIndex = i,
+                                Text = scene.SceneText,
+                                ImagePrompt = scene.ImagePrompt,
+                                IllustrationId = sceneIllustrationId,
+                                AudioStoragePath = sceneAudioPath
+                            });
+
+                            if (i == 0 && sceneIllustrationId is not null)
+                            {
+                                // Legacy single IllustrationId: prefer Scene 0's so old
+                                // consumers that only ever read IllustrationId still show
+                                // something sensible.
+                                teachingStep.IllustrationId = sceneIllustrationId;
+                            }
+                        }
+
+                        teachingStep.Scenes = scenes;
+                    }
 
                     // Real Azure Speech TTS cost of narrating the Learn step's
                     // lecture (2026-10-04) — previously never recorded anywhere,
@@ -1242,7 +1368,8 @@ public sealed class StructuredLearningPedagogyService
                 step.IllustrationId,
                 step.SpeechStoragePath,
                 ProfessorLecture = step.ProfessorLecture,
-                WebSearchCitations = step.WebSearchCitations ?? []
+                WebSearchCitations = step.WebSearchCitations ?? [],
+                Scenes = step.Scenes
             }),
         StructuredLearningStepType.Hypothesis when step.IllustrationId is not null =>
             JsonSerializer.Serialize(new { step.IllustrationId }),

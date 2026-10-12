@@ -58,6 +58,15 @@ public sealed class StartStructuredLearningExtractionFunction
         /// <summary>The Paso 5 "Learning path design" outline the client already approved — required for Step 2.</summary>
         public List<CapabilityOutlineChapterDto>? ApprovedOutline { get; set; }
 
+        /// <summary>(2026-10-08) The ORIGINAL, untrimmed outline — only needed when
+        /// <see cref="ApprovedOutline"/> had chapters/lessons DELETED by the caller
+        /// (e.g. the Academic Course Generator's Review step letting an educator
+        /// test with just one lesson). Used purely to compute correct text-slice
+        /// boundaries so the last surviving lesson doesn't wrongly absorb every
+        /// deleted lesson's text — see DocumentChapterSplitter's doc comment.
+        /// Omit when nothing was deleted from the detected/approved outline.</summary>
+        public List<CapabilityOutlineChapterDto>? FullOutlineForBoundaries { get; set; }
+
         /// <summary>Only used with the "Texto/idea" entry point — see
         /// StartCapabilityGraphFromDescriptionFunction's identical field.</summary>
         public string? PreExpandedDocumentText { get; set; }
@@ -255,7 +264,8 @@ public sealed class StartStructuredLearningExtractionFunction
             {
                 status = _orchestrator.StartFromDescription(
                     body.Description!, body.DocumentName, body.TenantId, body.ApprovedOutline,
-                    body.PreExpandedDocumentText, languageCode, body.StrictSyllabusMode, creationOptions);
+                    body.PreExpandedDocumentText, languageCode, body.StrictSyllabusMode, creationOptions,
+                    body.FullOutlineForBoundaries);
             }
 
             return await FunctionResponseFactory.SuccessResponseAsync(request, status, cancellationToken: cancellationToken);

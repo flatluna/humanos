@@ -1,0 +1,72 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+
+  --color-family-50: #f0fdf4;
+  --color-family-100: #dcfce7;
+  --color-family-200: #bbf7d0;
+  --color-family-300: #86efac;
+  --color-family-400: #4ade80;
+  --color-family-500: #10b981;
+  --color-family-600: #059669;
+  --color-family-700: #047857;
+  --color-family-800: #065f46;
+  --color-family-900: #064e3b;
+  --color-family-950: #022c22;
+
+  --color-warm-50: #f8fafc;
+  --color-warm-100: #f1f5f9;
+  --color-warm-200: #e2e8f0;
+  --color-warm-300: #cbd5e1;
+  --color-warm-400: #94a3b8;
+  --color-warm-500: #64748b;
+  --color-warm-600: #475569;
+  --color-warm-700: #334155;
+  --color-warm-800: #1e293b;
+  --color-warm-900: #0f172a;
+  --color-warm-950: #020617;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  font-family: var(--font-sans);
+}
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.dark select option {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}

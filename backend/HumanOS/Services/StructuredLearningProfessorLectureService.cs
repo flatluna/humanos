@@ -21,7 +21,22 @@ public sealed class StructuredLearningProfessorLectureService
     private readonly StructuredLearningProfessorLectureAgent _agent;
     private readonly AzureSpeechService _speechService;
     private readonly CapabilityGraphIllustrationStorageService _illustrationStorage;
+    private readonly GraphIllustrationImageService _imageService;
     private readonly ILogger<StructuredLearningProfessorLectureService> _logger;
+
+    /// <summary>Style guidance for scene illustrations when the owning document's
+    /// PedagogicalAudience is "YoungLearner" — same convention/wording as
+    /// <see cref="ExampleCardIllustrationService"/>'s KidsIllustrationStyle, kept
+    /// duplicated locally rather than shared to avoid coupling these two otherwise
+    /// independent illustration pipelines together.</summary>
+    private const string KidsSceneIllustrationStyle =
+        "A simple, warm, child-friendly educational illustration for a K-12 learning app. " +
+        "Flat design, soft cheerful colors, single clear focal scene, friendly and age-appropriate, " +
+        "professional children's book / cartoon illustration style.";
+
+    private const string StandardSceneIllustrationStyle =
+        "A clean, professional educational illustration for an adult/professional learning app. " +
+        "Photorealistic or clean diagrammatic style as appropriate to the subject, single clear focal composition.";
 
     public StructuredLearningProfessorLectureService(
         HumanOsDbContext dbContext,
@@ -29,6 +44,7 @@ public sealed class StructuredLearningProfessorLectureService
         StructuredLearningProfessorLectureAgent agent,
         AzureSpeechService speechService,
         CapabilityGraphIllustrationStorageService illustrationStorage,
+        GraphIllustrationImageService imageService,
         ILogger<StructuredLearningProfessorLectureService> logger)
     {
         _dbContext = dbContext;
@@ -36,6 +52,7 @@ public sealed class StructuredLearningProfessorLectureService
         _agent = agent;
         _speechService = speechService;
         _illustrationStorage = illustrationStorage;
+        _imageService = imageService;
         _logger = logger;
     }
 
@@ -104,7 +121,8 @@ public sealed class StructuredLearningProfessorLectureService
             TeachingContent = teachingContent,
             IllustrationDescription = illustrationDescription,
             DomainOrTopic = section.Document?.Category ?? section.Document?.TargetSkill,
-            TargetLanguage = resolvedLanguage
+            TargetLanguage = resolvedLanguage,
+            PedagogicalAudience = section.Document?.PedagogicalAudience
         };
 
         // 5. Invoke the Agent
@@ -128,7 +146,7 @@ public sealed class StructuredLearningProfessorLectureService
 
                 var voiceName = isEnglish
                     ? "en-US-AndrewNeural"
-                    : "es-MX-CecilioNeural";
+                    : "es-MX-JorgeNeural";
 
                 var audioBytes = await _speechService.SynthesizeAsync(speechText, voiceName, cancellationToken);
                 using var audioStream = new MemoryStream(audioBytes);
@@ -141,6 +159,100 @@ public sealed class StructuredLearningProfessorLectureService
                     contentType: "audio/mpeg",
                     cancellationToken: cancellationToken);
 
+                // Synced image+audio Teaching player (2026-10-08): the agent splits the
+                // same lecture into ordered Scenes, each with its own ImagePrompt — when
+                // those prompts are real (not just the single-scene fallback with an empty
+                // prompt), generate ONE short audio clip + ONE illustration PER SCENE so the
+                // student-facing player can swap images exactly when each clip ends, with
+                // perfect sync by construction (no word/sentence-boundary timestamps needed).
+                var sceneDtos = new List<object>();
+                Guid? firstSceneIllustrationId = null;
+                var hasRealScenes = lectureResult.Scenes.Count > 1 ||
+                    (lectureResult.Scenes.Count == 1 && !string.IsNullOrWhiteSpace(lectureResult.Scenes[0].ImagePrompt));
+
+                if (hasRealScenes && _imageService.IsConfigured)
+                {
+                    var styleGuidance = section.Document?.PedagogicalAudience == "YoungLearner"
+                        ? KidsSceneIllustrationStyle
+                        : StandardSceneIllustrationStyle;
+
+                    for (var i = 0; i < lectureResult.Scenes.Count; i++)
+                    {
+                        var scene = lectureResult.Scenes[i];
+                        Guid? sceneIllustrationId = null;
+                        string? sceneAudioPath = null;
+
+                        try
+                        {
+                            var sceneAudioBytes = await _speechService.SynthesizeAsync(scene.SceneText, voiceName, cancellationToken);
+                            using var sceneAudioStream = new MemoryStream(sceneAudioBytes);
+                            sceneAudioPath = await _illustrationStorage.UploadLectureSceneAudioAsync(
+                                section.TenantId,
+                                section.StructuredLearningDocumentId,
+                                section.StructuredLearningDocumentSectionId,
+                                i,
+                                sceneAudioStream,
+                                contentType: "audio/mpeg",
+                                cancellationToken: cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to synthesize scene {SceneIndex} audio for section {SectionId}", i, sectionId);
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(scene.ImagePrompt))
+                        {
+                            try
+                            {
+                                var fullPrompt = $"{styleGuidance} Scene: {scene.ImagePrompt}. No text, no letters, no numbers, no words in the image.";
+                                var generated = await _imageService.GenerateAsync(fullPrompt, null, cancellationToken);
+                                using var imageStream = generated.ImageBytes.ToStream();
+                                var imagePath = await _illustrationStorage.UploadIllustrationAsync(
+                                    section.TenantId,
+                                    section.StructuredLearningDocumentId,
+                                    section.StructuredLearningDocumentSectionId,
+                                    i,
+                                    imageStream,
+                                    cancellationToken: cancellationToken);
+
+                                var sceneIllustrationEntity = new StructuredLearningIllustration
+                                {
+                                    StructuredLearningIllustrationId = Guid.NewGuid(),
+                                    StructuredLearningDocumentSectionId = section.StructuredLearningDocumentSectionId,
+                                    StoragePath = imagePath,
+                                    Prompt = fullPrompt,
+                                    Caption = scene.SceneText,
+                                    Purpose = StructuredLearningIllustrationPurpose.Teaching,
+                                    ImageModel = generated.ImageModel,
+                                    Width = generated.Width,
+                                    Height = generated.Height,
+                                    CreatedDate = DateTime.UtcNow
+                                };
+                                _dbContext.StructuredLearningIllustrations.Add(sceneIllustrationEntity);
+                                sceneIllustrationId = sceneIllustrationEntity.StructuredLearningIllustrationId;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to generate scene {SceneIndex} illustration for section {SectionId}", i, sectionId);
+                            }
+                        }
+
+                        sceneDtos.Add(new
+                        {
+                            SceneIndex = i,
+                            Text = scene.SceneText,
+                            ImagePrompt = scene.ImagePrompt,
+                            IllustrationId = sceneIllustrationId,
+                            AudioStoragePath = sceneAudioPath
+                        });
+
+                        if (i == 0)
+                        {
+                            firstSceneIllustrationId = sceneIllustrationId;
+                        }
+                    }
+                }
+
                 // Update the Teaching step in database with ProfessorLecture and SpeechStoragePath
                 var teachingStepEntity = await _dbContext.StructuredLearningSectionSteps
                     .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId && s.StepType == StructuredLearningStepType.Teaching, cancellationToken);
@@ -152,14 +264,17 @@ public sealed class StructuredLearningProfessorLectureService
                         teachingStepEntity.Content = lectureResult.SpokenLectureScript;
                     }
 
-                    Guid? illustrationId = null;
+                    // Legacy single IllustrationId: prefer Scene 0's (so old consumers that
+                    // only ever read IllustrationId/SpeechStoragePath still show something
+                    // sensible), falling back to whatever was already recorded before.
+                    Guid? illustrationId = firstSceneIllustrationId;
                     List<string> existingCitations = [];
                     if (!string.IsNullOrWhiteSpace(teachingStepEntity.StepDataJson))
                     {
                         try
                         {
                             using var doc = JsonDocument.Parse(teachingStepEntity.StepDataJson);
-                            if (doc.RootElement.TryGetProperty("IllustrationId", out var ilProp) && ilProp.ValueKind == JsonValueKind.String)
+                            if (illustrationId is null && doc.RootElement.TryGetProperty("IllustrationId", out var ilProp) && ilProp.ValueKind == JsonValueKind.String)
                             {
                                 if (Guid.TryParse(ilProp.GetString(), out var parsedId)) illustrationId = parsedId;
                             }
@@ -179,6 +294,7 @@ public sealed class StructuredLearningProfessorLectureService
                     {
                         IllustrationId = illustrationId,
                         SpeechStoragePath = storagePath,
+                        Scenes = sceneDtos,
                         ProfessorLecture = lectureResult,
                         WebSearchCitations = existingCitations
                     });
@@ -225,7 +341,7 @@ public sealed class StructuredLearningProfessorLectureService
         }
 
         var languageCode = ResolveLanguageCode(section.Document?.ConfigSnapshotJson, teachingStep.Content);
-        var voiceName = languageCode == "en" ? "en-US-AndrewNeural" : "es-MX-CecilioNeural";
+        var voiceName = languageCode == "en" ? "en-US-AndrewNeural" : "es-MX-JorgeNeural";
 
         var audioBytes = await _speechService.SynthesizeAsync(teachingStep.Content, voiceName, cancellationToken);
         using var audioStream = new MemoryStream(audioBytes);

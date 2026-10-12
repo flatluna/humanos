@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, Menu, X, Tags, Bot, UserCircle2, Sparkles, Network, FlaskConical, Video } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, Menu, X, Tags, Bot, UserCircle2, Sparkles, Network, FlaskConical, Video, BookOpen } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -174,6 +174,7 @@ export default function Layout() {
 
         <nav className="space-y-1">
           <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-sky-400" activeColor="bg-sky-500/15" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/academic-learning-catalog" label={t('nav.academicLearningCatalog')} color="text-lime-400" activeColor="bg-lime-500/15" onNavigate={() => setSidebarOpen(false)}><BookOpen className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/programs" label={t('nav.programs')} color="text-violet-400" activeColor="bg-violet-500/15" onNavigate={() => setSidebarOpen(false)}><GraduationCap className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/program-entities" label={t('nav.programEntities')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Network className="h-5 w-5" /></SidebarLink>
           <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
@@ -184,8 +185,9 @@ export default function Layout() {
         </nav>
         <div className="mt-8 border-t border-white/10 pt-4">
           {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Create</p>}
-          <div className="mt-2.5">
+          <div className="mt-2.5 space-y-2">
             <NewLearningPathButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
+            <NewAcademicLearningButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
           </div>
         </div>
       </aside>
@@ -307,3 +309,40 @@ function NewLearningPathButton({
     </Link>
   );
 }
+
+/** Direct CTA button for New Academic Learning (K-12 & Academic Courses) */
+function NewAcademicLearningButton({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (collapsed) {
+    return (
+      <Link
+        to="/new-academic-learning"
+        onClick={onNavigate}
+        title={t('nav.newAcademicLearning', 'New Academic Learning')}
+        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 hover:shadow-emerald-500/40 active:scale-[0.98]"
+      >
+        <GraduationCap className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" strokeWidth={2.2} />
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      to="/new-academic-learning"
+      onClick={onNavigate}
+      title={t('nav.newAcademicLearning', 'New Academic Learning')}
+      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition-all hover:scale-[1.02] hover:shadow-emerald-500/40 active:scale-[0.98]"
+    >
+      <GraduationCap className="h-4.5 w-4.5 transition-transform duration-200 group-hover:scale-110" strokeWidth={2.2} />
+      <span className="tracking-wide">{t('nav.newAcademicLearning', 'New Academic Learning')}</span>
+    </Link>
+  );
+}
+
