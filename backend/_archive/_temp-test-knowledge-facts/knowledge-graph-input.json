@@ -1,0 +1,916 @@
+{
+  "section": {
+    "title": "Understand the foundations of AI",
+    "rootEntityName": "AI"
+  },
+  "entities": [
+    {
+      "EntityId": "2be74205-1b48-4656-8af8-0a04787a9254",
+      "CanonicalName": "A/B/N testing",
+      "EntityType": "GeneralConcept",
+      "Description": "Experimentation method to validate the impact of changes or treatments.",
+      "OntologicalClass": null,
+      "Aliases": [
+        "A/B/N test"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "use A/B/N testing to validate impact"
+        }
+      ]
+    },
+    {
+      "EntityId": "1a96bbe6-4451-4177-8421-8a5b0c882ced",
+      "CanonicalName": "accuracy",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "time-to-value, accuracy, cost savings, customer satisfaction,"
+        }
+      ]
+    },
+    {
+      "EntityId": "c169fba0-b5c7-4984-95e4-b500edf5f242",
+      "CanonicalName": "Business problem",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Start with the business problem:"
+        }
+      ]
+    },
+    {
+      "EntityId": "37d329c3-aa80-4aa9-ab91-ba63694a8dee",
+      "CanonicalName": "cost savings",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "time-to-value, accuracy, cost savings, customer satisfaction,"
+        }
+      ]
+    },
+    {
+      "EntityId": "d375bd72-a8f4-4700-811f-c82df8fe859e",
+      "CanonicalName": "customer satisfaction",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "time-to-value, accuracy, cost savings, customer satisfaction,"
+        }
+      ]
+    },
+    {
+      "EntityId": "d597c36f-0a39-4e0e-a6c4-8c592dc839b6",
+      "CanonicalName": "Data",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "7d190fb4-f57f-4e57-b212-66467b90df58",
+          "Title": "Introduction",
+          "SourceText": "Technology and Data Strategy"
+        },
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "turns data into actionable insight"
+        }
+      ]
+    },
+    {
+      "EntityId": "b41a6d13-62b6-4022-8b68-1564a24f5964",
+      "CanonicalName": "Domain expertise",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "It combines statistics, engineering, and domain expertise"
+        }
+      ]
+    },
+    {
+      "EntityId": "407834a4-d078-42bb-9d2b-47f3261fc342",
+      "CanonicalName": "Engineering",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "It combines statistics, engineering, and domain expertise"
+        }
+      ]
+    },
+    {
+      "EntityId": "34694545-97ca-4298-b3b3-93d8ef18b6b8",
+      "CanonicalName": "Human-in-the-loop",
+      "EntityType": "GeneralConcept",
+      "Description": "Design pattern where human oversight and judgment remain part of AI decision processes.",
+      "OntologicalClass": null,
+      "Aliases": [
+        "humans in the loop"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Keep humans in the loop"
+        }
+      ]
+    },
+    {
+      "EntityId": "336542d0-fa4f-4aa3-8119-4a3aa7c73d50",
+      "CanonicalName": "Key Performance Indicator (KPI)",
+      "EntityType": "GeneralConcept",
+      "Description": "Metrics used to measure the impact of AI initiatives.",
+      "OntologicalClass": null,
+      "Aliases": [
+        "KPI",
+        "KPIs",
+        "Key Performance Indicators"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Tie AI initiatives to clear Key Performance Indicators (KPIs),"
+        }
+      ]
+    },
+    {
+      "EntityId": "c8d71955-3f0c-4c8f-941d-5d7234331cc6",
+      "CanonicalName": "Medical imaging",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "In medical imaging, deep learning can help identify features"
+        }
+      ]
+    },
+    {
+      "EntityId": "0d1a8784-6fd3-4ff6-8ccd-397b15031f21",
+      "CanonicalName": "Statistics",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "It combines statistics, engineering, and domain expertise"
+        }
+      ]
+    },
+    {
+      "EntityId": "c6bd717a-d9f7-43ba-859a-ab17960cb77f",
+      "CanonicalName": "Task automation",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": "",
+      "Aliases": [
+        "automate tasks",
+        "automating customer inquiries"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "automate tasks that benefit from human like judgment"
+        },
+        {
+          "EngramId": "52f23efa-6603-462a-9e0c-c5a23d466642",
+          "Title": "Explore Copilot and agents at work",
+          "SourceText": "Task automation. Streamline repetitive tasks"
+        }
+      ]
+    },
+    {
+      "EntityId": "0079db0e-d2d3-49c4-9c77-f4310a091e65",
+      "CanonicalName": "time-to-value",
+      "EntityType": "GeneralConcept",
+      "Description": null,
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "time-to-value, accuracy, cost savings, customer satisfaction,"
+        }
+      ]
+    },
+    {
+      "EntityId": "ad86cab2-8077-4246-8c32-4383c578c285",
+      "CanonicalName": "Unstructured data",
+      "EntityType": "GeneralConcept",
+      "Description": "Data not organized in a predefined schema (e.g., images, text, audio).",
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "unstructured data (images, text, audio)"
+        }
+      ]
+    },
+    {
+      "EntityId": "3ccbf72c-a827-4eaa-a34b-da04c61d71ec",
+      "CanonicalName": "Foundations of AI",
+      "EntityType": "LearningModule",
+      "Description": "",
+      "OntologicalClass": "",
+      "Aliases": [
+        "AI Foundations",
+        "Foundations of AI"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "172572b2-3587-4c69-a489-ade1064297d6",
+          "Title": "Identify basic AI technology concepts",
+          "SourceText": "Foundations of AI"
+        },
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "AI Foundations"
+        }
+      ]
+    },
+    {
+      "EntityId": "d7966215-04fa-44d0-a99a-ad8f9b3ac0e7",
+      "CanonicalName": "Business leader",
+      "EntityType": "PersonRole",
+      "Description": null,
+      "OntologicalClass": "Person",
+      "Aliases": [
+        "business leaders"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "For business leaders, the real question is:"
+        }
+      ]
+    },
+    {
+      "EntityId": "ba7fa35c-6aeb-4559-b878-34e36ff2a8f4",
+      "CanonicalName": "Data scientist",
+      "EntityType": "PersonRole",
+      "Description": "Role responsible for designing and validating AI solutions.",
+      "OntologicalClass": "Persona",
+      "Aliases": [
+        "data scientists"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "data scientists lead the design and validation of AI solutions"
+        }
+      ]
+    },
+    {
+      "EntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "CanonicalName": "AI",
+      "EntityType": "TechnologyConcept",
+      "Description": null,
+      "OntologicalClass": "",
+      "Aliases": [
+        "AI"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "7d190fb4-f57f-4e57-b212-66467b90df58",
+          "Title": "Introduction",
+          "SourceText": "AI is no longer a futuristic concept"
+        },
+        {
+          "EngramId": "172572b2-3587-4c69-a489-ade1064297d6",
+          "Title": "Identify basic AI technology concepts",
+          "SourceText": "AI"
+        },
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Understand the foundations of AI"
+        },
+        {
+          "EngramId": "52f23efa-6603-462a-9e0c-c5a23d466642",
+          "Title": "Explore Copilot and agents at work",
+          "SourceText": "AI and intelligent agents are introducing"
+        },
+        {
+          "EngramId": "3964408a-bb06-4531-9908-f4b8836fb801",
+          "Title": "Learn the Microsoft AI approach",
+          "SourceText": "AI"
+        }
+      ]
+    },
+    {
+      "EntityId": "73d33b09-74bc-4f9d-a4db-783b3890e1d5",
+      "CanonicalName": "Credit card fraud detection",
+      "EntityType": "TechnologyConcept",
+      "Description": "Machine learning application that flags unusual transaction patterns to reduce fraud risk.",
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Credit card fraud detection: Machine learning flags unusual patterns"
+        }
+      ]
+    },
+    {
+      "EntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "CanonicalName": "Data science",
+      "EntityType": "TechnologyConcept",
+      "Description": "The interdisciplinary field that turns data into actionable insight.",
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Data science is an interdisciplinary field"
+        }
+      ]
+    },
+    {
+      "EntityId": "3e4776d3-639c-4b1b-8a9e-be2a88599c88",
+      "CanonicalName": "Deep learning",
+      "EntityType": "TechnologyConcept",
+      "Description": "A subset of machine learning using layered neural networks.",
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Deep learning is a subset of ML"
+        }
+      ]
+    },
+    {
+      "EntityId": "a5a5bf32-16cf-4b3a-875d-9954fc8d9927",
+      "CanonicalName": "Descriptive capability",
+      "EntityType": "TechnologyConcept",
+      "Description": "",
+      "OntologicalClass": "",
+      "Aliases": [
+        "Descriptive AI",
+        "Descriptive"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "172572b2-3587-4c69-a489-ade1064297d6",
+          "Title": "Identify basic AI technology concepts",
+          "SourceText": "Descriptive: search, classification, summarization"
+        },
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "use descriptive AI for search and summarization"
+        }
+      ]
+    },
+    {
+      "EntityId": "89a11aad-289c-4eb6-882c-aae9594aaa08",
+      "CanonicalName": "Email spam detection",
+      "EntityType": "TechnologyConcept",
+      "Description": "Machine learning application that filters unwanted email messages.",
+      "OntologicalClass": null,
+      "Aliases": [],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Email spam detection: Machine learning identifies signals"
+        }
+      ]
+    },
+    {
+      "EntityId": "58a3271b-8fab-4ed0-8e8f-64378e2f4658",
+      "CanonicalName": "Machine learning",
+      "EntityType": "TechnologyConcept",
+      "Description": "Techniques that let systems learn patterns from data to make predictions or classifications.",
+      "OntologicalClass": null,
+      "Aliases": [
+        "ML"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "Machine learning is a set of techniques"
+        }
+      ]
+    },
+    {
+      "EntityId": "f61ce0e6-1c33-438b-8016-43163ed57ade",
+      "CanonicalName": "Neural network",
+      "EntityType": "TechnologyConcept",
+      "Description": "Layered network structures used in deep learning to model complex patterns.",
+      "OntologicalClass": null,
+      "Aliases": [
+        "layered neural networks"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "layered neural networks to discover complex patterns"
+        }
+      ]
+    },
+    {
+      "EntityId": "a23d603d-b798-4f12-a783-c83260439e63",
+      "CanonicalName": "Predictive capability",
+      "EntityType": "TechnologyConcept",
+      "Description": "",
+      "OntologicalClass": "",
+      "Aliases": [
+        "Predictive AI",
+        "Predictive"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "172572b2-3587-4c69-a489-ade1064297d6",
+          "Title": "Identify basic AI technology concepts",
+          "SourceText": "Predictive: forecasting, anomaly detection, scoring"
+        },
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "predictive AI for forecasting and anomaly detection"
+        }
+      ]
+    },
+    {
+      "EntityId": "6a3ebdd8-1ec2-4669-b735-6c0113c276f0",
+      "CanonicalName": "Prescriptive capability",
+      "EntityType": "TechnologyConcept",
+      "Description": "",
+      "OntologicalClass": "",
+      "Aliases": [
+        "Prescriptive AI",
+        "Prescriptive"
+      ],
+      "Occurrences": [
+        {
+          "EngramId": "172572b2-3587-4c69-a489-ade1064297d6",
+          "Title": "Identify basic AI technology concepts",
+          "SourceText": "Prescriptive: recommendations, optimization"
+        },
+        {
+          "EngramId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+          "Title": "Understand the foundations of AI",
+          "SourceText": "prescriptive AI for recommendations and optimization"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "ConnectionId": "ba30505d-4f47-4928-8205-122e70aba186",
+      "SourceEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "SourceEntityName": "AI",
+      "TargetEntityId": "c169fba0-b5c7-4984-95e4-b500edf5f242",
+      "TargetEntityName": "Business problem",
+      "RelationshipCategory": "AppliesTo",
+      "RelationshipLabel": "matches the right AI capability to the business need",
+      "Evidence": "Start with the business problem: Match the right capability to the need—use descriptive AI for search and summarization, predictive AI for forecasting and anomaly detection, and prescriptive AI for recommendations and optimization.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.92
+    },
+    {
+      "ConnectionId": "68414a82-3b79-4496-b8d5-ad9b37baf0bc",
+      "SourceEntityId": "3e4776d3-639c-4b1b-8a9e-be2a88599c88",
+      "SourceEntityName": "Deep learning",
+      "TargetEntityId": "c8d71955-3f0c-4c8f-941d-5d7234331cc6",
+      "TargetEntityName": "Medical imaging",
+      "RelationshipCategory": "AppliesTo",
+      "RelationshipLabel": "is applied in",
+      "Evidence": "In medical imaging, deep learning can help identify features associated with disease by analyzing pixel-level patterns across many images, improving detection accuracy over time.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "e89ac615-0f09-46d6-a0f0-b4c204011374",
+      "SourceEntityId": "34694545-97ca-4298-b3b3-93d8ef18b6b8",
+      "SourceEntityName": "Human-in-the-loop",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "AppliesTo",
+      "RelationshipLabel": "keeps humans involved in AI use",
+      "Evidence": "Keep humans in the loop: Use AI to augment expertise, not replace it—especially for high-stakes decisions where oversight, context, and judgment matter.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.94
+    },
+    {
+      "ConnectionId": "59962fa9-45dd-424b-9fad-538bbb765761",
+      "SourceEntityId": "336542d0-fa4f-4aa3-8119-4a3aa7c73d50",
+      "SourceEntityName": "Key Performance Indicator (KPI)",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "AppliesTo",
+      "RelationshipLabel": "measures AI initiatives",
+      "Evidence": "Tie AI initiatives to clear Key Performance Indicators (KPIs), such as time-to-value, accuracy, cost savings, customer satisfaction, and use A/B/N testing to validate impact.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.98
+    },
+    {
+      "ConnectionId": "de2afd7b-f6d3-4bd6-bd41-3e912e47f140",
+      "SourceEntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "SourceEntityName": "Data science",
+      "TargetEntityId": "0d1a8784-6fd3-4ff6-8ccd-397b15031f21",
+      "TargetEntityName": "Statistics",
+      "RelationshipCategory": "HasComponent",
+      "RelationshipLabel": "combines",
+      "Evidence": "It combines statistics, engineering, and domain expertise to define problems, prepare data, and evaluate outcomes.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "a049d48f-6147-4042-8ad9-3eabdac498b5",
+      "SourceEntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "SourceEntityName": "Data science",
+      "TargetEntityId": "407834a4-d078-42bb-9d2b-47f3261fc342",
+      "TargetEntityName": "Engineering",
+      "RelationshipCategory": "HasComponent",
+      "RelationshipLabel": "combines",
+      "Evidence": "It combines statistics, engineering, and domain expertise to define problems, prepare data, and evaluate outcomes.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.96
+    },
+    {
+      "ConnectionId": "29752cf0-1263-4bc3-9cf2-399fbfbababb",
+      "SourceEntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "SourceEntityName": "Data science",
+      "TargetEntityId": "b41a6d13-62b6-4022-8b68-1564a24f5964",
+      "TargetEntityName": "Domain expertise",
+      "RelationshipCategory": "HasComponent",
+      "RelationshipLabel": "combines",
+      "Evidence": "It combines statistics, engineering, and domain expertise to define problems, prepare data, and evaluate outcomes.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.96
+    },
+    {
+      "ConnectionId": "42b284e6-bbf6-4b47-8bb3-9ab9909658af",
+      "SourceEntityId": "3ccbf72c-a827-4eaa-a34b-da04c61d71ec",
+      "SourceEntityName": "Foundations of AI",
+      "TargetEntityId": "3e4776d3-639c-4b1b-8a9e-be2a88599c88",
+      "TargetEntityName": "Deep learning",
+      "RelationshipCategory": "HasComponent",
+      "RelationshipLabel": "includes as a foundational area",
+      "Evidence": "The title \"AI Foundations\" appears at the top in bold black text. The smallest, innermost circle is a deep navy blue labeled \"Deep Learning.\"",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.88
+    },
+    {
+      "ConnectionId": "a0ec86e2-2810-4b46-a6d7-228ba752e045",
+      "SourceEntityId": "3ccbf72c-a827-4eaa-a34b-da04c61d71ec",
+      "SourceEntityName": "Foundations of AI",
+      "TargetEntityId": "58a3271b-8fab-4ed0-8e8f-64378e2f4658",
+      "TargetEntityName": "Machine learning",
+      "RelationshipCategory": "HasComponent",
+      "RelationshipLabel": "includes as a foundational area",
+      "Evidence": "The title \"AI Foundations\" appears at the top in bold black text. The largest, outer circle is labeled \"Data Science\" and is a medium-bright blue. Inside it is a smaller, darker blue circle labeled \"Machine Learning.\"",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.89
+    },
+    {
+      "ConnectionId": "0619334d-330c-4f15-a01e-05cd09aa5df2",
+      "SourceEntityId": "3ccbf72c-a827-4eaa-a34b-da04c61d71ec",
+      "SourceEntityName": "Foundations of AI",
+      "TargetEntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "TargetEntityName": "Data science",
+      "RelationshipCategory": "HasComponent",
+      "RelationshipLabel": "includes as a foundational area",
+      "Evidence": "The title \"AI Foundations\" appears at the top in bold black text. The largest, outer circle is labeled \"Data Science\" and is a medium-bright blue.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.89
+    },
+    {
+      "ConnectionId": "521132fa-9add-4959-8aed-7336d35fe33c",
+      "SourceEntityId": "1a96bbe6-4451-4177-8421-8a5b0c882ced",
+      "SourceEntityName": "accuracy",
+      "TargetEntityId": "336542d0-fa4f-4aa3-8119-4a3aa7c73d50",
+      "TargetEntityName": "Key Performance Indicator (KPI)",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is an example of a KPI",
+      "Evidence": "Key Performance Indicators (KPIs), such as time-to-value, accuracy, cost savings, customer satisfaction",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "10bd542b-8107-4a46-89da-7e4723d57620",
+      "SourceEntityId": "37d329c3-aa80-4aa9-ab91-ba63694a8dee",
+      "SourceEntityName": "cost savings",
+      "TargetEntityId": "336542d0-fa4f-4aa3-8119-4a3aa7c73d50",
+      "TargetEntityName": "Key Performance Indicator (KPI)",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is an example of a KPI",
+      "Evidence": "Key Performance Indicators (KPIs), such as time-to-value, accuracy, cost savings, customer satisfaction",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "aab3404b-1659-4e43-93a1-8cb132848820",
+      "SourceEntityId": "d375bd72-a8f4-4700-811f-c82df8fe859e",
+      "SourceEntityName": "customer satisfaction",
+      "TargetEntityId": "336542d0-fa4f-4aa3-8119-4a3aa7c73d50",
+      "TargetEntityName": "Key Performance Indicator (KPI)",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is an example of a KPI",
+      "Evidence": "Key Performance Indicators (KPIs), such as time-to-value, accuracy, cost savings, customer satisfaction",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "bb061847-3c40-4ba5-9f1c-f7cc211f4b71",
+      "SourceEntityId": "a5a5bf32-16cf-4b3a-875d-9954fc8d9927",
+      "SourceEntityName": "Descriptive capability",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is a descriptive AI capability",
+      "Evidence": "use descriptive AI for search and summarization, predictive AI for forecasting and anomaly detection, and prescriptive AI for recommendations and optimization.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.97
+    },
+    {
+      "ConnectionId": "d74f8f84-384a-4ecb-b2e6-d56eda988a42",
+      "SourceEntityId": "a23d603d-b798-4f12-a783-c83260439e63",
+      "SourceEntityName": "Predictive capability",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is a predictive AI capability",
+      "Evidence": "use descriptive AI for search and summarization, predictive AI for forecasting and anomaly detection, and prescriptive AI for recommendations and optimization.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.97
+    },
+    {
+      "ConnectionId": "162edcf1-e253-4b0d-834c-0615a3e46302",
+      "SourceEntityId": "6a3ebdd8-1ec2-4669-b735-6c0113c276f0",
+      "SourceEntityName": "Prescriptive capability",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is a prescriptive AI capability",
+      "Evidence": "use descriptive AI for search and summarization, predictive AI for forecasting and anomaly detection, and prescriptive AI for recommendations and optimization.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.97
+    },
+    {
+      "ConnectionId": "ac7833fd-21b8-4a8f-99e2-ac30e078dc9d",
+      "SourceEntityId": "0079db0e-d2d3-49c4-9c77-f4310a091e65",
+      "SourceEntityName": "time-to-value",
+      "TargetEntityId": "336542d0-fa4f-4aa3-8119-4a3aa7c73d50",
+      "TargetEntityName": "Key Performance Indicator (KPI)",
+      "RelationshipCategory": "IsA",
+      "RelationshipLabel": "is an example of a KPI",
+      "Evidence": "Key Performance Indicators (KPIs), such as time-to-value, accuracy, cost savings, customer satisfaction",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "5c92bb02-d46d-4cd2-a1a9-87c14708dc55",
+      "SourceEntityId": "d7966215-04fa-44d0-a99a-ad8f9b3ac0e7",
+      "SourceEntityName": "Business leader",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "RelatedTo",
+      "RelationshipLabel": "focuses on translating AI capabilities into reliable value",
+      "Evidence": "For business leaders, the real question is: how do you translate capabilities into reliable, repeatable value?",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.9
+    },
+    {
+      "ConnectionId": "c4c7161f-ceb4-4714-aad5-367ba788c4f8",
+      "SourceEntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "SourceEntityName": "Data science",
+      "TargetEntityId": "d597c36f-0a39-4e0e-a6c4-8c592dc839b6",
+      "TargetEntityName": "Data",
+      "RelationshipCategory": "RelatedTo",
+      "RelationshipLabel": "turns into actionable insight",
+      "Evidence": "Data science is an interdisciplinary field that turns data into actionable insight.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "44a0899f-7a25-4e8a-bf1d-6735f8e44132",
+      "SourceEntityId": "58a3271b-8fab-4ed0-8e8f-64378e2f4658",
+      "SourceEntityName": "Machine learning",
+      "TargetEntityId": "1dfda1f5-481f-4424-888a-fdc05e97f58e",
+      "TargetEntityName": "Data science",
+      "RelationshipCategory": "RelatedTo",
+      "RelationshipLabel": "is nested within",
+      "Evidence": "The circles visually imply a nested/hierarchical relationship (Deep Learning ⊂ Machine Learning ⊂ Data Science).",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.95
+    },
+    {
+      "ConnectionId": "084d9810-1cbc-429b-b353-6401bb247477",
+      "SourceEntityId": "58a3271b-8fab-4ed0-8e8f-64378e2f4658",
+      "SourceEntityName": "Machine learning",
+      "TargetEntityId": "d597c36f-0a39-4e0e-a6c4-8c592dc839b6",
+      "TargetEntityName": "Data",
+      "RelationshipCategory": "RelatedTo",
+      "RelationshipLabel": "learns patterns from",
+      "Evidence": "Machine learning is a set of techniques that lets systems learn patterns from data and make predictions or classifications.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "e48b62ca-68db-4f76-832d-57498804be10",
+      "SourceEntityId": "3e4776d3-639c-4b1b-8a9e-be2a88599c88",
+      "SourceEntityName": "Deep learning",
+      "TargetEntityId": "f61ce0e6-1c33-438b-8016-43163ed57ade",
+      "TargetEntityName": "Neural network",
+      "RelationshipCategory": "Requires",
+      "RelationshipLabel": "uses layered neural networks",
+      "Evidence": "Deep learning is a subset of ML that uses layered neural networks to discover complex patterns, especially in unstructured data (images, text, audio).",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.98
+    },
+    {
+      "ConnectionId": "c18a8007-2207-4d8e-9eb6-efa11789dfd5",
+      "SourceEntityId": "3e4776d3-639c-4b1b-8a9e-be2a88599c88",
+      "SourceEntityName": "Deep learning",
+      "TargetEntityId": "d597c36f-0a39-4e0e-a6c4-8c592dc839b6",
+      "TargetEntityName": "Data",
+      "RelationshipCategory": "Requires",
+      "RelationshipLabel": "requires large datasets",
+      "Evidence": "it also requires large datasets and significant compute.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.94
+    },
+    {
+      "ConnectionId": "ecdec30a-b87f-46e7-b6b8-8c1c6f328e29",
+      "SourceEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "SourceEntityName": "AI",
+      "TargetEntityId": "b41a6d13-62b6-4022-8b68-1564a24f5964",
+      "TargetEntityName": "Domain expertise",
+      "RelationshipCategory": "Supports",
+      "RelationshipLabel": "augments expertise",
+      "Evidence": "Use AI to augment expertise, not replace it—especially for high-stakes decisions where oversight, context, and judgment matter.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "a5955f90-7896-4c0b-aad1-83c78934bfa0",
+      "SourceEntityId": "d597c36f-0a39-4e0e-a6c4-8c592dc839b6",
+      "SourceEntityName": "Data",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "Supports",
+      "RelationshipLabel": "is the foundation of trustworthy AI when clean, consistent, and well-labeled",
+      "Evidence": "Clean, consistent, and well-labeled data is the foundation of trustworthy AI; without it, even the best models underperform.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.98
+    },
+    {
+      "ConnectionId": "d24a86e8-97fc-4ca4-a4ee-d0d164766786",
+      "SourceEntityId": "ba7fa35c-6aeb-4559-b878-34e36ff2a8f4",
+      "SourceEntityName": "Data scientist",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "Supports",
+      "RelationshipLabel": "leads the design and validation of AI solutions",
+      "Evidence": "In most organizations, data scientists lead the design and validation of AI solutions.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.98
+    },
+    {
+      "ConnectionId": "8cee6e2c-3f83-4d32-8b6e-7b9fd1cc26f9",
+      "SourceEntityId": "3e4776d3-639c-4b1b-8a9e-be2a88599c88",
+      "SourceEntityName": "Deep learning",
+      "TargetEntityId": "1a96bbe6-4451-4177-8421-8a5b0c882ced",
+      "TargetEntityName": "accuracy",
+      "RelationshipCategory": "Supports",
+      "RelationshipLabel": "improves detection accuracy",
+      "Evidence": "deep learning can help identify features associated with disease by analyzing pixel-level patterns across many images, improving detection accuracy over time.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.98
+    },
+    {
+      "ConnectionId": "b034e17a-64d8-4e23-96a4-dac4096ae8a9",
+      "SourceEntityId": "2be74205-1b48-4656-8af8-0a04787a9254",
+      "SourceEntityName": "A/B/N testing",
+      "TargetEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "TargetEntityName": "AI",
+      "RelationshipCategory": "UsedFor",
+      "RelationshipLabel": "validates the impact of AI initiatives",
+      "Evidence": "Tie AI initiatives to clear Key Performance Indicators (KPIs), such as time-to-value, accuracy, cost savings, customer satisfaction, and use A/B/N testing to validate impact.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "inferred",
+      "Confidence": 0.94
+    },
+    {
+      "ConnectionId": "199e5c9d-a401-42f3-ba95-8394bbceb0a1",
+      "SourceEntityId": "aa8bc2af-5b72-4ebe-a3d0-99a6789f0bef",
+      "SourceEntityName": "AI",
+      "TargetEntityId": "c6bd717a-d9f7-43ba-859a-ab17960cb77f",
+      "TargetEntityName": "Task automation",
+      "RelationshipCategory": "UsedFor",
+      "RelationshipLabel": "automates tasks",
+      "Evidence": "Modern AI builds on data science and machine learning to automate tasks that benefit from human like judgment.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.98
+    },
+    {
+      "ConnectionId": "8b330d17-dd25-4cd7-9ee6-146b21e2627f",
+      "SourceEntityId": "58a3271b-8fab-4ed0-8e8f-64378e2f4658",
+      "SourceEntityName": "Machine learning",
+      "TargetEntityId": "73d33b09-74bc-4f9d-a4db-783b3890e1d5",
+      "TargetEntityName": "Credit card fraud detection",
+      "RelationshipCategory": "UsedFor",
+      "RelationshipLabel": "flags unusual patterns to reduce risk",
+      "Evidence": "Credit card fraud detection: Machine learning flags unusual patterns, like atypical locations or sudden spending spikes, to reduce risk.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    },
+    {
+      "ConnectionId": "28aee604-3b07-4ce3-8bdd-6a908a352afb",
+      "SourceEntityId": "58a3271b-8fab-4ed0-8e8f-64378e2f4658",
+      "SourceEntityName": "Machine learning",
+      "TargetEntityId": "89a11aad-289c-4eb6-882c-aae9594aaa08",
+      "TargetEntityName": "Email spam detection",
+      "RelationshipCategory": "UsedFor",
+      "RelationshipLabel": "identifies signals to filter unwanted messages",
+      "Evidence": "Email spam detection: Machine learning identifies signals—such as suspicious words, blocked domains, or mismatched URLs—to filter unwanted messages.",
+      "SourceSectionId": "073080c1-68a1-42d8-8e70-b422a2cdc2d7",
+      "EpistemicStatus": "explicit",
+      "Confidence": 0.99
+    }
+  ]
+} 
