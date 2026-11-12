@@ -45,6 +45,26 @@ public sealed class SkillConfiguration : IEntityTypeConfiguration<Skill>
         builder.Property(x => x.DocumentFileName)
             .HasMaxLength(300);
 
+        builder.Property(x => x.SourceCourseTitle)
+            .HasMaxLength(300);
+
+        builder.Property(x => x.SourceCourseProvider)
+            .HasMaxLength(200);
+
+        builder.Property(x => x.SourceCourseUrl)
+            .HasMaxLength(1000);
+
+        builder.Property(x => x.SourceOutlineJson)
+            .HasColumnType("nvarchar(max)");
+
+        builder.Property(x => x.SourceOutlineSource)
+            .HasMaxLength(20);
+
+        builder.HasOne<HumanOS.Models.Processes.ProcessDocumentRecord>()
+            .WithMany()
+            .HasForeignKey(x => x.SourceProcessDocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.Property(x => x.CreatedDate)
             .IsRequired();
 

@@ -294,6 +294,25 @@ export interface CapabilityOutlineNode {
   /** True when this node is a bare outline/index entry with no real
    * developed content (2026-08-17) — offer AI content expansion for it. */
   HasSparseContent: boolean;
+  /** Verbatim source text for this node (2026-11-02 "reused process index"
+   * feature) — only populated when the outline was seeded directly from an
+   * already-extracted ProcessDocument (HumanOS Enterprise "Save as
+   * Capability"), never when detected/inferred from a fresh PDF scan.
+   * Shown read/write in the Learning path design review step so the
+   * designer can verify and correct the real text before approving,
+   * instead of relying solely on StartMarker + a raw PDF re-scan. */
+  Content?: string;
+  /** Real images (base64 data URLs) embedded in the source document's page(s)
+   * covering this node — only populated when the outline was seeded from an
+   * already-extracted ProcessDocument's step images (HumanOS Enterprise
+   * "Save as Capability" flow, 2026-11-03). Round-tripped back to the
+   * backend unchanged inside `approvedOutline` so the generation agent can
+   * actually see what the real figure shows (see
+   * StructuredLearningExtractionService + PdfImageDescriptionAgent). Name
+   * matches the backend DTO's PascalCase `ImageDataUrls` exactly (same
+   * convention as every other field on this interface — no camelCase
+   * naming policy is applied to this JSON contract). */
+  ImageDataUrls?: string[];
 }
 
 /** One proposed CHAPTER (becomes a graph "level") — see

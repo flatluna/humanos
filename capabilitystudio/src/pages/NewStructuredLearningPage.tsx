@@ -21,6 +21,8 @@ import {
   Briefcase,
   RotateCcw,
   ClipboardCheck,
+  Download,
+  X,
 } from 'lucide-react';
 import {
   startStructuredLearningExtraction,
@@ -34,6 +36,7 @@ import {
   previewCapabilityOutline,
   refineOutlineTitles,
   type CapabilityOutlineChapter,
+  type CapabilityOutlineNode,
   type CapabilityOutlineSource,
   type DocumentTypeName,
 } from '../lib/api/pdfPipelineApi';
@@ -47,6 +50,24 @@ import SearchableCombobox from '../components/SearchableCombobox';
 import { useAuth } from '../auth/AuthContext';
 
 const STEPS_KEY = 'newStructuredLearning.steps';
+
+/** Minimal shape of HumanOS Enterprise's `GET /process-documents/{id}` response that this page
+ * reads — raw snake_case wire keys (see backend's ProcessDocumentStructure, which overrides the
+ * default camelCase naming via explicit JsonPropertyName attributes), fetched directly instead of
+ * through httpClient's apiGet so its camelCase-to-PascalCase conversion doesn't mangle them. */
+interface ProcessDocumentStructureRaw {
+  chapters?: Array<{
+    chapter_number?: string;
+    title?: string;
+    description?: string;
+    steps?: Array<{
+      step_number?: string;
+      step_name?: string;
+      source_content?: string;
+      step_images?: Array<{ data_url?: string }>;
+    }>;
+  }>;
+}
 
 /** Document Type Detection Engine (2026-08-17) — the 8 structural types the
  * backend classifier can recommend, shown as override options once a
@@ -100,6 +121,14 @@ export default function NewStructuredLearningPage() {
   // initial pedagogy defaults — same fields/conventions as NewCapabilityPage,
   // now available up front instead of only after Step 2 extraction.
   const isCompanyAccount = !!user?.tenantId;
+  // Enterprise (corporate-employee) launches must never offer the Academic/
+  // General course type — that path is for K-12/university content only
+  // (2026-11-04, same rule as the "New Academic Learning" sidebar button).
+  const isEnterpriseSource = user?.sourceAppType === 'Enterprise';
+  // University launches (sourceAppType "University", 2026-11-08) have a
+  // tenantId like Enterprise does, but must only offer the Academic course
+  // type — the "enterprise skill course" path doesn't apply to universities.
+  const isUniversitySource = user?.sourceAppType === 'University';
   // Global/personal visibility (2026-08-19) — same convention as
   // NewCapabilityPage's isGlobal: defaults to false (Personal/tenant-only).
   const [isGlobal, setIsGlobal] = useState(false);
@@ -108,17 +137,23 @@ export default function NewStructuredLearningPage() {
   const [topics, setTopics] = useState<StructuredLearningTopic[]>([]);
   const [topicId, setTopicId] = useState<string>('');
   const [pedagogicalAudience, setPedagogicalAudience] = useState<'Standard' | 'YoungLearner'>('Standard');
-  // Content depth (2026-09-18) — L100 (foundational) / L200 (intermediate) /
-  // L300 (advanced), same convention Microsoft Learn uses for course levels.
-  const [courseLevel, setCourseLevel] = useState<'L100' | 'L200' | 'L300'>('L100');
-  const [maxDeepDiveCardsPerNode, setMaxDeepDiveCardsPerNode] = useState<number>(3);
+  // Content depth — L100 (foundational) / L200 (intermediate) / L300
+  // (advanced), same convention Microsoft Learn uses for course levels.
+  // No longer selectable in the UI (removed 2026-11-03, confusing for
+  // authors); fixed at L200 (intermediate) as a sensible default.
+  const courseLevel: 'L100' | 'L200' | 'L300' = 'L200';
+  const [maxDeepDiveCardsPerNode, setMaxDeepDiveCardsPerNode] = useState<number>(1);
+  // Designer-controlled Learn-step illustration toggle (2026-10-30) — scened
+  // (multi image+audio per lecture) is visually richer but up to 6x slower
+  // to generate; defaults OFF for new courses so generation stays fast.
+  const [useScenedLecture, setUseScenedLecture] = useState(false);
   const [includeProductionStep, setIncludeProductionStep] = useState(true);
   const [includeHypothesisStep, setIncludeHypothesisStep] = useState(true);
   const [includeRecallStep, setIncludeRecallStep] = useState(true);
-  const [recallItemsRequired, setRecallItemsRequired] = useState('');
+  const [recallItemsRequired, setRecallItemsRequired] = useState('1');
   const [includeAssessmentStep, setIncludeAssessmentStep] = useState(true);
   const [assessmentQuestionType, setAssessmentQuestionType] = useState<StructuredLearningAssessmentQuestionType>('MultipleChoice');
-  const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState('');
+  const [assessmentQuestionsPerRound, setAssessmentQuestionsPerRound] = useState('1');
 
   // Course design toggles (2026-10-06) — learner-facing features the
   // designer can turn on/off per course, plus the Static/Dynamic
@@ -164,9 +199,17 @@ export default function NewStructuredLearningPage() {
 
   const [careerCategory, setCareerCategory] = useState<string>('');
   const [targetSkill, setTargetSkill] = useState<string>('');
+  const [ownerDepartment, setOwnerDepartment] = useState<string>('');
+  // Captured once at mount: when this page is opened from HumanOS Enterprise with a
+  // skillId (via "Generate course"), Step 1's course-type/category/skill selection must
+  // stay fixed — the user already chose all of that in Enterprise, so re-editing it here
+  // would desync Studio from the Capability it's generating a course for.
+  const [lockedFromEnterprise] = useState<boolean>(() => !!new URLSearchParams(window.location.search).get('skillId'));
   const [allCompanySkills, setAllCompanySkills] = useState<SkillDto[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
-  const [courseType, setCourseType] = useState<'enterprise' | 'academic'>(isCompanyAccount ? 'enterprise' : 'academic');
+  const [courseType, setCourseType] = useState<'enterprise' | 'academic'>(
+    isCompanyAccount && !isUniversitySource ? 'enterprise' : 'academic',
+  );
   const autoSetDocumentNameRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -174,12 +217,18 @@ export default function NewStructuredLearningPage() {
     const urlName = searchParams.get('name') || searchParams.get('targetSkill');
     const urlCategory = searchParams.get('category') || searchParams.get('careerCategory');
     const urlDocFileName = searchParams.get('docFileName') || 'document.pdf';
+    const urlDepartment = searchParams.get('department');
+    const urlProcessDocumentId = searchParams.get('processDocumentId');
+    const urlOrganizationId = searchParams.get('organizationId');
 
     if (urlName || urlSkillId) {
       setCourseType('enterprise');
       if (urlCategory) {
         setCareerCategory(urlCategory);
         setSelectedCategoryFilter(urlCategory);
+      }
+      if (urlDepartment) {
+        setOwnerDepartment(urlDepartment);
       }
       if (urlName) {
         setTargetSkill(urlName);
@@ -188,8 +237,14 @@ export default function NewStructuredLearningPage() {
       }
 
       if (urlSkillId) {
+        // Prefer the HR-reviewed "enriched PDF" (title/summary/index/content/images,
+        // generated at Step 5 "Approve & Save Process to Database") over the raw
+        // uploaded source document, when this course comes from a saved process.
+        const pdfSourceUrl = urlProcessDocumentId && urlOrganizationId
+          ? `http://localhost:7071/api/process-documents/${urlProcessDocumentId}/enriched-pdf?organizationId=${encodeURIComponent(urlOrganizationId)}`
+          : `http://localhost:7071/api/skills/${urlSkillId}/document`;
         setAutoLoadedPdfStatus(`Cargando documento PDF desde el Data Lake para "${urlName || 'Skill'}"...`);
-        fetch(`http://localhost:7071/api/skills/${urlSkillId}/document`)
+        fetch(pdfSourceUrl)
           .then(async (res) => {
             if (!res.ok) throw new Error('No PDF found');
             const blob = await res.blob();
@@ -208,6 +263,79 @@ export default function NewStructuredLearningPage() {
       }
     }
   }, [searchParams]);
+
+  // Reuse the already-extracted process index (2026 "Generar curso" feature): when this
+  // Capability came from HumanOS Enterprise's "Save as Capability" (Skill.SourceProcessDocumentId
+  // set), fetch that ProcessDocument's real, HR-reviewed chapters/steps — including each step's
+  // verbatim source_content excerpt — and seed the outline directly from it instead of letting
+  // Studio's own AI outline-detection re-guess chapter boundaries from the raw PDF. This both
+  // saves an AI call and guarantees Studio's outline matches what HR already approved.
+  useEffect(() => {
+    const urlSkillId = searchParams.get('skillId');
+    const tenantId = user?.tenantId ?? DEFAULT_STUDIO_TENANT_ID;
+    if (!urlSkillId || !tenantId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const skillsRes = await fetch(`http://localhost:7071/api/tenants/${tenantId}/skills`);
+        if (!skillsRes.ok) return;
+        const skills = (await skillsRes.json()) as Array<{ skillId?: string; sourceProcessDocumentId?: string | null }>;
+        const matched = skills.find((s) => s.skillId === urlSkillId);
+        const processDocumentId = matched?.sourceProcessDocumentId;
+        if (!processDocumentId || cancelled) return;
+
+        const structRes = await fetch(
+          `http://localhost:7071/api/process-documents/${processDocumentId}?organizationId=${encodeURIComponent(tenantId)}`,
+        );
+        if (!structRes.ok || cancelled) return;
+        const struct = (await structRes.json()) as ProcessDocumentStructureRaw;
+
+        const chapters: CapabilityOutlineChapter[] = (struct.chapters ?? []).map((chapter) => {
+          const nodes: CapabilityOutlineNode[] = (chapter.steps ?? []).map((step) => {
+            const content = step.source_content?.trim() || step.step_name || '';
+            const images = (step.step_images ?? [])
+              .map((img) => img.data_url)
+              .filter((url): url is string => !!url);
+            return {
+              Title: `${step.step_number ? `${step.step_number}. ` : ''}${step.step_name}`,
+              StartMarker: content.slice(0, 80),
+              TotalCharacters: content.length,
+              TotalTokens: Math.max(1, Math.round(content.length / 4)),
+              HasSparseContent: content.length < 40,
+              Content: content,
+              ImageDataUrls: images.length > 0 ? images : undefined,
+            };
+          });
+          return {
+            Title: `${chapter.chapter_number ? `${chapter.chapter_number}. ` : ''}${chapter.title}`,
+            StartMarker: (chapter.description || chapter.title || '').slice(0, 80),
+            Nodes: nodes,
+            TotalCharacters: nodes.reduce((sum, n) => sum + n.TotalCharacters, 0),
+            TotalTokens: nodes.reduce((sum, n) => sum + n.TotalTokens, 0),
+          };
+        });
+
+        if (chapters.length === 0 || cancelled) return;
+
+        setOutline(chapters);
+        setOutlineSource('Detected');
+        setOutlineTotalCharacters(chapters.reduce((sum, c) => sum + c.TotalCharacters, 0));
+        setOutlineTotalTokens(chapters.reduce((sum, c) => sum + c.TotalTokens, 0));
+        setOutlineError(null);
+        setAutoLoadedPdfStatus(
+          `Índice de proceso reutilizado (${chapters.length} capítulos, ya revisado en HumanOS) — no es necesario volver a analizar el PDF.`,
+        );
+      } catch {
+        // Silent fallback: if this fails, the normal "Upload content" PDF re-analysis path
+        // (previewCapabilityOutline) still runs when the designer reaches Course design.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, user?.tenantId]);
 
   useEffect(() => {
     getSubjects().then(setSubjects).catch(() => setSubjects([]));
@@ -251,6 +379,12 @@ export default function NewStructuredLearningPage() {
   const [sourceType, setSourceType] = useState<'pdf' | 'text'>('pdf');
   const [file, setFile] = useState<File | null>(null);
   const [ideaText, setIdeaText] = useState('');
+  // Mirrors the Graph/Traditional wizards' "strictly follow the pasted
+  // index" toggle (2026-08-03 design) — without it, pasting an explicit
+  // numbered Module/subsection outline here still gets rewritten/collapsed
+  // by IdeaToDocumentAgent instead of mirrored verbatim one chapter per
+  // module and one node per subsection.
+  const [strictSyllabusMode, setStrictSyllabusMode] = useState(false);
 
   // Same "Learning path design" outline preview the Graph/Traditional
   // wizards already use — reused as-is, no changes to that endpoint.
@@ -259,6 +393,33 @@ export default function NewStructuredLearningPage() {
   const [outlineLoading, setOutlineLoading] = useState(false);
   const [outlineError, setOutlineError] = useState<string | null>(null);
   const [expandedDocumentText, setExpandedDocumentText] = useState<string | null>(null);
+
+  // Rotating sub-status for the "Analyzing the document..." wait (2026-11-05)
+  // — a PDF with many embedded images can take 1-2+ minutes here (text
+  // extraction, then an AI vision call per embedded image, then chapter/
+  // section detection), and the old static spinner gave no sense of what
+  // was actually happening or whether it was stuck. These messages don't
+  // reflect real backend progress (the preview endpoint is a single
+  // blocking call with no progress events) — they just cycle through the
+  // pipeline's real phases in order so the wait feels explained instead of
+  // silent. Index advances every few seconds while outlineLoading is true.
+  const [outlineLoadingPhaseIndex, setOutlineLoadingPhaseIndex] = useState(0);
+  const outlineLoadingPhaseKeys = [
+    'newStructuredLearning.outlineLoadingPhase1',
+    'newStructuredLearning.outlineLoadingPhase2',
+    'newStructuredLearning.outlineLoadingPhase3',
+    'newStructuredLearning.outlineLoadingPhase4',
+  ];
+  useEffect(() => {
+    if (!outlineLoading) {
+      setOutlineLoadingPhaseIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setOutlineLoadingPhaseIndex((previous) => Math.min(previous + 1, outlineLoadingPhaseKeys.length - 1));
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [outlineLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Document Type Detection Engine (2026-08-17, Paso 3a) — the engine's
   // recommendation from the same outline-preview call, plus the
@@ -313,6 +474,7 @@ export default function NewStructuredLearningPage() {
           text: ideaText.trim(),
           capabilityName: documentName.trim(),
           languageCode,
+          strictSyllabusMode,
           documentType: overrideDocumentType,
         });
         setExpandedDocumentText(result.ExpandedDocumentText ?? null);
@@ -400,6 +562,48 @@ export default function NewStructuredLearningPage() {
     );
   }
 
+  /** Lets the designer correct a reused process index's verbatim Content
+   * (2026-11-02) before approving — e.g. when the HumanOS extraction
+   * captured too little real text, they can paste/complete it here so
+   * generation has real content to work from instead of inventing it. */
+  function updateNodeContent(chapterIndex: number, nodeIndex: number, content: string) {
+    setOutline((previous) =>
+      previous
+        ? previous.map((chapter, cIndex) =>
+            cIndex === chapterIndex
+              ? {
+                  ...chapter,
+                  Nodes: chapter.Nodes.map((node, nIndex) =>
+                    nIndex === nodeIndex
+                      ? {
+                          ...node,
+                          Content: content,
+                          TotalCharacters: content.length,
+                          TotalTokens: Math.max(1, Math.round(content.length / 4)),
+                          HasSparseContent: content.trim().length < 40,
+                        }
+                      : node,
+                  ),
+                }
+              : chapter,
+          )
+        : previous,
+    );
+  }
+
+  const [expandedContentNodes, setExpandedContentNodes] = useState<Set<string>>(new Set());
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  function toggleNodeContent(chapterIndex: number, nodeIndex: number) {
+    const key = `${chapterIndex}-${nodeIndex}`;
+    setExpandedContentNodes((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+
   /** Opt-in "Mejorar títulos con IA" (2026-08-17) — the only LLM call in
    * this otherwise-free Paso 5 flow, only when the designer clicks it.
    * One batched call regardless of chapter/node count. */
@@ -439,15 +643,18 @@ export default function NewStructuredLearningPage() {
         isGlobal,
         documentName: documentName.trim(),
         languageCode,
+        strictSyllabusMode,
         approvedOutline: outline,
         preExpandedDocumentText: sourceType === 'text' ? expandedDocumentText : null,
         subjectId: courseType === 'academic' ? (subjectId || null) : null,
         topicId: courseType === 'academic' ? (topicId || null) : null,
         category: courseType === 'enterprise' ? (careerCategory || null) : null,
         targetSkill: courseType === 'enterprise' ? (targetSkill.trim() || null) : null,
+        ownerDepartment: courseType === 'enterprise' ? (ownerDepartment.trim() || null) : null,
         pedagogicalAudience,
         courseLevel,
         maxDeepDiveCardsPerNode: Math.max(1, Math.min(10, maxDeepDiveCardsPerNode)),
+        useScenedLecture,
         includeProductionStep,
         includeHypothesisStep,
         includeRecallStep,
@@ -503,6 +710,26 @@ export default function NewStructuredLearningPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          onClick={() => setLightboxImage(null)}
+        >
+          <img
+            src={lightboxImage}
+            alt="Imagen del documento original en tamaño completo"
+            className="max-h-[90vh] max-w-[90vw] rounded-xl border border-white/10 object-contain shadow-2xl"
+          />
+          <button
+            type="button"
+            onClick={() => setLightboxImage(null)}
+            className="absolute right-6 top-6 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+            title="Cerrar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
       <h1 className="mb-8 whitespace-nowrap bg-gradient-to-r from-emerald-300 via-sky-400 to-violet-400 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl">
         {t('newStructuredLearning.studioBuilderTitle')}
       </h1>
@@ -520,55 +747,61 @@ export default function NewStructuredLearningPage() {
           </div>
 
           {/* Type Selector Cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (isCompanyAccount) {
-                  setCourseType('enterprise');
-                }
-              }}
-              disabled={!isCompanyAccount}
-              className={`flex flex-col items-start gap-3 rounded-2xl border p-5 text-left transition-all ${
-                courseType === 'enterprise'
-                  ? 'border-brand-400 bg-brand-500/10 shadow-lg shadow-brand-500/10'
-                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
-              } ${!isCompanyAccount ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-300">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">{t('newStructuredLearning.enterpriseCourseTitle')}</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {t('newStructuredLearning.enterpriseCourseDesc')}
-                </p>
-              </div>
-            </button>
+          <div className={`grid grid-cols-1 gap-4 ${isEnterpriseSource || isUniversitySource ? '' : 'sm:grid-cols-2'}`}>
+            {!isUniversitySource && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCompanyAccount && !lockedFromEnterprise) {
+                    setCourseType('enterprise');
+                  }
+                }}
+                disabled={!isCompanyAccount || lockedFromEnterprise}
+                className={`flex flex-col items-start gap-3 rounded-2xl border p-5 text-left transition-all ${
+                  courseType === 'enterprise'
+                    ? 'border-brand-400 bg-brand-500/10 shadow-lg shadow-brand-500/10'
+                    : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
+                } ${!isCompanyAccount || lockedFromEnterprise ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-300">
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white">{t('newStructuredLearning.enterpriseCourseTitle')}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {t('newStructuredLearning.enterpriseCourseDesc')}
+                  </p>
+                </div>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setCourseType('academic');
-                setTargetSkill('');
-                setCareerCategory('');
-              }}
-              className={`flex flex-col items-start gap-3 rounded-2xl border p-5 text-left transition-all ${
-                courseType === 'academic'
-                  ? 'border-cyan-400 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
-                  : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
-              }`}
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
-                <GraduationCap className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">{t('newStructuredLearning.academicCourseTitle')}</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {t('newStructuredLearning.academicCourseDesc')}
-                </p>
-              </div>
-            </button>
+            {!isEnterpriseSource && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (lockedFromEnterprise) return;
+                  setCourseType('academic');
+                  setTargetSkill('');
+                  setCareerCategory('');
+                }}
+                disabled={lockedFromEnterprise}
+                className={`flex flex-col items-start gap-3 rounded-2xl border p-5 text-left transition-all ${lockedFromEnterprise ? 'opacity-50 cursor-not-allowed' : ''} ${
+                  courseType === 'academic'
+                    ? 'border-cyan-400 bg-cyan-500/10 shadow-lg shadow-cyan-500/10'
+                    : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
+                }`}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
+                  <GraduationCap className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white">{t('newStructuredLearning.academicCourseTitle')}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {t('newStructuredLearning.academicCourseDesc')}
+                  </p>
+                </div>
+              </button>
+            )}
           </div>
 
           {/* MODE 1: ENTERPRISE SKILL COURSE */}
@@ -593,12 +826,15 @@ export default function NewStructuredLearningPage() {
                     <button
                       key={filter.id}
                       type="button"
-                      onClick={() => setSelectedCategoryFilter(filter.id)}
+                      onClick={() => {
+                        if (!lockedFromEnterprise) setSelectedCategoryFilter(filter.id);
+                      }}
+                      disabled={lockedFromEnterprise}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                         selectedCategoryFilter === filter.id
                           ? 'bg-brand-500/20 text-brand-300 border border-brand-400/40'
                           : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-transparent'
-                      }`}
+                      } ${lockedFromEnterprise ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {filter.label}
                     </button>
@@ -609,6 +845,7 @@ export default function NewStructuredLearningPage() {
               <Field label={t('newStructuredLearning.companyCatalogSkillLabel')} hint={t('newStructuredLearning.companyCatalogSkillHint')} required>
                 <SearchableCombobox
                   value={targetSkill}
+                  disabled={lockedFromEnterprise}
                   onChange={(val) => setTargetSkill(val)}
                   onSelect={(option) => {
                     const skill = allCompanySkills.find((s) => s.SkillId === option.id || s.Name === option.label);
@@ -631,13 +868,21 @@ export default function NewStructuredLearningPage() {
                 />
               </Field>
 
-              {careerCategory && (
+              {(careerCategory || lockedFromEnterprise) && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/5 px-3.5 py-2.5 text-xs text-slate-300">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-white">{t('newStructuredLearning.assignedCategoryLabel')}</span>
                     <span className="rounded-full bg-brand-500/20 px-2.5 py-0.5 font-medium text-brand-300 border border-brand-500/30">
                       {getCategoryBadgeText(careerCategory)}
                     </span>
+                    {ownerDepartment && (
+                      <>
+                        <span className="font-medium text-white">{t('newStructuredLearning.summaryOwnerDepartment')}:</span>
+                        <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 font-medium text-emerald-700 border border-emerald-500/30">
+                          {ownerDepartment}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <span className="text-[11px] text-emerald-400 font-medium">{t('newStructuredLearning.domainSubjectNotRequired')}</span>
                 </div>
@@ -808,15 +1053,24 @@ export default function NewStructuredLearningPage() {
           </div>
 
           {!hasVisitedAllCourseDesignTabs && (
-            <p className="flex items-center gap-1.5 text-xs text-amber-300">
-              <Sparkles className="h-3.5 w-3.5 shrink-0" />
-              {t('newStructuredLearning.courseDesignVisitAllTabsHint')}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-xs text-amber-300">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                {t('newStructuredLearning.courseDesignVisitAllTabsHint')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setVisitedCourseDesignTabs(new Set(ALL_COURSE_DESIGN_TABS))}
+                className="shrink-0 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/20"
+              >
+                {t('newStructuredLearning.useDefaultsButton')}
+              </button>
+            </div>
           )}
 
           {courseDesignTab === 'general' && (
             <div className="space-y-6 animate-fade-in">
-              {courseType !== 'enterprise' ? (
+              {courseType !== 'enterprise' && (
                 <Field label={t('newCapability.pedagogicalAudienceLabel')} hint={t('newCapability.pedagogicalAudienceHint')}>
                   <div className="grid grid-cols-2 gap-2">
                     {[
@@ -841,25 +1095,23 @@ export default function NewStructuredLearningPage() {
                     })}
                   </div>
                 </Field>
-              ) : (
-                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5 text-xs text-slate-300">
-                  <span className="font-semibold text-white">Audiencia pedagógica:</span> Estándar (Adultos / Profesional). <span className="text-slate-400 font-normal">Young Learners (K-1/K-2) no aplica para cursos corporativos.</span>
-                </div>
               )}
 
-              <Field label="Nivel de contenido" hint="Ajusta la profundidad del contenido según la seniority del puesto — no cambia el tono, solo qué tanto se explica desde cero vs. cuánto se asume ya dominado.">
-                <div className="grid grid-cols-3 gap-2">
+              <Field
+                label={t('newStructuredLearning.learnNarrationLabel')}
+                hint={t('newStructuredLearning.learnNarrationHint')}
+              >
+                <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: 'L100' as const, label: 'L100 · Fundacional', hint: 'Sin conocimiento previo' },
-                    { value: 'L200' as const, label: 'L200 · Intermedio', hint: 'Más ejemplos aplicados' },
-                    { value: 'L300' as const, label: 'L300 · Avanzado', hint: 'Trade-offs y arquitectura' },
+                    { value: false, label: t('newStructuredLearning.learnNarrationSingleLabel'), hint: t('newStructuredLearning.learnNarrationSingleHint') },
+                    { value: true, label: t('newStructuredLearning.learnNarrationScenedLabel'), hint: t('newStructuredLearning.learnNarrationScenedHint') },
                   ].map((option) => {
-                    const active = courseLevel === option.value;
+                    const active = useScenedLecture === option.value;
                     return (
                       <button
-                        key={option.value}
+                        key={String(option.value)}
                         type="button"
-                        onClick={() => setCourseLevel(option.value)}
+                        onClick={() => setUseScenedLecture(option.value)}
                         className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                           active
                             ? 'border-brand-400/60 bg-brand-500/10 text-white'
@@ -879,20 +1131,18 @@ export default function NewStructuredLearningPage() {
                 <p className="mt-1 text-sm text-slate-400">{t('newStructuredLearning.step6Subtitle')}</p>
               </div>
 
-              <Field label={t('newStructuredLearning.knowledgeGraphLabel')} hint={t('newStructuredLearning.knowledgeGraphHint')}>
-                <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={includeKnowledgeGraphEntities}
-                    onChange={(e) => {
-                      setIncludeKnowledgeGraphEntities(e.target.checked);
-                      setIncludeKnowledgeGraphConnections(e.target.checked);
-                    }}
-                    className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
-                  />
-                  {t('newStructuredLearning.knowledgeGraphToggle')}
-                </label>
-              </Field>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={includeKnowledgeGraphEntities}
+                  onChange={(e) => {
+                    setIncludeKnowledgeGraphEntities(e.target.checked);
+                    setIncludeKnowledgeGraphConnections(e.target.checked);
+                  }}
+                  className="h-4 w-4 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+                />
+                {t('newStructuredLearning.knowledgeGraphToggle')}
+              </label>
 
               <div className="border-t border-white/10 pt-6">
                 <h3 className="text-base font-semibold text-white">{t('newStructuredLearning.perplexitySearchTitle')}</h3>
@@ -1224,9 +1474,23 @@ export default function NewStructuredLearningPage() {
                   <p className="mt-0.5 text-emerald-300/80">{autoLoadedPdfStatus}</p>
                 </div>
               </div>
-              <span className="shrink-0 rounded-full bg-emerald-400/20 px-3 py-1 font-mono text-[11px] font-semibold text-emerald-200">
-                Data Lake
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {file && (
+                  <a
+                    href={URL.createObjectURL(file)}
+                    download={file.name}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/20"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Descargar PDF
+                  </a>
+                )}
+                <span className="rounded-full bg-emerald-400/20 px-3 py-1 font-mono text-[11px] font-semibold text-emerald-200">
+                  Data Lake
+                </span>
+              </div>
             </div>
           )}
 
@@ -1241,6 +1505,23 @@ export default function NewStructuredLearningPage() {
                 placeholder={t('newStructuredLearning.ideaPlaceholder')}
                 className="input resize-none"
               />
+            </Field>
+          )}
+
+          {sourceType === 'text' && (
+            <Field
+              label={t('newStructuredLearning.strictSyllabusModeLabel')}
+              hint={t('newStructuredLearning.strictSyllabusModeHint')}
+            >
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={strictSyllabusMode}
+                  onChange={(e) => setStrictSyllabusMode(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/20 bg-white/[0.02]"
+                />
+                {t('newStructuredLearning.strictSyllabusModeToggle')}
+              </label>
             </Field>
           )}
 
@@ -1265,6 +1546,9 @@ export default function NewStructuredLearningPage() {
               <>
                 <SummaryRow label={t('newStructuredLearning.companyCatalogSkillLabel')} value={targetSkill} />
                 <SummaryRow label={t('newStructuredLearning.summarySkillCategory')} value={getCategoryBadgeText(careerCategory)} />
+                {ownerDepartment && (
+                  <SummaryRow label={t('newStructuredLearning.summaryOwnerDepartment')} value={ownerDepartment} />
+                )}
               </>
             )}
             {courseType === 'academic' && (
@@ -1305,9 +1589,13 @@ export default function NewStructuredLearningPage() {
           </div>
 
           {outlineLoading && (
-            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
-              <RefreshCw className="h-4 w-4 animate-spin text-brand-400" />
-              {t('newStructuredLearning.outlineLoading')}
+            <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">
+              <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-brand-400" />
+              <div className="space-y-1">
+                <p className="font-medium text-white">{t('newStructuredLearning.outlineLoading')}</p>
+                <p className="text-slate-400">{t(outlineLoadingPhaseKeys[outlineLoadingPhaseIndex])}</p>
+                <p className="text-xs text-slate-500">{t('newStructuredLearning.outlineLoadingHint')}</p>
+              </div>
             </div>
           )}
 
@@ -1457,36 +1745,91 @@ export default function NewStructuredLearningPage() {
                       </button>
                     </div>
                     <div className="mt-3 space-y-2 pl-4">
-                      {chapter.Nodes.map((node, nodeIndex) => (
-                        <div key={nodeIndex} className="flex items-center gap-2 text-sm text-slate-300">
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-                          <input
-                            type="text"
-                            value={node.Title}
-                            onChange={(e) => updateNodeTitle(chapterIndex, nodeIndex, e.target.value)}
-                            className="w-full bg-transparent text-sm text-slate-300 outline-none focus:underline"
-                          />
-                          {node.HasSparseContent && (
-                            <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300" title={t('newStructuredLearning.sparseContentBadge')}>
-                              ⚠️
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => deleteNode(chapterIndex, nodeIndex)}
-                            title={t('newStructuredLearning.deleteNodeButton')}
-                            className="shrink-0 text-slate-500 hover:text-red-400"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
+                      {chapter.Nodes.map((node, nodeIndex) => {
+                        const contentKey = `${chapterIndex}-${nodeIndex}`;
+                        const isExpanded = expandedContentNodes.has(contentKey);
+                        return (
+                          <div key={nodeIndex} className="rounded-lg border border-transparent hover:border-white/10">
+                            <div className="flex items-center gap-2 text-sm text-slate-300">
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+                              <input
+                                type="text"
+                                value={node.Title}
+                                onChange={(e) => updateNodeTitle(chapterIndex, nodeIndex, e.target.value)}
+                                className="w-full bg-transparent text-sm text-slate-300 outline-none focus:underline"
+                              />
+                              {node.HasSparseContent && (
+                                <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300" title={t('newStructuredLearning.sparseContentBadge')}>
+                                  ⚠️
+                                </span>
+                              )}
+                              {node.ImageDataUrls && node.ImageDataUrls.length > 0 && (
+                                <span
+                                  className="shrink-0 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300"
+                                  title="Esta sección tiene imagen(es) real(es) del documento original — se describen al agente generador"
+                                >
+                                  🖼️ {node.ImageDataUrls.length}
+                                </span>
+                              )}
+                              {node.Content !== undefined && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleNodeContent(chapterIndex, nodeIndex)}
+                                  className="shrink-0 text-[11px] font-medium text-brand-300 hover:text-brand-200"
+                                >
+                                  {isExpanded ? 'Ocultar texto fuente' : 'Ver texto fuente'}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => deleteNode(chapterIndex, nodeIndex)}
+                                title={t('newStructuredLearning.deleteNodeButton')}
+                                className="shrink-0 text-slate-500 hover:text-red-400"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                            {isExpanded && node.Content !== undefined && (
+                              <div className="ml-3.5 mt-1.5 mb-2">
+                                <p className="mb-1 text-[11px] text-slate-500">
+                                  Texto extraído del proceso en HumanOS para esta sección — revísalo y corrígelo antes de aprobar; esto es lo que se usará para generar la clase (en vez de que la IA lo invente).
+                                </p>
+                                {node.ImageDataUrls && node.ImageDataUrls.length > 0 && (
+                                  <div className="mb-2 flex flex-wrap gap-2">
+                                    {node.ImageDataUrls.map((dataUrl, imgIndex) => (
+                                      <button
+                                        key={imgIndex}
+                                        type="button"
+                                        onClick={() => setLightboxImage(dataUrl)}
+                                        title="Imagen real del documento original — ver tamaño completo"
+                                      >
+                                        <img
+                                          src={dataUrl}
+                                          alt={`Imagen ${imgIndex + 1} de ${node.Title}`}
+                                          className="h-20 w-20 rounded-lg border border-white/10 object-cover transition-opacity hover:opacity-80"
+                                        />
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                <textarea
+                                  value={node.Content}
+                                  onChange={(e) => updateNodeContent(chapterIndex, nodeIndex, e.target.value)}
+                                  rows={6}
+                                  className="w-full rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-slate-200 outline-none focus:border-brand-400"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
               </div>
             </>
           )}
+
 
           {!outlineLoading && (!outline || outline.length === 0) && (
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-300">

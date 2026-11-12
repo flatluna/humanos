@@ -6,8 +6,6 @@ import {
   ArrowDown,
   AlertTriangle,
   Table as TableIcon,
-  Plus,
-  Trash2,
   Edit2,
   Check,
   EyeOff,
@@ -15,6 +13,8 @@ import {
   FileCheck2,
   FileText,
   Lock,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type {
   ProcessDocumentStructureDto,
@@ -30,6 +30,7 @@ export interface ProcessStructureReviewStepProps {
   onToggleExcludeStep: (stepId: string) => void;
   onApproveAndContinue: () => void;
   isEditMode?: boolean;
+  tenantId?: string;
 }
 
 export function ProcessStructureReviewStep({
@@ -41,6 +42,7 @@ export function ProcessStructureReviewStep({
   onToggleExcludeStep,
   onApproveAndContinue,
   isEditMode = false,
+  tenantId,
 }: ProcessStructureReviewStepProps) {
   const { t } = useTranslation();
 
@@ -56,20 +58,11 @@ export function ProcessStructureReviewStep({
   // Local editing state for active step
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
-  const [editedObjective, setEditedObjective] = useState('');
-  const [editedActivities, setEditedActivities] = useState<string[]>([]);
-  const [editedDeliverables, setEditedDeliverables] = useState<string[]>([]);
-  const [editedCompletion, setEditedCompletion] = useState('');
-  const [newActivityText, setNewActivityText] = useState('');
-  const [newDeliverableText, setNewDeliverableText] = useState('');
+  const [isSourceContentExpanded, setIsSourceContentExpanded] = useState(true);
 
   const startEditing = () => {
     if (!activeStep) return;
     setEditedName(activeStep.step_name);
-    setEditedObjective(activeStep.objective || '');
-    setEditedActivities([...(activeStep.required_activities || [])]);
-    setEditedDeliverables([...(activeStep.deliverables || [])]);
-    setEditedCompletion(activeStep.completion_condition || '');
     setIsEditing(true);
   };
 
@@ -83,10 +76,6 @@ export function ProcessStructureReviewStep({
     const updatedStep: ProcessStepDto = {
       ...activeStep,
       step_name: editedName.trim() || activeStep.step_name,
-      objective: editedObjective.trim(),
-      required_activities: editedActivities.filter((a) => a.trim().length > 0),
-      deliverables: editedDeliverables.filter((d) => d.trim().length > 0),
-      completion_condition: editedCompletion.trim(),
     };
 
     const newChapters = structure.chapters.map((ch) => {
@@ -103,28 +92,6 @@ export function ProcessStructureReviewStep({
     });
 
     setIsEditing(false);
-  };
-
-  const handleAddActivity = () => {
-    if (newActivityText.trim()) {
-      setEditedActivities([...editedActivities, newActivityText.trim()]);
-      setNewActivityText('');
-    }
-  };
-
-  const handleRemoveActivity = (idx: number) => {
-    setEditedActivities(editedActivities.filter((_, i) => i !== idx));
-  };
-
-  const handleAddDeliverable = () => {
-    if (newDeliverableText.trim()) {
-      setEditedDeliverables([...editedDeliverables, newDeliverableText.trim()]);
-      setNewDeliverableText('');
-    }
-  };
-
-  const handleRemoveDeliverable = (idx: number) => {
-    setEditedDeliverables(editedDeliverables.filter((_, i) => i !== idx));
   };
 
   const handleMoveStep = (chapterId: string, stepIndex: number, direction: 'up' | 'down') => {
@@ -198,14 +165,27 @@ export function ProcessStructureReviewStep({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onApproveAndContinue}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-brand-500/20 hover:from-brand-500 hover:to-indigo-500 transition"
-        >
-          <FileCheck2 className="h-4 w-4" />
-          <span>{isEditMode ? 'Continuar a Requisitos & Skills →' : t('processLearning.reviewStep.approveAndContinue')}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {structure.document_id && (
+            <a
+              href={`/api/process-documents/${structure.document_id}/enriched-pdf?organizationId=${encodeURIComponent(tenantId ?? '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10 transition"
+            >
+              <FileText className="h-4 w-4" />
+              <span>Ver PDF enriquecido</span>
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={onApproveAndContinue}
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-brand-500/20 hover:from-brand-500 hover:to-indigo-500 transition"
+          >
+            <FileCheck2 className="h-4 w-4" />
+            <span>{isEditMode ? 'Continuar a Requisitos & Skills →' : t('processLearning.reviewStep.approveAndContinue')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Two-panel layout */}
@@ -382,144 +362,59 @@ export function ProcessStructureReviewStep({
                 </div>
               )}
 
-              {/* Objective */}
-              <div className="space-y-1.5 text-xs">
-                <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
-                  {t('processLearning.reviewStep.objectiveLabel')}
-                </span>
-                {isEditing ? (
-                  <textarea
-                    rows={2}
-                    value={editedObjective}
-                    onChange={(e) => setEditedObjective(e.target.value)}
-                    className="w-full rounded-lg border p-2 text-slate-800 dark:bg-slate-800 dark:text-white"
-                  />
-                ) : (
-                  <p className="text-slate-800 dark:text-white/90">
-                    {activeStep.objective || '—'}
-                  </p>
-                )}
-              </div>
-
-              {/* Required Activities */}
-              <div className="space-y-2 text-xs">
-                <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
-                  {t('processLearning.reviewStep.activitiesLabel')}
-                </span>
-
-                {isEditing ? (
-                  <div className="space-y-2">
-                    <ul className="space-y-1.5">
-                      {editedActivities.map((act, i) => (
-                        <li key={i} className="flex items-center justify-between gap-2 rounded-lg border p-2 dark:border-white/10">
-                          <span className="text-slate-800 dark:text-white/90">{act}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveActivity(i)}
-                            className="text-rose-500 hover:text-rose-700"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newActivityText}
-                        onChange={(e) => setNewActivityText(e.target.value)}
-                        placeholder="Nueva actividad..."
-                        className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs dark:bg-slate-800 dark:text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddActivity}
-                        className="rounded-lg bg-slate-800 px-3 py-1.5 font-semibold text-white dark:bg-white dark:text-slate-900"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
+              {/* Verbatim source content extracted from the document for this step */}
+              {activeStep.source_content && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setIsSourceContentExpanded((v) => !v)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                  >
+                    <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
+                      <FileText className="h-3.5 w-3.5" />
+                      {t('processLearning.reviewStep.sourceContentLabel')}
+                    </span>
+                    {isSourceContentExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    )}
+                  </button>
+                  {isSourceContentExpanded && (
+                    <div className="max-h-96 overflow-y-auto whitespace-pre-wrap border-t border-slate-200 px-3 py-2.5 text-xs leading-relaxed text-slate-700 dark:border-white/10 dark:text-white/80">
+                      {activeStep.source_content}
                     </div>
-                  </div>
-                ) : (
-                  <ul className="list-inside list-disc space-y-1 text-slate-700 dark:text-white/80">
-                    {activeStep.required_activities.map((act, i) => (
-                      <li key={i}>{act}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
-              {/* Deliverables */}
-              <div className="space-y-2 text-xs">
-                <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
-                  {t('processLearning.reviewStep.deliverablesLabel')}
-                </span>
-
-                {isEditing ? (
-                  <div className="space-y-2">
-                    <ul className="space-y-1.5">
-                      {editedDeliverables.map((deliv, i) => (
-                        <li key={i} className="flex items-center justify-between gap-2 rounded-lg border p-2 dark:border-white/10">
-                          <span className="text-slate-800 dark:text-white/90">{deliv}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveDeliverable(i)}
-                            className="text-rose-500 hover:text-rose-700"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newDeliverableText}
-                        onChange={(e) => setNewDeliverableText(e.target.value)}
-                        placeholder="Nuevo entregable..."
-                        className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs dark:bg-slate-800 dark:text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddDeliverable}
-                        className="rounded-lg bg-slate-800 px-3 py-1.5 font-semibold text-white dark:bg-white dark:text-slate-900"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeStep.deliverables.map((d, i) => (
-                      <span
+              {/* Real images (screenshots/diagrams/figures) extracted verbatim from the document pages
+                  covering this step — never AI-generated, so learners later see the actual figure. */}
+              {activeStep.step_images && activeStep.step_images.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
+                    {t('processLearning.reviewStep.stepImagesLabel')}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {activeStep.step_images.map((img, i) => (
+                      <a
                         key={i}
-                        className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700 dark:bg-white/10 dark:text-white/80"
+                        href={img.data_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block overflow-hidden rounded-lg border border-slate-200 dark:border-white/10"
+                        title={`Page ${img.source_page}`}
                       >
-                        {d}
-                      </span>
+                        <img
+                          src={img.data_url}
+                          alt={`Page ${img.source_page}`}
+                          className="h-28 w-auto object-contain bg-white"
+                        />
+                      </a>
                     ))}
                   </div>
-                )}
-              </div>
-
-              {/* Completion condition */}
-              <div className="space-y-1 text-xs">
-                <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
-                  {t('processLearning.reviewStep.completionConditionLabel')}
-                </span>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={editedCompletion}
-                    onChange={(e) => setEditedCompletion(e.target.value)}
-                    className="w-full rounded-lg border p-2 text-slate-800 dark:bg-slate-800 dark:text-white"
-                  />
-                ) : (
-                  <p className="rounded-lg bg-emerald-50/60 p-2.5 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-300 font-medium">
-                    {activeStep.completion_condition || '—'}
-                  </p>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Skills mentioned in document */}
               {activeStep.required_skills.length > 0 && (

@@ -1,14 +1,35 @@
 import { useState } from 'react';
-import { Moon, Sun, Sparkles, ChevronDown, Heart, Shield } from 'lucide-react';
+import { LogOut, Moon, Sun, Sparkles, ChevronDown, Heart, Shield } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useFamily } from '../../context/FamilyContext';
+import { useAuth } from '../../auth/AuthContext';
 
 export function FamilyHeader() {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const { activeCurrency, setActiveCurrency, setIsAiCoachOpen, householdName, householdCities } = useFamily();
+  const { activeCurrency, setActiveCurrency, setIsAiCoachOpen, householdName, householdCities, family, members, currentMember, currentUserRole } = useFamily();
+  const { account, logout } = useAuth();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+
+  // Resolve which family member corresponds to the currently signed-in MSAL
+  // account (by Azure OID), so the header shows the REAL logged-in person's
+  // identity instead of the family's demo/contact admin data.
+  const linkedMember = currentMember;
+
+  const adminName = linkedMember?.name || family?.adminFullName || account?.name || members[0]?.name || 'Admin';
+  // Email priority: the real MSAL login email linked to this member > the
+  // signed-in account's own username > the family's demo contact email.
+  const adminEmail =
+    linkedMember?.azureLoginEmail || account?.username || family?.adminEmail || members[0]?.email || 'admin@engrams.family';
+  const adminRole = linkedMember?.roleTitleEs || members[0]?.roleTitleEs || 'Padre / Admin';
+  const adminInitial = (adminName || 'A').charAt(0).toUpperCase();
+  const platformRoleLabelEs: Record<string, string> = {
+    AdminEngrams: '🛠️ Admin EngramsIQ',
+    AdminFamily: '🏠 Admin Familia',
+    User: '👤 Usuario',
+  };
+  const platformRoleLabel = platformRoleLabelEs[currentUserRole] || platformRoleLabelEs.User;
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-warm-200/80 bg-white/90 px-6 backdrop-blur-md transition-colors dark:border-white/10 dark:bg-[#0b0f17]/90">
@@ -34,9 +55,11 @@ export function FamilyHeader() {
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {householdName}
             </span>
-            <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-warm-200 bg-warm-50 px-2 py-0.5 text-[11px] font-medium text-warm-600 dark:border-white/10 dark:bg-white/5 dark:text-warm-300">
-              🇺🇸 Austin · 🇲🇽 CDMX
-            </span>
+            {householdCities ? (
+              <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-warm-200 bg-warm-50 px-2 py-0.5 text-[11px] font-medium text-warm-600 dark:border-white/10 dark:bg-white/5 dark:text-warm-300">
+                📍 {householdCities}
+              </span>
+            ) : null}
           </div>
           <p className="mt-0.5 text-xs font-medium text-warm-500 dark:text-warm-400">
             {t('header.tagline')}
@@ -132,11 +155,11 @@ export function FamilyHeader() {
             className="flex items-center gap-2 rounded-full border border-warm-200 py-1 pl-1 pr-2.5 text-xs font-medium text-warm-700 transition hover:bg-warm-100 dark:border-white/10 dark:text-warm-200 dark:hover:bg-white/10"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-xs font-bold text-white shadow-sm">
-              C
+              {adminInitial}
             </div>
             <div className="hidden text-left sm:block">
-              <span className="block font-semibold">Carlos Mendoza</span>
-              <span className="block text-[10px] text-warm-400">Padre / Co-Admin</span>
+              <span className="block font-semibold">{adminName}</span>
+              <span className="block text-[10px] text-warm-400">{adminRole}</span>
             </div>
             <ChevronDown className="h-3 w-3 opacity-60" />
           </button>
@@ -144,11 +167,14 @@ export function FamilyHeader() {
           {profileDropdownOpen && (
             <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-warm-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-[#111827]">
               <div className="border-b border-warm-100 pb-3 dark:border-white/10">
-                <p className="font-bold text-warm-900 dark:text-white">Carlos Mendoza, M.Sc.</p>
-                <p className="text-xs text-warm-500 dark:text-warm-400">carlos.mendoza@engrams.family</p>
+                <p className="font-bold text-warm-900 dark:text-white">{adminName}</p>
+                <p className="text-xs text-warm-500 dark:text-warm-400">{adminEmail}</p>
                 <span className="mt-2 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
                   <Shield className="h-3 w-3" />
-                  {t('header.role')}
+                  {adminRole}
+                </span>
+                <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  {platformRoleLabel}
                 </span>
               </div>
 
@@ -170,6 +196,16 @@ export function FamilyHeader() {
                   <span className="flex items-center gap-2">
                     <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                     Consultar Family Coach AI
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="mt-1 flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                >
+                  <span className="flex items-center gap-2">
+                    <LogOut className="h-3.5 w-3.5" />
+                    Cerrar sesión
                   </span>
                 </button>
               </div>

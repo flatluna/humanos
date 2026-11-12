@@ -51,7 +51,7 @@ public sealed class TraditionalCoursePipelineService
     private const int DefaultMaxConcurrentChapters = 3;
     private const int DefaultQuestionsPerChapterExam = 5;
     private const int DefaultMaxImagesToDescribe = 60;
-    private const int DefaultMaxImagesPerPage = 8;
+    private const int DefaultMaxImagesPerPage = 5;
 
     private readonly CuradorAgent _curador;
     private readonly TocExtractionAgent _tocExtraction;

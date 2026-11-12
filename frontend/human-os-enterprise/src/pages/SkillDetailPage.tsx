@@ -22,6 +22,7 @@ import { getDepartments, getJobRoles } from '@/api/orgStructureApi';
 import {
   createSkill,
   getSkills,
+  getSkillLinkedProcesses,
   updateSkill,
   uploadSkillDocument,
   deleteSkillDocument,
@@ -30,6 +31,13 @@ import {
   type SkillAssignmentScope,
   type SkillDto,
 } from '@/api/skillsApi';
+import {
+  getProcessDocumentStructure,
+  getProcessDocumentDetail,
+  getProcessSkillRequirements,
+  type ProcessSkillRequirementDto,
+} from '@/api/processDocumentsApi';
+import { BookOpen, ListChecks } from 'lucide-react';
 
 const CATEGORY_OPTIONS: { id: SkillCategory; labelKey: string; icon: typeof GraduationCap }[] = [
   { id: 'job-skills', labelKey: 'skills.categoryTabs.job-skills.label', icon: GraduationCap },
@@ -92,6 +100,52 @@ export function SkillDetailPage() {
     queryKey: ['departments', tenantId],
     queryFn: () => getDepartments(tenantId),
   });
+
+  // Reverse lookup (ProcessSkillRequirement.MatchedSkillId) so HR can see which
+  // processes already rely on this catalog skill before editing/deleting it.
+  const linkedProcessesQuery = useQuery({
+    queryKey: ['skill-linked-processes', skillId],
+    queryFn: () => getSkillLinkedProcesses(skillId!),
+    enabled: !!skillId,
+  });
+
+  // When this skill IS a process capability (created via "Save to Capability Catalog"),
+  // sourceProcessDocumentId points back at the source document. Pull its full index
+  // (chapters/steps/executive summary) and the skill matrix so this page shows
+  // everything that will be handed to Studio to generate the course.
+  const sourceProcessDocumentId = currentSkill?.sourceProcessDocumentId || null;
+
+  const processStructureQuery = useQuery({
+    queryKey: ['process-document-structure', sourceProcessDocumentId],
+    queryFn: () => getProcessDocumentStructure(sourceProcessDocumentId!),
+    enabled: !!sourceProcessDocumentId,
+  });
+
+  const processDetailQuery = useQuery({
+    queryKey: ['process-document-detail', sourceProcessDocumentId],
+    queryFn: () => getProcessDocumentDetail(sourceProcessDocumentId!),
+    enabled: !!sourceProcessDocumentId,
+  });
+
+  const processOverallSummary = processDetailQuery.data?.processWideLearningRecommendation?.overallSummary;
+
+  const processSkillRequirementsQuery = useQuery({
+    queryKey: ['process-skill-requirements', sourceProcessDocumentId],
+    queryFn: () => getProcessSkillRequirements(sourceProcessDocumentId!),
+    enabled: !!sourceProcessDocumentId,
+  });
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    'job-skills': 'Technical',
+    'soft-skills': 'Soft Skill',
+    'department-processes': 'Department Process',
+    'hr-processes': 'HR Process',
+  };
+
+  function requirementBadgeLabel(req: ProcessSkillRequirementDto): string {
+    if (req.isAiSkill) return 'AI Skill (Mandatory)';
+    return CATEGORY_LABELS[req.category?.toLowerCase()] || req.category;
+  }
 
   useEffect(() => {
     if (skillId && skillsQuery.data) {
@@ -519,6 +573,244 @@ export function SkillDetailPage() {
             ))}
           </div>
         </div>}
+
+        {currentSkill?.sourceCourseTitle && (
+          <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+            <label className={labelClass}>{t('skills.sourceCourseTitle')}</label>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
+              {t('skills.sourceCourseDescription')}
+            </p>
+
+            <div className="mt-2 rounded-lg bg-slate-50 p-3 text-sm dark:bg-white/5">
+              <div className="flex items-center justify-between gap-2">
+                {currentSkill.sourceCourseUrl ? (
+                  <a
+                    href={currentSkill.sourceCourseUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {currentSkill.sourceCourseTitle}
+                  </a>
+                ) : (
+                  <span className="font-medium">{currentSkill.sourceCourseTitle}</span>
+                )}
+                {currentSkill.sourceCourseProvider && (
+                  <span className="text-xs text-slate-400">({currentSkill.sourceCourseProvider})</span>
+                )}
+              </div>
+
+              {!!currentSkill.sourceOutlineModules?.length && (
+                <div className="mt-3 border-t border-slate-200 pt-2 dark:border-white/10">
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-white/50">
+                    {currentSkill.sourceOutlineSource === 'scraped'
+                      ? t('skills.outlineScraped')
+                      : t('skills.outlineAiSuggested')}
+                  </p>
+                  <ol className="mt-1 list-decimal space-y-1 pl-5 text-xs text-slate-600 dark:text-white/70">
+                    {currentSkill.sourceOutlineModules.map((mod, i) => (
+                      <li key={i}>
+                        {mod.title}
+                        {!!mod.lessons?.length && (
+                          <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-slate-500 dark:text-white/50">
+                            {mod.lessons.map((lesson, j) => (
+                              <li key={j}>{lesson}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {skillId && (
+          <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+            <label className={labelClass}>{t('skills.linkedProcessesTitle')}</label>
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
+              {t('skills.linkedProcessesDescription')}
+            </p>
+
+            {linkedProcessesQuery.isLoading && (
+              <p className="mt-2 inline-flex items-center gap-1 text-xs text-slate-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('skills.linkedProcessesLoading')}
+              </p>
+            )}
+
+            {!linkedProcessesQuery.isLoading && (linkedProcessesQuery.data?.length ?? 0) === 0 && (
+              <p className="mt-2 text-xs text-slate-400 dark:text-white/40">
+                {t('skills.linkedProcessesEmpty')}
+              </p>
+            )}
+
+            {!!linkedProcessesQuery.data?.length && (
+              <ul className="mt-2 space-y-1">
+                {linkedProcessesQuery.data.map((lp) => (
+                  <li
+                    key={lp.processSkillRequirementId}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm dark:bg-white/5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/enterprise-evolution/foundations/business-processes?id=${lp.processDocumentId}`)}
+                      className="text-left font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      {lp.processTitle}
+                    </button>
+                    <span className="text-xs text-slate-400">
+                      {lp.isRequired ? t('skills.linkedProcessRequired') : t('skills.linkedProcessRecommended')}
+                      {' · '}
+                      {lp.appliesToAllDepartments
+                        ? t('skills.linkedProcessCompanyWide')
+                        : t('skills.linkedProcessScopeDetail', {
+                            departments: lp.departmentCount,
+                            roles: lp.jobRoleCount,
+                          })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {sourceProcessDocumentId && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-4 space-y-5 dark:border-brand-500/20 dark:bg-brand-500/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className={labelClass}>Process Capability — Source Data</label>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
+                  This capability was generated from a business process. The data below (executive summary,
+                  index and skill matrix) is what gets handed to Studio to generate the course.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/enterprise-evolution/foundations/business-processes?id=${sourceProcessDocumentId}`)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-300 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-500/30 dark:bg-white/5 dark:text-brand-300"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                View process
+              </button>
+            </div>
+
+            {(processStructureQuery.isLoading || processSkillRequirementsQuery.isLoading) && (
+              <p className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading process data…
+              </p>
+            )}
+
+            {processStructureQuery.data && (
+              <>
+                {/* Executive summary / process-wide training summary */}
+                {(processOverallSummary || processStructureQuery.data.executive_summary) && (
+                  <div>
+                    <p className="text-xs font-bold uppercase text-slate-500 dark:text-white/50">Process Summary</p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-white/80">
+                      {processOverallSummary || processStructureQuery.data.executive_summary}
+                    </p>
+                  </div>
+                )}
+
+                {/* Owning department(s) */}
+                <div>
+                  <p className="text-xs font-bold uppercase text-slate-500 dark:text-white/50">Owning Department</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {currentSkill?.sourceProcessDepartmentName ? (
+                      <span className="rounded-full bg-brand-100 px-2.5 py-1 text-[11px] font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
+                        {currentSkill.sourceProcessDepartmentName}
+                      </span>
+                    ) : processStructureQuery.data.applies_to_all_departments ? (
+                      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:bg-white/10 dark:text-white/70">
+                        Applies to the entire company
+                      </span>
+                    ) : processStructureQuery.data.department_ids.length > 0 ? (
+                      processStructureQuery.data.department_ids.map((depId) => {
+                        const dep = (departmentsQuery.data ?? []).find((d) => d.departmentId === depId);
+                        return (
+                          <span
+                            key={depId}
+                            className="rounded-full bg-brand-100 px-2.5 py-1 text-[11px] font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
+                          >
+                            {dep?.name || depId}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <span className="text-[11px] text-slate-400">Not set</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Skill matrix */}
+                <div>
+                  <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500 dark:text-white/50">
+                    <ListChecks className="h-3.5 w-3.5" />
+                    Required Skills ({processSkillRequirementsQuery.data?.length ?? 0})
+                  </p>
+                  {(processSkillRequirementsQuery.data?.length ?? 0) === 0 ? (
+                    <p className="mt-1.5 text-[11px] text-slate-400">No skills saved for this process yet.</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {processSkillRequirementsQuery.data!.map((req) => (
+                        <span
+                          key={req.processSkillRequirementId}
+                          title={req.reason || undefined}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white/80"
+                        >
+                          {req.skillName}
+                          <span className="text-slate-400">· {requirementBadgeLabel(req)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Document index: chapters / steps */}
+                <div>
+                  <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500 dark:text-white/50">
+                    <BookOpen className="h-3.5 w-3.5" />
+                    Process Index ({processStructureQuery.data.chapters.length} chapters)
+                  </p>
+                  <div className="mt-1.5 space-y-2">
+                    {processStructureQuery.data.chapters.map((chapter) => (
+                      <div
+                        key={chapter.chapter_id}
+                        className="rounded-lg border border-slate-200 bg-white p-2.5 dark:border-white/10 dark:bg-white/[0.02]"
+                      >
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">
+                          {chapter.chapter_number ? `C${chapter.chapter_number}. ` : ''}
+                          {chapter.title}
+                        </p>
+                        <ul className="mt-1 space-y-0.5">
+                          {chapter.steps.map((step) => (
+                            <li
+                              key={step.step_id}
+                              className="flex items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-white/60"
+                            >
+                              <span>
+                                {step.step_number}. {step.step_name}
+                              </span>
+                              <span className="shrink-0 text-slate-400">
+                                {step.business_requirements_analyzed ? 'Requirements ready' : 'Pending'}
+                                {step.source_pages?.length ? ` · p.${step.source_pages[0]}` : ''}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-white/10">
           <button

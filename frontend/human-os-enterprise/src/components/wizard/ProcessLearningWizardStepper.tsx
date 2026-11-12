@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import {
   UploadCloud,
   ListTree,
+  ListChecks,
   FileCheck2,
   ShieldAlert,
   Check,
@@ -30,8 +31,9 @@ export interface ProcessLearningWizardStepperProps {
 const STEP_ICONS = [
   UploadCloud,    // Step 1: Subir Proceso
   ListTree,       // Step 2: Estructura de Pasos
-  FileCheck2,     // Step 3: Requisitos de Trabajo
-  ShieldAlert,    // Step 4: Skills Gap Analysis & Matriz
+  ListChecks,     // Step 3: Clasificar Proceso
+  FileCheck2,     // Step 4: Skills Identification
+  ShieldAlert,    // Step 5: Mapping
 ];
 
 export function ProcessLearningWizardStepper({
@@ -50,8 +52,9 @@ export function ProcessLearningWizardStepper({
         : t('processLearning.steps.step1.title', 'Subir Proceso'),
     },
     { title: t('processLearning.steps.step2.title', 'Estructura de Pasos') },
-    { title: t('processLearning.steps.step3.title', 'Requisitos & Skills') },
-    { title: t('processLearning.steps.step4.title', 'Skills Gap & Matriz') },
+    { title: t('processLearning.steps.step3.title', 'Resumen del Proceso') },
+    { title: t('processLearning.steps.step4.title', 'Skills Identification') },
+    { title: t('processLearning.steps.step5.title', 'Mapping') },
   ];
 
   const getStatusLabel = (state: WizardStepState, stepNumber: number) => {
@@ -98,7 +101,7 @@ export function ProcessLearningWizardStepper({
 
   return (
     <nav aria-label="Progreso del asistente" className="w-full">
-      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-4">
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:grid-cols-5">
         {stepsConfig.map((item, idx) => {
           const stepNumber = idx + 1;
           const Icon = STEP_ICONS[idx];

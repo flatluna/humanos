@@ -25,29 +25,46 @@ namespace HumanOS.Services.ProcessDocuments;
 /// </summary>
 public sealed partial class ProcessDocumentExtractionService : IProcessDocumentExtractionService
 {
+    /// <summary>
+    /// PHASE A — FAST INDEX EXTRACTION ONLY. Mirrors the "DirectExtraction" chunking pattern already used by
+    /// <see cref="HumanOS.Agents.Studio.TocExtractionAgent"/> in Studio: identify the document's own chapter/step
+    /// boundaries and hand back each step's own verbatim content, WITHOUT doing any role/rule/activity analysis.
+    /// That heavier analysis is deferred to <see cref="IStepBusinessRequirementsAnalyzer"/>, run lazily one step
+    /// at a time (see AnalyzeStepBusinessRequirements endpoint), which keeps this single bulk call fast regardless
+    /// of how many steps/pages the source document has.
+    /// </summary>
     private const string AiExtractionInstructions = """
-        You are an expert workforce capability and process intelligence extraction agent.
-        Your goal is to analyze the extracted text of ANY business process document, operational manual, standard operating procedure (SOP), or corporate policy, and transform it into a complete, logical operational hierarchy of Chapters and Work Steps.
+        You are a document structure extraction agent. Your ONLY job in this call is to build a fast, lightweight INDEX of a business process document — you do NOT analyze roles, systems, business rules, or activities here.
 
-        CRITICAL ARCHITECTURAL RULES:
-        1. PROCESS & POLICY IDENTIFICATION:
-           - Extract the true title and high-level purpose/description of the process or policy.
-           - Do NOT mistake introductory metadata labels (such as "Purpose:", "Objetivo:", "Scope:", "Document ID:") for a chapter or process step.
-        2. CHAPTERS / PHASES (Top-level Grouping):
-           - Group steps into coherent Chapters or Phases (e.g. "Phase 1: Travel Request and Authorization", "Phase 2: Booking and Transportation", or numbered chapters).
-           - If the document does not use explicit chapters, create 1 to 3 logical chapters/phases that group the steps coherently.
-        3. EXTRACT ALL WORK STEPS / POLICY CLAUSES:
-           - Extract EVERY operational work step, policy rule, approval stage, or procedural requirement as an individual Step in reading order.
-           - For numbered policies (e.g. "1. Travel Request and Business Justification", "2. Approval Matrix", "3. Air Travel Policy", "4. Hotel Policy", "5. Meals and Per Diem", "6. Alcohol Consumption Policy"...), EACH numbered section is a DISTINCT STEP! NEVER omit, compress, or merge numbered steps into one.
-        4. STEP DETAILS:
-           - "stepNumber": The section/step number (e.g., "1", "2", "3").
-           - "stepName": Clear, professional title of the step or policy clause.
-           - "objective": The operational goal or compliance intent of this specific step.
-           - "requiredActivities": An exhaustive list of the specific actions, rules, responsibilities, or bullet points the employee must execute or follow in this step.
-           - "requiredTools": Software, applications, communication channels, or templates mentioned (e.g., Concur, SAP, Amex Corporate, Email, Excel, ERP, etc.).
-           - "deliverables": Tangible work artifacts, forms, receipts, or outputs generated.
-           - "completionCondition": Conditions or compliance criteria for this step to be considered finished.
-           - "sourcePage": Estimated page number where this step appears in the document.
+        ==================================================
+        1. PROCESS-LEVEL METADATA (extract once, from the document's intro/header section)
+        ==================================================
+        - processName, a stable short "processCode" (2-5 uppercase letters derived from the process name, e.g. "Customer Complaint Resolution" -> "CCR"), executiveSummary, purpose (one-sentence), processOwner, trigger, scope, inputs (list), finalOutput, participatingRoles (list), systemsUsed (list), applicablePolicies (list), metrics (list), version, status.
+        - "executiveSummary": YOU must write this yourself, in your own words, after reading the ENTIRE document (not copied from any single line of the source). 3-5 sentences, business language, for a change-management/executive audience: what the process does end-to-end, who runs it, what triggers it, and what it produces. Do NOT just restate the document's own "Purpose:" line verbatim — synthesize it from the whole document.
+        - "purpose" IS allowed to be taken from the document's own stated Purpose/Objective line if present — unlike executiveSummary, this one is meant to mirror the source.
+        - Only fill fields that are genuinely stated or clearly implied by the document's own intro/scope/header section; leave a field empty rather than inventing a value. (This rule does not apply to executiveSummary, which you must always synthesize from the full document.)
+
+        ==================================================
+        2. CHAPTER IDENTIFICATION
+        ==================================================
+        - Do NOT mistake introductory metadata labels ("Purpose:", "Objetivo:", "Scope:", "Document ID:") for a chapter or step.
+        - Group steps into coherent Chapters/Phases following the document's OWN section/chapter numbering if it has one. If the document has no explicit chapters, create 1 to 3 logical chapters that group the steps coherently.
+
+        ==================================================
+        3. STEP IDENTIFICATION — CRITICAL, READ CAREFULLY
+        ==================================================
+        - A "Step" is ONLY a top-level, explicitly numbered work step in the document's OWN numbering scheme (e.g. "3.1 Receive Complaint", "3.2 Register and Classify", "3.4 Route Case"). Use the document's own step numbers as "stepNumber" — do NOT invent new numbering.
+        - DO NOT create a separate Step for: sub-actions/instructions inside a step (e.g. numbered work-instruction items like "3.4-3"), controls/business rules inside a step (e.g. "Routing control: ..."), exceptions, or checklist bullets. ALL of that content belongs INSIDE the parent step's own "sourceContent" as part of its verbatim text — never as its own Step entry.
+        - If you are unsure whether something is a real step or a sub-item of a step, treat it as a sub-item (keep it inside the parent step's sourceContent). The number of Steps you output must be close to the number of top-level numbered steps a human would list in a table of contents for this process — NOT the number of individual instructions/rules/bullets.
+        - Assign each step a "stepCode" using the pattern [ChapterNumber]-[StepNumberWithinChapter] zero-padded to two digits (e.g. "03-04"), matching the document's own step order.
+        - For each step return: stepNumber, stepName (short title), sourceContent, and sourcePage.
+        - "sourceContent" must be the step's OWN full supporting text (instructions, sub-actions, controls, exceptions — everything that belongs to that one step) copied as closely as possible from the source, verbatim or near-verbatim. Target roughly 800-1200 tokens per step. If a single real step's own content is genuinely longer than that, split ONLY that step into consecutive ordered parts (same stepNumber and stepName, stepCode suffixed "-p1", "-p2", ...) — never split by sub-item/control, only by size when one real step is unusually long.
+        - Do NOT produce roles, systems, triggers, inputs, business rules, exceptions, evidence, completion conditions, or activities as separate structured fields in this call — that level of detail is analyzed later, per step, from sourceContent.
+
+        ==================================================
+        4. QUALITY CHECK
+        ==================================================
+        Every real numbered step appears in reading order with no omissions and no fragmentation into sub-items; sourceContent is taken from the document itself, not invented; output stays limited to the index + metadata fields above.
         """;
 
     private readonly AIAgent? _agent;
@@ -208,7 +225,7 @@ public sealed partial class ProcessDocumentExtractionService : IProcessDocumentE
         if (_agent is null) return null;
 
         var sb = new StringBuilder();
-        sb.AppendLine("Analyze the extracted text of the following business process/policy document and extract its complete structure (Chapters, Work Steps, Activities, Tools, Deliverables, Conditions):");
+        sb.AppendLine("Build a fast structural INDEX of the following business process/policy document following the Chapter -> Step hierarchy described in your instructions (chapters, and each step's own stepName/sourceContent/sourcePage only — no roles, rules, or activities in this call):");
         sb.AppendLine($"File Name: {fileName}");
         if (!string.IsNullOrWhiteSpace(providedProcessName)) sb.AppendLine($"Suggested Process Name: {providedProcessName}");
         if (!string.IsNullOrWhiteSpace(processDescription)) sb.AppendLine($"Suggested Description: {processDescription}");
@@ -234,45 +251,55 @@ public sealed partial class ProcessDocumentExtractionService : IProcessDocumentE
             var aiResult = response.Result;
             if (aiResult == null || aiResult.Chapters.Count == 0) return null;
 
+            var procName = !string.IsNullOrWhiteSpace(providedProcessName) ? providedProcessName
+                         : (!string.IsNullOrWhiteSpace(aiResult.ProcessName) ? aiResult.ProcessName : Path.GetFileNameWithoutExtension(fileName));
+            var processCode = !string.IsNullOrWhiteSpace(aiResult.ProcessCode) ? aiResult.ProcessCode.Trim().ToUpperInvariant() : DeriveProcessCode(procName);
+
             var chapters = new List<ProcessChapter>();
             int stepCounter = 1;
 
             foreach (var chAi in aiResult.Chapters)
             {
+                var chapterNumber = string.IsNullOrWhiteSpace(chAi.ChapterNumber) ? (chapters.Count + 1).ToString() : chAi.ChapterNumber;
                 var ch = new ProcessChapter
                 {
                     ChapterId = $"ch-{chapters.Count + 1}",
-                    ChapterNumber = string.IsNullOrWhiteSpace(chAi.ChapterNumber) ? (chapters.Count + 1).ToString() : chAi.ChapterNumber,
+                    ChapterNumber = chapterNumber,
                     Title = !string.IsNullOrWhiteSpace(chAi.Title) ? chAi.Title : $"Fase {chapters.Count + 1}",
                     Description = chAi.Description ?? string.Empty,
                     Steps = []
                 };
 
+                int stepIndexInChapter = 1;
                 foreach (var stAi in chAi.Steps)
                 {
+                    var stepCode = !string.IsNullOrWhiteSpace(stAi.StepCode)
+                        ? stAi.StepCode
+                        : $"{chapterNumber.PadLeft(2, '0')}-{stepIndexInChapter:D2}";
+
                     var step = new ProcessStep
                     {
                         StepId = $"step-{stepCounter}",
+                        StepCode = stepCode,
                         StepNumber = !string.IsNullOrWhiteSpace(stAi.StepNumber) ? stAi.StepNumber : stepCounter.ToString(),
                         StepName = stAi.StepName,
-                        Objective = stAi.Objective,
-                        RequiredActivities = stAi.RequiredActivities ?? [],
-                        Deliverables = stAi.Deliverables ?? [],
-                        CompletionCondition = stAi.CompletionCondition ?? string.Empty,
+                        SourceContent = stAi.SourceContent ?? string.Empty,
                         SourcePages = stAi.SourcePage > 0 ? [stAi.SourcePage] : [1]
                     };
+                    // Deep analytical fields (roles, systems, trigger, business rules, exceptions, activities, etc.)
+                    // are intentionally left at their default/empty values here. They are populated later, one
+                    // step at a time, by IStepBusinessRequirementsAnalyzer using step.SourceContent as input.
+
                     stepCounter++;
+                    stepIndexInChapter++;
                     ch.Steps.Add(step);
                 }
 
                 chapters.Add(ch);
             }
 
-            var procName = !string.IsNullOrWhiteSpace(providedProcessName) ? providedProcessName
-                         : (!string.IsNullOrWhiteSpace(aiResult.ProcessName) ? aiResult.ProcessName : Path.GetFileNameWithoutExtension(fileName));
-
             _logger?.LogInformation(
-                "AI Process Extractor successfully derived {Chapters} chapters and {Steps} steps for document {DocumentId} in {Ms}ms",
+                "AI Process Index Extractor successfully derived {Chapters} chapters and {Steps} steps for document {DocumentId} in {Ms}ms",
                 chapters.Count,
                 stepCounter - 1,
                 documentId,
@@ -282,7 +309,21 @@ public sealed partial class ProcessDocumentExtractionService : IProcessDocumentE
             {
                 DocumentId = documentId,
                 ProcessName = procName,
+                ProcessCode = processCode,
                 DocumentTitle = procName,
+                ExecutiveSummary = aiResult.ExecutiveSummary ?? string.Empty,
+                Purpose = aiResult.Purpose ?? (!string.IsNullOrWhiteSpace(aiResult.Description) ? aiResult.Description : string.Empty),
+                ProcessOwner = aiResult.ProcessOwner ?? string.Empty,
+                Trigger = aiResult.Trigger ?? string.Empty,
+                Scope = aiResult.Scope ?? string.Empty,
+                Inputs = aiResult.Inputs ?? [],
+                FinalOutput = aiResult.FinalOutput ?? string.Empty,
+                ParticipatingRoles = aiResult.ParticipatingRoles ?? [],
+                SystemsUsed = aiResult.SystemsUsed ?? [],
+                ApplicablePolicies = aiResult.ApplicablePolicies ?? [],
+                Metrics = aiResult.Metrics ?? [],
+                Version = string.IsNullOrWhiteSpace(aiResult.Version) ? "1.0" : aiResult.Version,
+                Status = string.IsNullOrWhiteSpace(aiResult.Status) ? "Draft" : aiResult.Status,
                 SourceFile = new SourceFileInfo
                 {
                     FileName = fileName,
@@ -1368,6 +1409,25 @@ public sealed partial class ProcessDocumentExtractionService : IProcessDocumentE
             Description = string.Empty
         };
     }
+
+    /// <summary>Derives a stable 2-5 letter process code from a process name (e.g. "Customer Complaint Resolution" -&gt; "CCR").</summary>
+    private static string DeriveProcessCode(string processName)
+    {
+        if (string.IsNullOrWhiteSpace(processName)) return "PRC";
+
+        var words = processName
+            .Split([' ', '-', '_', '/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 1 || char.IsLetter(w[0]))
+            .ToList();
+
+        if (words.Count == 0) return "PRC";
+
+        var code = words.Count > 1
+            ? string.Concat(words.Take(5).Select(w => char.ToUpperInvariant(w[0])))
+            : processName.Length >= 3 ? processName[..3].ToUpperInvariant() : processName.ToUpperInvariant();
+
+        return code.Length >= 2 ? code : "PRC";
+    }
 }
 
 public sealed class ProcessStructureAiResponse
@@ -1375,8 +1435,50 @@ public sealed class ProcessStructureAiResponse
     [JsonPropertyName("processName")]
     public string ProcessName { get; set; } = string.Empty;
 
+    [JsonPropertyName("processCode")]
+    public string ProcessCode { get; set; } = string.Empty;
+
     [JsonPropertyName("description")]
     public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("executiveSummary")]
+    public string ExecutiveSummary { get; set; } = string.Empty;
+
+    [JsonPropertyName("purpose")]
+    public string Purpose { get; set; } = string.Empty;
+
+    [JsonPropertyName("processOwner")]
+    public string ProcessOwner { get; set; } = string.Empty;
+
+    [JsonPropertyName("trigger")]
+    public string Trigger { get; set; } = string.Empty;
+
+    [JsonPropertyName("scope")]
+    public string Scope { get; set; } = string.Empty;
+
+    [JsonPropertyName("inputs")]
+    public List<string> Inputs { get; set; } = [];
+
+    [JsonPropertyName("finalOutput")]
+    public string FinalOutput { get; set; } = string.Empty;
+
+    [JsonPropertyName("participatingRoles")]
+    public List<string> ParticipatingRoles { get; set; } = [];
+
+    [JsonPropertyName("systemsUsed")]
+    public List<string> SystemsUsed { get; set; } = [];
+
+    [JsonPropertyName("applicablePolicies")]
+    public List<string> ApplicablePolicies { get; set; } = [];
+
+    [JsonPropertyName("metrics")]
+    public List<string> Metrics { get; set; } = [];
+
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = "1.0";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "Draft";
 
     [JsonPropertyName("chapters")]
     public List<ProcessChapterAiDto> Chapters { get; set; } = [];
@@ -1397,29 +1499,26 @@ public sealed class ProcessChapterAiDto
     public List<ProcessStepAiDto> Steps { get; set; } = [];
 }
 
+/// <summary>
+/// PHASE A index DTO — intentionally minimal. Deep analytical fields (roles, systems, trigger, business rules,
+/// exceptions, activities, etc.) are NOT requested here; they are produced later, per step, by
+/// <see cref="IStepBusinessRequirementsAnalyzer"/> using this step's own <see cref="SourceContent"/>.
+/// </summary>
 public sealed class ProcessStepAiDto
 {
+    [JsonPropertyName("stepCode")]
+    public string StepCode { get; set; } = string.Empty;
+
     [JsonPropertyName("stepNumber")]
     public string StepNumber { get; set; } = string.Empty;
 
     [JsonPropertyName("stepName")]
     public string StepName { get; set; } = string.Empty;
 
-    [JsonPropertyName("objective")]
-    public string Objective { get; set; } = string.Empty;
-
-    [JsonPropertyName("requiredActivities")]
-    public List<string> RequiredActivities { get; set; } = [];
-
-    [JsonPropertyName("requiredTools")]
-    public List<string> RequiredTools { get; set; } = [];
-
-    [JsonPropertyName("deliverables")]
-    public List<string> Deliverables { get; set; } = [];
-
-    [JsonPropertyName("completionCondition")]
-    public string CompletionCondition { get; set; } = string.Empty;
+    [JsonPropertyName("sourceContent")]
+    public string SourceContent { get; set; } = string.Empty;
 
     [JsonPropertyName("sourcePage")]
     public int SourcePage { get; set; } = 1;
 }
+

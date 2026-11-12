@@ -45,6 +45,7 @@ public sealed class GetStudioContextFunction
                 var payload = new
                 {
                     sourceApplication = "humanos",
+                    sourceAppType = humanOsPrincipal.FindFirst("sourceAppType")?.Value,
                     tenantId = humanOsPrincipal.FindFirst("tenantId")?.Value,
                     organizationName = humanOsPrincipal.FindFirst("tenantName")?.Value,
                     memberId = humanOsPrincipal.FindFirst("memberId")?.Value,

@@ -63,5 +63,22 @@ public sealed class StructuredLearningIllustration
     /// meaningful for MediaType="Video"; images are unaffected.</summary>
     public bool IsPublished { get; set; } = true;
 
+    /// <summary>User-excluded from future pedagogy generation (2026-11-06) —
+    /// lets a designer thin out a video-sourced section's raw extracted
+    /// frames (Purpose=SourceDocument) in edit mode before re-running
+    /// "Restart engrams", so fewer frames go through the per-frame LLM
+    /// narration/enhancement pipeline and the run finishes faster. Soft
+    /// delete only: the row/blob is kept (never physically deleted), it is
+    /// just filtered out of both the raw-frames gallery and
+    /// VideoStructuredLearningPedagogyOrchestrator's SourceFrames query.</summary>
+    public bool IsExcludedFromGeneration { get; set; }
+
+    /// <summary>For video-sourced frames (Purpose=SourceDocument) only
+    /// (2026-11-07): the exact timestamp, in seconds, where this frame was
+    /// extracted from the ORIGINAL source video — lets the UI show students
+    /// and editors which moment of the video this image/caption came from.
+    /// Null for any non-video-frame illustration.</summary>
+    public double? VideoTimestampSeconds { get; set; }
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 }

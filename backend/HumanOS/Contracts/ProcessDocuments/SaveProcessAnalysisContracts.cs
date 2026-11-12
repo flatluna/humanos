@@ -19,6 +19,23 @@ public sealed class SaveProcessAnalysisRequest
     [JsonPropertyName("jobRoleId")]
     public Guid? JobRoleId { get; set; }
 
+    /// <summary>When true, the process applies to the whole organization —
+    /// <see cref="DepartmentIds"/>/<see cref="JobRoleIds"/> are ignored.
+    /// Normally sourced from <c>Structure.AppliesToAllDepartments</c> but can be
+    /// overridden explicitly here.</summary>
+    [JsonPropertyName("appliesToAllDepartments")]
+    public bool? AppliesToAllDepartments { get; set; }
+
+    /// <summary>Departments this process must be followed by. Normally sourced
+    /// from <c>Structure.DepartmentIds</c> but can be overridden explicitly here.</summary>
+    [JsonPropertyName("departmentIds")]
+    public List<Guid>? DepartmentIds { get; set; }
+
+    /// <summary>Job Roles this process must be followed by. Normally sourced
+    /// from <c>Structure.JobRoleIds</c> but can be overridden explicitly here.</summary>
+    [JsonPropertyName("jobRoleIds")]
+    public List<Guid>? JobRoleIds { get; set; }
+
     [JsonPropertyName("structure")]
     public ProcessDocumentStructure? Structure { get; set; }
 

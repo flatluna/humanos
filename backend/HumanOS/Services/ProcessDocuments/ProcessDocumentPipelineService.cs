@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using HumanOS.Agents.Studio;
 using HumanOS.Contracts.ProcessDocuments;
 using HumanOS.Storage;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +29,7 @@ public sealed class ProcessDocumentPipelineService
     private readonly IProcessDocumentStorageService _storageService;
     private readonly IProcessDocumentExtractionService _extractionService;
     private readonly IConfiguration _configuration;
+    private readonly ProcessImageStepMatcherAgent? _imageStepMatcherAgent;
     private readonly ILogger<ProcessDocumentPipelineService>? _logger;
 
     // Cache of recent completed uploads for idempotency / duplicate retry detection
@@ -38,11 +40,13 @@ public sealed class ProcessDocumentPipelineService
         IProcessDocumentStorageService storageService,
         IProcessDocumentExtractionService extractionService,
         IConfiguration configuration,
+        ProcessImageStepMatcherAgent? imageStepMatcherAgent = null,
         ILogger<ProcessDocumentPipelineService>? logger = null)
     {
         _storageService = storageService;
         _extractionService = extractionService;
         _configuration = configuration;
+        _imageStepMatcherAgent = imageStepMatcherAgent;
         _logger = logger;
     }
 
@@ -145,6 +149,18 @@ public sealed class ProcessDocumentPipelineService
             throw new InvalidOperationException($"Document-processing failure: {ex.Message}", ex);
         }
 
+        // 7.5. Extract real embedded images (screenshots/diagrams/figures) per page and attach them
+        // to whichever step(s) cover that page — best-effort only: a failure here must never block
+        // saving the text-based structure, since images are a value-add, not the core extraction.
+        try
+        {
+            await AttachStepImagesAsync(fileBytes, normalizedOrgId, documentId, structuredResult, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Best-effort image extraction failed for document {DocumentId}; continuing without step images.", documentId);
+        }
+
         // 8. Save raw extraction JSON to Azure Data Lake Storage
         try
         {
@@ -198,6 +214,111 @@ public sealed class ProcessDocumentPipelineService
         IdempotencyCache.TryAdd(idempotencyKey, response);
 
         return response;
+    }
+
+    /// <summary>Extracts every real embedded image from the original PDF (via
+    /// <see cref="PdfTextExtractor.ExtractPagesWithImages"/>, which already filters out decorative
+    /// icons/full-bleed backgrounds), uploads each one to blob storage, and attaches it to every
+    /// <see cref="ProcessStep"/> whose <see cref="ProcessStep.SourcePages"/> includes that image's page —
+    /// so a figure appearing on the same page as a step's text ends up alongside that step's
+    /// verbatim source_content in the Review Process Steps screen.</summary>
+    private async Task AttachStepImagesAsync(
+        byte[] fileBytes,
+        string normalizedOrgId,
+        string documentId,
+        ProcessDocumentStructure structuredResult,
+        CancellationToken cancellationToken)
+    {
+        using var pdfStream = new MemoryStream(fileBytes);
+        var pages = PdfTextExtractor.ExtractPagesWithImages(pdfStream);
+        if (pages.All(p => p.Images.Count == 0))
+        {
+            return;
+        }
+
+        var allSteps = structuredResult.Chapters.SelectMany(c => c.Steps).ToList();
+
+        foreach (var page in pages)
+        {
+            if (page.Images.Count == 0) continue;
+
+            var stepsOnThisPage = allSteps.Where(s => s.SourcePages.Contains(page.PageNumber)).ToList();
+            if (stepsOnThisPage.Count == 0) continue;
+
+            for (var i = 0; i < page.Images.Count; i++)
+            {
+                var image = page.Images[i];
+                var extension = image.ContentType == "image/jpeg" ? "jpg" : "png";
+                var blobFileName = $"page-{page.PageNumber}-img-{i + 1}.{extension}";
+
+                string storagePath;
+                try
+                {
+                    using var imageStream = new MemoryStream(image.Bytes);
+                    storagePath = await _storageService.UploadStepImageAsync(
+                        normalizedOrgId, documentId, blobFileName, imageStream, image.ContentType, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogWarning(ex, "Failed to upload step image {BlobFileName} for document {DocumentId}", blobFileName, documentId);
+                    continue;
+                }
+
+                var stepImage = new ProcessStepImage
+                {
+                    SourcePage = page.PageNumber,
+                    StoragePath = storagePath,
+                    ContentType = image.ContentType,
+                    DataUrl = $"data:{image.ContentType};base64,{Convert.ToBase64String(image.Bytes)}"
+                };
+
+                // If the page is shared by more than one step, page-number matching alone can't tell
+                // which step the image actually illustrates (e.g. a short page with the tail of one
+                // step and the start of the next). Ask the vision matcher agent to decide; fail open
+                // to "attach to every step on the page" (today's behavior) if it's unavailable or errors.
+                var targetSteps = stepsOnThisPage;
+                if (stepsOnThisPage.Count > 1 && _imageStepMatcherAgent is { IsConfigured: true })
+                {
+                    try
+                    {
+                        var candidates = stepsOnThisPage
+                            .Select(s => new ProcessImageStepMatcherAgent.StepCandidate
+                            {
+                                StepId = s.StepId,
+                                StepName = s.StepName,
+                                SourceContent = s.SourceContent
+                            })
+                            .ToList();
+
+                        var match = await _imageStepMatcherAgent.MatchAsync(
+                            image.Bytes, image.ContentType, candidates, cancellationToken);
+
+                        if (match.MatchedStepIds.Count > 0)
+                        {
+                            targetSteps = stepsOnThisPage
+                                .Where(s => match.MatchedStepIds.Contains(s.StepId))
+                                .ToList();
+                        }
+                        else
+                        {
+                            // Agent confidently says this image belongs to none of the candidates
+                            // (e.g. decorative) — skip attaching it anywhere rather than spamming
+                            // every step on the page.
+                            targetSteps = [];
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger?.LogWarning(ex, "Image-step matching failed for page {PageNumber} of document {DocumentId}; keeping page-level association.", page.PageNumber, documentId);
+                    }
+                }
+
+                foreach (var step in targetSteps)
+                {
+                    step.StepImages.Add(stepImage);
+                }
+            }
+        }
     }
 
     public static void ValidatePdf(byte[] fileBytes, string? fileName, string? contentType)

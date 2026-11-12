@@ -778,6 +778,7 @@ function CourseDesignSummaryPanel({
   const [enableDeepDiveAgentVoice, setEnableDeepDiveAgentVoice] = useState(document.EnableDeepDiveAgentVoice);
   const [includeWorkplaceApplicationStep, setIncludeWorkplaceApplicationStep] = useState(document.IncludeWorkplaceApplicationStep);
   const [includeHypothesisStep, setIncludeHypothesisStep] = useState(document.IncludeHypothesisStep);
+  const [useScenedLecture, setUseScenedLecture] = useState(document.UseScenedLecture ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -805,6 +806,7 @@ function CourseDesignSummaryPanel({
         enableDeepDiveAgentVoice,
         includeWorkplaceApplicationStep,
         includeHypothesisStep,
+        useScenedLecture,
       });
       onSaved({
         ShowQaProfessorStep: showQaProfessorStep,
@@ -813,6 +815,7 @@ function CourseDesignSummaryPanel({
         EnableDeepDiveAgentVoice: enableDeepDiveAgentVoice,
         IncludeWorkplaceApplicationStep: includeWorkplaceApplicationStep,
         IncludeHypothesisStep: includeHypothesisStep,
+        UseScenedLecture: useScenedLecture,
       });
       setSavedAt(Date.now());
     } catch (err) {
@@ -898,6 +901,21 @@ function CourseDesignSummaryPanel({
           </label>
           <p className="mt-1 pl-5 text-[11px] text-slate-500">
             Typically off for young-learner / pre-reader courses.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-200">
+            <input
+              type="checkbox"
+              checked={useScenedLecture}
+              onChange={(e) => setUseScenedLecture(e.target.checked)}
+              className="h-3.5 w-3.5 shrink-0 rounded border-white/20 bg-white/[0.02] accent-brand-500 checked:!border-brand-500 checked:!bg-brand-500 focus:ring-2 focus:ring-brand-400/50"
+            />
+            Escenas sincronizadas en Learn
+          </label>
+          <p className="mt-1 pl-5 text-[11px] text-slate-500">
+            Imagen+audio por escena (más rico, hasta 6x más lento). Apágalo para 1 sola ilustración + audio completo (más rápido).
           </p>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, Menu, X, Tags, Bot, UserCircle2, Sparkles, Network, FlaskConical, Video, BookOpen } from 'lucide-react';
+import { Plus, LayoutGrid, GraduationCap, Coins, LogOut, ArrowLeft, Menu, X, Tags, Bot, UserCircle2, Sparkles, Network, FlaskConical, Video, BookOpen, FileVideo, ListVideo } from 'lucide-react';
 import ActiveRunBanner from './ActiveRunBanner';
 import ThemeSwitcher from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -21,6 +21,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [identityModalOpen, setIdentityModalOpen] = useState(false);
+  const [tenantIdCopied, setTenantIdCopied] = useState(false);
   // Legacy NGO-membership fallback only — the launch session JWT (user.*)
   // always carries the real, current tenant/company claims and must win
   // whenever present (2026-10-06: these used to take priority and could
@@ -34,7 +35,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-full flex flex-col bg-slate-950">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/95 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[120rem] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             {/* Mobile hamburger (opens drawer) */}
@@ -70,6 +71,15 @@ export default function Layout() {
                 <div className="italic text-[11px] sm:text-xs font-semibold text-brand-400">Human intelligence, strengthened by AI</div>
               </div>
             </Link>
+            {/* Shows which parent app launched this session so a reviewer
+                never confuses a corporate (Enterprise) course author session
+                with a university/academic one — sourceAppType is set by the
+                launch JWT (2026-11-10). */}
+            {(user?.sourceAppType === 'Enterprise' || user?.sourceAppType === 'University') && (
+              <span className="hidden sm:inline-flex items-center rounded-full border border-brand-400/30 bg-brand-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-brand-300">
+                {user.sourceAppType === 'Enterprise' ? t('nav.modeEnterprise') : t('nav.modeUniversity')}
+              </span>
+            )}
           </div>
 
           <nav className="hidden">
@@ -96,17 +106,19 @@ export default function Layout() {
               <GraduationCap className="h-4 w-4 text-violet-400" />
               {t('nav.programs')}
             </NavLink>
-            <NavLink
-              to="/costs"
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`
-              }
-            >
-              <Coins className="h-4 w-4 text-amber-400" />
-              {t('nav.costs')}
-            </NavLink>
+            {user?.sourceAppType !== 'Enterprise' && (
+              <NavLink
+                to="/costs"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`
+                }
+              >
+                <Coins className="h-4 w-4 text-amber-400" />
+                {t('nav.costs')}
+              </NavLink>
+            )}
             <NavLink
               to="/structured-learning-topics"
               className={({ isActive }) =>
@@ -129,6 +141,21 @@ export default function Layout() {
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden md:inline">{backToAppLabel}</span>
             </a>
+            {(user?.tenantId ?? inheritedTenantId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const tenantId = user?.tenantId ?? inheritedTenantId ?? '';
+                  void navigator.clipboard?.writeText(tenantId);
+                  setTenantIdCopied(true);
+                  window.setTimeout(() => setTenantIdCopied(false), 1500);
+                }}
+                title={`${t('common.identityTenantId')}: ${user?.tenantId ?? inheritedTenantId}`}
+                className="hidden items-center gap-1.5 rounded-lg border border-white/10 px-2 py-1.5 font-mono text-[11px] text-slate-400 transition-colors hover:bg-white/5 hover:text-white sm:flex"
+              >
+                <span className="truncate max-w-[7rem]">{tenantIdCopied ? t('common.copied') : (user?.tenantId ?? inheritedTenantId)}</span>
+              </button>
+            )}
             <LanguageSwitcher />
             <ThemeSwitcher />
             {user && (
@@ -156,7 +183,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:top-[57px] lg:h-[calc(100vh-57px)] lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 border-r border-white/10 bg-[#15132d]/95 px-4 py-5 backdrop-blur-xl transition-all duration-200 lg:top-[57px] lg:h-[calc(100vh-57px)] lg:translate-x-0 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between pb-3 lg:hidden">
           <div className="flex items-center gap-2.5">
             <span className="font-black text-lg tracking-tight text-white">
@@ -173,21 +200,32 @@ export default function Layout() {
         </div>
 
         <nav className="space-y-1">
-          <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-sky-400" activeColor="bg-sky-500/15" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/academic-learning-catalog" label={t('nav.academicLearningCatalog')} color="text-lime-400" activeColor="bg-lime-500/15" onNavigate={() => setSidebarOpen(false)}><BookOpen className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/programs" label={t('nav.programs')} color="text-violet-400" activeColor="bg-violet-500/15" onNavigate={() => setSidebarOpen(false)}><GraduationCap className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/program-entities" label={t('nav.programEntities')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Network className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-amber-400" activeColor="bg-amber-500/15" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-emerald-400" activeColor="bg-emerald-500/15" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label={t('nav.aiAgents')} color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/video-productions" label={t('nav.videoProductions')} color="text-cyan-400" activeColor="bg-cyan-500/15" onNavigate={() => setSidebarOpen(false)}><Video className="h-5 w-5" /></SidebarLink>
-          <SidebarLink collapsed={sidebarCollapsed} to="/labs" label={t('nav.labs')} color="text-teal-400" activeColor="bg-teal-500/15" onNavigate={() => setSidebarOpen(false)}><FlaskConical className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/catalog" end label={t('nav.catalog')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><LayoutGrid className="h-5 w-5" /></SidebarLink>
+          {/* Academic Learning Catalog is only for individual/academic
+              learners — Enterprise (corporate employee) and University
+              (student) launches must never offer it (2026-11-10). */}
+          {user?.sourceAppType !== 'Enterprise' && user?.sourceAppType !== 'University' && (
+            <SidebarLink collapsed={sidebarCollapsed} to="/academic-learning-catalog" label={t('nav.academicLearningCatalog')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><BookOpen className="h-5 w-5" /></SidebarLink>
+          )}
+          <SidebarLink collapsed={sidebarCollapsed} to="/programs" label={t('nav.programs')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><GraduationCap className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/program-entities" label={t('nav.programEntities')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><Network className="h-5 w-5" /></SidebarLink>
+          {user?.sourceAppType !== 'Enterprise' && (
+            <SidebarLink collapsed={sidebarCollapsed} to="/costs" label={t('nav.costs')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><Coins className="h-5 w-5" /></SidebarLink>
+          )}
+          <SidebarLink collapsed={sidebarCollapsed} to="/structured-learning-topics" label={t('nav.structuredLearningTopics')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><Tags className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/ai-agents" label={t('nav.aiAgents')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><Bot className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/video-productions" label={t('nav.videoProductions')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><Video className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/videos-in-progress" label={t('nav.videosInProgress')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><ListVideo className="h-5 w-5" /></SidebarLink>
+          <SidebarLink collapsed={sidebarCollapsed} to="/labs" label={t('nav.labs')} color="text-indigo-400" activeColor="bg-gradient-to-r from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30" onNavigate={() => setSidebarOpen(false)}><FlaskConical className="h-5 w-5" /></SidebarLink>
         </nav>
         <div className="mt-8 border-t border-white/10 pt-4">
-          {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Create</p>}
+          {!sidebarCollapsed && <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fff]">Create</p>}
           <div className="mt-2.5 space-y-2">
             <NewLearningPathButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
-            <NewAcademicLearningButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
+            <NewLearningFromVideoButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
+            {user?.sourceAppType !== 'Enterprise' && user?.sourceAppType !== 'University' && (
+              <NewAcademicLearningButton collapsed={sidebarCollapsed} onNavigate={() => setSidebarOpen(false)} />
+            )}
           </div>
         </div>
       </aside>
@@ -199,7 +237,7 @@ export default function Layout() {
         <div className="mx-auto max-w-[120rem]"><Outlet /></div>
       </main>
 
-      <footer className="border-t border-white/10 py-6 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
         {t('nav.footer')}
       </footer>
 
@@ -266,10 +304,14 @@ function SidebarLink({
       end={end}
       onClick={onNavigate}
       title={collapsed ? label : undefined}
-      className={({ isActive }) => `group flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-colors ${collapsed ? 'justify-center' : 'gap-3'} ${isActive ? `${activeColor} text-white` : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+      className={({ isActive }) => `group flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-colors ${collapsed ? 'justify-center' : 'gap-3'} ${isActive ? `${activeColor} text-[#fff]` : 'text-[#cbd5e1] hover:bg-white/5 hover:text-[#fff]'}`}
     >
-      <span className={`${color} transition-transform group-hover:scale-110`}>{children}</span>
-      {!collapsed && <span>{label}</span>}
+      {({ isActive }) => (
+        <>
+          <span className={`${isActive ? 'text-[#fff]' : color} transition-transform group-hover:scale-110`}>{children}</span>
+          {!collapsed && <span>{label}</span>}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -290,7 +332,7 @@ function NewLearningPathButton({
         to="/new-structured-learning"
         onClick={onNavigate}
         title={t('nav.newCapability')}
-        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-brand-500 via-indigo-500 to-accent-500 text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-105 hover:shadow-brand-500/40 active:scale-[0.98]"
+        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/25 transition-all hover:scale-105 hover:shadow-indigo-500/40 active:scale-[0.98]"
       >
         <Plus className="h-5 w-5 transition-transform duration-200 group-hover:rotate-90" strokeWidth={2.5} />
       </Link>
@@ -302,10 +344,49 @@ function NewLearningPathButton({
       to="/new-structured-learning"
       onClick={onNavigate}
       title={t('nav.newCapability')}
-      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-brand-500 via-indigo-500 to-accent-500 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition-all hover:scale-[1.02] hover:shadow-brand-500/40 active:scale-[0.98]"
+      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02] hover:shadow-indigo-500/40 active:scale-[0.98]"
     >
       <Plus className="h-4.5 w-4.5 transition-transform duration-200 group-hover:rotate-90" strokeWidth={2.5} />
       <span className="tracking-wide">{t('nav.newCapability')}</span>
+    </Link>
+  );
+}
+
+/** Direct CTA button for "Create Knowledge from Video" — the video-sourced
+ * Structured Learning flow (upload MP4 → Azure AI Video Indexer → real
+ * frames + transcript synced into Engrams), completely separate from the
+ * traditional PDF-based "New learning path" flow. */
+function NewLearningFromVideoButton({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (collapsed) {
+    return (
+      <Link
+        to="/new-learning-from-video"
+        onClick={onNavigate}
+        title={t('nav.newLearningFromVideo', 'Create Knowledge from Video')}
+        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-500/25 transition-all hover:scale-105 hover:shadow-sky-500/40 active:scale-[0.98]"
+      >
+        <FileVideo className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" strokeWidth={2.2} />
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      to="/new-learning-from-video"
+      onClick={onNavigate}
+      title={t('nav.newLearningFromVideo', 'Create Knowledge from Video')}
+      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition-all hover:scale-[1.02] hover:shadow-sky-500/40 active:scale-[0.98]"
+    >
+      <FileVideo className="h-4.5 w-4.5 transition-transform duration-200 group-hover:scale-110" strokeWidth={2.2} />
+      <span className="tracking-wide">{t('nav.newLearningFromVideo', 'Create Knowledge from Video')}</span>
     </Link>
   );
 }
@@ -326,7 +407,7 @@ function NewAcademicLearningButton({
         to="/new-academic-learning"
         onClick={onNavigate}
         title={t('nav.newAcademicLearning', 'New Academic Learning')}
-        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 hover:shadow-emerald-500/40 active:scale-[0.98]"
+        className="group flex h-11 w-11 mx-auto items-center justify-center rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-600/25 transition-all hover:scale-105 hover:shadow-emerald-600/40 active:scale-[0.98]"
       >
         <GraduationCap className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" strokeWidth={2.2} />
       </Link>
@@ -338,7 +419,7 @@ function NewAcademicLearningButton({
       to="/new-academic-learning"
       onClick={onNavigate}
       title={t('nav.newAcademicLearning', 'New Academic Learning')}
-      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition-all hover:scale-[1.02] hover:shadow-emerald-500/40 active:scale-[0.98]"
+      className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 transition-all hover:scale-[1.02] hover:shadow-emerald-600/40 active:scale-[0.98]"
     >
       <GraduationCap className="h-4.5 w-4.5 transition-transform duration-200 group-hover:scale-110" strokeWidth={2.2} />
       <span className="tracking-wide">{t('nav.newAcademicLearning', 'New Academic Learning')}</span>

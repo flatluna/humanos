@@ -183,7 +183,7 @@ public sealed class PdfCapabilityGraphPipelineService
     }
 
     private const int DefaultMaxImagesToDescribe = 60;
-    private const int DefaultMaxImagesPerPage = 8;
+    private const int DefaultMaxImagesPerPage = 5;
 
     /// <summary>Configurable via the 'MaxCapabilityPdfImagesToDescribe' app
     /// setting — caps how many embedded page images get sent to
@@ -267,6 +267,40 @@ public sealed class PdfCapabilityGraphPipelineService
     /// per token for Spanish/English prose) — good enough for a size-cap
     /// guard, not meant to match a real tokenizer exactly.</summary>
     private static int EstimateTokenCount(string text) => text.Length / 4;
+
+    /// <summary>Decodes a "data:&lt;content-type&gt;;base64,&lt;...&gt;" URL
+    /// (the format <see cref="CapabilityOutlineNodeDto.ImageDataUrls"/> uses)
+    /// into raw bytes + content type, or null if malformed.</summary>
+    private static (byte[] Bytes, string ContentType)? TryDecodeDataUrl(string dataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(dataUrl) || !dataUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var commaIndex = dataUrl.IndexOf(',');
+        if (commaIndex < 0)
+        {
+            return null;
+        }
+
+        var header = dataUrl[5..commaIndex];
+        var contentType = header.Split(';')[0];
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            contentType = "image/png";
+        }
+
+        try
+        {
+            var bytes = Convert.FromBase64String(dataUrl[(commaIndex + 1)..]);
+            return (bytes, contentType);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
 
     public async Task<PdfCapabilityGraphResult> RunAsync(
         byte[] pdfBytes,
@@ -782,6 +816,17 @@ public sealed class PdfCapabilityGraphPipelineService
             }
         }
 
+        // (2026-11-05) Real document images (base64 data URLs) carried from
+        // the designer-approved outline, keyed by the NodeId of the FIRST
+        // graph node produced for each chapter — populated only in strict
+        // per-chapter mode below, where chapter boundaries are known
+        // exactly. Consumed by the illustration stage (PASO 6) so the
+        // ACTUAL extracted document images (not just AI-generated ones)
+        // reach the persisted CapabilityGraphNode and are shown to the
+        // student, matching what the designer already saw in the
+        // "Learning path design" preview.
+        var sourceImagesByFirstNodeId = new Dictionary<Guid, List<string>>();
+
         CapabilityGraphResponse graph;
         if (strictSyllabusMode && hasRealChapters)
         {
@@ -813,6 +858,17 @@ public sealed class PdfCapabilityGraphPipelineService
 
                 graphName ??= chapterResult.Graph.Name;
                 graphDescription ??= chapterResult.Graph.Description;
+
+                if (chapterMaterials[i].ImageDataUrls is { Count: > 0 } chapterImages
+                    && chapterResult.Graph.Nodes.Count > 0)
+                {
+                    // Attach this chapter's real document images to its
+                    // FIRST node — same "image lives on the chapter's first
+                    // node" convention used by the preview step's
+                    // AttachRealImages (PreviewCapabilityOutlineFunction).
+                    sourceImagesByFirstNodeId[chapterResult.Graph.Nodes[0].NodeId] = chapterImages;
+                }
+
                 perChapterNodes.AddRange(chapterResult.Graph.Nodes);
             }
 
@@ -1050,6 +1106,55 @@ public sealed class PdfCapabilityGraphPipelineService
         }
 
         LogPipelineEvent("=== Illustration stage finished ===");
+
+        // ==================== 6a. REAL SOURCE-DOCUMENT IMAGES (best-effort) ====================
+        // (2026-11-05) Attach the ACTUAL images extracted from the source
+        // PDF (not AI-generated) to the chapter's first node, same images
+        // the designer already reviewed in the "Learning path design"
+        // preview step (CapabilityOutlineNodeDto.ImageDataUrls) — without
+        // this, those real images were shown only during preview and never
+        // reached the student-facing course. Uses Purpose=Teaching so
+        // ExperienceDesignerAgent can pick it as the Teaching step's
+        // worked-example illustration like any other Teaching illustration
+        // — no AI image model needed, only Data Lake storage.
+        if (sourceImagesByFirstNodeId.Count > 0 && _illustrationStorage.IsConfigured)
+        {
+            reportProgress("Attaching source document images");
+            foreach (var (nodeId, dataUrls) in sourceImagesByFirstNodeId)
+            {
+                for (var imgIndex = 0; imgIndex < dataUrls.Count; imgIndex++)
+                {
+                    try
+                    {
+                        var decoded = TryDecodeDataUrl(dataUrls[imgIndex]);
+                        if (decoded is null)
+                        {
+                            continue;
+                        }
+                        var (imageBytes, contentType) = decoded.Value;
+                        using var imageStream = new MemoryStream(imageBytes);
+                        var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                            tenantId, capabilityId, nodeId, 900 + imgIndex, imageStream, contentType, cancellationToken);
+
+                        illustrationRecords.Add(new CapabilityGraphPersistenceService.NodeIllustrationRecord
+                        {
+                            NodeId = nodeId,
+                            StoragePath = storagePath,
+                            Prompt = "Imagen real extraída del documento fuente",
+                            ImageModel = "source-document",
+                            Purpose = IllustrationPurpose.Teaching
+                        });
+                        LogPipelineEvent($"UPLOADED-SOURCE-IMAGE node={nodeId} image={imgIndex} path={storagePath}");
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        LogPipelineEvent(
+                            $"FAILED-SOURCE-IMAGE node={nodeId} image={imgIndex} exType={ex.GetType().FullName} msg={ex.Message}");
+                        // Best-effort — a failed upload shouldn't abort the whole run.
+                    }
+                }
+            }
+        }
 
         // ==================== 6b. COURSE COVER IMAGE (best-effort) ====================
         // One extra image representing the WHOLE capability (distinct from

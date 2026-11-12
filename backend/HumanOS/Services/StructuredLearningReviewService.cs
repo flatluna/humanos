@@ -32,6 +32,7 @@ public sealed class StructuredLearningReviewService
     private readonly StructuredLearningConnectionExtractionService _connectionExtraction;
     private readonly StructuredLearningKnowledgeFactGenerationService _knowledgeFactGeneration;
     private readonly StructuredLearningGenerationUsageService _usageService;
+    private readonly StructuredLearningPedagogyService _pedagogyService;
 
     public StructuredLearningReviewService(
         StructuredLearningStepEditorAgent stepAgent,
@@ -44,7 +45,8 @@ public sealed class StructuredLearningReviewService
         StructuredLearningEntityExtractionService entityExtraction,
         StructuredLearningConnectionExtractionService connectionExtraction,
         StructuredLearningKnowledgeFactGenerationService knowledgeFactGeneration,
-        StructuredLearningGenerationUsageService usageService)
+        StructuredLearningGenerationUsageService usageService,
+        StructuredLearningPedagogyService pedagogyService)
     {
         _stepAgent = stepAgent;
         _cardAgent = cardAgent;
@@ -57,6 +59,7 @@ public sealed class StructuredLearningReviewService
         _connectionExtraction = connectionExtraction;
         _knowledgeFactGeneration = knowledgeFactGeneration;
         _usageService = usageService;
+        _pedagogyService = pedagogyService;
     }
 
     public sealed class StepResult
@@ -174,6 +177,292 @@ public sealed class StructuredLearningReviewService
         finalResult.WebSearchCitations = citations;
         finalResult.WebSearchSnippet = perplexityFindings;
         return finalResult;
+    }
+
+    public sealed class SourceTextResult
+    {
+        public string Text { get; set; } = string.Empty;
+        public int VersionNumber { get; set; }
+        public StepResult? UpdatedTeachingStep { get; set; }
+        /// <summary>EVERY step of this Engram after the full regeneration
+        /// (Hypothesis/Teaching/DeepDive/Recall/Production/Assessment) —
+        /// each one has a brand-new StructuredLearningSectionStepId (the
+        /// old steps were deleted, not updated in place), so the caller
+        /// must REPLACE its entire Steps array with this list rather than
+        /// trying to patch individual steps by their old id.</summary>
+        public List<StepResult> AllSteps { get; set; } = [];
+        public List<string> WebSearchCitations { get; set; } = [];
+    }
+
+    public sealed class SourceTextVersionDto
+    {
+        public int VersionNumber { get; set; }
+        public string Text { get; set; } = string.Empty;
+        public string? Instruction { get; set; }
+        public DateTime CreatedDate { get; set; }
+    }
+
+    /// <summary>Edits a section's own canonical SOURCE text (2026-11-11) —
+    /// the verbatim text every pedagogical step is grounded in, shown
+    /// read-only in Studio's "Original PDF/text for this Engram" panel —
+    /// then fully REGENERATES this one Engram (Hypothesis/Teaching/
+    /// DeepDive/Recall/Production/Assessment, illustrations, audio,
+    /// Knowledge Graph/Facts) from the new text, exactly as if the Engram
+    /// were brand new, driven by three independent reviewer inputs:
+    /// <paramref name="newText"/> (the literal replacement for the source
+    /// text itself — if omitted, the text is left as-is and only the
+    /// instructions below steer the regeneration), <paramref name="instruction"/>
+    /// (general guidance for the AI about this specific Engram, applied
+    /// across every step), and <paramref name="imageInstruction"/>
+    /// (guidance specifically for the illustration(s) this Engram
+    /// generates, most importantly the Teaching/"Learn" step's image).
+    /// Every edit to the source text is versioned (see
+    /// <see cref="StructuredLearningSectionTextVersion"/>) — the original
+    /// text is preserved forever as version 0, and only the source text
+    /// itself is versioned (not the AI-derived Content/image/audio, which
+    /// only ever keeps its latest generation).</summary>
+    public async Task<SourceTextResult> EditSourceTextAsync(
+        HumanOsDbContext dbContext, Guid sectionId, string? newText, string? instruction, string? imageInstruction,
+        bool usePerplexitySearch = false, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(newText) && string.IsNullOrWhiteSpace(instruction) && string.IsNullOrWhiteSpace(imageInstruction))
+        {
+            throw new InvalidOperationException("Provide at least one of: new text, an AI instruction, or an image instruction.");
+        }
+
+        var section = await dbContext.StructuredLearningDocumentSections
+            .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId, cancellationToken)
+            ?? throw new InvalidOperationException($"StructuredLearningDocumentSection {sectionId} not found.");
+
+        var document = await dbContext.StructuredLearningDocuments
+            .FirstOrDefaultAsync(d => d.StructuredLearningDocumentId == section.StructuredLearningDocumentId, cancellationToken)
+            ?? throw new InvalidOperationException($"StructuredLearningDocument {section.StructuredLearningDocumentId} not found.");
+
+        var oldText = section.Text;
+
+        // Capture the ORIGINAL text as version 0 the first time this section's
+        // source text is ever edited — never overwritten again afterwards.
+        var hasAnyVersion = await dbContext.StructuredLearningSectionTextVersions
+            .AnyAsync(v => v.StructuredLearningDocumentSectionId == sectionId, cancellationToken);
+        if (!hasAnyVersion)
+        {
+            dbContext.StructuredLearningSectionTextVersions.Add(new StructuredLearningSectionTextVersion
+            {
+                StructuredLearningDocumentSectionId = sectionId,
+                VersionNumber = 0,
+                Text = oldText,
+                Instruction = null,
+                CreatedDate = section.CreatedDate == default ? DateTime.UtcNow : section.CreatedDate
+            });
+        }
+
+        // The literal text itself only changes when the reviewer actually
+        // supplied replacement text — a pure instruction/image-instruction
+        // edit (no new text) still triggers a full regeneration, but
+        // against the UNCHANGED source text, and does not create a new
+        // source-text version (there's nothing new to version).
+        var effectiveText = string.IsNullOrWhiteSpace(newText) ? oldText : newText;
+        var textActuallyChanged = !string.IsNullOrWhiteSpace(newText) && newText != oldText;
+
+        var nextVersionNumber = await dbContext.StructuredLearningSectionTextVersions
+            .Where(v => v.StructuredLearningDocumentSectionId == sectionId)
+            .Select(v => (int?)v.VersionNumber)
+            .MaxAsync(cancellationToken) ?? 0;
+
+        if (textActuallyChanged)
+        {
+            nextVersionNumber += 1;
+            dbContext.StructuredLearningSectionTextVersions.Add(new StructuredLearningSectionTextVersion
+            {
+                StructuredLearningDocumentSectionId = sectionId,
+                VersionNumber = nextVersionNumber,
+                Text = effectiveText,
+                Instruction = instruction,
+                CreatedDate = DateTime.UtcNow
+            });
+            section.Text = effectiveText;
+            section.TotalCharacters = effectiveText.Length;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Re-extract the Knowledge Graph (entities/connections) and
+        // Knowledge Facts from the (possibly just-updated) source text
+        // BEFORE the full regeneration below — DeepDive, Hypothesis, and
+        // Knowledge Facts grounding all read from these, so if the text
+        // changed they must never be left stale/derived from the OLD
+        // text. Mirrors ResyncKnowledgeGraphAfterTeachingEditAsync's same
+        // "always resync, best-effort" behavior for Teaching-step edits.
+        if (textActuallyChanged)
+        {
+            await ResyncKnowledgeGraphForSourceTextEditAsync(dbContext, section, effectiveText, cancellationToken);
+        }
+
+        // 1-based position of this section within the document's own
+        // SortOrder sequence — RunAsync's fromEngramNumber/toEngramNumber
+        // range filter is expressed in THESE positions, not raw SortOrder
+        // values, so this must match exactly how StructuredLearningPedagogyService
+        // computes it (see its own fromEngramNumber/toEngramNumber doc comment).
+        var orderedSectionIds = await dbContext.StructuredLearningDocumentSections
+            .Where(s => s.StructuredLearningDocumentId == section.StructuredLearningDocumentId)
+            .OrderBy(s => s.SortOrder)
+            .Select(s => s.StructuredLearningDocumentSectionId)
+            .ToListAsync(cancellationToken);
+        var engramPosition = orderedSectionIds.IndexOf(sectionId) + 1;
+        if (engramPosition <= 0)
+        {
+            throw new InvalidOperationException($"Could not resolve Engram position for section {sectionId}.");
+        }
+
+        // 2026-11-12 fix: without an explicit override, RunAsync's own
+        // "video frame fallback" (StructuredLearningPedagogyService.ProcessSectionAsync)
+        // auto-applies Mode="EnhanceVideoFrame" whenever this section has ANY real
+        // SourceDocument illustration — which just re-renders a higher-quality copy
+        // of the SAME OLD frame/diagram and EARLY-RETURNS before ever touching the
+        // designer's fresh, new-text-driven IllustrationPrompt. The professor-lecture
+        // narration, however, IS built from that fresh IllustrationPrompt (designed
+        // from the brand-new source text), so the two ended up completely
+        // disconnected: the narration describing a diagram the actual image never
+        // became (e.g. narrating "Hidden Layer 1/2" labels from the OLD diagram while
+        // the new source text is entirely about the training loop's 7 steps).
+        // Passing an explicit "AiGeneratedFromUpload" override here instead makes the
+        // real source image ONLY a style/content reference for a brand NEW image the
+        // designer generates straight from the (possibly just-edited) source text —
+        // so the image is created FIRST, from the same text/instructions the
+        // narration is about to be written from, keeping both in sync.
+        // Prefer the lesson's CURRENT Teaching illustration (what the learner actually
+        // sees today) as the reference image — not the raw original SourceDocument
+        // page — so the regenerated image stays visually continuous with the lesson
+        // as the reviewer knows it. Fall back to the SourceDocument page only if no
+        // Teaching illustration exists yet (e.g. first-ever regeneration).
+        SectionIllustrationOverride? illustrationOverride = null;
+        var sourceFrame = await dbContext.StructuredLearningIllustrations
+            .Where(i => i.StructuredLearningDocumentSectionId == sectionId
+                && i.Purpose == StructuredLearningIllustrationPurpose.Teaching
+                && !i.IsExcludedFromGeneration)
+            .OrderByDescending(i => i.CreatedDate)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? await dbContext.StructuredLearningIllustrations
+            .Where(i => i.StructuredLearningDocumentSectionId == sectionId
+                && i.Purpose == StructuredLearningIllustrationPurpose.SourceDocument
+                && !i.IsExcludedFromGeneration)
+            .OrderBy(i => i.CreatedDate)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (sourceFrame is not null)
+        {
+            try
+            {
+                var frameBytes = await _illustrationStorage.DownloadIllustrationBytesAsync(sourceFrame.StoragePath, cancellationToken);
+                illustrationOverride = new SectionIllustrationOverride
+                {
+                    SectionId = sectionId,
+                    Mode = "AiGeneratedFromUpload",
+                    UploadedImageBytes = frameBytes.ToArray(),
+                    UploadedImageContentType = "image/jpeg",
+                    ReferenceImageUsageInstruction = imageInstruction,
+                };
+            }
+            catch (Exception ex)
+            {
+                // Best-effort: fall through with no override — RunAsync's own
+                // video-frame fallback (or plain AiGenerated) still applies.
+                Console.Error.WriteLine($"[EditSourceTextAsync] DownloadIllustrationBytesAsync failed for {sourceFrame.StoragePath}: {ex}");
+            }
+        }
+
+        // Full regeneration — runs the SAME pipeline used when the Engram
+        // was first created (Hypothesis/Teaching/DeepDive/Recall/
+        // Production/Assessment, illustrations, audio, and Knowledge Facts
+        // re-derivation from the just-refreshed Knowledge Graph above),
+        // scoped to just this one Engram via fromEngramNumber==toEngramNumber
+        // ==its own position, forced to run even though it's already
+        // Completed (forceRegenerateAll), grounded in the (possibly
+        // just-updated) source text above, and steered by the reviewer's
+        // general instruction and/or image instruction.
+        await _pedagogyService.RunAsync(
+            section.StructuredLearningDocumentId,
+            document.CourseLanguageCode ?? "en",
+            (_, _, _, _) => { },
+            cancellationToken,
+            forceRegenerateAll: true,
+            usePerplexitySearch: usePerplexitySearch,
+            fromEngramNumber: engramPosition,
+            toEngramNumber: engramPosition,
+            illustrationOverride: illustrationOverride,
+            additionalInstruction: instruction,
+            imageInstruction: imageInstruction);
+
+        var regeneratedSection = await dbContext.StructuredLearningDocumentSections
+            .Include(s => s.Steps)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.StructuredLearningDocumentSectionId == sectionId, cancellationToken);
+        var regeneratedTeachingStep = regeneratedSection?.Steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching);
+
+        return new SourceTextResult
+        {
+            Text = regeneratedSection?.Text ?? effectiveText,
+            VersionNumber = nextVersionNumber,
+            UpdatedTeachingStep = regeneratedTeachingStep is null ? null : ToStepResult(regeneratedTeachingStep),
+            AllSteps = regeneratedSection?.Steps.Select(ToStepResult).ToList() ?? [],
+            WebSearchCitations = []
+        };
+    }
+
+    /// <summary>Fully deletes and re-extracts this section's Knowledge
+    /// Graph (entities/connections) and Knowledge Facts from its NEW
+    /// source text, before the full Engram regeneration reads from them —
+    /// same rationale and best-effort semantics as
+    /// <see cref="ResyncKnowledgeGraphAfterTeachingEditAsync"/> (a failure
+    /// here must never undo the already-saved text edit; pedagogy
+    /// generation gracefully falls back to Text-only grounding if this
+    /// doesn't succeed).</summary>
+    private async Task ResyncKnowledgeGraphForSourceTextEditAsync(
+        HumanOsDbContext dbContext, StructuredLearningDocumentSection section, string newText, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_embeddingService.IsConfigured)
+            {
+                section.Embedding = new Microsoft.Data.SqlTypes.SqlVector<float>(
+                    await _embeddingService.GenerateEmbeddingAsync(newText, cancellationToken));
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            if (_entityExtraction.IsConfigured)
+            {
+                await _entityExtraction.ExtractForSectionAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+            if (_connectionExtraction.IsConfigured)
+            {
+                await _connectionExtraction.ExtractForSectionAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+            if (_knowledgeFactGeneration.IsConfigured)
+            {
+                await _knowledgeFactGeneration.GenerateValidateAndPersistAsync(section.StructuredLearningDocumentSectionId, cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort — same graceful-skip rationale as ResyncKnowledgeGraphAfterTeachingEditAsync.
+        }
+    }
+
+    /// <summary>Read-only list of every saved source-text version for this
+    /// section, oldest (version 0, the original) first.</summary>
+    public async Task<List<SourceTextVersionDto>> GetSourceTextVersionsAsync(
+        HumanOsDbContext dbContext, Guid sectionId, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.StructuredLearningSectionTextVersions
+            .Where(v => v.StructuredLearningDocumentSectionId == sectionId)
+            .OrderBy(v => v.VersionNumber)
+            .Select(v => new SourceTextVersionDto
+            {
+                VersionNumber = v.VersionNumber,
+                Text = v.Text,
+                Instruction = v.Instruction,
+                CreatedDate = v.CreatedDate
+            })
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>Directly persists a reviewer's own hand-edited Content for

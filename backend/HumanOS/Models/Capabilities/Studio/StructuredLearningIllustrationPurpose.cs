@@ -16,5 +16,20 @@ public enum StructuredLearningIllustrationPurpose
     Hypothesis = 1,
 
     /// <summary>The Teaching step's illustration — always present.</summary>
-    Teaching = 2
+    Teaching = 2,
+
+    /// <summary>One Static-mode Recall item's pre-generated card illustration
+    /// (2026-10-26) — see <see cref="HumanOS.Services.StructuredLearningRecallEngine.EnsureStaticItemsAsync"/>.
+    /// Generated once at authoring time (same engram-generation pass as
+    /// everything else), then shown to every student who reaches that
+    /// Recall item — never regenerated per-student/per-attempt.</summary>
+    RecallCard = 4,
+
+    /// <summary>A REAL image extracted from the source HumanOS process
+    /// document (e.g. a diagram/screenshot captured in a process step),
+    /// as opposed to every other value here which is AI-generated. Shown
+    /// alongside the Teaching illustration so the student sees the actual
+    /// source figure the professor is narrating, not just an AI
+    /// approximation of it (2026-11-03).</summary>
+    SourceDocument = 5
 }

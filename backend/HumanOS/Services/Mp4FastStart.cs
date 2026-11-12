@@ -34,8 +34,34 @@ internal static class Mp4FastStart
                     CreateNoWindow = true,
                 }
             };
+            // ffmpeg logs verbosely to stderr; if nothing drains that pipe
+            // while we wait, it fills up (~64KB) and ffmpeg blocks on the
+            // write forever — a classic Process redirect deadlock that
+            // made WaitForExitAsync hang indefinitely (observed 2026-11-07:
+            // ffmpeg sat at ~0% CPU for 4+ minutes). Must read both streams
+            // asynchronously via the OutputDataReceived/ErrorDataReceived
+            // events (discarding the content — we don't need ffmpeg's log)
+            // instead of just awaiting exit. Also cap the wait with a hard
+            // timeout as a safety net in case ffmpeg itself hangs for an
+            // unrelated reason.
+            process.OutputDataReceived += (_, _) => { };
+            process.ErrorDataReceived += (_, _) => { };
             process.Start();
-            await process.WaitForExitAsync(cancellationToken);
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromMinutes(2));
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+                Console.WriteLine("[Mp4FastStart] ffmpeg remux timed out after 2 minutes — serving original bytes.");
+                return videoBytes;
+            }
 
             if (process.ExitCode == 0 && File.Exists(outputPath))
             {

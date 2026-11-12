@@ -194,8 +194,24 @@ public sealed class RealtimeVoiceSessionService
     /// generation (and its latency) is ever involved, only picking an
     /// existing image by id.
     /// </param>
+    /// <param name="disableAutomaticResponseOnSpeechEnd">
+    /// When <c>true</c>, sets <c>turn_detection.create_response = false</c> instead of the
+    /// normal <c>true</c>. Introduced for Structured Learning Recall's deterministic
+    /// grading redesign (2026-10-27): with automatic responses OFF, the model never gets a
+    /// chance to improvise a SPOKEN reaction in the same response as the
+    /// `submit_recall_answer` tool call (which is how it kept saying "Correct!" out loud while
+    /// simultaneously sending `isCorrect: false`, or vice versa — the Realtime API generates a
+    /// response's audio and its function call together, not in the sequential order the
+    /// system prompt asked for, so prompt instructions alone couldn't fix it). Instead, the
+    /// CLIENT (see VoiceTutorAgent.tsx) explicitly fires a silent, text-only `response.create`
+    /// to get ONLY the tool call, waits for the real graded result, then fires a SECOND
+    /// `response.create` (this one with audio) whose only job is to read that already-decided
+    /// result aloud — so what's spoken can never diverge from what's recorded. Defaults to
+    /// <c>false</c> (the original automatic behavior) for every other caller.
+    /// </param>
     public async Task<EphemeralSession> CreateEphemeralSessionAsync(
-        string instructions, CancellationToken cancellationToken, object? tools = null)
+        string instructions, CancellationToken cancellationToken, object? tools = null,
+        bool disableAutomaticResponseOnSpeechEnd = false)
     {
         if (!IsConfigured)
         {
@@ -252,7 +268,7 @@ public sealed class RealtimeVoiceSessionService
                         ["threshold"] = 0.65,
                         ["prefix_padding_ms"] = 300,
                         ["silence_duration_ms"] = 650,
-                        ["create_response"] = true,
+                        ["create_response"] = !disableAutomaticResponseOnSpeechEnd,
                         ["interrupt_response"] = true
                     },
                     // Azure/OpenAI Realtime's purpose-built fix for exactly

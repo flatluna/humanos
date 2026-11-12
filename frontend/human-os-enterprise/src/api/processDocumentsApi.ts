@@ -14,15 +14,60 @@ export interface ProcessDocumentUploadResponse {
   status_url?: string;
 }
 
+export interface ProcessActivityDto {
+  activity_id: string;
+  activity_sequence: number;
+  activity_name: string;
+  activity_description: string;
+  activity_type: string;
+  activity_status: string;
+  id_source: string;
+  primary_responsible_role: string;
+  systems_and_tools: string[];
+  human_judgment_required: boolean;
+  ai_contribution: string;
+  human_verification_required: boolean;
+  learning_workflow_decision: string;
+  required_capabilities: string[];
+  suggested_learning_method: string;
+  source_page: number;
+  required_inputs: string[];
+  outputs: string[];
+  business_rules: string[];
+  readiness_criteria: string[];
+  source_text: string;
+  missing_information: string[];
+}
+
+export interface ProcessStepImageDto {
+  source_page: number;
+  storage_path: string;
+  content_type: string;
+  /** Base64 data URL, ready to use directly as an <img src>. */
+  data_url: string;
+}
+
 export interface ProcessStepDto {
   step_id: string;
+  step_code: string;
   step_number: string;
   step_name: string;
   objective: string;
+  primary_responsible_role: string;
+  supporting_roles: string[];
+  systems_and_tools: string[];
+  trigger: string;
+  required_inputs: string[];
   required_activities: string[];
   required_skills: string[];
   deliverables: string[];
+  decisions_and_human_judgment: string[];
+  business_rules_and_controls: string[];
+  exceptions_and_escalations: string[];
+  evidence_produced_or_required: string[];
   completion_condition: string;
+  missing_information: string[];
+  activities: ProcessActivityDto[];
   substeps: Array<{
     substep_id: string;
     substep_number: string;
@@ -31,6 +76,30 @@ export interface ProcessStepDto {
   }>;
   checklists: string[];
   source_pages: number[];
+  /** Verbatim excerpt captured during the fast Phase A index extraction; input for the per-step deep analysis. */
+  source_content: string;
+  /** Real images (screenshots/diagrams/figures) embedded in the source document pages covering this step —
+   * extracted verbatim (never AI-generated); see ProcessStepImage on the backend. */
+  step_images?: ProcessStepImageDto[];
+  /** True once AnalyzeStepBusinessRequirements has populated role/systems/trigger/business-rules fields for this step. */
+  business_requirements_analyzed: boolean;
+
+  // ===== Wizard Step 3 "Clasificar Proceso" =====
+  owner_role: string;
+  /** "Identified" (role explicitly stated in the source) or "ToBeConfirmed" (needs human resolution). */
+  owner_status: string;
+  classified_inputs: CodedListItemDto[];
+  classified_systems: CodedListItemDto[];
+  classified_dependencies: CodedListItemDto[];
+  classified_business_rules: CodedListItemDto[];
+  classified_exceptions: CodedListItemDto[];
+  classified_outputs: CodedListItemDto[];
+  process_classified: boolean;
+}
+
+export interface CodedListItemDto {
+  id: string;
+  label: string;
 }
 
 export interface ProcessChapterDto {
@@ -64,6 +133,7 @@ export interface ProcessTableDto {
 export interface ProcessDocumentStructureDto {
   document_id: string;
   process_name: string;
+  process_code: string;
   document_title: string;
   source_file: {
     file_name: string;
@@ -80,6 +150,25 @@ export interface ProcessDocumentStructureDto {
   }>;
   warnings: string[];
   processing_status: string;
+  executive_summary: string;
+  purpose: string;
+  process_owner: string;
+  trigger: string;
+  scope: string;
+  inputs: string[];
+  final_output: string;
+  participating_roles: string[];
+  systems_used: string[];
+  /** Whether this process applies to the whole organization (ignores department_ids/job_role_ids when true). */
+  applies_to_all_departments: boolean;
+  /** Department IDs (from the tenant's Department catalog) this process applies to. */
+  department_ids: string[];
+  /** Job Role IDs (from the tenant's JobRole catalog) this process applies to. */
+  job_role_ids: string[];
+  applicable_policies: string[];
+  metrics: string[];
+  version: string;
+  status: string;
 }
 
 export interface SkillItemDto {
@@ -114,6 +203,174 @@ export interface WorkStepRequirementsAnalysisResultDto {
   assumptions: string[];
   warnings: string[];
   sourcePages: number[];
+}
+
+export interface RecommendedCourseDto {
+  title: string;
+  provider?: string;
+  url?: string;
+}
+
+export interface ProcessSkillGapDto {
+  name: string;
+  category?: 'soft-skills' | 'technology-skills' | string;
+  isAiSkill?: boolean;
+  reason: string;
+  affectedSteps: string[];
+  recommendedCourses: RecommendedCourseDto[];
+  /** True when this gap is already covered by an existing dbo.Skill catalog entry — no internet
+   * search was run for it; the UI should offer "assign to roles/depts" only, not "create". */
+  isFromCatalog?: boolean;
+  matchedSkillId?: string | null;
+  matchedSkillName?: string | null;
+  /** True when the user manually assigned this skill from the catalog (instead of the LLM
+   * identifying it). Preserved across re-analysis so manual choices are not discarded. */
+  isManual?: boolean;
+}
+
+export interface ProcessWideLearningRecommendationResultDto {
+  documentId: string;
+  processName: string;
+  overallSummary: string;
+  skillGaps: ProcessSkillGapDto[];
+  assumptions: string[];
+  warnings: string[];
+  /** UTC timestamp of the last time this recommendation was produced by the LLM. */
+  analyzedAt?: string | null;
+}
+
+export interface ProcessSkillRequirementDto {
+  processSkillRequirementId: string;
+  processDocumentId: string;
+  skillName: string;
+  category: string;
+  isAiSkill: boolean;
+  reason?: string | null;
+  appliesToAllDepartments: boolean;
+  isRequired: boolean;
+  departmentIds: string[];
+  jobRoleIds: string[];
+  matchedSkillId?: string | null;
+}
+
+export interface SaveProcessSkillRequirementRequest {
+  skillName: string;
+  category: string;
+  isAiSkill: boolean;
+  reason?: string;
+  appliesToAllDepartments: boolean;
+  isRequired: boolean;
+  departmentIds: string[];
+  jobRoleIds: string[];
+  /** Case (a) catalog match: reuse this existing dbo.Skill, nothing new is created. */
+  matchedSkillId?: string;
+  /** Case (b) new internet course: create a new dbo.Skill from the fields below. */
+  isNewFromInternet?: boolean;
+  sourceCourseTitle?: string;
+  sourceCourseProvider?: string;
+  sourceCourseUrl?: string;
+  sourceOutlineModules?: CourseOutlineModuleDto[];
+  sourceOutlineSource?: string;
+}
+
+export async function getProcessSkillRequirements(documentId: string): Promise<ProcessSkillRequirementDto[]> {
+  const response = await apiClient.get<ProcessSkillRequirementDto[]>(
+    `/process-documents/${encodeURIComponent(documentId)}/skill-requirements`,
+  );
+  return response.data;
+}
+
+export async function saveProcessSkillRequirement(
+  documentId: string,
+  payload: SaveProcessSkillRequirementRequest,
+  processSkillRequirementId?: string,
+): Promise<ProcessSkillRequirementDto> {
+  const params = processSkillRequirementId ? { processSkillRequirementId } : undefined;
+  const response = await apiClient.post<ProcessSkillRequirementDto>(
+    `/process-documents/${encodeURIComponent(documentId)}/skill-requirements`,
+    payload,
+    { params },
+  );
+  return response.data;
+}
+
+export async function deleteProcessSkillRequirement(documentId: string, processSkillRequirementId: string): Promise<void> {
+  await apiClient.delete(
+    `/process-documents/${encodeURIComponent(documentId)}/skill-requirements/${encodeURIComponent(processSkillRequirementId)}`,
+  );
+}
+
+export interface SaveProcessAsCapabilityResponseDto {
+  skillId: string;
+  alreadyExisted: boolean;
+}
+
+/** Saves the WHOLE process (not an individual skill gap) as a "department-processes"
+ * Capability Catalog entry, reusing its original PDF + chapter/step outline, so it shows up
+ * in /skills and can be opened in Studio to generate its course. `departmentId` records who
+ * AUTHORED the process (e.g. HR, Finance), not who must follow it. */
+export async function saveProcessAsCapability(
+  documentId: string,
+  departmentId: string,
+): Promise<SaveProcessAsCapabilityResponseDto> {
+  const response = await apiClient.post<SaveProcessAsCapabilityResponseDto>(
+    `/process-documents/${encodeURIComponent(documentId)}/save-as-capability`,
+    { departmentId },
+  );
+  return response.data;
+}
+
+export async function analyzeProcessLearningNeeds(
+  documentId: string,
+  organizationId?: string,
+): Promise<ProcessWideLearningRecommendationResultDto> {
+  const params = organizationId ? { organizationId } : undefined;
+  const response = await apiClient.post<ProcessWideLearningRecommendationResultDto>(
+    `/process-documents/${encodeURIComponent(documentId)}/analyze-all-requirements`,
+    null,
+    { params },
+  );
+  return response.data;
+}
+
+export async function saveProcessWideLearningRecommendation(
+  documentId: string,
+  recommendation: ProcessWideLearningRecommendationResultDto,
+  organizationId?: string,
+): Promise<{ success: boolean; analyzedAt?: string | null }> {
+  const params = organizationId ? { organizationId } : undefined;
+  const response = await apiClient.put<{ success: boolean; analyzedAt?: string | null }>(
+    `/process-documents/${encodeURIComponent(documentId)}/process-wide-recommendation`,
+    recommendation,
+    { params },
+  );
+  return response.data;
+}
+
+export interface CourseOutlineModuleDto {
+  title: string;
+  lessons: string[];
+}
+
+export interface CourseOutlineRequest {
+  skillName: string;
+  courseTitle: string;
+  provider?: string;
+  url?: string;
+  processName?: string;
+}
+
+export interface CourseOutlineResultDto {
+  courseTitle: string;
+  url?: string;
+  source: 'scraped' | 'ai-suggested' | string;
+  modules: CourseOutlineModuleDto[];
+  warnings: string[];
+}
+
+export async function getCourseOutline(payload: CourseOutlineRequest): Promise<CourseOutlineResultDto> {
+  const response = await apiClient.post<CourseOutlineResultDto>('/courses/outline', payload);
+  return response.data;
 }
 
 export interface UploadProcessDocumentOptions {
@@ -232,6 +489,25 @@ export async function analyzeWorkStepRequirements(
   const response = await apiClient.post<WorkStepRequirementsAnalysisResultDto>(
     `/process-documents/${encodeURIComponent(documentId)}/steps/${encodeURIComponent(stepId)}/analyze-requirements`,
     previouslyIdentifiedSkills && previouslyIdentifiedSkills.length > 0 ? previouslyIdentifiedSkills : null,
+    { params },
+  );
+  return response.data;
+}
+
+/**
+ * PHASE B — deep business-requirements analysis for ONE step at a time (role, systems, trigger, business
+ * rules, exceptions), using only that step's own SourceContent captured by the fast Phase A index extraction.
+ * Call this once per step, as the user reviews each step — never for the whole document at once.
+ */
+export async function analyzeStepBusinessRequirements(
+  documentId: string,
+  stepId: string,
+  organizationId?: string,
+): Promise<ProcessStepDto> {
+  const params = organizationId ? { organizationId } : undefined;
+  const response = await apiClient.post<ProcessStepDto>(
+    `/process-documents/${encodeURIComponent(documentId)}/steps/${encodeURIComponent(stepId)}/analyze-business-requirements`,
+    null,
     { params },
   );
   return response.data;
@@ -619,6 +895,7 @@ export interface ProcessDocumentDetailDto {
   structure: ProcessDocumentStructureDto;
   stepRequirements: Record<string, WorkStepRequirementsAnalysisResultDto>;
   stepCoverages: Record<string, LearningContentCoverageResponseDto>;
+  processWideLearningRecommendation?: ProcessWideLearningRecommendationResultDto | null;
 }
 
 export async function getProcessDocumentDetail(

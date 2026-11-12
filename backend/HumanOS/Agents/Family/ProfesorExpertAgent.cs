@@ -5,6 +5,7 @@ using HumanOS.Storage;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using System.Linq;
 
 namespace HumanOS.Agents.Family;
 
@@ -126,6 +127,17 @@ public sealed class AcademicCourseIndexRequest
     public string? OptionalPdfFileName { get; set; }
     public string? OptionalPdfContentBase64 { get; set; }
     public string? OptionalPdfContentText { get; set; }
+
+    /// <summary>Prerequisites/prior-knowledge notes carried over from the EngramsIQ Family
+    /// capability recommendation that was handed off to Studio (optional — only present
+    /// when this course originated from a Family recommendation).</summary>
+    public string? Requirements { get; set; }
+
+    /// <summary>The short table-of-contents preview (4-8 chapter titles) the Family
+    /// capability recommender already proposed for this capability. Studio uses this as a
+    /// SEED/STARTING POINT to build its own full, detailed course index — it is expected to
+    /// expand, reorder, split or merge these chapters as needed, not copy them verbatim.</summary>
+    public List<string> SuggestedOutline { get; set; } = [];
 }
 
 /// <summary>One chapter's outline — title + ordered lesson titles only, no
@@ -376,18 +388,25 @@ public sealed class ProfesorExpertAgent
         TEXTBOOK PROSE: this course will be consumed downstream as a sequence of short, locked,
         auto-playing "Engram Cards" (one concept/beat at a time, each paired with ONE generated
         illustration), not as a continuous lecture. Therefore every lesson MUST already be
-        decomposed into 2 to 4 short Cards — each Card is ONE self-contained teaching beat (a
-        single idea, example, or short exchange), never a multi-paragraph block covering several
-        ideas at once. Keep each Card's narration SHORT (roughly 2-5 spoken sentences) — long
-        narration defeats the purpose of short locked cards.
+        decomposed into roughly 2 to 6 short Cards — never a fixed number: decide the count from
+        how many genuinely separable ideas/steps this SPECIFIC lesson actually has (a simple
+        one-idea lesson may only need 2-3 Cards; a lesson with several distinct steps or multiple
+        worked examples should use 5-6 rather than cramming them together). Each Card is ONE
+        self-contained teaching beat (a single idea, example, or short exchange), never a
+        multi-paragraph block covering several ideas at once. Keep each Card's narration SHORT
+        (roughly 2-5 spoken sentences) — long narration defeats the purpose of short locked cards.
 
         CRITICAL — NEVER DESCRIBE AN INTERACTION THAT WILL NOT ACTUALLY HAPPEN: do not write
         stage directions like "touch the bell", "clap now", "point to the picture", "stand up and
-        spin", or any other physical/tactile/on-screen action UNLESS that action is the literal
-        final Practice round itself (hearing a sound and answering with their voice). The only
-        real supported interactions are: (1) hearing an audio clip, (2) seeing an illustration,
-        (3) answering out loud/verbally. Never invent touch-screen, clapping, or physical-prop
-        interactions the platform does not actually implement.
+        spin", or any other physical/tactile/on-screen action. The child at this stage can ONLY
+        listen and watch — there is no click, no touch, and no way for them to point at or
+        interact with anything on screen. The only real supported interactions in these Lesson
+        cards are: (1) hearing an audio clip, (2) seeing an illustration, (3) silently following
+        along with the teacher's voice. Never invent touch-screen, clapping, pointing, or
+        physical-prop interactions the platform does not actually implement — this applies to
+        BOTH the spoken narration AND the illustration description below (never describe a child
+        or teacher "pointing to" something in the image either, since nobody is physically present
+        to point at anything).
 
         CRITICAL — THIS IS A REMOTE, ONE-CHILD-ALONE-AT-A-COMPUTER EXPERIENCE, NEVER A SHARED
         PHYSICAL CLASSROOM: the student is alone at their own device, NOT sitting in a classroom
@@ -400,22 +419,51 @@ public sealed class ProfesorExpertAgent
         never a vague "ambient classroom" moment). Never reference "our classroom", "our room", or
         other students physically present; address the one child directly and personally instead.
 
-        CRITICAL — LEARN CARDS TEACH DIRECTLY, THEY NEVER QUIZ THE CHILD: every card BEFORE the
-        final Practice card is a "Learn" beat — it DIRECTLY TEACHES a fact by stating it plainly
-        ("Listen: this is the sound of a train. Now listen to a cow — that is its moo.") and NEVER
-        asks the child an open guessing question ("what do you think this is?", "can you guess?").
-        Guessing/answering is reserved EXCLUSIVELY for the final Practice card. A Learn card may
-        still invite attention ("listen carefully"), but it must immediately reveal/teach the
-        answer in the same card — never leave the child hanging with an unanswered question before
-        the Practice card.
+        CRITICAL — EVERY CARD IN A LESSON IS A "LEARN" CARD, NONE OF THEM QUIZ THE CHILD: this
+        Lesson content is PURE TEACHING — it only ever states facts, shows examples, and narrates,
+        it NEVER asks the child a question expecting a specific answer, NEVER waits for a
+        response, and NEVER includes a "now it's your turn" / practice / quiz exchange of any
+        kind, not even at the end of the lesson. Active recall, graded questions, and "now it's
+        your turn" practice rounds are handled EXCLUSIVELY by a separate, dedicated Recall step
+        that runs AFTER the lesson (a different part of the platform, with real voice-answer
+        capture) — do NOT attempt to reproduce or simulate that here. Every card here directly
+        teaches a fact by stating it plainly ("Listen: this is the sound of a train. Now listen to
+        a cow — that is its moo.") and NEVER asks an open guessing question ("what do you think
+        this is?", "can you guess?", "what comes next?"). A card may still invite attention
+        ("listen carefully"), but it must immediately reveal/teach the answer in the same card —
+        never leave the child hanging with an unanswered question.
+
+        CRITICAL — ILLUSTRATIONS MUST BE VARIED AND RICH, NEVER REPETITIVE OR GENERIC: across a
+        lesson's cards, draw scenes from a wide, varied pool of warm, concrete, child-friendly
+        settings and subjects — animals, fruits and food, parks and playgrounds, schools and
+        classrooms, nature and landscapes, toys and simple games, vehicles, everyday family life,
+        etc. — choosing whichever best fits each card's specific teaching point. Do not default
+        every card in a course to the same narrow set of props (e.g. only "toy cars" or only
+        "counters/buttons") — vary the setting and subject matter from card to card and from
+        lesson to lesson so the course feels rich and engaging, not repetitive.
 
         CRITICAL — "Sonido a reproducir" IS ONLY FOR NON-HUMAN-SPEECH SOUND EFFECTS, NEVER FOR A
         VOICE SAYING WORDS: narration like "you will hear a sound" or "listen to this sound" is
         NOT enough information for the downstream audio-generation step to know what to actually
-        produce. Whenever a card's teaching point depends on the child hearing a CONCRETE
-        NON-SPEECH SOUND EFFECT (an animal, a machine, nature, an object, a physical impact like
-        clapping/footsteps), add a THIRD field, in this exact position (after the narration,
-        before the image description):
+        produce. Add a THIRD field, in this exact position (after the narration, before the image
+        description), on every single card:
+
+           USE GOOD JUDGMENT, NOT AN ALL-OR-NOTHING RULE: a sound effect should not appear on
+           every single card (that gets noisy/repetitive fast), but it should also not be skipped
+           reflexively just because the academic topic itself isn't literally "about" a sound
+           (counting, cardinality, place value, shapes, grammar, etc. can still benefit from one).
+           For a young child audience especially, a well-placed sound effect genuinely helps —
+           e.g. a soft "pop"/"click" each time an object is counted, a cheerful chime or bell when
+           a total/answer is revealed, a short drumroll before a reveal, a page-turn sound when
+           moving to a new idea. Add one whenever it would genuinely make THAT specific card more
+           engaging or help the child follow along; leave it "Ninguno"/"None" whenever it
+           wouldn't add anything real. Think about each card individually — don't default to
+           always-on or always-off across the whole lesson.
+
+           Separately, whenever a card's teaching point directly depends on the child hearing a
+           CONCRETE NON-SPEECH SOUND EFFECT as its subject (an animal, a machine, nature, an
+           object, a physical impact like clapping/footsteps), that sound is MANDATORY, not just a
+           nice-to-have.
 
            **Sonido a reproducir:**
 
@@ -432,17 +480,12 @@ public sealed class ProfesorExpertAgent
            diciendo: ..." or any instruction to generate a human voice/speech; only list sounds
            that are not a person speaking words.
 
-           For the Practice card specifically, where multiple rounds each have their own sound,
-           list every round's sound on its own line under this same field (round order), using
-           "Ninguno" for any round whose sound is just spoken words rather than a sound effect
-           (e.g. "Ronda 1: Sonido de alarma", "Ronda 2: Ninguno", "Ronda 3: Mugido de vaca").
 
-
-        "Lesson", "Card", "Teacher", "Practice" shown below are PLACEHOLDERS for English only —
-        when Language is 'es' you MUST use "Capítulo", "Lección", "Tarjeta", "Profesor"/"Profesora",
-        "Práctica" instead (e.g. "## Capítulo 1. ...", "### Lección 1. ...", "#### Tarjeta 1.1. ...",
-        "**Profesor:**"). Never leave structural headings in English when the course Language is
-        Spanish — the entire document, including headings, must read as one consistent language.
+        "Lesson", "Card", "Teacher" shown below are PLACEHOLDERS for English only — when Language
+        is 'es' you MUST use "Capítulo", "Lección", "Tarjeta", "Profesor"/"Profesora" instead (e.g.
+        "## Capítulo 1. ...", "### Lección 1. ...", "#### Tarjeta 1.1. ...", "**Profesor:**").
+        Never leave structural headings in English when the course Language is Spanish — the
+        entire document, including headings, must read as one consistent language.
 
         MANDATORY STRUCTURE FOR 'ChapterMarkdown' (follow this exact condensed structure, using
         the EXACT ChapterNumber/ChapterTitle/LessonTitles given to you — never invent, rename, add,
@@ -462,8 +505,8 @@ public sealed class ProfesorExpertAgent
 
            ### Lesson N. [Lesson Title]
 
-           For each of this lesson's 2-4 Cards, in teaching order, as its own heading ONE LEVEL
-           DEEPER than the lesson heading:
+           For each of this lesson's Cards (roughly 2-6, per the rule above), in teaching order,
+           as its own heading ONE LEVEL DEEPER than the lesson heading:
 
            #### Card N.M. [Short Card Title]
 
@@ -472,8 +515,8 @@ public sealed class ProfesorExpertAgent
            [EXACTLY what the teacher says out loud for this one card, spoken directly to the
            students in second person — a short greeting/framing line on the very first card of
            the lesson only, then the single idea/example/exchange this card teaches. Never
-           narrate like a textbook; always first-person live spoken dialogue. If this card is a
-           Learn card, DIRECTLY TEACH the fact — never ask the child to guess.]
+           narrate like a textbook; always first-person live spoken dialogue. DIRECTLY TEACH the
+           fact — never ask the child to guess or answer; this is a Learn card, not a quiz.]
 
            **Sonido a reproducir:**
 
@@ -483,32 +526,13 @@ public sealed class ProfesorExpertAgent
 
            [A short, concrete, child-friendly, third-person scene description for the ONE
            illustration that pairs with this card — no text/letters/numbers/speech-bubbles in the
-           image, no rendering/typography details, consistent characters/setting across the
-           lesson's cards.]
+           image, no rendering/typography details, no one "pointing at" anything (see the
+           illustration-variety rule above for drawing from a wide pool of settings/subjects
+           instead of repeating the same props every card).
 
-           After the LAST card of the lesson, add one final closing card that is the lesson's
-           hands-on Practice (never narration-only, never the teacher answering for the child):
-
-           #### Card N.M. Práctica: [Short Practice Title]
-
-           **Narración del profesor:**
-
-           [The teacher frames the practice ("now it's your turn, listen carefully and answer
-           with your voice"), then presents 2-4 short rounds, each: a one-line description of
-           what the student hears/sees, a direct question, the expected spoken answer, and a short
-           positive confirmation restating why it's correct. Include one short wrong-answer
-           recovery line (re-presenting the clue, never scolding) before a short, encouraging
-           closing line naming what the student practiced.]
-
-           **Sonido a reproducir:**
-
-           [One line per round, listing each round's exact sound effect — see the sound-effect
-           rule above.]
-
-           **Descripción de la imagen para el agente:**
-
-           [A short, concrete, child-friendly, third-person scene description for the ONE
-           illustration that pairs with this practice card.]
+           A lesson ends after its LAST Learn Card — do NOT add any further "Practice",
+           "Quiz", or "now it's your turn" card at the end. Active recall/practice for this
+           lesson's content happens later, in the platform's separate Recall step, not here.
 
         Use comparison tables with the given CSS styling only where they genuinely help — do not
         force tables into every lesson. Zero internal AI prompts, zero process names, zero
@@ -772,6 +796,10 @@ public sealed class ProfesorExpertAgent
             ? string.Join(", ", request.MicroSkills)
             : "N/A — rely on your own expert pedagogical judgment for this subject and grade level.";
 
+        var suggestedOutlineFormatted = request.SuggestedOutline.Count > 0
+            ? string.Join(Environment.NewLine, request.SuggestedOutline.Select((title, i) => $"{i + 1}. {title}"))
+            : "N/A — no prior outline suggested; design the full index yourself from scratch.";
+
         var prompt = $"""
             DESIGN THE COURSE INDEX (TABLE OF CONTENTS) ONLY — NO LESSON CONTENT YET:
             - Course Code: {request.CourseCode}
@@ -784,6 +812,14 @@ public sealed class ProfesorExpertAgent
             - Core Description: {request.Description}
             - Pedagogical Justification (Why It Matters): {request.WhyItMatters}
             - Micro-Skills to cover: {microSkillsFormatted}
+            - Course Requirements / Prior Knowledge Expected: {request.Requirements ?? "N/A — no prior knowledge required beyond the grade level itself."}
+
+            ORIGINAL COURSE OUTLINE PROPOSED BY THE EngramsIQ FAMILY CAPABILITY RECOMMENDER
+            (short preview, chapter TITLES only — use this as your SEED/STARTING POINT, not
+            as a rigid final answer: expand each item into proper chapters with full lesson
+            breakdowns, and feel free to reorder, split, merge or add chapters if your own
+            pedagogical expertise and the live research below justify a better sequence):
+            {suggestedOutlineFormatted}
 
             {researchSection}
 

@@ -19,6 +19,7 @@ import {
   Pencil,
   Trash2,
   Plus,
+  Upload,
   Network,
   Video,
   ChevronUp,
@@ -33,6 +34,10 @@ import {
   Lock,
   Clock,
   Star,
+  Camera,
+  FileText,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   getStructuredLearningDocument,
@@ -41,13 +46,12 @@ import {
   submitStructuredLearningRecallAttempt,
   getStructuredLearningRecallState,
   resetStructuredLearningRecallState,
+  regenerateStructuredLearningRecallItems,
   startStructuredLearningAssessmentRound,
   getActiveStructuredLearningAssessmentRound,
   submitStructuredLearningAssessmentAnswer,
   getStructuredLearningDeepDiveState,
   submitStructuredLearningDeepDiveAttempt,
-  editStructuredLearningStep,
-  setStructuredLearningStepContent,
   addStructuredLearningDeepDiveCard,
   editStructuredLearningDeepDiveCard,
   deleteStructuredLearningDeepDiveCard,
@@ -65,14 +69,22 @@ import {
   generateStructuredLearningVideoStartImage,
   getStructuredLearningVideoLastFrame,
   regenerateStructuredLearningVideo,
+  regenerateStructuredLearningLectureScene,
+  regenerateStructuredLearningLessonIllustration,
+  deleteStructuredLearningLectureScene,
   getStructuredLearningWorkplaceApplication,
   postStructuredLearningWorkplaceChat,
+  editStructuredLearningSourceText,
+  getStructuredLearningSourceTextVersions,
   type WorkplaceApplicationDto,
   type StructuredLearningDocumentDetail,
   type StructuredLearningStepDetail,
   type StructuredLearningAssessmentRoundState,
   type StructuredLearningSectionVideo,
   type StructuredLearningVideoRunStatus,
+  type StructuredLearningSourceIllustration,
+  type StructuredLearningSourceTextEditResult,
+  type StructuredLearningSourceTextVersion,
 } from '../lib/api/structuredLearningApi';
 import { apiImageUrl } from '../lib/api/httpClient';
 import { getStructuredLearningCostPerEngram, type StructuredLearningEngramCost } from '../lib/api/costsApi';
@@ -85,6 +97,7 @@ import PreviewModeSwitcher from '../components/PreviewModeSwitcher';
 import KnowledgeGraphSection from '../components/KnowledgeGraphSection';
 import { usePreviewMode, withPreviewMode, type PreviewMode } from '../lib/previewMode';
 import { useAuth } from '../auth/AuthContext';
+import { deleteVideoStructuredLearningSourceFrame, addVideoStructuredLearningSourceFrame } from '../lib/api/videoStructuredLearningApi';
 
 const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Production', 'Recall', 'Assessment'];
 
@@ -109,6 +122,13 @@ type HypothesisQuestion = {
   options: string[];
   correctIndex: number | null;
 };
+
+function formatVideoTimestamp(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const mm = Math.floor(totalSeconds / 60);
+  const ss = totalSeconds % 60;
+  return `${mm}:${ss.toString().padStart(2, '0')}`;
+}
 
 function parseHypothesisQuestions(step: StructuredLearningStepDetail): HypothesisQuestion[] | null {
   if (!step || !step.StepDataJson) return null;
@@ -523,6 +543,49 @@ export default function StructuredLearningSectionPage() {
         {mode === 'demo' && <p className="mt-2 text-xs text-amber-300">{t('structuredLearningMap.demoModeNotice')}</p>}
       </div>
 
+      {mode === 'edit' && currentSection?.Text?.trim() && (
+        <details open className="mt-6 overflow-hidden rounded-xl border border-amber-400/20 bg-amber-500/[0.04]">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-amber-100 marker:text-amber-400">
+            <span className="ml-1 inline-flex items-center gap-2">
+              <FileText className="h-4 w-4 text-amber-400" />
+              {t('structuredLearningCourse.originalEngramSourceText')}
+            </span>
+          </summary>
+          <div className="max-h-[50vh] overflow-y-auto border-t border-white/10 px-4 py-3">
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-300">{currentSection.Text}</p>
+          </div>
+          <div className="border-t border-white/10 px-4 py-3">
+            <SourceTextEditBox
+              sectionId={currentSection.StructuredLearningDocumentSectionId}
+              currentText={currentSection.Text}
+              onApplied={(result) =>
+                setDocument((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        Sections: prev.Sections.map((s) =>
+                          s.StructuredLearningDocumentSectionId === currentSection.StructuredLearningDocumentSectionId
+                            ? {
+                                ...s,
+                                Text: result.Text,
+                                // The full Engram was regenerated from scratch —
+                                // every step (Hypothesis/Teaching/DeepDive/Recall/
+                                // Production/Assessment) got a brand-new id, so the
+                                // OLD Steps array must be replaced wholesale, not
+                                // patched by matching old ids (which no longer exist).
+                                Steps: result.AllSteps.length > 0 ? result.AllSteps : s.Steps,
+                              }
+                            : s
+                        ),
+                      }
+                    : prev
+                )
+              }
+            />
+          </div>
+        </details>
+      )}
+
       {showKnowledgeGraph && documentId && sectionId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Knowledge Graph">
           <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-emerald-400/25 bg-slate-950 p-4 shadow-2xl sm:p-6">
@@ -556,6 +619,56 @@ export default function StructuredLearningSectionPage() {
             step={currentStep}
             allSteps={currentSection.Steps}
             sectionId={currentSection.StructuredLearningDocumentSectionId}
+            sourceIllustrations={currentSection.SourceIllustrations}
+            sourceVideoText={currentSection.Text}
+            videoStartSeconds={currentSection.VideoStartSeconds}
+            videoEndSeconds={currentSection.VideoEndSeconds}
+            isYoungLearner={document.PedagogicalAudience === 'YoungLearner'}
+            onDeleteSourceFrame={(illustrationId) => {
+              deleteVideoStructuredLearningSourceFrame(currentSection.StructuredLearningDocumentSectionId, illustrationId)
+                .then(() => {
+                  setDocument((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          Sections: prev.Sections.map((s) =>
+                            s.StructuredLearningDocumentSectionId === currentSection.StructuredLearningDocumentSectionId
+                              ? { ...s, SourceIllustrations: (s.SourceIllustrations ?? []).filter((i) => i.StructuredLearningIllustrationId !== illustrationId) }
+                              : s
+                          ),
+                        }
+                      : prev
+                  );
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+            onAddSourceFrame={(contentBase64, contentType) => {
+              addVideoStructuredLearningSourceFrame(currentSection.StructuredLearningDocumentSectionId, {
+                contentBase64,
+                contentType,
+              })
+                .then(({ IllustrationId }) => {
+                  setDocument((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          Sections: prev.Sections.map((s) =>
+                            s.StructuredLearningDocumentSectionId === currentSection.StructuredLearningDocumentSectionId
+                              ? {
+                                  ...s,
+                                  SourceIllustrations: [
+                                    ...(s.SourceIllustrations ?? []),
+                                    { StructuredLearningIllustrationId: IllustrationId, Caption: null, VideoTimestampSeconds: null },
+                                  ],
+                                }
+                              : s
+                          ),
+                        }
+                      : prev
+                  );
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+            }}
             courseLanguage={courseLanguage}
             questionType={document.AssessmentQuestionType}
             showQaProfessorStep={document.ShowQaProfessorStep}
@@ -669,6 +782,12 @@ function StepContent({
   step,
   allSteps,
   sectionId,
+  sourceIllustrations,
+  sourceVideoText,
+  videoStartSeconds,
+  videoEndSeconds,
+  onDeleteSourceFrame,
+  onAddSourceFrame,
   courseLanguage,
   questionType,
   mode,
@@ -680,10 +799,28 @@ function StepContent({
   enableQaProfessorVoice,
   enableDeepDiveAgentVoice,
   showWorkplaceApplicationStep,
+  isYoungLearner,
 }: {
   step: StructuredLearningStepDetail;
   allSteps?: StructuredLearningStepDetail[];
   sectionId: string;
+  /** Real source-document images (e.g. extracted video frames) attached
+   * to this section, if any — only non-empty for video-sourced documents. */
+  sourceIllustrations?: StructuredLearningSourceIllustration[];
+  /** The section's raw extracted/original video transcript text (2026-11-07)
+   * — shown to the student in a collapsible "original video content" panel
+   * so they can verify/read exactly what was said in the source clip. */
+  sourceVideoText?: string;
+  /** Source-video clip range (seconds) this Engram covers — present only
+   * for documents created from a video (2026-11-07). */
+  videoStartSeconds?: number | null;
+  videoEndSeconds?: number | null;
+  /** Soft-deletes (excludes) one raw source frame so the next "Restart
+   * engrams" run skips it — edit-mode only (2026-11-06). */
+  onDeleteSourceFrame?: (illustrationId: string) => void;
+  /** Uploads a new real image, saved ALONGSIDE the existing source frames
+   * (never replacing them) — edit-mode only (2026-11-07). */
+  onAddSourceFrame?: (contentBase64: string, contentType: string) => void;
   courseLanguage?: 'es' | 'en';
   questionType: string;
   mode: PreviewMode;
@@ -706,6 +843,12 @@ function StepContent({
   /** Course design toggle (2026-10-06) — hides the "In your role"
    * (Production) step entirely. */
   showWorkplaceApplicationStep: boolean;
+  /** True when this document's PedagogicalAudience is "YoungLearner"
+   * (children under ~7, 2026-11-07) — Recall forces written-answer-only
+   * mode (no Realtime voice/speech agent) for this audience; the voice
+   * Recall feature itself stays intact and is still used for Standard
+   * (older/enterprise) audiences. */
+  isYoungLearner?: boolean;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -713,6 +856,30 @@ function StepContent({
   // TeachingTimelineEditor's own independent video list re-fetches instead
   // of going stale until a full page reload.
   const [videoRefreshKey, setVideoRefreshKey] = useState(0);
+  // Original video content panel (2026-11-07) — collapsed by default so it
+  // doesn't clutter the Learn screen; lets the student verify the real
+  // transcript/timing behind this Engram.
+  const [showOriginalVideoText, setShowOriginalVideoText] = useState(false);
+  // "Add image" upload in edit mode (2026-11-07) — hidden <input type="file">
+  // triggered by a visible button, converts the chosen file to base64 and
+  // hands it to onAddSourceFrame.
+  const addSourceFrameInputRef = useRef<HTMLInputElement>(null);
+  const handleAddSourceFrameFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onAddSourceFrame) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const base64 = result.split(',')[1] ?? '';
+      if (base64) onAddSourceFrame(base64, file.type || 'image/png');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Professional confirm dialog for deleting a source frame (2026-11-07) —
+  // holds the id pending deletion; null means the dialog is closed.
+  const [confirmDeleteFrameId, setConfirmDeleteFrameId] = useState<string | null>(null);
 
   // Two-step/Three-step Learn wizard (2026-09-06):
   // 1) Listen to recorded class & read whiteboard, 2) Watch videos (if any), 3) Q&A with professor
@@ -774,7 +941,7 @@ function StepContent({
     if (step.StepType !== 'Teaching' || !step.StepDataJson) return [];
     try {
       const parsed = JSON.parse(step.StepDataJson) as {
-        Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+        Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AlternateIllustrationId?: string | null; AudioStoragePath: string | null }[];
       };
       const scenes = parsed.Scenes ?? [];
       const hasRealMedia = scenes.some((s) => s.IllustrationId || s.AudioStoragePath);
@@ -784,6 +951,15 @@ function StepContent({
     }
   }, [step.StepType, step.StepDataJson]);
   const hasScenes = scenesForPlayer.length > 0;
+  // Tracks which real-frame scene is currently playing (2026-11-05) so the
+  // "Learn" text block below can show ONLY that scene's own narration chunk
+  // instead of always rendering the full step.Content — keeping image,
+  // audio, and visible text perfectly in sync as the learner moves through
+  // an Engram's multiple real video frames.
+  const [activeSceneIndex, setActiveSceneIndex] = useState(0);
+  const teachingDisplayContent = hasScenes
+    ? (scenesForPlayer[activeSceneIndex]?.Text || step.Content)
+    : step.Content;
 
   // Engram Cards (2026-10-08) — YoungLearner-only "Aprende" sequential
   // experience: one atomic concept per card (e.g. "Perro", "Gato"), each
@@ -804,6 +980,11 @@ function StepContent({
     }
   }, [step.StepType, step.StepDataJson]);
   const hasCards = cardsForPlayer.length > 0;
+  // Keeps the lesson illustration pinned in view (sticky, left column) while the
+  // lecture text scrolls independently on the right — only for the no-scenes,
+  // no-cards "listen" reading experience; the scene/card players and other step
+  // types keep their existing single-column layout untouched.
+  const isListenLayout = step.StepType === 'Teaching' && !teachingShowsVideo && !hasScenes && !hasCards;
 
   // 2026-10-06: students can move on to the next Learn sub-step (videos/Q&A/Deep
   // Dive) without having to finish listening to the whole lecture audio first.
@@ -833,7 +1014,20 @@ function StepContent({
     return [];
   }, [step.StepDataJson, step.WebSearchCitations]);
 
-  const audioCacheKey = `${step.HumanApprovedAtUtc || ''}_${step.Content.length}_${videoRefreshKey}`;
+  // Extract just the small IllustrationId GUID from StepDataJson (NOT the whole JSON
+  // blob — that caused a 414 "URI Too Long" server error, 2026-11-11) to include in the
+  // cache key. It always changes on every image regenerate, so the audio cache key
+  // reliably busts every time, instead of relying on Content.length alone, which can
+  // coincidentally stay identical even though the audio was re-synthesized.
+  const stepIllustrationId = useMemo(() => {
+    if (!step.StepDataJson) return '';
+    try {
+      return (JSON.parse(step.StepDataJson) as { IllustrationId?: string }).IllustrationId ?? '';
+    } catch {
+      return '';
+    }
+  }, [step.StepDataJson]);
+  const audioCacheKey = `${step.HumanApprovedAtUtc || ''}_${step.Content.length}_${stepIllustrationId}_${videoRefreshKey}`;
   const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?v=${encodeURIComponent(audioCacheKey)}`;
 
   return (
@@ -1164,10 +1358,26 @@ function StepContent({
             <SyncedLectureScenePlayer
               sectionId={sectionId}
               scenes={scenesForPlayer}
+              mode={mode}
               isAudioFinished={isAudioFinished}
+              onSceneChange={setActiveSceneIndex}
               onAllScenesFinished={() => {
                 setIsAudioFinished(true);
                 setAudioProgressPercent(100);
+              }}
+              onSceneDeleted={() => {
+                try {
+                  const parsed = JSON.parse(step.StepDataJson ?? '{}') as {
+                    Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AlternateIllustrationId?: string | null; AudioStoragePath: string | null }[];
+                  };
+                  const remaining = (parsed.Scenes ?? [])
+                    .filter((_, i) => i !== activeSceneIndex)
+                    .map((s, i) => ({ ...s, SceneIndex: i }));
+                  onStepUpdated({ ...step, StepDataJson: JSON.stringify({ ...parsed, Scenes: remaining }) });
+                } catch {
+                  // If StepDataJson can't be parsed client-side, the server-side delete
+                  // already succeeded — a page refresh will still show the right result.
+                }
               }}
               onContinue={() => {
                 if (hasVideos) {
@@ -1180,6 +1390,17 @@ function StepContent({
             />
           )}
 
+          <div className={isListenLayout ? 'md:grid md:grid-cols-2 md:items-start md:gap-6' : undefined}>
+          {isListenLayout && (
+            <div className="md:sticky md:top-20 md:max-h-[calc(100vh-6rem)] md:self-start md:overflow-y-auto md:pr-1">
+              <StepIllustration
+                stepDataJson={step.StepDataJson}
+                className="h-64 sm:h-80 md:h-[32rem] w-full rounded-xl bg-slate-950/50 object-contain object-center"
+              />
+              {isEditing && <LessonIllustrationRegenerateBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} sourceIllustrations={sourceIllustrations} />}
+            </div>
+          )}
+          <div className="min-w-0 space-y-4">
           {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && !hasScenes && !hasCards && (
             <div className="flex flex-col gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
               <div className="flex items-center justify-between">
@@ -1263,7 +1484,7 @@ function StepContent({
           )}
 
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/30 shadow-2xl shadow-black/10">
-            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !teachingShowsVideo && !hasScenes && !hasCards)) && <StepIllustration stepDataJson={step.StepDataJson} />}
+            {(step.StepType === 'Hypothesis' || (step.StepType === 'Teaching' && !isListenLayout && !teachingShowsVideo && !hasScenes && !hasCards)) && <StepIllustration stepDataJson={step.StepDataJson} />}
             <div className="px-5 py-6 sm:px-8 sm:py-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-400">{t(`structuredLearningCourse.${meta.labelKey}`)}</p>
               {step.StepType === 'Hypothesis' && step.Content && (
@@ -1272,8 +1493,10 @@ function StepContent({
               {step.StepType === 'Hypothesis' && !isEditing && (
                 <HypothesisQuestionCard sectionId={sectionId} step={step} />
               )}
-              {step.StepType === 'Teaching' && !isEditing ? (
-                <RichStepContent content={step.Content} />
+              {step.StepType === 'Teaching' ? (
+                // Scene text is rendered inside SyncedLectureScenePlayer itself (next to its
+                // own image, in the two-column split layout) — skip the duplicate copy here.
+                !hasScenes && <RichStepContent content={teachingDisplayContent} />
               ) : (
                 step.StepType !== 'Hypothesis' && step.StepType !== 'Production' && step.Content && <RichStepContent content={step.Content} />
               )}
@@ -1301,6 +1524,93 @@ function StepContent({
                       }
                     })}
                   </div>
+                </div>
+              )}
+
+              {step.StepType === 'Teaching' && mode === 'edit' && (sourceIllustrations?.length ?? 0) > 0 && (
+                <div className="mt-4 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-300">
+                    <Camera className="h-4 w-4 text-sky-400" />
+                    <span>{t('structuredLearningCourse.sourceImagesBadge')}</span>
+                    {mode === 'edit' && (
+                      <span className="ml-auto flex items-center gap-2 text-[10px] font-normal text-sky-400/70">
+                        {(sourceIllustrations?.length ?? 0) > 0 && t('structuredLearningCourse.sourceImagesDeleteHint')}
+                        {onAddSourceFrame && (
+                          <>
+                            <input
+                              ref={addSourceFrameInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleAddSourceFrameFileChange}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => addSourceFrameInputRef.current?.click()}
+                              className="flex items-center gap-1 rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 font-semibold text-sky-300 hover:bg-sky-500/20"
+                            >
+                              <Plus className="h-3 w-3" /> {t('structuredLearningCourse.sourceImagesAddButton')}
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(sourceIllustrations ?? []).map((illustration) => (
+                      <div key={illustration.StructuredLearningIllustrationId} className="group relative">
+                        <img
+                          src={apiImageUrl(`/illustrations/structured-learning/${illustration.StructuredLearningIllustrationId}/image`)}
+                          alt={illustration.Caption ?? t('structuredLearningCourse.sourceImagesBadge')}
+                          title={illustration.Caption ?? undefined}
+                          className="h-28 w-auto rounded-lg border border-white/10 object-cover"
+                        />
+                        {typeof illustration.VideoTimestampSeconds === 'number' && (
+                          <span className="absolute left-1 bottom-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                            {formatVideoTimestamp(illustration.VideoTimestampSeconds)}
+                          </span>
+                        )}
+                        {mode === 'edit' && onDeleteSourceFrame && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteFrameId(illustration.StructuredLearningIllustrationId)}
+                            title={t('structuredLearningCourse.sourceImagesDeleteTooltip')}
+                            className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {step.StepType === 'Teaching' && mode !== 'edit' && sourceVideoText && (
+                <div className="mt-4 rounded-xl border border-white/10 bg-slate-900/60 p-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowOriginalVideoText((v) => !v)}
+                    className="flex w-full items-center gap-1.5 text-left text-xs font-semibold text-slate-200"
+                  >
+                    <FileText className="h-4 w-4 text-amber-400" />
+                    <span>{t('structuredLearningCourse.originalVideoContentBadge')}</span>
+                    {(typeof videoStartSeconds === 'number' || typeof videoEndSeconds === 'number') && (
+                      <span className="rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+                        {typeof videoStartSeconds === 'number' ? formatVideoTimestamp(videoStartSeconds) : '--:--'}
+                        {' – '}
+                        {typeof videoEndSeconds === 'number' ? formatVideoTimestamp(videoEndSeconds) : '--:--'}
+                      </span>
+                    )}
+                    {showOriginalVideoText ? (
+                      <ChevronUp className="ml-auto h-3.5 w-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="ml-auto h-3.5 w-3.5 text-slate-400" />
+                    )}
+                  </button>
+                  {showOriginalVideoText && (
+                    <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-300">{sourceVideoText}</p>
+                  )}
                 </div>
               )}
 
@@ -1338,8 +1648,6 @@ function StepContent({
 
               {isEditing && isEditableStepType && (
                 <>
-                  <StepEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
-                  <ManualEditBox sectionId={sectionId} step={step} onUpdated={onStepUpdated} />
                   {step.StepType === 'Teaching' && <VideoGenerationBox sectionId={sectionId} step={step} allSteps={allSteps} onVideosChanged={() => setVideoRefreshKey((k) => k + 1)} />}
                   {step.StepType === 'Teaching' && <TeachingTimelineEditor sectionId={sectionId} step={step} onUpdated={onStepUpdated} refreshKey={videoRefreshKey} />}
                 </>
@@ -1356,7 +1664,7 @@ function StepContent({
                 (isEditing ? (
                   <p className="mt-3 text-sm text-slate-500">{t('structuredLearningCourse.editModeGeneratedLive')}</p>
                 ) : (
-                  <RecallPractice sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} onComplete={onComplete} />
+                  <RecallPractice sectionId={sectionId} stepId={step.StructuredLearningSectionStepId} onComplete={onComplete} isYoungLearner={isYoungLearner} />
                 ))}
               {step.StepType === 'Production' && showWorkplaceApplicationStep && (
                 <WorkplaceApplicationStep
@@ -1374,8 +1682,23 @@ function StepContent({
                 ))}
             </div>
           </div>
+          </div>
+          </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteFrameId !== null}
+        title={t('structuredLearningCourse.sourceImagesDeleteTooltip')}
+        message={t('structuredLearningCourse.sourceImagesDeleteConfirm')}
+        confirmLabel={t('common.delete') || 'Delete'}
+        cancelLabel={t('common.cancel') || 'Cancel'}
+        onConfirm={() => {
+          if (confirmDeleteFrameId) onDeleteSourceFrame?.(confirmDeleteFrameId);
+          setConfirmDeleteFrameId(null);
+        }}
+        onCancel={() => setConfirmDeleteFrameId(null)}
+      />
     </div>
   );
 }
@@ -1979,6 +2302,7 @@ function TeachingRegenerationModal() {
     t('structuredLearningCourse.teachingRegenStepAudio'),
     t('structuredLearningCourse.teachingRegenStepGraph'),
     t('structuredLearningCourse.teachingRegenStepFacts'),
+    t('structuredLearningCourse.teachingRegenStepAcademic'),
   ];
 
   useEffect(() => {
@@ -2117,38 +2441,73 @@ function EngramCostBadge({ documentId, sectionId }: { documentId: string; sectio
   );
 }
 
-function StepEditBox({
+/** "Edit with AI" box for the Engram's own canonical SOURCE text
+ * (2026-11-11) — the only AI-edit entry point for a step's content (the
+ * former per-step StepEditBox/ManualEditBox were removed since editing a
+ * single already-styled step in isolation no longer applies: any change
+ * must flow through the full regeneration pipeline below). Three
+ * independent fields drive it: (1) the
+ * new/edited text itself (prefilled with the current source text — the
+ * reviewer edits it directly), (2) general AI instructions for this
+ * specific Engram, and (3) instructions for the Teaching/"Learn" image.
+ * Applying runs the FULL original generation pipeline again for this one
+ * Engram (Hypothesis/Teaching/DeepDive/Recall/Production/Assessment,
+ * illustrations, audio, Knowledge Graph/Facts) as if it were newly
+ * created, grounded in the new text and guided by the instructions. The
+ * source text itself is versioned (original preserved forever as V0, each
+ * edit becomes V1, V2, ...) — only the latest AI-derived content/image/
+ * audio are kept, not versioned. */
+function SourceTextEditBox({
   sectionId,
-  step,
-  onUpdated,
+  currentText,
+  onApplied,
 }: {
   sectionId: string;
-  step: StructuredLearningStepDetail;
-  onUpdated: (updated: StructuredLearningStepDetail) => void;
+  currentText: string;
+  onApplied: (result: StructuredLearningSourceTextEditResult) => void;
 }) {
   const { t } = useTranslation();
+  const [newText, setNewText] = useState(currentText);
   const [instruction, setInstruction] = useState('');
+  const [imageInstruction, setImageInstruction] = useState('');
   const [usePerplexity, setUsePerplexity] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [appliedCitations, setAppliedCitations] = useState<string[]>([]);
+  const [showVersions, setShowVersions] = useState(false);
+  const [versions, setVersions] = useState<StructuredLearningSourceTextVersion[] | null>(null);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  // Reviewer must explicitly approve the pending edit before it is saved
+  // and the Engram is regenerated — nothing is persisted just from typing
+  // into the 3 fields above; "Apply" only opens this confirmation gate.
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  async function handleApply() {
-    if (!instruction.trim()) return;
+  const trimmedNewText = newText.trim();
+  const trimmedInstruction = instruction.trim();
+  const trimmedImageInstruction = imageInstruction.trim();
+  const textChanged = trimmedNewText !== currentText.trim();
+  const canApply = textChanged || trimmedInstruction.length > 0 || trimmedImageInstruction.length > 0;
+
+  async function handleConfirmedApply() {
+    setShowConfirm(false);
+    if (!canApply) return;
     setSubmitting(true);
     setError(null);
     setSuccess(false);
     try {
-      const updated = await editStructuredLearningStep(sectionId, step.StepType, instruction.trim(), usePerplexity);
-      onUpdated(updated);
+      const result = await editStructuredLearningSourceText(
+        sectionId,
+        textChanged ? trimmedNewText : null,
+        trimmedInstruction || null,
+        trimmedImageInstruction || null,
+        usePerplexity
+      );
+      onApplied(result);
+      setNewText(result.Text);
       setInstruction('');
+      setImageInstruction('');
       setSuccess(true);
-      if (updated.WebSearchCitations && updated.WebSearchCitations.length > 0) {
-        setAppliedCitations(updated.WebSearchCitations);
-      } else {
-        setAppliedCitations([]);
-      }
+      setVersions(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2156,11 +2515,26 @@ function StepEditBox({
     }
   }
 
+  async function toggleVersions() {
+    const next = !showVersions;
+    setShowVersions(next);
+    if (next && versions === null) {
+      setVersionsLoading(true);
+      try {
+        setVersions(await getStructuredLearningSourceTextVersions(sectionId));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setVersionsLoading(false);
+      }
+    }
+  }
+
   return (
-    <div className="mt-4 rounded-xl border border-sky-400/20 bg-sky-500/[0.04] p-3">
+    <div className="rounded-xl border border-sky-400/20 bg-sky-500/[0.04] p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-sky-300">
-          <Sparkles className="h-3.5 w-3.5" /> {t('structuredLearningCourse.editWithAiLabel')}
+          <Sparkles className="h-3.5 w-3.5" /> {t('structuredLearningCourse.editSourceTextWithAiLabel')}
         </p>
         <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-300 transition-colors hover:border-indigo-400/50 hover:bg-indigo-500/20">
           <input
@@ -2173,54 +2547,108 @@ function StepEditBox({
           <span>{t('structuredLearningCourse.webSearchLiveOption')}</span>
         </label>
       </div>
+
+      <p className="mb-1 text-xs font-semibold text-slate-300">1) {t('structuredLearningCourse.editSourceTextNewTextLabel')}</p>
+      <textarea
+        value={newText}
+        onChange={(e) => setNewText(e.target.value)}
+        rows={6}
+        className="input w-full font-mono text-xs"
+      />
+
+      <p className="mb-1 mt-3 text-xs font-semibold text-slate-300">2) {t('structuredLearningCourse.editSourceTextInstructionLabel')}</p>
       <textarea
         value={instruction}
         onChange={(e) => setInstruction(e.target.value)}
         rows={2}
-        placeholder={usePerplexity ? t('structuredLearningCourse.webSearchPlaceholder') : t('structuredLearningCourse.editWithAiPlaceholder')}
+        placeholder={t('structuredLearningCourse.editSourceTextPlaceholder')}
         className="input w-full"
       />
+
+      <p className="mb-1 mt-3 text-xs font-semibold text-slate-300">3) {t('structuredLearningCourse.editSourceTextImageInstructionLabel')}</p>
+      <textarea
+        value={imageInstruction}
+        onChange={(e) => setImageInstruction(e.target.value)}
+        rows={2}
+        placeholder={t('structuredLearningCourse.editSourceTextImageInstructionPlaceholder')}
+        className="input w-full"
+      />
+
       {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
       {success && (
-        <div className="mt-2 space-y-1.5">
-          <p className="flex items-center gap-1 text-xs text-emerald-300">
-            <Check className="h-3 w-3" /> {t('structuredLearningCourse.editApplied')}
-          </p>
-          {appliedCitations.length > 0 && (
-            <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-2.5 text-xs text-indigo-200">
-              <p className="font-semibold flex items-center gap-1.5 text-indigo-300">
-                <Globe className="h-3.5 w-3.5" /> {t('structuredLearningCourse.webSearchSourcesFound', { count: appliedCitations.length })}
-              </p>
-              <ul className="mt-1.5 list-disc list-inside space-y-1 text-slate-300">
-                {appliedCitations.slice(0, 5).map((url, i) => {
-                  try {
-                    const host = new URL(url).hostname;
-                    return (
-                      <li key={i} className="truncate">
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline hover:text-sky-200" title={url}>
-                          {host} — {url.length > 55 ? url.substring(0, 55) + '...' : url}
-                        </a>
-                      </li>
-                    );
-                  } catch {
-                    return <li key={i}><a href={url} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline">{url}</a></li>;
-                  }
-                })}
-              </ul>
+        <p className="mt-2 flex items-center gap-1 text-xs text-emerald-300">
+          <Check className="h-3 w-3" /> {t('structuredLearningCourse.editApplied')}
+        </p>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowConfirm(true)}
+          disabled={submitting || !canApply}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-sky-400"
+        >
+          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {t('structuredLearningCourse.editApply')}
+        </button>
+        <button
+          type="button"
+          onClick={toggleVersions}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/5"
+        >
+          {t('structuredLearningCourse.viewSourceTextVersions')}
+        </button>
+      </div>
+      {showConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-amber-400/30 bg-slate-900 p-6 shadow-2xl">
+            <p className="mb-2 text-sm font-semibold text-white">{t('structuredLearningCourse.editSourceTextConfirmTitle')}</p>
+            <p className="mb-3 text-xs text-slate-400">{t('structuredLearningCourse.editSourceTextConfirmHint')}</p>
+            <ul className="mb-4 list-disc space-y-1 pl-4 text-xs text-slate-300">
+              <li>{t('structuredLearningCourse.teachingRegenStepText')}</li>
+              <li>{t('structuredLearningCourse.teachingRegenStepAudio')}</li>
+              <li>{t('structuredLearningCourse.teachingRegenStepGraph')}</li>
+              <li>{t('structuredLearningCourse.teachingRegenStepFacts')}</li>
+              <li>{t('structuredLearningCourse.teachingRegenStepAcademic')}</li>
+            </ul>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/5"
+              >
+                {t('structuredLearningCourse.editSourceTextConfirmCancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmedApply}
+                className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-400"
+              >
+                {t('structuredLearningCourse.editSourceTextConfirmButton')}
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
-      <button
-        type="button"
-        onClick={handleApply}
-        disabled={submitting || !instruction.trim()}
-        className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-sky-400"
-      >
-        {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-        {usePerplexity ? t('structuredLearningCourse.webSearchApplyButton') : t('structuredLearningCourse.editApply')}
-      </button>
-      {submitting && step.StepType === 'Teaching' && <TeachingRegenerationModal />}
+      {submitting && <TeachingRegenerationModal />}
+      {showVersions && (
+        <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-white/10 bg-slate-950/40 p-2">
+          {versionsLoading && <p className="text-xs text-slate-400">{t('structuredLearningCourse.loading')}</p>}
+          {!versionsLoading && versions && versions.length === 0 && (
+            <p className="text-xs text-slate-400">{t('structuredLearningCourse.noSourceTextVersionsYet')}</p>
+          )}
+          {!versionsLoading &&
+            versions?.map((v) => (
+              <details key={v.VersionNumber} className="mb-1.5 rounded-lg border border-white/10 bg-white/[0.02] p-2">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-200">
+                  {v.VersionNumber === 0 ? t('structuredLearningCourse.sourceTextOriginalVersion') : t('structuredLearningCourse.sourceTextVersionLabel', { version: v.VersionNumber })}
+                  <span className="ml-2 font-normal text-slate-500">{new Date(v.CreatedDate).toLocaleString()}</span>
+                </summary>
+                {v.Instruction && <p className="mt-1.5 text-xs italic text-sky-300">“{v.Instruction}”</p>}
+                <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-300">{v.Text}</p>
+              </details>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3262,7 +3690,7 @@ function VideoGenerationBox({
   function priceForModel(imageModel: string | null | undefined): number | null {
     if (!imageModel) return null;
     if (imageModel.toLowerCase() === 'merged') return null; // local ffmpeg, unbilled
-    return 0.1 * 8; // gemini-omni-flash-preview: ~$0.10/sec 720p, 8s clips
+    return 0.1 * 10; // gemini-omni-flash-preview: ~$0.10/sec 720p, 10s clips
   }
 
   const totalPrice = videos.reduce((sum, v) => sum + (priceForModel(v.ImageModel) ?? 0), 0);
@@ -3892,122 +4320,6 @@ function VideoGenerationBox({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/** Manual raw-text edit box (2026-08-11) — the "just let me delete the
- * sentence I don't like" escape hatch: no AI involved, the reviewer edits
- * Content directly and must explicitly confirm they read it and take
- * responsibility for it (the AI is not perfect and can alter or invent
- * content) before it can be saved — mirrors editStructuredLearningStep's
- * placement but calls setStructuredLearningStepContent instead. */
-function ManualEditBox({
-  sectionId,
-  step,
-  onUpdated,
-}: {
-  sectionId: string;
-  step: StructuredLearningStepDetail;
-  onUpdated: (updated: StructuredLearningStepDetail) => void;
-}) {
-  const { t } = useTranslation();
-  const [editing, setEditing] = useState(false);
-  const [content, setContent] = useState(step.Content);
-  const [confirmed, setConfirmed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function startEditing() {
-    setContent(step.Content);
-    setConfirmed(false);
-    setError(null);
-    setEditing(true);
-  }
-
-  function cancel() {
-    setEditing(false);
-    setConfirmed(false);
-    setError(null);
-  }
-
-  async function handleSave() {
-    if (!confirmed || !content.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const updated = await setStructuredLearningStepContent(sectionId, step.StepType, content.trim(), confirmed);
-      onUpdated(updated);
-      setEditing(false);
-      setConfirmed(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (!editing) {
-    return (
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={startEditing}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/[0.08]"
-        >
-          <Pencil className="h-3.5 w-3.5" /> {t('structuredLearningCourse.manualEditButton')}
-        </button>
-        {step.IsHumanApproved && step.HumanApprovedAtUtc && (
-          <p className="flex items-center gap-1 text-xs text-emerald-300">
-            <Check className="h-3.5 w-3.5" />
-            {t('structuredLearningCourse.humanApprovedBadge', { date: new Date(step.HumanApprovedAtUtc).toLocaleDateString() })}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/[0.04] p-3">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-amber-300">
-        <Pencil className="h-3.5 w-3.5" /> {t('structuredLearningCourse.manualEditLabel')}
-      </p>
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        rows={8}
-        className="input w-full text-sm"
-      />
-      <label className="mt-2.5 flex items-start gap-2 text-xs text-slate-300">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(e) => setConfirmed(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 flex-none rounded border-white/20 bg-white/[0.03]"
-        />
-        <span>{t('structuredLearningCourse.manualEditConfirmLabel')}</span>
-      </label>
-      {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
-      <div className="mt-2.5 flex gap-2">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={submitting || !confirmed || !content.trim()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          {t('structuredLearningCourse.manualEditSave')}
-        </button>
-        <button
-          type="button"
-          onClick={cancel}
-          disabled={submitting}
-          className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/[0.08]"
-        >
-          {t('structuredLearningCourse.editCancel')}
-        </button>
-      </div>
-      {submitting && step.StepType === 'Teaching' && <TeachingRegenerationModal />}
     </div>
   );
 }
@@ -4776,6 +5088,70 @@ function EngramCardExperience({ card }: { card: EngramCardData }) {
   );
 }
 
+/** Professional, app-styled confirmation dialog (2026-11-07) — replaces raw
+ * browser window.confirm()/alert() popups (which look out of place and
+ * can't be styled) for destructive edit-mode actions like deleting a
+ * source frame or a lecture scene. */
+function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl border border-red-500/30 bg-slate-900 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-red-500/15 text-red-400">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white">{title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">{message}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Synced image+audio "storyboard" player for the Teaching step (2026-10-08) —
  * each scene gets its OWN short audio clip + OWN illustration (see
  * StructuredLearningProfessorLectureService), so swapping the image exactly when
@@ -4786,22 +5162,89 @@ function EngramCardExperience({ card }: { card: EngramCardData }) {
 function SyncedLectureScenePlayer({
   sectionId,
   scenes,
+  mode,
   isAudioFinished,
+  onSceneChange,
   onAllScenesFinished,
+  onSceneDeleted,
   onContinue,
   continueLabel,
 }: {
   sectionId?: string;
-  scenes: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+  scenes: { SceneIndex: number; Text: string; IllustrationId: string | null; AlternateIllustrationId?: string | null; AudioStoragePath: string | null }[];
+  mode?: PreviewMode;
   isAudioFinished: boolean;
+  onSceneChange?: (index: number) => void;
   onAllScenesFinished: () => void;
+  /** Fired after the backend confirms a scene was deleted, so the parent can
+   * drop/renumber it from the step's own StepDataJson (2026-11-07). */
+  onSceneDeleted?: () => void;
   onContinue: () => void;
   continueLabel: string;
 }) {
   const { t } = useTranslation();
   const [sceneIndex, setSceneIndex] = useState(0);
+  // "Generate illustration with AI" edit-mode escape hatch (2026-11-07) —
+  // calls the LLM to produce a NEW image illustrating this scene's own
+  // text/prompt, better than what the recorded professor shows on screen.
+  const [isGeneratingIllustration, setIsGeneratingIllustration] = useState(false);
+  const [generateIllustrationError, setGenerateIllustrationError] = useState<string | null>(null);
+  const [alternateOverrides, setAlternateOverrides] = useState<Record<number, string>>({});
+  const [isDeletingScene, setIsDeletingScene] = useState(false);
+  const [deleteSceneError, setDeleteSceneError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const scene = scenes[sceneIndex];
+  const effectiveAlternateIllustrationId = scene ? (alternateOverrides[scene.SceneIndex] ?? scene.AlternateIllustrationId ?? null) : null;
   const isLastScene = sceneIndex === scenes.length - 1;
+
+  useEffect(() => {
+    onSceneChange?.(sceneIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneIndex]);
+
+  async function handleGenerateIllustration() {
+    if (!sectionId || !scene) return;
+    setIsGeneratingIllustration(true);
+    setGenerateIllustrationError(null);
+    try {
+      const result = await regenerateStructuredLearningLectureScene(sectionId, scene.SceneIndex, {
+        regenerateImage: true,
+        regenerateVoice: false,
+      });
+      if (result.AlternateIllustrationId) {
+        setAlternateOverrides((prev) => ({ ...prev, [scene.SceneIndex]: result.AlternateIllustrationId as string }));
+      }
+    } catch (err) {
+      setGenerateIllustrationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsGeneratingIllustration(false);
+    }
+  }
+
+  async function handleDeleteScene() {
+    if (!sectionId || !scene) return;
+    if (scenes.length <= 1) {
+      setDeleteSceneError(t('structuredLearningCourse.teachingDeleteSceneLastError'));
+      return;
+    }
+    setShowDeleteConfirm(true);
+  }
+
+  async function confirmDeleteScene() {
+    if (!sectionId || !scene) return;
+    setShowDeleteConfirm(false);
+    setIsDeletingScene(true);
+    setDeleteSceneError(null);
+    try {
+      await deleteStructuredLearningLectureScene(sectionId, scene.SceneIndex);
+      setSceneIndex((i) => (i >= scenes.length - 1 ? Math.max(0, i - 1) : i));
+      onSceneDeleted?.();
+    } catch (err) {
+      setDeleteSceneError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDeletingScene(false);
+    }
+  }
 
   const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?scene=${sceneIndex}&v=${encodeURIComponent(scene?.AudioStoragePath ?? String(sceneIndex))}`;
 
@@ -4819,71 +5262,334 @@ function SyncedLectureScenePlayer({
 
   if (!scene) return null;
 
+  // Two-column "big image / scrolling text" layout (2026-11-07): the real video
+  // frame(s) stay large and pinned on the left (they never move), while the
+  // narration text + audio controls live in a narrower, independently
+  // scrollable column on the right with a smaller font — maximizing the space
+  // given to the image, which is the whole point of showing real footage.
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Volume2 className="h-4 w-4 text-emerald-400" />
-          <span className="text-sm font-semibold text-emerald-300">
-            {t('structuredLearningCourse.teachingAudioTitle')}
-          </span>
-        </div>
-        <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300">
-          {sceneIndex + 1} / {scenes.length}
-        </span>
+    <div className="grid gap-4 lg:grid-cols-[3fr_2fr] lg:items-start rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4">
+      <div className="lg:sticky lg:top-20">
+        {(scene.IllustrationId || effectiveAlternateIllustrationId) && (
+          // When there are two images (original + AI alternate), stack them
+          // one above the other (not side by side) so each can still be as
+          // large as possible, using nearly the full viewport height.
+          <div className={effectiveAlternateIllustrationId ? 'flex flex-col gap-2' : undefined}>
+            {scene.IllustrationId && (
+              <ZoomableIllustration
+                illustrationId={scene.IllustrationId}
+                alt=""
+                className={
+                  effectiveAlternateIllustrationId
+                    ? 'h-[42vh] sm:h-[44vh] lg:h-[46vh] w-full rounded-xl bg-slate-950/50 object-contain object-center'
+                    : 'h-[60vh] sm:h-[70vh] lg:h-[82vh] w-full rounded-xl bg-slate-950/50 object-contain object-center'
+                }
+              />
+            )}
+            {effectiveAlternateIllustrationId && (
+              <div className="relative">
+                <ZoomableIllustration
+                  illustrationId={effectiveAlternateIllustrationId}
+                  alt=""
+                  className="h-[42vh] sm:h-[44vh] lg:h-[46vh] w-full rounded-xl bg-slate-950/50 object-contain object-center"
+                />
+                <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-violet-500/80 px-2 py-0.5 text-[10px] font-semibold text-white">
+                  <Sparkles className="h-3 w-3" /> {t('structuredLearningCourse.teachingGeneratedIllustrationBadge')}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {scene.IllustrationId && (
-        <ZoomableIllustration
-          illustrationId={scene.IllustrationId}
-          alt=""
-          className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center"
-        />
-      )}
+      <div className="flex flex-col gap-3 lg:h-[82vh]">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Volume2 className="h-4 w-4 shrink-0 text-sky-400" />
+            <span className="text-sm font-semibold text-sky-300 truncate">
+              {t('structuredLearningCourse.teachingAudioTitle')}
+            </span>
+          </div>
+          <span className="shrink-0 rounded-full bg-sky-500/20 border border-sky-500/40 px-2.5 py-0.5 text-[11px] font-medium text-sky-300">
+            {sceneIndex + 1} / {scenes.length}
+          </span>
+        </div>
 
-      <audio key={audioUrl} controls autoPlay className="w-full h-10 rounded-lg accent-emerald-500" src={audioUrl} onEnded={goNext}>
-        Your browser does not support audio playback.
-      </audio>
-
-      <div className="flex items-center justify-between pt-1 text-xs text-slate-400 border-t border-emerald-500/20">
-        <div className="flex items-center gap-3">
+        {/* Prev/Next pinned right at the top of this column (2026-11-08) — moved
+            up from the bottom so they're immediately visible without scrolling
+            past the (potentially long) narration text below. */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={goPrevious}
             disabled={sceneIndex === 0}
-            className="text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-200 hover:bg-sky-500/20 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ← {t('common.back') || 'Back'}
           </button>
           <button
             type="button"
             onClick={goNext}
-            className="text-slate-400 hover:text-white"
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/50 bg-sky-500/20 px-4 py-2.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/30"
           >
             {isLastScene ? (t('common.finish') || 'Finish') : (t('common.continue') || 'Next')} →
           </button>
         </div>
 
-        {isAudioFinished ? (
-          <button
-            type="button"
-            onClick={onContinue}
-            className="inline-flex items-center gap-1 font-semibold text-emerald-300 hover:text-emerald-200 cursor-pointer transition-colors"
-          >
-            <span>{continueLabel}</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        ) : (
-          <span className="text-amber-300/90 flex items-center gap-1">
-            <Lock className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
-          </span>
+        {mode === 'edit' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleGenerateIllustration}
+              disabled={isGeneratingIllustration}
+              className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {isGeneratingIllustration
+                ? t('structuredLearningCourse.teachingGenerateIllustrationLoading')
+                : effectiveAlternateIllustrationId
+                  ? t('structuredLearningCourse.teachingRegenerateIllustrationButton')
+                  : t('structuredLearningCourse.teachingGenerateIllustrationButton')}
+            </button>
+            {generateIllustrationError && (
+              <span className="text-[11px] text-red-400">{generateIllustrationError}</span>
+            )}
+            <button
+              type="button"
+              onClick={handleDeleteScene}
+              disabled={isDeletingScene}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {t('structuredLearningCourse.teachingDeleteSceneButton')}
+            </button>
+            {deleteSceneError && (
+              <span className="text-[11px] text-red-400">{deleteSceneError}</span>
+            )}
+          </div>
         )}
+
+        {scene.Text && (
+          // Only the narration text scrolls (flex-1 + overflow-y-auto); the
+          // audio player and prev/next/continue controls below stay pinned
+          // in view at all times, matching the fixed image on the left.
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 text-xs leading-relaxed text-slate-300">
+            <RichStepContent content={scene.Text} />
+          </div>
+        )}
+
+        <audio key={audioUrl} controls autoPlay className="w-full h-10 rounded-lg accent-sky-500" src={audioUrl} onEnded={goNext}>
+          Your browser does not support audio playback.
+        </audio>
+
+        <div className="flex flex-col gap-2 pt-2 border-t border-sky-500/20">
+          {isAudioFinished ? (
+            <button
+              type="button"
+              onClick={onContinue}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-500/30 hover:bg-sky-400 cursor-pointer transition-colors"
+            >
+              <span>{continueLabel}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <span className="text-xs text-amber-300/90 flex items-center gap-1">
+              <Lock className="h-3.5 w-3.5" /> {t('structuredLearningCourse.teachingAudioMustListenMsg')}
+            </span>
+          )}
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={t('structuredLearningCourse.teachingDeleteSceneButton')}
+        message={t('structuredLearningCourse.teachingDeleteSceneConfirm')}
+        confirmLabel={t('common.delete') || 'Delete'}
+        cancelLabel={t('common.cancel') || 'Cancel'}
+        onConfirm={confirmDeleteScene}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }
 
-function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
+/** "Regenerate with AI" box (2026-11-11) for the Teaching step's single
+ * lesson illustration — the ONLY image shown under "Learn" when there are
+ * no Scenes/Cards. The reviewer only types extra instructions; the
+ * backend always combines them with the Engram's own original lesson
+ * illustration prompt (full class text included) rather than replacing it,
+ * so a quick tweak can never discard what the image was supposed to
+ * depict. See regenerateStructuredLearningLessonIllustration. */
+function LessonIllustrationRegenerateBox({
+  sectionId,
+  step,
+  onUpdated,
+  sourceIllustrations,
+}: {
+  sectionId: string;
+  step: StructuredLearningStepDetail;
+  onUpdated: (updated: StructuredLearningStepDetail) => void;
+  sourceIllustrations?: StructuredLearningSourceIllustration[];
+}) {
+  const { t } = useTranslation();
+  const [instructions, setInstructions] = useState('');
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [referenceSourceIllustrationId, setReferenceSourceIllustrationId] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const hasSourceIllustrations = (sourceIllustrations?.length ?? 0) > 0;
+
+  function handleLogoFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const base64 = result.split(',')[1] ?? '';
+      if (base64) {
+        setLogoBase64(base64);
+        setLogoPreviewUrl(result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearLogo() {
+    setLogoBase64(null);
+    setLogoPreviewUrl(null);
+  }
+
+  async function handleRegenerate() {
+    if (!instructions.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { IllustrationId, Content } = await regenerateStructuredLearningLessonIllustration(
+        sectionId,
+        instructions.trim(),
+        logoBase64 ?? undefined,
+        referenceSourceIllustrationId ?? undefined
+      );
+      let updatedStepDataJson = step.StepDataJson;
+      try {
+        const parsed = JSON.parse(step.StepDataJson ?? '{}') as Record<string, unknown>;
+        updatedStepDataJson = JSON.stringify({ ...parsed, IllustrationId });
+      } catch {
+        updatedStepDataJson = JSON.stringify({ IllustrationId });
+      }
+      // Content may have been patched by StructuredLearningLessonNarrationSyncAgent
+      // (2026-11-11) so the narration's scene description matches the new image —
+      // applying it here also changes audioCacheKey, which re-fetches the freshly
+      // re-synthesized audio automatically.
+      onUpdated({ ...step, StepDataJson: updatedStepDataJson, Content: Content || step.Content });
+      setInstructions('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-sky-400/20 bg-sky-500/[0.04] p-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-sky-300">
+        <Sparkles className="h-3.5 w-3.5" /> {t('structuredLearningCourse.lessonIllustrationRegenerateLabel')}
+      </p>
+      <textarea
+        value={instructions}
+        onChange={(e) => {
+          setInstructions(e.target.value);
+          setError(null);
+        }}
+        rows={2}
+        placeholder={t('structuredLearningCourse.lessonIllustrationRegeneratePlaceholder')}
+        className="input w-full"
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/png"
+          className="hidden"
+          onChange={handleLogoFileChange}
+        />
+        {logoPreviewUrl ? (
+          <div className="flex items-center gap-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2 py-1">
+            <img src={logoPreviewUrl} alt="" className="h-6 w-6 rounded object-contain" />
+            <span className="text-[11px] text-indigo-300">{t('structuredLearningCourse.lessonIllustrationLogoAttached')}</span>
+            <button type="button" onClick={clearLogo} className="text-indigo-300 hover:text-indigo-100">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => logoInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/[0.08]"
+          >
+            <Upload className="h-3.5 w-3.5" /> {t('structuredLearningCourse.lessonIllustrationAddLogo')}
+          </button>
+        )}
+      </div>
+      {hasSourceIllustrations && (
+        <div className="mt-2.5">
+          <p className="text-[11px] font-medium text-slate-300">{t('structuredLearningCourse.lessonIllustrationReferenceLabel')}</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setReferenceSourceIllustrationId(null)}
+              className={`flex h-14 w-20 shrink-0 items-center justify-center rounded-lg border text-center text-[10px] font-medium leading-tight ${
+                referenceSourceIllustrationId === null
+                  ? 'border-sky-400 bg-sky-500/20 text-sky-200'
+                  : 'border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.08]'
+              }`}
+            >
+              {t('structuredLearningCourse.lessonIllustrationNoReference')}
+            </button>
+            {(sourceIllustrations ?? []).map((illustration) => (
+              <button
+                key={illustration.StructuredLearningIllustrationId}
+                type="button"
+                onClick={() => setReferenceSourceIllustrationId(illustration.StructuredLearningIllustrationId)}
+                title={illustration.Caption ?? undefined}
+                className={`h-14 w-20 shrink-0 overflow-hidden rounded-lg border ${
+                  referenceSourceIllustrationId === illustration.StructuredLearningIllustrationId
+                    ? 'border-sky-400 ring-2 ring-sky-400/60'
+                    : 'border-white/10 hover:border-sky-400/50'
+                }`}
+              >
+                <img
+                  src={apiImageUrl(`/illustrations/structured-learning/${illustration.StructuredLearningIllustrationId}/image`)}
+                  alt={illustration.Caption ?? ''}
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-300/90">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        {t('structuredLearningCourse.lessonIllustrationSyncWarning')}
+      </p>
+      {error && <p className="mt-1.5 text-xs text-red-300">{error}</p>}
+      <button
+        type="button"
+        onClick={handleRegenerate}
+        disabled={submitting || !instructions.trim()}
+        className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-sky-400"
+      >
+        {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        {t('structuredLearningCourse.lessonIllustrationRegenerateButton')}
+      </button>
+    </div>
+  );
+}
+
+function StepIllustration({ stepDataJson, className }: { stepDataJson: string | null; className?: string }) {
   if (!stepDataJson) return null;
   let illustrationId: string | null = null;
   try {
@@ -4893,7 +5599,13 @@ function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
   }
   if (!illustrationId) return null;
 
-  return <ZoomableIllustration illustrationId={illustrationId} alt="" className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center" />;
+  return (
+    <ZoomableIllustration
+      illustrationId={illustrationId}
+      alt=""
+      className={className ?? 'h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center'}
+    />
+  );
 }
 
 async function downloadImageFile(url: string, filename = 'lesson-illustration.png') {
@@ -5478,10 +6190,20 @@ function RecallPractice({
   sectionId,
   stepId,
   onComplete,
+  isYoungLearner,
 }: {
   sectionId: string;
   stepId: string;
   onComplete: () => void;
+  /** When true (document's PedagogicalAudience === "YoungLearner", children
+   * under ~7, 2026-11-07), Recall shows the Realtime voice/speech agent
+   * (the original feature, designed for pre-readers) IN ADDITION to the
+   * typed-answer textarea. For every other (Standard/adult) audience the
+   * voice agent is NOT rendered at all — those students only ever answer
+   * by typing; the LLM-generated question and the children's on-demand
+   * illustration are also skipped for them. The voice feature itself is
+   * untouched, just gated to YoungLearner-only use. */
+  isYoungLearner?: boolean;
 }) {
   const { t } = useTranslation();
   const startedRef = useRef(false);
@@ -5500,6 +6222,7 @@ function RecallPractice({
   const [lastMastered, setLastMastered] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resettingRecall, setResettingRecall] = useState(false);
+  const [regeneratingRecall, setRegeneratingRecall] = useState(false);
   // yet also struggles with abstract multi-sentence writing prompts — a
   // simple picture of the scenario gives them something concrete to point
   // at/talk about instead of relying purely on words. Generated on demand
@@ -5550,6 +6273,18 @@ function RecallPractice({
       return;
     }
 
+    // Non-YoungLearner audiences (2026-11-07): the on-demand "children's
+    // book illustration for a 6-year-old" picture generation below (and
+    // its "Drawing your picture..." loading screen) was designed purely
+    // for the YoungLearner (<7) audience — Standard/enterprise courses
+    // must never show it. Skip image generation entirely and go straight
+    // to the plain question+textarea UI.
+    if (!isYoungLearner) {
+      setImageLoading(false);
+      setImageSettled(true);
+      return;
+    }
+
     // Prefer the agent's own literal object/scene description (grounded in
     // the EXACT items the question refers to) over the raw question text —
     // the question itself may phrase things conversationally ("look at the
@@ -5569,7 +6304,7 @@ function RecallPractice({
         setImageLoading(false);
         setImageSettled(true);
       });
-  }, [question, questionVisualDescription, questionIllustrationId]);
+  }, [question, questionVisualDescription, questionIllustrationId, isYoungLearner]);
 
   // Full voice control (2026-10-25, explicit product reversal): the child
   // doesn't know what a "Submit" button is and shouldn't need to — when
@@ -5912,6 +6647,42 @@ function RecallPractice({
       )}
       <div className="flex items-start gap-2">
         <p className="flex-1 text-sm text-slate-200">{question}</p>
+        <button
+          type="button"
+          title={t('structuredLearningCourse.recallRegenerateButton') || 'Regenerate question'}
+          onClick={async () => {
+            setRegeneratingRecall(true);
+            setError(null);
+            try {
+              await regenerateStructuredLearningRecallItems(sectionId);
+              completedRef.current = false;
+              setComplete(false);
+              setLastMastered(null);
+              setAttemptsUsed(0);
+              setItemsMastered(0);
+              startedRef.current = false;
+              setQuestion(null);
+              setQuestionImageUrl(null);
+              setImageSettled(false);
+              const result = await getStructuredLearningRecallState(sectionId);
+              setQuestion(result.NextQuestion);
+              setQuestionVisualDescription(result.VisualObjectsDescription ?? null);
+              setQuestionIllustrationId(result.IllustrationId ?? null);
+              setQuestionCorrectAnswer(result.CorrectAnswer ?? null);
+              setItemsRequired(result.ItemsRequired);
+              startedRef.current = true;
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err));
+            } finally {
+              setRegeneratingRecall(false);
+            }
+          }}
+          disabled={regeneratingRecall}
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
+        >
+          {regeneratingRecall ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {t('structuredLearningCourse.recallRegenerateButton') || 'Regenerate'}
+        </button>
       </div>
       {submitting && (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/10 p-6 text-center">
@@ -5921,17 +6692,19 @@ function RecallPractice({
           </p>
         </div>
       )}
-      <VoiceTutorAgent
-        structuredLearningSectionStepId={stepId}
-        currentPromptText={question}
-        recallCorrectAnswer={questionCorrectAnswer}
-        onSubmitRecallAnswer={handleSubmitRecallAnswerForAgent}
-        onSubmitRecallSessionResults={handleSubmitRecallSessionResultsForAgent}
-        onRecallItemsLoaded={(items) => setRecallIllustrationIds(items.map((it) => it.illustrationId || ''))}
-        onTranscript={handleRecallTranscript}
-        startLabel={t('structuredLearningCourse.recallVoiceAnswer')}
-        compact
-      />
+      {isYoungLearner && (
+        <VoiceTutorAgent
+          structuredLearningSectionStepId={stepId}
+          currentPromptText={question}
+          recallCorrectAnswer={questionCorrectAnswer}
+          onSubmitRecallAnswer={handleSubmitRecallAnswerForAgent}
+          onSubmitRecallSessionResults={handleSubmitRecallSessionResultsForAgent}
+          onRecallItemsLoaded={(items) => setRecallIllustrationIds(items.map((it) => it.illustrationId || ''))}
+          onTranscript={handleRecallTranscript}
+          startLabel={t('structuredLearningCourse.recallVoiceAnswer')}
+          compact
+        />
+      )}
       <textarea
         value={response}
         onChange={(e) => setResponse(e.target.value)}

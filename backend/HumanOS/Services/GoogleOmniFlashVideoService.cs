@@ -38,9 +38,10 @@ public sealed class GoogleOmniFlashVideoService
         public string? ErrorMessage { get; init; }
     }
 
-    /// <summary>Generates an 8-second video synchronously (per Google's
+    /// <summary>Generates a 10-second video synchronously (per Google's
     /// docs this typically completes in well under the Veo's multi-minute
-    /// long-running-job time) — text-to-video, or image-to-video when
+    /// long-running-job time; corrected 2026-11-08 from the previously
+    /// assumed 8s) — text-to-video, or image-to-video when
     /// <paramref name="imageBytes"/> is provided (sets the image as the
     /// first frame via the "image_to_video" task).</summary>
     public async Task<GenerateResult> GenerateAsync(

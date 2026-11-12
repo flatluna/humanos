@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { getSkills } from '@/api/skillsApi';
+import { getSkills, type SkillDto } from '@/api/skillsApi';
 import {
   Sparkles,
   RefreshCw,
@@ -23,7 +23,9 @@ import {
 import type {
   WorkStepRequirementsAnalysisResultDto,
   ProcessStepDto,
+  SkillItemDto,
 } from '@/api/processDocumentsApi';
+import { CatalogSkillPicker } from '@/components/wizard/CatalogSkillPicker';
 
 export interface WorkRequirementsReviewStepProps {
   documentId?: string;
@@ -82,6 +84,16 @@ export function WorkRequirementsReviewStep({
   const isSkillInCatalog = (name: string) => {
     return catalogSkillNames.has(name.trim().toLowerCase());
   };
+
+  // Catalog skills split by category, for the manual "assign from catalog" combo boxes.
+  const softCatalogSkills = useMemo(
+    () => catalogSkills.filter((s) => s.category === 'soft-skills' && s.isActive !== false),
+    [catalogSkills]
+  );
+  const technicalCatalogSkills = useMemo(
+    () => catalogSkills.filter((s) => s.category === 'job-skills' && s.isActive !== false),
+    [catalogSkills]
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedAbilities, setEditedAbilities] = useState<string[]>([]);
@@ -148,6 +160,34 @@ export function WorkRequirementsReviewStep({
     }
     await onAnalyzeStep(step.step_id);
     setHasUserEdited(false);
+  };
+
+  const handleAddSkillsFromCatalog = (
+    categoryKey: 'softSkills' | 'technicalSkills',
+    skillsToAdd: SkillDto[]
+  ) => {
+    if (!requirements || skillsToAdd.length === 0) return;
+    const currentList = requirements.requiredSkillAreas[categoryKey] || [];
+    const existingNames = new Set(currentList.map((s) => s.name.trim().toLowerCase()));
+    const newItems: SkillItemDto[] = skillsToAdd
+      .filter((s) => !existingNames.has(s.name.trim().toLowerCase()))
+      .map((s) => ({
+        skillId: s.skillId,
+        name: s.name,
+        reason: t('processLearning.requirementsStep.manuallyAssignedReason'),
+        category: s.category,
+      }));
+    if (newItems.length === 0) return;
+
+    const updated: WorkStepRequirementsAnalysisResultDto = {
+      ...requirements,
+      requiredSkillAreas: {
+        ...requirements.requiredSkillAreas,
+        [categoryKey]: [...currentList, ...newItems],
+      },
+    };
+    onUpdateRequirements(updated);
+    setHasUserEdited(true);
   };
 
   return (
@@ -371,14 +411,31 @@ export function WorkRequirementsReviewStep({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Soft Skills */}
-              {requirements.requiredSkillAreas.softSkills?.length > 0 && (
-                <div className="rounded-2xl border border-violet-200 bg-violet-50/30 p-5 dark:border-violet-500/20 dark:bg-white/5 space-y-3">
-                  <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300 font-bold text-xs uppercase tracking-wider">
-                    <Heart className="h-4 w-4" />
-                    <span>{t('processLearning.requirementsStep.softSkillsHeader')}</span>
+              <div className="rounded-2xl border border-violet-200 bg-violet-50/30 p-5 dark:border-violet-500/20 dark:bg-white/5 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300 font-bold text-xs uppercase tracking-wider">
+                      <Heart className="h-4 w-4" />
+                      <span>{t('processLearning.requirementsStep.softSkillsHeader')}</span>
+                    </div>
+                    <CatalogSkillPicker
+                      skills={softCatalogSkills}
+                      existingNames={new Set((requirements.requiredSkillAreas.softSkills || []).map((s) => s.name.trim().toLowerCase()))}
+                      onAdd={(skills) => handleAddSkillsFromCatalog('softSkills', skills)}
+                      label={t('processLearning.requirementsStep.addFromCatalogBtn')}
+                      searchPlaceholder={t('processLearning.requirementsStep.addFromCatalogSearchPlaceholder')}
+                      addBtnLabel={t('processLearning.requirementsStep.addFromCatalogAddBtn')}
+                      cancelBtnLabel={t('processLearning.requirementsStep.addFromCatalogCancelBtn')}
+                      noResultsLabel={t('processLearning.requirementsStep.addFromCatalogNoResults')}
+                      accentClass="border-violet-300 bg-white text-violet-700 hover:bg-violet-100 dark:border-violet-500/30 dark:bg-slate-800 dark:text-violet-300 dark:hover:bg-violet-500/10"
+                    />
                   </div>
                   <ul className="space-y-2 text-xs">
-                    {requirements.requiredSkillAreas.softSkills.map((sk, i) => {
+                    {(!requirements.requiredSkillAreas.softSkills || requirements.requiredSkillAreas.softSkills.length === 0) && (
+                      <li className="rounded-xl border border-dashed border-violet-200 p-3 text-[11px] text-slate-400 dark:border-violet-500/20 dark:text-white/40">
+                        {t('processLearning.requirementsStep.noSkillsYet')}
+                      </li>
+                    )}
+                    {requirements.requiredSkillAreas.softSkills?.map((sk, i) => {
                       const inCatalog = isSkillInCatalog(sk.name);
                       return (
                         <li key={i} className="group relative rounded-xl bg-white p-3 shadow-xs dark:bg-slate-800/80 border border-violet-100 dark:border-white/5 space-y-0.5">
@@ -413,17 +470,33 @@ export function WorkRequirementsReviewStep({
                     })}
                   </ul>
                 </div>
-              )}
 
               {/* Technical / Job Skills */}
-              {requirements.requiredSkillAreas.technicalSkills?.length > 0 && (
-                <div className="rounded-2xl border border-teal-200 bg-teal-50/30 p-5 dark:border-teal-500/20 dark:bg-white/5 space-y-3">
-                  <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-xs uppercase tracking-wider">
-                    <Cpu className="h-4 w-4" />
-                    <span>{t('processLearning.requirementsStep.technicalSkillsHeader')}</span>
+              <div className="rounded-2xl border border-teal-200 bg-teal-50/30 p-5 dark:border-teal-500/20 dark:bg-white/5 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-xs uppercase tracking-wider">
+                      <Cpu className="h-4 w-4" />
+                      <span>{t('processLearning.requirementsStep.technicalSkillsHeader')}</span>
+                    </div>
+                    <CatalogSkillPicker
+                      skills={technicalCatalogSkills}
+                      existingNames={new Set((requirements.requiredSkillAreas.technicalSkills || []).map((s) => s.name.trim().toLowerCase()))}
+                      onAdd={(skills) => handleAddSkillsFromCatalog('technicalSkills', skills)}
+                      label={t('processLearning.requirementsStep.addFromCatalogBtn')}
+                      searchPlaceholder={t('processLearning.requirementsStep.addFromCatalogSearchPlaceholder')}
+                      addBtnLabel={t('processLearning.requirementsStep.addFromCatalogAddBtn')}
+                      cancelBtnLabel={t('processLearning.requirementsStep.addFromCatalogCancelBtn')}
+                      noResultsLabel={t('processLearning.requirementsStep.addFromCatalogNoResults')}
+                      accentClass="border-teal-300 bg-white text-teal-700 hover:bg-teal-100 dark:border-teal-500/30 dark:bg-slate-800 dark:text-teal-300 dark:hover:bg-teal-500/10"
+                    />
                   </div>
                   <ul className="space-y-2 text-xs">
-                    {requirements.requiredSkillAreas.technicalSkills.map((sk, i) => {
+                    {(!requirements.requiredSkillAreas.technicalSkills || requirements.requiredSkillAreas.technicalSkills.length === 0) && (
+                      <li className="rounded-xl border border-dashed border-teal-200 p-3 text-[11px] text-slate-400 dark:border-teal-500/20 dark:text-white/40">
+                        {t('processLearning.requirementsStep.noSkillsYet')}
+                      </li>
+                    )}
+                    {requirements.requiredSkillAreas.technicalSkills?.map((sk, i) => {
                       const inCatalog = isSkillInCatalog(sk.name);
                       return (
                         <li key={i} className="group relative rounded-xl bg-white p-3 shadow-xs dark:bg-slate-800/80 border border-teal-100 dark:border-white/5 space-y-0.5">
@@ -458,7 +531,6 @@ export function WorkRequirementsReviewStep({
                     })}
                   </ul>
                 </div>
-              )}
 
               {/* Department Processes */}
               {requirements.requiredSkillAreas.departmentProcesses && requirements.requiredSkillAreas.departmentProcesses.length > 0 && (

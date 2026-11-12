@@ -72,6 +72,11 @@ export interface StructuredLearningDocumentDetail {
   StructuredLearningDocumentId: string;
   DocumentName: string;
   ExecutiveSummary?: string | null;
+  /** Azure AI Video Indexer id of the source video this course was
+   * generated from (via Engrams) — null for PDF/process-document courses.
+   * Non-null => render the video's ExecutiveSummary prominently and show
+   * the per-scene image gallery in the Teaching step. */
+  SourceVideoId?: string | null;
   AssessmentQuestionType: string;
   Sections: StructuredLearningSectionDetail[];
   ShowQaProfessorStep: boolean;

@@ -33,6 +33,14 @@ export interface SkillDto {
   JobRoles: SkillJobRoleLinkDto[];
   CreatedDate: string;
   UpdatedDate: string;
+  /** Set only for process-generated Capabilities (HumanOS Enterprise "Save as Capability") —
+   * the ProcessDocument this Skill was derived from. When present, Capability Studio should
+   * reuse that process's already-extracted chapter/step index (source_content/source_pages)
+   * instead of re-running its own AI outline-detection on the raw PDF. */
+  SourceProcessDocumentId?: string | null;
+  /** The department that authored the source process (e.g. "Finanzas") — only set
+   * alongside SourceProcessDocumentId. */
+  SourceProcessDepartmentName?: string | null;
 }
 
 /// Lightweight projection — SkillId/Name/JobRoleCount only — for the

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Moon, Sun, LogOut, ChevronDown, UserCircle } from 'lucide-react';
+import { Moon, Sun, LogOut, ChevronDown, UserCircle, Menu } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useThemeStore } from '@/store/useThemeStore';
+import { useSidebarStore } from '@/store/useSidebarStore';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 const ROLE_BADGE_STYLES: Record<string, string> = {
@@ -16,6 +17,7 @@ export function EnterpriseHeader() {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useThemeStore();
+  const { isOpen: isSidebarOpen, toggleSidebar } = useSidebarStore();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const roleTranslated = user?.orgRole
@@ -25,6 +27,16 @@ export function EnterpriseHeader() {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur dark:border-white/10 dark:bg-[#05060a]/80">
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 md:flex dark:text-white/60 dark:hover:bg-white/10"
+          aria-label={isSidebarOpen ? t('header.collapseMenu') : t('header.expandMenu')}
+          title={isSidebarOpen ? t('header.collapseMenu') : t('header.expandMenu')}
+          aria-pressed={isSidebarOpen}
+        >
+          <Menu className="h-4 w-4" />
+        </button>
         <img src="/engramslogo.png" alt="Engram" className="h-9 w-9 rounded-xl object-cover shadow-md shadow-brand-500/30" />
         <div className="leading-tight">
           <div className="flex items-center gap-2">

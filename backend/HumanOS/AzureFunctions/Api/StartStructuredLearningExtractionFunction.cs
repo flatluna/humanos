@@ -77,6 +77,9 @@ public sealed class StartStructuredLearningExtractionFunction
 
         public Guid? SubjectId { get; set; }
 
+        /// <summary>See StructuredLearningDocument.SourceCapabilityCode's own doc comment.</summary>
+        public string? SourceCapabilityCode { get; set; }
+
         /// <summary>Knowledge Graph topic scoping (2026-08-16) — e.g. the
         /// "Ley del IVA" Topic within SubjectId="Leyes". See
         /// StructuredLearningDocument.TopicId's own doc comment.</summary>
@@ -95,6 +98,14 @@ public sealed class StartStructuredLearningExtractionFunction
         public string? CourseLevel { get; set; }
 
         public int? MaxDeepDiveCardsPerNode { get; set; }
+
+        /// <summary>Designer-controlled toggle (2026-10-30) for the Learn
+        /// step's lecture illustrations/audio — see
+        /// StructuredLearningDocument.UseScenedLecture's own doc comment.
+        /// Null defaults to true only for backward compatibility with older
+        /// callers that never send this field; the Studio "new course" form
+        /// always sends an explicit value (false for brand new documents).</summary>
+        public bool? UseScenedLecture { get; set; }
 
         public bool? IncludeProductionStep { get; set; }
 
@@ -212,6 +223,7 @@ public sealed class StartStructuredLearningExtractionFunction
             CreatedByEmail = string.IsNullOrWhiteSpace(body.CreatedByEmail) ? null : body.CreatedByEmail,
             IsGlobal = body.IsGlobal,
             SubjectId = body.SubjectId,
+            SourceCapabilityCode = string.IsNullOrWhiteSpace(body.SourceCapabilityCode) ? null : body.SourceCapabilityCode,
             TopicId = body.TopicId,
             CapabilityDomainId = body.CapabilityDomainId,
             Category = string.IsNullOrWhiteSpace(body.Category) ? null : body.Category,
@@ -219,6 +231,7 @@ public sealed class StartStructuredLearningExtractionFunction
             PedagogicalAudience = string.IsNullOrWhiteSpace(body.PedagogicalAudience) ? null : body.PedagogicalAudience,
             CourseLevel = string.IsNullOrWhiteSpace(body.CourseLevel) ? null : body.CourseLevel,
             MaxDeepDiveCardsPerNode = body.MaxDeepDiveCardsPerNode,
+            UseScenedLecture = body.UseScenedLecture ?? true,
             IncludeProductionStep = body.IncludeProductionStep,
             IncludeRecallStep = body.IncludeRecallStep,
             IncludeHypothesisStep = body.IncludeHypothesisStep,

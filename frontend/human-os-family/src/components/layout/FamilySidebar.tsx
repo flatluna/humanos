@@ -3,6 +3,7 @@ import { clsx } from 'clsx';
 import {
   LayoutDashboard,
   Users,
+  ClipboardList,
   Compass,
   Layers,
   GraduationCap,
@@ -24,12 +25,20 @@ export const FAMILY_NAV_ITEMS = [
     badge: null,
   },
   {
+    to: '/family/master-data',
+    end: true,
+    icon: ClipboardList,
+    labelKey: 'nav.familyMasterData',
+    accentColor: 'indigo',
+    badge: null,
+  },
+  {
     to: '/family',
-    end: false,
+    end: true,
     icon: Users,
     labelKey: 'nav.family',
     accentColor: 'indigo',
-    badge: '5 miembros',
+    badge: null,
   },
   {
     to: '/personal-development',
@@ -146,7 +155,7 @@ export function FamilySidebar() {
                   : 'bg-white text-warm-700 hover:bg-warm-100 dark:bg-warm-800 dark:text-warm-300 dark:hover:bg-warm-700',
               )}
             >
-              {lang === 'es' ? 'Todos (5)' : 'All (5)'}
+              {lang === 'es' ? `Todos (${members.length})` : `All (${members.length})`}
             </button>
 
             {members.map((m) => (
@@ -177,44 +186,51 @@ export function FamilySidebar() {
           </p>
 
           <ul className="space-y-1.5">
-            {FAMILY_NAV_ITEMS.map(({ to, end, icon: Icon, labelKey, accentColor, badge }) => (
-              <li key={to}>
-                <NavLink
-                  to={to}
-                  end={end}
-                  className={({ isActive }) =>
-                    clsx(
-                      'group flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                      isActive
-                        ? ACCENT_STYLES[accentColor].active
-                        : 'text-warm-700 hover:bg-warm-100/80 hover:text-warm-900 dark:text-warm-300 dark:hover:bg-white/5 dark:hover:text-white',
-                    )
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={clsx(
-                            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition',
-                            isActive ? 'bg-white/20 text-white' : ACCENT_STYLES[accentColor].chip,
-                          )}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className="font-semibold">{t(labelKey)}</span>
-                      </div>
+            {FAMILY_NAV_ITEMS.map(({ to, end, icon: Icon, labelKey, accentColor, badge }) => {
+              const dynamicBadge =
+                to === '/family'
+                  ? `${members.length} ${members.length === 1 ? (lang === 'es' ? 'miembro' : 'member') : (lang === 'es' ? 'miembros' : 'members')}`
+                  : badge;
 
-                      {badge && !isActive && (
-                        <span className="rounded-full bg-warm-100 px-2 py-0.5 text-[10px] font-semibold text-warm-600 dark:bg-white/10 dark:text-warm-300">
-                          {badge}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              </li>
-            ))}
+              return (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    end={end}
+                    className={({ isActive }) =>
+                      clsx(
+                        'group flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                        isActive
+                          ? ACCENT_STYLES[accentColor].active
+                          : 'text-warm-700 hover:bg-warm-100/80 hover:text-warm-900 dark:text-warm-300 dark:hover:bg-white/5 dark:hover:text-white',
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={clsx(
+                              'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition',
+                              isActive ? 'bg-white/20 text-white' : ACCENT_STYLES[accentColor].chip,
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="font-semibold">{t(labelKey)}</span>
+                        </div>
+
+                        {dynamicBadge && !isActive && (
+                          <span className="rounded-full bg-warm-100 px-2 py-0.5 text-[10px] font-semibold text-warm-600 dark:bg-white/10 dark:text-warm-300">
+                            {dynamicBadge}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </NavLink>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </div>

@@ -30,7 +30,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 
 const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Recall', 'Production', 'Assessment'];
 const GATED_STEP_TYPES = new Set(['DeepDive', 'Recall', 'Assessment']);
-const RECALL_MAX_ATTEMPTS = 5;
+const RECALL_MAX_ATTEMPTS = 3;
 
 const STEP_META: Record<string, { label: string; Icon: typeof Lightbulb }> = {
   Hypothesis: { label: 'Before we start', Icon: Lightbulb },
@@ -395,12 +395,15 @@ function DeepDiveQuiz({ sectionId, stepId, stepDataJson, onComplete }: { section
   );
 }
 
-/** Interactive Recall practice — every turn grades the previous answer AND
- * generates a genuinely new question, never a static bank. */
+/** Interactive Recall practice — every turn grades the previous answer.
+ * In Dynamic mode the next question is freshly generated each time; in
+ * Static mode it (and its pre-generated card illustration, if any) comes
+ * from the section's fixed bank instead — same UI either way. */
 function RecallPractice({ sectionId, personId, onComplete }: { sectionId: string; personId: string; onComplete: () => void }) {
   const startedRef = useRef(false);
   const completedRef = useRef(false);
   const [question, setQuestion] = useState<string | null>(null);
+  const [illustrationId, setIllustrationId] = useState<string | null>(null);
   const [response, setResponse] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [attemptsUsed, setAttemptsUsed] = useState(0);
@@ -424,6 +427,7 @@ function RecallPractice({ sectionId, personId, onComplete }: { sectionId: string
     getStructuredLearningRecallState(sectionId, personId)
       .then((result) => {
         setQuestion(result.NextQuestion);
+        setIllustrationId(result.IllustrationId);
         setItemsRequired(result.ItemsRequired);
         setItemsMastered(result.ItemsMastered);
         setAttemptsUsed(result.AttemptsUsedForItem);
@@ -440,6 +444,7 @@ function RecallPractice({ sectionId, personId, onComplete }: { sectionId: string
     try {
       const result = await submitStructuredLearningRecallAttempt(sectionId, personId, response);
       setQuestion(result.NextQuestion);
+      setIllustrationId(result.IllustrationId);
       setItemsMastered(result.ItemsMastered);
       setItemsRequired(result.ItemsRequired);
       setAttemptsUsed(result.AttemptsUsedForItem);
@@ -474,6 +479,13 @@ function RecallPractice({ sectionId, personId, onComplete }: { sectionId: string
         <span className="text-xs text-slate-500 dark:text-slate-400">{itemsMastered}/{itemsRequired} mastered</span>
       </div>
       {lastMastered === true && <p className="text-xs text-emerald-600 dark:text-emerald-300">Good job!</p>}
+      {illustrationId && (
+        <img
+          src={imageUrl(illustrationId)}
+          alt=""
+          className="h-56 w-full rounded-xl bg-slate-100 dark:bg-slate-950/50 object-contain object-center"
+        />
+      )}
       <p className="text-sm text-slate-700 dark:text-slate-200">{question}</p>
       <textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={3} placeholder="Type your answer..." className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-3 text-sm text-slate-900 dark:text-white" />
       <button

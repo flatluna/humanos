@@ -2,7 +2,9 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { FamilyAppLayout } from '../components/layout/FamilyAppLayout';
 import { OverviewPage } from '../pages/OverviewPage';
 import { FamilyPage } from '../pages/FamilyPage';
+import { FamilyMasterDataPage } from '../pages/FamilyMasterDataPage';
 import { NewFamilyMemberPage } from '../pages/NewFamilyMemberPage';
+import { MemberMainPage } from '../pages/MemberMainPage';
 import { PersonalDevelopmentPage } from '../pages/PersonalDevelopmentPage';
 import { CapabilitiesPage } from '../pages/CapabilitiesPage';
 import { LearningPage } from '../pages/LearningPage';
@@ -22,8 +24,20 @@ export const router = createBrowserRouter([
         element: <Navigate to="/" replace />,
       },
       {
+        path: 'family/master-data',
+        element: <FamilyMasterDataPage />,
+      },
+      {
         path: 'family',
         element: <FamilyPage />,
+      },
+      {
+        path: 'family/members/:memberId',
+        element: <MemberMainPage />,
+      },
+      {
+        path: 'family/member/:memberId',
+        element: <MemberMainPage />,
       },
       {
         path: 'family/new',

@@ -133,9 +133,9 @@ body {
 .shimmer-text {
   background: linear-gradient(
     90deg,
-    rgb(var(--color-brand-300)) 0%,
-    rgb(var(--color-accent-500)) 50%,
-    rgb(var(--color-brand-300)) 100%
+    rgb(99 102 241) 0%,
+    rgb(139 92 246) 50%,
+    rgb(99 102 241) 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;

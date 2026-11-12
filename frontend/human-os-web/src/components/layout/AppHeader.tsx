@@ -53,7 +53,7 @@ export function AppHeader() {
 
           <div className="flex items-center gap-2.5">
             <img
-              src="/engramslogo.png?v=2"
+              src="/engramslogo.png?v=3"
               alt={t('common.appName')}
               className="h-9 w-9 shrink-0 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/15"
             />

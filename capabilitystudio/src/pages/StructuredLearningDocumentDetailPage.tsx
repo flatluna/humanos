@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X, Loader2, Sparkles, Building2, Award, GraduationCap, RotateCcw, UploadCloud } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Layers, Calendar, Plus, Trash2, Pencil, Check, X, Loader2, Sparkles, Building2, Award, GraduationCap, RotateCcw, RefreshCw, UploadCloud } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   addStructuredLearningDocumentToProgram,
@@ -20,6 +20,7 @@ import {
   type StructuredLearningPedagogyRunStatus,
   type StructuredLearningExtractionRunStatus,
 } from '../lib/api/structuredLearningApi';
+import { startVideoStructuredLearningPedagogy, getActiveVideoStructuredLearningPedagogyRun } from '../lib/api/videoStructuredLearningApi';
 import { getPrograms, type BackendProgram } from '../lib/api/programsApi';
 import { readFileAsBase64 } from '../lib/api/pdfPipelineApi';
 import { getSubjects, type Subject } from '../lib/api/subjectsApi';
@@ -73,6 +74,7 @@ export default function StructuredLearningDocumentDetailPage() {
   const [pedagogyRun, setPedagogyRun] = useState<StructuredLearningPedagogyRunStatus | null>(null);
   const [pedagogyStarting, setPedagogyStarting] = useState(false);
   const [pedagogyError, setPedagogyError] = useState<string | null>(null);
+  const [pedagogyRefreshing, setPedagogyRefreshing] = useState(false);
 
   // Step 2 (extraction/knowledge-graph build) in-progress indicator
   // (2026-10-27) — distinct from pedagogyRun above, which only tracks Step 3.
@@ -97,6 +99,7 @@ export default function StructuredLearningDocumentDetailPage() {
   const [restartFromEngram, setRestartFromEngram] = useState('');
   const [restartToEngram, setRestartToEngram] = useState('');
   const [restartRecallGenerationMode, setRestartRecallGenerationMode] = useState<'Static' | 'Dynamic'>('Dynamic');
+  const [restartUseScenedLecture, setRestartUseScenedLecture] = useState(true);
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
 
@@ -153,18 +156,34 @@ export default function StructuredLearningDocumentDetailPage() {
 
   useEffect(() => {
     if (!documentId) return;
+    const docId = documentId;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let wasRunning = false;
 
     async function poll() {
-      const run = await getActiveStructuredLearningPedagogyRun().catch(() => null);
+      // Checks BOTH the traditional (PDF) and video-specific active-run
+      // endpoints (2026-11-06) — a video-sourced document's "Restart
+      // engrams" now starts a run tracked by the SEPARATE video orchestrator
+      // (see handleRestart below), so this same banner/progress UI must
+      // also recognize that run instead of only ever finding it via the
+      // traditional endpoint (which would never see it) and silently
+      // showing nothing/going stale.
+      const [traditionalRun, videoRun] = await Promise.all([
+        getActiveStructuredLearningPedagogyRun().catch(() => null),
+        getActiveVideoStructuredLearningPedagogyRun(docId).catch(() => null),
+      ]);
       if (cancelled) return;
-      const belongsToThisDocument = run?.DocumentId === documentId;
-      setPedagogyRun(belongsToThisDocument ? run : null);
-      if (belongsToThisDocument && run?.Stage === 'Running') {
+      const run = (traditionalRun?.DocumentId === docId ? traditionalRun : null)
+        ?? (videoRun?.DocumentId === docId ? videoRun : null);
+      setPedagogyRun(run as StructuredLearningPedagogyRunStatus | null);
+      if (run?.Stage === 'Running') {
         wasRunning = true;
-        timer = setTimeout(poll, 3000);
+        // Poll faster than the extraction-run loop below (1s instead of 3s)
+        // — a "Restart engrams…" run can cover just 1-2 sections and finish
+        // in a few seconds, so a 3s cadence could miss ever showing which
+        // Engram's title was active (2026-11-04).
+        timer = setTimeout(poll, 1000);
       } else {
         if (wasRunning && documentId) {
           wasRunning = false;
@@ -224,6 +243,37 @@ export default function StructuredLearningDocumentDetailPage() {
     }
   }
 
+  // Manual refresh for the "Redoing engrams…"/"Generating pedagogy…" banner
+  // — lets a designer force an immediate status check instead of waiting on
+  // the background poll, in case a fast single-engram run finished between
+  // poll ticks (2026-11-04).
+  async function handleRefreshPedagogyRun() {
+    if (!documentId || pedagogyRefreshing) return;
+    setPedagogyRefreshing(true);
+    try {
+      // Must check BOTH the traditional (PDF) and video-specific active-run
+      // endpoints, same as the background poll above — otherwise, for a
+      // video-sourced document, this only ever queried the traditional
+      // endpoint, found nothing belonging to this document, and incorrectly
+      // cleared the in-progress banner / replaced it with stale document
+      // content even while the video run was still actively generating
+      // (2026-11-06 bug).
+      const [traditionalRun, videoRun] = await Promise.all([
+        getActiveStructuredLearningPedagogyRun().catch(() => null),
+        getActiveVideoStructuredLearningPedagogyRun(documentId).catch(() => null),
+      ]);
+      const run = (traditionalRun?.DocumentId === documentId ? traditionalRun : null)
+        ?? (videoRun?.DocumentId === documentId ? videoRun : null);
+      setPedagogyRun(run as StructuredLearningPedagogyRunStatus | null);
+      if (!run || run.Stage !== 'Running') {
+        const detail = await getStructuredLearningDocument(documentId).catch(() => null);
+        if (detail) setDocument(detail);
+      }
+    } finally {
+      setPedagogyRefreshing(false);
+    }
+  }
+
   function openRestartModal() {
     if (document) {
       try {
@@ -234,6 +284,7 @@ export default function StructuredLearningDocumentDetailPage() {
         // Keep the current default.
       }
       setRestartRecallGenerationMode(document.RecallGenerationMode ?? 'Dynamic');
+      setRestartUseScenedLecture(document.UseScenedLecture ?? true);
     }
     setRestartError(null);
     setShowRestartModal(true);
@@ -268,12 +319,13 @@ export default function StructuredLearningDocumentDetailPage() {
     setRestarting(true);
     setRestartError(null);
     try {
-      // Persist the chosen Recall generation mode BEFORE restarting (2026-10-26)
-      // — EnsureStaticItemsAsync only (re)generates Recall cards when the
-      // document's RecallGenerationMode is Static, so a designer switching a
-      // course that was created as Dynamic needs this saved first, or the
-      // restart silently does nothing for Recall at all.
-      if (document && restartRecallGenerationMode !== (document.RecallGenerationMode ?? 'Dynamic')) {
+      // Persist the chosen Recall generation mode AND Learn-step scened-
+      // lecture toggle BEFORE restarting (2026-10-30) — same reasoning as
+      // the original Recall-mode save below: StructuredLearningPedagogyService
+      // reads these straight off the document row, so a designer flipping
+      // either value here needs it saved first or the restart silently uses
+      // the OLD value.
+      if (document && (restartRecallGenerationMode !== (document.RecallGenerationMode ?? 'Dynamic') || restartUseScenedLecture !== (document.UseScenedLecture ?? true))) {
         // Cast to loosely-typed access for a few learner-facing-agent toggle
         // fields the shared StructuredLearningDocumentDetail type doesn't
         // declare yet (pre-existing gap, same one CourseDesignSummaryPanel
@@ -291,6 +343,7 @@ export default function StructuredLearningDocumentDetailPage() {
           assessmentQuestionsPerRound: document.AssessmentQuestionsPerRound,
           recallGenerationMode: restartRecallGenerationMode,
           assessmentGenerationMode: document.AssessmentGenerationMode,
+          useScenedLecture: restartUseScenedLecture,
           showQaProfessorStep: (doc.ShowQaProfessorStep as boolean | undefined) ?? true,
           showDeepDiveAgentChat: (doc.ShowDeepDiveAgentChat as boolean | undefined) ?? true,
           enableQaProfessorVoice: (doc.EnableQaProfessorVoice as boolean | undefined) ?? true,
@@ -299,18 +352,43 @@ export default function StructuredLearningDocumentDetailPage() {
         });
       }
       const uploadedImageBase64 = restartImageFile ? await readFileAsBase64(restartImageFile) : null;
-      const run = await startStructuredLearningPedagogy(
-        documentId,
-        restartLanguage,
-        true,
-        uploadedImageBase64,
-        restartImageFile?.type ?? null,
-        restartImageFile ? restartImageInstruction.trim() || null : null,
-        undefined,
-        fromNum,
-        toNum,
-      );
-      setPedagogyRun(run);
+
+      // Video-sourced documents (2026-11-06 fix): this generic restart panel
+      // previously ALWAYS called the traditional PDF pedagogy endpoint, which
+      // runs the AI-image-per-scene path and completely ignores the real
+      // extracted video frames — silently replacing them with imagined
+      // illustrations (e.g. "a female lecturer standing..."). Detect a
+      // video-sourced document (any section has real SourceIllustrations) and
+      // route it through the video-specific orchestrator instead, which
+      // reuses/enhances the real frames and builds one Scene per frame.
+      // IMPORTANT (2026-11-06): stay on THIS page exactly like the
+      // traditional path below — do NOT navigate away. The polling effect
+      // above now also recognizes a running video run, so the same
+      // "N of N sections still need pedagogy content / Continue
+      // generating…" banner keeps working for video-sourced documents too.
+      const isVideoSourced = (document?.Sections ?? []).some(s => (s.SourceIllustrations?.length ?? 0) > 0);
+
+      const run = isVideoSourced
+        ? await startVideoStructuredLearningPedagogy(
+            documentId,
+            restartLanguage === 'en' ? 'en' : 'es',
+            true,
+            undefined,
+            fromNum,
+            toNum,
+          )
+        : await startStructuredLearningPedagogy(
+            documentId,
+            restartLanguage,
+            true,
+            uploadedImageBase64,
+            restartImageFile?.type ?? null,
+            restartImageFile ? restartImageInstruction.trim() || null : null,
+            undefined,
+            fromNum,
+            toNum,
+          );
+      setPedagogyRun(run as StructuredLearningPedagogyRunStatus);
       setShowRestartModal(false);
       if (restartImagePreviewUrl) URL.revokeObjectURL(restartImagePreviewUrl);
       setRestartImagePreviewUrl(null);
@@ -482,6 +560,16 @@ export default function StructuredLearningDocumentDetailPage() {
   const topicName = topics.find((topic) => topic.StructuredLearningTopicId === document.TopicId)?.Name
     ?? (document.FamilyOrigin ? (isSpanish ? document.FamilyOrigin.StageNameEs : document.FamilyOrigin.StageNameEn) ?? t('structuredLearningDetail.unassigned') : t('structuredLearningDetail.unassigned'));
   const isEnterpriseCourse = !!(document.TargetSkill || document.Category);
+  // Once this course is already classified (linked to a company skill), the
+  // classification UI below is a read-only summary — never let an editor
+  // accidentally flip it back to "Academic" or change the skill/category
+  // after the fact (2026-11-03): this course's identity (department, skill,
+  // category) is already locked in by whatever created it (e.g. Enterprise's
+  // "Generate course" action), so re-classifying it here would silently
+  // detach it from its original company skill.
+  const classificationLocked = isEnterpriseCourse;
+  const matchedSkill = allCompanySkills.find((s) => s.Name === document.TargetSkill);
+  const departmentName = matchedSkill?.SourceProcessDepartmentName;
 
   return (
     <div>
@@ -538,6 +626,9 @@ export default function StructuredLearningDocumentDetailPage() {
             <>
               <InfoCard icon={Building2} label={t('structuredLearningDetail.skillLabel')} value={document.TargetSkill || t('structuredLearningDetail.unassigned')} />
               <InfoCard icon={Award} label={t('structuredLearningDetail.skillCategoryLabel')} value={getCategoryLabel(document.Category, t) || t('structuredLearningDetail.unassigned')} />
+              {departmentName && (
+                <InfoCard icon={Building2} label={isSpanish ? 'Departamento' : 'Department'} value={departmentName} />
+              )}
             </>
           ) : (
             <>
@@ -576,9 +667,13 @@ export default function StructuredLearningDocumentDetailPage() {
 
             <button
               type="button"
-              onClick={() => setClassificationType('academic')}
+              onClick={() => !classificationLocked && setClassificationType('academic')}
+              disabled={classificationLocked}
+              title={classificationLocked ? (isSpanish ? 'Este curso ya está vinculado a una Skill empresarial y no se puede cambiar a Académico' : 'This course is already linked to an enterprise Skill and cannot be switched to Academic') : undefined}
               className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
-                classificationType === 'academic'
+                classificationLocked
+                  ? 'cursor-not-allowed border-white/5 bg-white/[0.01] text-slate-600 opacity-50'
+                  : classificationType === 'academic'
                   ? 'border-cyan-400 bg-cyan-500/10 text-white shadow-lg shadow-cyan-500/10'
                   : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:bg-white/[0.04]'
               }`}
@@ -608,9 +703,12 @@ export default function StructuredLearningDocumentDetailPage() {
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() => setSelectedCategory(cat.id)}
+                      disabled={classificationLocked}
+                      onClick={() => !classificationLocked && setSelectedCategory(cat.id)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        selectedCategory === cat.id
+                        classificationLocked
+                          ? 'cursor-not-allowed border border-transparent bg-white/5 text-slate-600 opacity-50'
+                          : selectedCategory === cat.id
                           ? 'bg-brand-500/20 text-brand-300 border border-brand-400/40'
                           : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-transparent'
                       }`}
@@ -628,6 +726,7 @@ export default function StructuredLearningDocumentDetailPage() {
                 <SearchableCombobox
                   value={selectedTargetSkill}
                   onChange={(val) => setSelectedTargetSkill(val)}
+                  disabled={classificationLocked}
                   onSelect={(option) => {
                     const skill = allCompanySkills.find((s) => s.SkillId === option.id || s.Name === option.label);
                     if (skill) {
@@ -691,14 +790,21 @@ export default function StructuredLearningDocumentDetailPage() {
           )}
 
           <div className="mt-5 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleSaveClassification}
-              disabled={classificationBusy}
-              className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {classificationBusy ? t('structuredLearningDetail.updating') : t('structuredLearningDetail.update')}
-            </button>
+            {classificationLocked ? (
+              <span className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                <Check className="h-4 w-4 text-emerald-500" />
+                {isSpanish ? 'Clasificación bloqueada: este curso ya está vinculado a una Skill empresarial.' : 'Classification locked: this course is already linked to an enterprise Skill.'}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSaveClassification}
+                disabled={classificationBusy}
+                className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {classificationBusy ? t('structuredLearningDetail.updating') : t('structuredLearningDetail.update')}
+              </button>
+            )}
             {classificationMessage && <span className="text-sm text-slate-300">{classificationMessage}</span>}
           </div>
         </div>
@@ -734,6 +840,7 @@ export default function StructuredLearningDocumentDetailPage() {
             const isRangeRedo = pedagogyRun?.FromEngramNumber != null || pedagogyRun?.ToEngramNumber != null;
             const rangeFrom = pedagogyRun?.FromEngramNumber ?? 1;
             const rangeTo = pedagogyRun?.ToEngramNumber ?? totalSections;
+            const activeTitles = pedagogyRun?.ActiveSectionTitles ?? [];
             return (
               <div className="mt-8 flex items-center gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
                 <Loader2 className="h-4 w-4 flex-none animate-spin text-emerald-400" />
@@ -743,12 +850,25 @@ export default function StructuredLearningDocumentDetailPage() {
                       ? `Redoing engrams ${rangeFrom} to ${rangeTo}… ${doneCount}/${targetCount} done`
                       : `Generating pedagogy… ${doneCount}/${targetCount} remaining sections done`}
                   </span>
-                  {pedagogyRun?.ActiveSectionTitles && pedagogyRun.ActiveSectionTitles.length > 0 && (
-                    <p className="mt-0.5 truncate text-xs text-emerald-300/80">
-                      Processing: {pedagogyRun.ActiveSectionTitles.join(', ')}
-                    </p>
-                  )}
+                  <p className="mt-0.5 truncate text-xs font-medium text-white/90">
+                    {activeTitles.length > 0
+                      ? (isSpanish
+                          ? `Generando Engram${activeTitles.length > 1 ? 's' : ''}: ${activeTitles.join(', ')}`
+                          : `Generating Engram${activeTitles.length > 1 ? 's' : ''}: ${activeTitles.join(', ')}`)
+                      : (isSpanish
+                          ? 'Preparando el siguiente Engram…'
+                          : 'Preparing the next Engram…')}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleRefreshPedagogyRun}
+                  disabled={pedagogyRefreshing}
+                  title={isSpanish ? 'Actualizar estado' : 'Refresh status'}
+                  className="flex-none rounded-lg border border-emerald-400/30 p-1.5 text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${pedagogyRefreshing ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             );
           }
@@ -888,6 +1008,22 @@ export default function StructuredLearningDocumentDetailPage() {
                   <p className="mt-1 text-[11px] text-slate-500">
                     Switching this here saves it to the course before restarting, so the new cards are
                     actually generated in the mode you pick — not just whatever mode the course already had.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-400">Learn narration</label>
+                  <select
+                    value={restartUseScenedLecture ? 'scenes' : 'single'}
+                    onChange={(e) => setRestartUseScenedLecture(e.target.value === 'scenes')}
+                    className="input"
+                  >
+                    <option value="single">Single illustration (1 image + full lecture audio, fast)</option>
+                    <option value="scenes">Synced scenes (image + audio per scene, up to 6x slower)</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Switching this here saves it to the course before restarting, so the new Learn step
+                    actually uses the option you pick here, not whatever the course already had.
                   </p>
                 </div>
 

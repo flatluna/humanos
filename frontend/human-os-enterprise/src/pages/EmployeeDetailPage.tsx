@@ -418,8 +418,36 @@ export function EmployeeDetailPage() {
     return <p className="mx-auto max-w-3xl p-6 text-sm text-slate-400">{t('common.loading')}</p>;
   }
 
+  // Opens Studio directly from this employee profile page, as *this viewed
+  // employee* (not the logged-in HR Admin) (2026-11-08 fix: previously used
+  // the admin's own oid/email, which logged the admin into Studio instead of
+  // the student being viewed). Uses the admin's own tid only for
+  // tenant-scoping; the backend resolves the actual Person/identity from
+  // personId. Always shown at the top of this page.
+  // 2026-11-10 fix: sourceAppType must reflect this person's actual
+  // Business role (org.orgRole) — only "Student" profiles should open as
+  // "University"; everyone else (Employee/Manager/HRAdmin) must open as
+  // "Enterprise", previously this was hardcoded to University for everyone.
+  const isStudentRole = person?.orgRole === 'Student';
+  const openStudioUrl = user
+    ? `http://localhost:7071/api/humanos/studio-launch?tid=${encodeURIComponent(user.tid)}&onBehalfOfPersonId=${encodeURIComponent(personId)}&asRole=${isStudentRole ? 'University' : 'Enterprise'}`
+    : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-16">
+      {openStudioUrl && (
+        <a
+          href={openStudioUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:bg-sky-700"
+        >
+          <Sparkles className="h-4 w-4" />
+          {isStudentRole
+            ? t('employeeDetail.openStudioAsUniversity', { defaultValue: 'Abrir Studio como Universidad' })
+            : t('employeeDetail.openStudioAsEnterprise', { defaultValue: 'Abrir Studio como Empresa' })}
+        </a>
+      )}
       <div className="flex items-center gap-3">
         <button
           type="button"

@@ -10,6 +10,19 @@ public sealed class GetStructuredLearningRecallStateResponse
 {
     public bool Started { get; set; }
     public string NextQuestion { get; set; } = string.Empty;
+    public string? VisualObjectsDescription { get; set; }
+
+    /// <summary>Static-mode card id (2026-10-26) — when non-null, fetch the
+    /// image from <c>GET /illustrations/structured-learning/{id}/image</c>
+    /// and show it alongside <see cref="NextQuestion"/>.</summary>
+    public Guid? IllustrationId { get; set; }
+
+    /// <summary>Short, literal correct answer to <see cref="NextQuestion"/>
+    /// (2026-10-26) — embedded into the Realtime voice Agent's own session
+    /// instructions so it can react INSTANTLY to the student's spoken
+    /// answer itself, without waiting on a server round-trip. Null in
+    /// Dynamic mode / for legacy Static items.</summary>
+    public string? CorrectAnswer { get; set; }
     public int AttemptsUsedForItem { get; set; }
     public int ItemsMastered { get; set; }
     public int ItemsRequired { get; set; }
@@ -63,6 +76,9 @@ public sealed class GetStructuredLearningRecallStateFunction
             {
                 Started = result.Started,
                 NextQuestion = result.NextQuestion,
+                VisualObjectsDescription = result.VisualObjectsDescription,
+                IllustrationId = result.IllustrationId,
+                CorrectAnswer = result.CorrectAnswer,
                 AttemptsUsedForItem = result.AttemptsUsedForItem,
                 ItemsMastered = result.ItemsMastered,
                 ItemsRequired = result.ItemsRequired,

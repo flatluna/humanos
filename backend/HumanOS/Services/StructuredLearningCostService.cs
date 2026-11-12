@@ -30,10 +30,11 @@ public sealed class StructuredLearningCostService
     /// NOT priced at the flat per-image placeholder rate. The actual video
     /// generation model is "gemini-omni-flash-preview" (Google), billed at
     /// ~$0.10 USD per second of 720p video; every clip here is a fixed
-    /// 8-second generation, so $0.10 × 8 = $0.80 per video. Returns 0 only
+    /// 10-second generation (2026-11-08, corrected from the previously
+    /// assumed 8s), so $0.10 × 10 = $1.00 per video. Returns 0 only
     /// for "merged" (local ffmpeg, unbilled) or an empty model name.</summary>
     private const decimal GeminiOmniFlashCostPerSecondUsd = 0.10m;
-    private const int VideoClipSeconds = 8;
+    private const int VideoClipSeconds = 10;
     private const decimal VideoCostPerVideoUsd = GeminiOmniFlashCostPerSecondUsd * VideoClipSeconds;
 
     private static decimal VideoCostForModel(string? imageModel)

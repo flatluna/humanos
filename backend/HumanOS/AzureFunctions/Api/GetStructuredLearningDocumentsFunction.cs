@@ -40,6 +40,17 @@ public sealed class StructuredLearningDocumentSummaryDto
     /// catalog. Lets the Studio catalog's "Mis cursos / Globales" filter
     /// tell a tenant-owned draft from a public one (2026-10-06).</summary>
     public bool IsGlobal { get; set; }
+
+    /// <summary>Azure AD OID of the author who created this document — lets
+    /// the Studio catalog's "Mis cursos" filter show only the signed-in
+    /// person's own documents, not every document visible to their tenant
+    /// (2026-11-10).</summary>
+    public string? CreatedByOid { get; set; }
+
+    /// <summary>Display name of the author (resolved from Person/PersonProfile
+    /// by AzureOid), so the catalog card can show who created a tenant/"My
+    /// organization" course instead of just an opaque OID (2026-11-10).</summary>
+    public string? CreatedByName { get; set; }
 }
 
 /// <summary>
@@ -107,10 +118,37 @@ public sealed class GetStructuredLearningDocumentsFunction
                 d.TargetSkill,
                 d.PedagogicalAudience,
                 d.ConfigSnapshotJson,
-                d.IsGlobal
+                d.IsGlobal,
+                d.CreatedByOid
             })
             .OrderByDescending(d => d.CreatedDate)
             .ToListAsync(cancellationToken);
+
+        // Resolve author display names for the OIDs we need, in one batch
+        // query, rather than N+1 look-ups per document.
+        var authorOids = documents
+            .Where(d => !string.IsNullOrEmpty(d.CreatedByOid))
+            .Select(d => d.CreatedByOid!)
+            .Distinct()
+            .ToList();
+
+        var authorNamesByOid = authorOids.Count == 0
+            ? new Dictionary<string, string>()
+            : await _dbContext.People
+                .AsNoTracking()
+                .Where(p => authorOids.Contains(p.AzureOid))
+                .Join(
+                    _dbContext.PersonProfiles.AsNoTracking(),
+                    p => p.PersonId,
+                    pr => pr.PersonId,
+                    (p, pr) => new { p.AzureOid, pr.DisplayName, pr.FirstName, pr.LastName, p.Email })
+                .ToDictionaryAsync(
+                    x => x.AzureOid,
+                    x => x.DisplayName
+                        ?? (string.IsNullOrEmpty(x.FirstName) && string.IsNullOrEmpty(x.LastName)
+                            ? x.Email ?? string.Empty
+                            : $"{x.FirstName} {x.LastName}".Trim()),
+                    cancellationToken);
 
         var result = documents.Select(d => new StructuredLearningDocumentSummaryDto
         {
@@ -125,7 +163,11 @@ public sealed class GetStructuredLearningDocumentsFunction
             TargetSkill = d.TargetSkill,
             PedagogicalAudience = d.PedagogicalAudience,
             Language = HumanOS.Services.StructuredLearningLanguageHeuristic.Resolve(d.ConfigSnapshotJson, d.ExecutiveSummary ?? d.DocumentName),
-            IsGlobal = d.IsGlobal
+            IsGlobal = d.IsGlobal,
+            CreatedByOid = d.CreatedByOid,
+            CreatedByName = d.CreatedByOid != null && authorNamesByOid.TryGetValue(d.CreatedByOid, out var authorName)
+                ? authorName
+                : null
         }).ToList();
 
         return await FunctionResponseFactory.SuccessResponseAsync(request, result, cancellationToken: cancellationToken);

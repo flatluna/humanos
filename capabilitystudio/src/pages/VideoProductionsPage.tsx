@@ -1,7 +1,7 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Check, Clapperboard, ImagePlus, Loader2, Play, Sparkles, Trash2, Upload, WandSparkles } from 'lucide-react';
+import { ArrowLeft, Check, Clapperboard, ImagePlus, Loader2, Play, Plus, Sparkles, Trash2, Upload, WandSparkles } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { readFileAsBase64 } from '../lib/api/pdfPipelineApi';
 import { generateStructuredLearningVideoPrompt } from '../lib/api/structuredLearningApi';
@@ -41,7 +41,13 @@ export default function VideoProductionsPage() {
   // Which video generation backend to bill clips to (2026-09-24) — Kling
   // is a much cheaper third-party alternative to Google Veo added after
   // Veo's per-second billing ran $3-5/clip even on the "-fast" tier.
-  const [videoModel, setVideoModel] = useState<'veo' | 'veo-lite' | 'omni' | 'kling'>('veo');
+  // Defaulted to "omni" (2026-11-07) because Google discontinued the
+  // ENTIRE Veo 3.1 line (Fast/Standard/Lite) on 2026-10-22 — confirmed
+  // again 2026-11-08 when re-enabling "veo-lite" still 404'd. Gemini
+  // Omni Flash is Google's only remaining video model; "veo"/"veo-lite"
+  // stay in the dropdown as disabled so the price history/code intent is
+  // visible, but must NOT be re-enabled unless Google brings Veo back.
+  const [videoModel, setVideoModel] = useState<'veo' | 'veo-lite' | 'omni' | 'kling'>('omni');
   const [objective, setObjective] = useState('');
   const [instructions, setInstructions] = useState('');
   const [environment, setEnvironment] = useState('');
@@ -78,6 +84,19 @@ export default function VideoProductionsPage() {
   // order, instead of always concatenating every completed clip by SortOrder.
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeSelection, setMergeSelection] = useState<string[]>([]);
+  // Registry of every rendered <video> element, keyed by clip id (or
+  // "final" for the merged video) — 2026-11-10, fixes multiple clips
+  // playing their audio on top of each other. Any video's onPlay pauses
+  // every other registered video first.
+  const videoElsRef = useRef<Record<string, HTMLVideoElement | null>>({});
+  function registerVideoEl(key: string, el: HTMLVideoElement | null) {
+    videoElsRef.current[key] = el;
+  }
+  function pauseOtherVideos(exceptKey: string) {
+    for (const [key, el] of Object.entries(videoElsRef.current)) {
+      if (key !== exceptKey && el && !el.paused) el.pause();
+    }
+  }
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
   const [renamingTitle, setRenamingTitle] = useState(false);
   // Delete-project confirmation (2026-09-24) — irreversible (removes the
@@ -301,57 +320,89 @@ export default function VideoProductionsPage() {
   // Production. Allows re-creating a clip even after it already succeeded
   // (2026-09-23) — deletes the old row/blob first so no orphaned duplicate
   // is left behind at the same SortOrder.
-  async function handleGenerateClip(index: number) {
+  async function handleGenerateClip(index: number, useOriginalImage = false) {
     if (!production || generatingClipIndex !== null) return;
     setGeneratingClipIndex(index);
     setVideoError(null);
     try {
-      const existing = clipForIndex(index);
-      if (existing) {
-        await deleteVideoProductionClip(existing.VideoProductionClipId);
-        setClips((current) => current.filter((c) => c.VideoProductionClipId !== existing.VideoProductionClipId));
-      }
-
-      let anchor: { base64: string; contentType: string } | null = null;
-      if (index === 0) {
-        if ((imageMode === 'upload' || imageMode === 'edit') && imageFile) {
-          anchor = { base64: await readFileAsBase64(imageFile), contentType: imageFile.type || 'image/png' };
-        } else if ((imageMode === 'upload' || imageMode === 'edit') && restoredStartingImage) {
-          // Reopened project, no new file chosen (2026-09-24) — reuse the
-          // saved starting image bytes so "continue from where I left
-          // off" doesn't force a re-upload.
-          anchor = restoredStartingImage;
-        }
-      } else {
-        anchor = chainImage;
-      }
-      setClipAnchors((current) => ({ ...current, [index]: anchor }));
-
-      const clip = await generateVideoProductionClip(
-        production.VideoProductionId, index, prompts[index], videoModel, anchor?.base64 ?? null, anchor?.contentType ?? null
-      );
-      setClips((current) => {
-        const next = current.filter((c) => c.SortOrder !== index);
-        next.push(clip);
-        return next.sort((a, b) => a.SortOrder - b.SortOrder);
-      });
-
-      if (clip.Status === 2) {
-        try {
-          const lastFrame = await getVideoProductionClipLastFrame(clip.VideoProductionClipId);
-          setChainImage({ base64: lastFrame.Base64, contentType: lastFrame.ContentType });
-        } catch (frameError) {
-          setVideoError(
-            t('videoProductions.errorContinuityFailed', { error: frameError instanceof Error ? frameError.message : String(frameError) })
-          );
-        }
-      }
+      await generateClipAttempt(index, useOriginalImage);
     } catch (error) {
       setVideoError(error instanceof Error ? error.message : t('videoProductions.errorGenerateClip'));
     } finally {
       setGeneratingClipIndex(null);
     }
   }
+
+  // Core generation logic, callable without the top-level busy guard so it
+  // can retry itself in-place (used for the automatic fallback below).
+  async function generateClipAttempt(index: number, useOriginalImage: boolean) {
+    if (!production) return;
+    const existing = clipForIndex(index);
+    if (existing) {
+      await deleteVideoProductionClip(existing.VideoProductionClipId);
+      setClips((current) => current.filter((c) => c.VideoProductionClipId !== existing.VideoProductionClipId));
+    }
+
+    let anchor: { base64: string; contentType: string } | null = null;
+    if (index === 0 || useOriginalImage) {
+      // "Usar imagen original" (2026-11-08) — Google Veo sometimes
+      // redraws the chained previous-clip frame with copyrighted-looking
+      // details (e.g. white gloves on a duck mascot), tripping its
+      // third-party-content guardrail. Falling back to the SAME clean
+      // original starting image used for clip 0, instead of the AI-
+      // regenerated chain frame, reliably avoids that guardrail.
+      if ((imageMode === 'upload' || imageMode === 'edit') && imageFile) {
+        anchor = { base64: await readFileAsBase64(imageFile), contentType: imageFile.type || 'image/png' };
+      } else if ((imageMode === 'upload' || imageMode === 'edit') && restoredStartingImage) {
+        // Reopened project, no new file chosen (2026-09-24) — reuse the
+        // saved starting image bytes so "continue from where I left
+        // off" doesn't force a re-upload.
+        anchor = restoredStartingImage;
+      } else if (useOriginalImage && production) {
+        // Reopened project with no local File/restored bytes handy
+        // (index > 0 path) — fetch clip 0's saved starting image from
+        // the backend directly.
+        const startingImage = await getVideoProductionStartingImage(production.VideoProductionId);
+        anchor = { base64: startingImage.Base64, contentType: startingImage.ContentType };
+      }
+    } else {
+      anchor = chainImage;
+    }
+    setClipAnchors((current) => ({ ...current, [index]: anchor }));
+
+    const clip = await generateVideoProductionClip(
+      production.VideoProductionId, index, prompts[index], videoModel, anchor?.base64 ?? null, anchor?.contentType ?? null
+    );
+    setClips((current) => {
+      const next = current.filter((c) => c.SortOrder !== index);
+      next.push(clip);
+      return next.sort((a, b) => a.SortOrder - b.SortOrder);
+    });
+
+    if (clip.Status === 2) {
+      try {
+        const lastFrame = await getVideoProductionClipLastFrame(clip.VideoProductionClipId);
+        setChainImage({ base64: lastFrame.Base64, contentType: lastFrame.ContentType });
+      } catch (frameError) {
+        setVideoError(
+          t('videoProductions.errorContinuityFailed', { error: frameError instanceof Error ? frameError.message : String(frameError) })
+        );
+      }
+    } else if (clip.Status === 3 && !useOriginalImage && index > 0) {
+      // Google's safety filter (raiMediaFilteredReasons) sometimes
+      // rejects the chained previous-clip last frame outright — most
+      // often because that frame is itself Veo/Omni-generated footage
+      // (it carries Google's own SynthID watermark), which its own
+      // guardrail treats as "potential third-party content" even though
+      // it's just the clip we generated a moment ago. Automatically
+      // retry ONCE with the clean original starting image (same as the
+      // manual "Usar imagen original" button) instead of making the
+      // reviewer notice the failure and click it themselves.
+      setVideoError(t('videoProductions.autoRetryingOriginalImage', { reason: clip.ErrorMessage ?? '' }));
+      await generateClipAttempt(index, true);
+    }
+  }
+
 
   function toggleMergeSelection(clipId: string) {
     setMergeSelection((prev) => (prev.includes(clipId) ? prev.filter((id) => id !== clipId) : [...prev, clipId]));
@@ -435,6 +486,15 @@ export default function VideoProductionsPage() {
     setPrompts((current) => current.map((p, i) => (i === index ? value : p)));
   }
 
+  // Lets the reviewer append an extra clip to the plan by hand (e.g. "clip
+  // 3") instead of only ever getting whatever count the prompt-sequence
+  // agent recommended — starts with an empty, editable prompt so the new
+  // clip's text can be typed in directly, then generated like any other.
+  function handleAddClip() {
+    setPrompts((current) => [...current, '']);
+    setMaxClips((current) => Math.max(current, prompts.length + 1));
+  }
+
   // Downloads via a fetched blob (2026-09-23) — the video URL is on a
   // different origin (backend :7071 vs frontend :3010), so a plain
   // `<a download>` gets ignored by the browser; fetching first and using
@@ -513,10 +573,10 @@ export default function VideoProductionsPage() {
           <Loader2 className="h-4 w-4 animate-spin" /> {t('videoProductions.loadingProject')}
         </div>
       ) : (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,40%)_minmax(0,60%)]">
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-xl lg:p-8">
           <div className="mb-7 flex items-start gap-3"><div className="rounded-xl bg-cyan-500/10 p-2.5 text-cyan-300"><WandSparkles className="h-5 w-5" /></div><div><h2 className="text-lg font-semibold text-white">{t('videoProductions.wizard.title')}</h2><p className="mt-1 text-xs text-slate-500">{t('videoProductions.wizard.subtitle')}</p></div></div>
-          <div className="mb-8 grid grid-cols-2 gap-2 border-b border-white/10 pb-4 sm:grid-cols-4">{steps.map((step, index) => <button key={step.id} type="button" onClick={() => setActiveStep(step.id)} className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs transition-colors ${activeStep === step.id ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-[10px]">{index < currentIndex ? <Check className="h-3 w-3" /> : `0${index + 1}`}</span><span>{step.label}</span></button>)}</div>
+          <div className="mb-8 grid grid-cols-2 gap-2 border-b border-white/10 pb-4">{steps.map((step, index) => <button key={step.id} type="button" onClick={() => setActiveStep(step.id)} className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs transition-colors ${activeStep === step.id ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-[10px]">{index < currentIndex ? <Check className="h-3 w-3" /> : `0${index + 1}`}</span><span>{step.label}</span></button>)}</div>
           <div className="space-y-5">
             {activeStep === 'objective' && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{t('videoProductions.objectiveLabel')}</span><textarea value={objective} onChange={(event) => setObjective(event.target.value)} rows={5} placeholder={t('videoProductions.objectivePlaceholder')} className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10" /></label>}
             {activeStep === 'instructions' && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{t('videoProductions.instructionsLabel')} <em className="font-normal text-slate-500">{t('videoProductions.instructionsNote')}</em></span><textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} rows={8} placeholder={t('videoProductions.instructionsPlaceholder')} className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/10" /></label>}
@@ -551,10 +611,10 @@ export default function VideoProductionsPage() {
               onChange={(event) => setVideoModel(event.target.value as 'veo' | 'veo-lite' | 'omni' | 'kling')}
               className="input"
             >
-              <option value="veo">Google Veo (fast, 720p)</option>
-              <option value="veo-lite">Google Veo Lite (cheapest Veo tier)</option>
               <option value="omni">Gemini Omni Flash</option>
               <option value="kling">Kling AI (cheaper alternative)</option>
+              <option value="veo" disabled>Google Veo (fast, 720p) — discontinued by Google</option>
+              <option value="veo-lite" disabled>Google Veo 3.1 Lite — discontinued by Google (2026-10-22)</option>
             </select>
           </label>
           {production && (
@@ -582,7 +642,13 @@ export default function VideoProductionsPage() {
                   {downloadingUrl === getVideoProductionVideoUrl(production.VideoProductionId) ? t('videoProductions.downloading') : t('videoProductions.download')}
                 </button>
               </div>
-              <video src={getVideoProductionVideoUrl(production.VideoProductionId)} controls className="w-full rounded-xl bg-black" />
+              <video
+                ref={(el) => registerVideoEl('final', el)}
+                onPlay={() => pauseOtherVideos('final')}
+                src={getVideoProductionVideoUrl(production.VideoProductionId)}
+                controls
+                className="w-full rounded-xl bg-black"
+              />
             </div>
           )}
           {mergeMode && (
@@ -615,7 +681,7 @@ export default function VideoProductionsPage() {
             </div>
           )}
           {prompts.length > 0 ? (
-            <div className="max-h-[32rem] space-y-3 overflow-auto">
+            <div className="space-y-3">
               {prompts.map((clipPrompt, index) => {
                 const clip = clipForIndex(index);
                 const status = clip?.Status ?? 0;
@@ -624,21 +690,35 @@ export default function VideoProductionsPage() {
                   <div
                     key={index}
                     onClick={() => { if (mergeMode && status === 2 && clip) toggleMergeSelection(clip.VideoProductionClipId); }}
-                    className={`rounded-xl border p-3 ${mergeMode && status === 2 ? 'cursor-pointer' : ''} ${isSelected ? 'border-emerald-400/60 bg-emerald-500/10' : 'border-white/10 bg-black/20'}`}
+                    className={`relative rounded-xl border p-3 ${mergeMode && status === 2 ? 'cursor-pointer' : ''} ${isSelected ? 'border-emerald-400/60 bg-emerald-500/10 ring-2 ring-emerald-400/40' : 'border-white/10 bg-black/20'}`}
                   >
+                    {mergeMode && status === 2 && (
+                      <div
+                        className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg ${isSelected ? 'border-emerald-300 bg-emerald-500 text-white' : 'border-white/40 bg-black/60 text-transparent'}`}
+                      >
+                        {isSelected ? mergeSelection.indexOf(clip!.VideoProductionClipId) + 1 : ''}
+                      </div>
+                    )}
                     <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
-                      <span>{t('videoProductions.clipLabel', { number: index + 1 })}</span>
+                      <span className={mergeMode && status === 2 ? 'pl-8' : ''}>{t('videoProductions.clipLabel', { number: index + 1 })}</span>
                       <span className={status === 2 ? 'text-emerald-400' : status === 3 ? 'text-rose-400' : 'text-slate-500'}>{status === 2 ? t('videoProductions.statusReady') : status === 3 ? t('videoProductions.statusFailed') : t('videoProductions.statusNotGenerated')}</span>
                     </div>
-                    <textarea
-                      value={clipPrompt}
-                      onChange={(event) => updatePrompt(index, event.target.value)}
-                      onClick={(event) => event.stopPropagation()}
-                      disabled={mergeMode}
-                      rows={4}
-                      className="w-full resize-y rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs leading-5 text-slate-300 outline-none focus:border-cyan-400/50 disabled:opacity-70"
-                    />
-                    {(() => {
+                    {status === 3 && clip?.ErrorMessage && (
+                      <p className="mb-2 rounded-lg border border-rose-400/20 bg-rose-500/10 p-2 text-[11px] leading-4 text-rose-300">
+                        {clip.ErrorMessage}
+                      </p>
+                    )}
+                    {!mergeMode && (
+                      <textarea
+                        value={clipPrompt}
+                        onChange={(event) => updatePrompt(index, event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        placeholder={t('videoProductions.addClipPlaceholder')}
+                        rows={4}
+                        className="w-full resize-y rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs leading-5 text-slate-300 outline-none focus:border-cyan-400/50"
+                      />
+                    )}
+                    {!mergeMode && (() => {
                       const anchor = plannedAnchorForIndex(index);
                       return (
                         <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
@@ -659,16 +739,35 @@ export default function VideoProductionsPage() {
                       );
                     })()}
                     {clip?.Status === 2 && clip.StoragePath && (
-                      <div>
-                        <video src={getVideoProductionClipVideoUrl(clip.VideoProductionClipId)} controls className="mt-3 w-full rounded-lg bg-black" />
-                        <button
-                          type="button"
-                          onClick={() => void handleDownloadVideo(getVideoProductionClipVideoUrl(clip.VideoProductionClipId), `clip-${index + 1}.mp4`)}
-                          disabled={downloadingUrl !== null}
-                          className="mt-1.5 text-[11px] font-medium text-cyan-300 underline hover:text-cyan-200 disabled:opacity-50"
-                        >
-                          {downloadingUrl === getVideoProductionClipVideoUrl(clip.VideoProductionClipId) ? t('videoProductions.downloading') : t('videoProductions.downloadThisClip')}
-                        </button>
+                      <div className={mergeMode ? 'relative mt-3' : ''}>
+                        <video
+                          ref={(el) => registerVideoEl(clip.VideoProductionClipId, el)}
+                          onPlay={() => pauseOtherVideos(clip.VideoProductionClipId)}
+                          src={getVideoProductionClipVideoUrl(clip.VideoProductionClipId)}
+                          controls={!mergeMode}
+                          muted={mergeMode}
+                          preload="metadata"
+                          // In merge mode the video must only ever be a
+                          // static preview the click toggles selection —
+                          // without this, clicking play controls (or even
+                          // the video surface itself) used to start
+                          // playback instead of selecting, and picking
+                          // multiple clips left several videos playing
+                          // their audio on top of each other at once
+                          // (2026-11-10).
+                          className={`w-full rounded-lg bg-black ${mergeMode ? 'pointer-events-none opacity-80' : 'mt-3'}`}
+                        />
+                        {mergeMode && !isSelected && <div className="absolute inset-0 rounded-lg bg-black/30" />}
+                        {!mergeMode && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadVideo(getVideoProductionClipVideoUrl(clip.VideoProductionClipId), `clip-${index + 1}.mp4`)}
+                            disabled={downloadingUrl !== null}
+                            className="mt-1.5 text-[11px] font-medium text-cyan-300 underline hover:text-cyan-200 disabled:opacity-50"
+                          >
+                            {downloadingUrl === getVideoProductionClipVideoUrl(clip.VideoProductionClipId) ? t('videoProductions.downloading') : t('videoProductions.downloadThisClip')}
+                          </button>
+                        )}
                       </div>
                     )}
                     {!mergeMode && (
@@ -680,6 +779,18 @@ export default function VideoProductionsPage() {
                       >
                         {generatingClipIndex === index ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                         {generatingClipIndex === index ? t('videoProductions.generatingClip') : status === 3 ? t('videoProductions.retryVideo') : status === 2 ? t('videoProductions.regenerate') : t('videoProductions.createVideoButton')}
+                      </button>
+                    )}
+                    {!mergeMode && index > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateClip(index, true)}
+                        disabled={generatingClipIndex !== null}
+                        title={t('videoProductions.useOriginalImageHint')}
+                        className="mt-1.5 flex items-center gap-2 rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-300 disabled:opacity-50"
+                      >
+                        <ImagePlus className="h-3.5 w-3.5" />
+                        {t('videoProductions.useOriginalImage')}
                       </button>
                     )}
                     {!mergeMode && clip && (
@@ -695,6 +806,17 @@ export default function VideoProductionsPage() {
                   </div>
                 );
               })}
+              {!mergeMode && (
+                <button
+                  type="button"
+                  onClick={handleAddClip}
+                  disabled={generatingClipIndex !== null}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-cyan-400/30 px-3 py-2.5 text-xs font-medium text-cyan-300 hover:bg-cyan-400/5 disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t('videoProductions.addClip')}
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-xl border border-white/5 bg-black/20 text-center text-slate-500">

@@ -13,6 +13,26 @@ public interface IProcessDocumentStorageService
         Stream content,
         CancellationToken cancellationToken = default);
 
+    Task<Stream> DownloadEnrichedPdfAsync(
+        string organizationId,
+        string storagePath,
+        CancellationToken cancellationToken = default);
+
+    Task<string> UploadEnrichedPdfAsync(
+        string organizationId,
+        string documentId,
+        string fileName,
+        Stream content,
+        CancellationToken cancellationToken = default);
+
+    Task<string> UploadStepImageAsync(
+        string organizationId,
+        string documentId,
+        string blobFileName,
+        Stream content,
+        string contentType,
+        CancellationToken cancellationToken = default);
+
     Task<string> SaveRawExtractionAsync(
         string organizationId,
         string documentId,

@@ -1,6 +1,7 @@
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using OpenAI.Chat;
 
@@ -96,6 +97,28 @@ public sealed class IdeaToDocumentAgent
           generated, or any instructions to the reader about how the
           document was produced — write it exactly as expert-authored
           teaching content would read.
+        - VISUAL SUGGESTIONS FOR PROCESSES/FLOWS/ARCHITECTURES: a LATER
+          step reads this exact document's text and designs ONE real image
+          per concept (a diagram, labeled illustration, or photo, generated
+          by an image model) — it bases that image entirely on what THIS
+          text actually says, so whenever a concept is fundamentally a
+          process, flow, sequence of steps, decision logic, architecture,
+          or a relationship between parts (e.g. "how a request/response
+          cycle works", "how a payment moves through a system", "the states
+          a support ticket goes through"), explicitly spell out, in plain
+          prose INSIDE that concept's own text (never as code or a special
+          block), the concrete sequence of named steps/stages/components
+          and how they connect, in enough visual detail that a diagram
+          could be drawn directly from your words (e.g. name each step in
+          order, what happens at each one, and what connects to what) —
+          you may add one short explicit sentence suggesting it, e.g.
+          "Este flujo se puede representar como un diagrama con los pasos:
+          1) Cliente envía solicitud, 2) ... ". Never just assert that a
+          process exists without concretely walking through its steps —
+          the richer and more concrete this description is, the better the
+          later image step can turn it into an accurate diagram. Only do
+          this for genuine processes/flows/architectures; a simple
+          definition or a single worked numeric example doesn't need it.
 
         Respond with the document's plain text only (you may use simple
         Markdown-style '#'/'##' headings), no extra commentary before or
@@ -143,6 +166,19 @@ public sealed class IdeaToDocumentAgent
         - This applies to ALL units/sections listed in the description, not
           just the first one — generate real, substantial content (per the
           depth guidance above) for every single one in this one response.
+        - NEVER invent, add, split, or insert any extra heading/subsection
+          that is not literally present in the user's outline — the final
+          set of headings must be a 1:1 mirror of exactly what was listed,
+          same count, same order, nothing extra and nothing missing. Any
+          markdown "##"-style module heading in the description becomes
+          one top-level chapter heading, and each numbered item under it
+          becomes exactly one subsection heading nested under THAT chapter
+          — never promote a subsection to its own chapter and never merge
+          two modules together.
+        - Each subsection's body content must be several substantial
+          paragraphs of real, concrete, accurate explanatory text with at
+          least one worked example specific to that exact subsection
+          topic — never a one- or two-sentence generic definition.
         """;
 
     private readonly AIAgent? _agent;
@@ -150,6 +186,43 @@ public sealed class IdeaToDocumentAgent
 
     public IdeaToDocumentAgent(IConfiguration configuration)
     {
+        // Dedicated "gpt-6-sol" settings (2026-11-04) — same higher-quality
+        // flagship model slot used experimentally elsewhere (see
+        // StructuredLearningVideoPromptAgent/StructuredLearningConnection
+        // ExtractionAgent), used HERE ONLY (not for every Studio agent)
+        // because this is the one that turns a pasted idea/syllabus into
+        // the source document whose structure/content quality everything
+        // downstream depends on. Falls back to the shared main deployment
+        // if Gpt61Sol* isn't set.
+        //
+        // IMPORTANT: an earlier attempt (same day) called this flagship
+        // deployment via GetChatClient(...) (Chat Completions) and it
+        // reproducibly hung for ~405s before being cancelled, even though
+        // a raw HTTP call to the same deployment/endpoint responded in
+        // ~1.6s. Root cause: flagship/reasoning deployments like this only
+        // support the Responses API, not Chat Completions — GetChatClient
+        // silently stalls/retries instead of failing fast. Fixed below by
+        // using GetResponsesClient().AsIChatClient() instead, the same fix
+        // already applied to StructuredLearningVideoPromptAgent.
+        var gpt61SolEndpoint = configuration["Gpt61SolEndpoint"];
+        var gpt61SolDeploymentName = configuration["Gpt61SolDeploymentName"];
+        if (!string.IsNullOrWhiteSpace(gpt61SolEndpoint) && !string.IsNullOrWhiteSpace(gpt61SolDeploymentName))
+        {
+            _modelName = gpt61SolDeploymentName;
+            var gpt61SolApiKey = configuration["Gpt61SolApiKey"];
+            AzureOpenAIClient flagshipClient = string.IsNullOrWhiteSpace(gpt61SolApiKey)
+                ? new AzureOpenAIClient(new Uri(gpt61SolEndpoint), new DefaultAzureCredential())
+                : new AzureOpenAIClient(new Uri(gpt61SolEndpoint), new System.ClientModel.ApiKeyCredential(gpt61SolApiKey));
+
+#pragma warning disable OPENAI001 // Responses API surface is still experimental in this SDK version.
+            _agent = flagshipClient
+                .GetResponsesClient()
+                .AsIChatClient(gpt61SolDeploymentName)
+                .AsAIAgent(instructions: Instructions, name: "IdeaToDocumentAgent");
+#pragma warning restore OPENAI001
+            return;
+        }
+
         var endpoint = configuration["AzureOpenAIEndpoint"];
         var deploymentName = configuration["AzureOpenAIDeploymentName"];
         var apiKey = configuration["AzureOpenAIApiKey"];

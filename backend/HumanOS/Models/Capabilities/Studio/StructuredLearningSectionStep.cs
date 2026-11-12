@@ -52,6 +52,13 @@ public sealed class StructuredLearningSectionStep
     /// Null until the student's first Recall turn.</summary>
     public string? CurrentRecallPrompt { get; set; }
 
+    /// <summary>Ground-truth concrete scene description backing
+    /// <see cref="CurrentRecallPrompt"/> when it's a picture-grounded
+    /// question — see <see cref="Models.Capabilities.Studio.StructuredLearningPersonSectionState.CurrentRecallVisualObjectsDescription"/>
+    /// for the full rationale (author/reviewer preview's shared-row
+    /// counterpart of that per-student field).</summary>
+    public string? CurrentRecallVisualObjectsDescription { get; set; }
+
     /// <summary>Only meaningful for StepType=DeepDive (2026-08-10) — 0-based
     /// index of the ExampleCard (in <see cref="StepDataJson"/>) the student
     /// is currently being quizzed on. Mirrors

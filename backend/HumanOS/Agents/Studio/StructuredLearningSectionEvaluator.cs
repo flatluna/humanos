@@ -28,6 +28,13 @@ namespace HumanOS.Agents.Studio;
 /// </summary>
 public static class StructuredLearningSectionEvaluator
 {
+    /// <summary>Exact text of the DeepDive-zero-cards failure — exposed so
+    /// callers (StructuredLearningPedagogyService) can detect this SPECIFIC
+    /// failure after retries are exhausted and synthesize a deterministic
+    /// fallback card instead of failing the whole section (2026-11-04: this
+    /// was recurring across runs even after 3 model retries).</summary>
+    public const string ZeroExampleCardsFailure = "DeepDive step returned zero ExampleCards — at least one is required.";
+
     /// <summary>Minimum overlap ratio for a teaching step to be considered
     /// grounded in the section's own wording. This is intentionally low so
     /// normal paraphrase is accepted, but the step must still contain real
@@ -118,7 +125,7 @@ public static class StructuredLearningSectionEvaluator
 
         if (exampleCards is null || exampleCards.Count == 0)
         {
-            return ["DeepDive step returned zero ExampleCards — at least one is required."];
+            return [ZeroExampleCardsFailure];
         }
 
         var failures = new List<string>();
@@ -159,8 +166,14 @@ public static class StructuredLearningSectionEvaluator
     /// StructuredLearningDocumentSection.Capability's own doc comment.
     /// Raised from 220 to 280 (2026-08-29) — 220 was rejecting some
     /// legitimately atomic statements written in a longer, natural voice,
-    /// causing avoidable Pedagogy generation failures.</summary>
-    private const int MaxAtomicCapabilityLength = 280;
+    /// causing avoidable Pedagogy generation failures. Raised again, first
+    /// to 400 then to 600 (2026-11-11) — a single Engram can legitimately
+    /// cover a full page or two of course source material (e.g. a complete
+    /// multi-step process like "The Training Loop"), and a one-sentence
+    /// Capability that accurately describes that much content needs real
+    /// room; 280 was rejecting these (observed failing by as little as 7
+    /// characters) and needlessly failing whole Engram regenerations.</summary>
+    public const int MaxAtomicCapabilityLength = 600;
 
     /// <summary>
     /// Atomicity check (2026-08-17, Paso 4) — structural/deterministic,

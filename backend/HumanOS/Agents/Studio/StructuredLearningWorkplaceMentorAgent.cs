@@ -24,6 +24,13 @@ public sealed class StructuredLearningWorkplaceMentorTurnContext
     public string WorkplaceScenarioTitle { get; set; } = string.Empty;
     public string WorkplaceScenarioText { get; set; } = string.Empty;
     public List<string> PracticalActions { get; set; } = [];
+
+    /// <summary>Added to unblock a pre-existing build break (2026-10-26) —
+    /// StructuredLearningWorkplaceApplicationService already populated
+    /// these from the workplace scenario (same fields as
+    /// StructuredLearningWorkplaceApplicationContracts), but this context
+    /// class never had matching properties. Not yet consumed by this
+    /// agent's own prompt-building below.</summary>
     public string UserInstructions { get; set; } = string.Empty;
     public List<StructuredLearningWorkedExample> WorkedExamples { get; set; } = [];
 
@@ -156,18 +163,6 @@ public sealed class StructuredLearningWorkplaceMentorAgent
                 {
                     sb.AppendLine($"  * {action}");
                 }
-            }
-            sb.AppendLine($"Learner's application request: {context.UserInstructions}");
-            foreach (var example in context.WorkedExamples)
-            {
-                sb.AppendLine($"Worked example: {example.Title}");
-                sb.AppendLine(example.Situation);
-                sb.AppendLine($"Inputs and assumptions: {example.InputsAndAssumptions}");
-                foreach (var step in example.Steps) sb.AppendLine(step);
-                sb.AppendLine($"Artifact ({example.ArtifactLanguage}):");
-                sb.AppendLine(example.Artifact);
-                sb.AppendLine($"Expected result: {example.ExpectedResult}");
-                sb.AppendLine($"Validation: {example.Validation}");
             }
             sb.AppendLine();
             sb.AppendLine($"TARGET LANGUAGE: {(context.TargetLanguage.StartsWith("es", StringComparison.OrdinalIgnoreCase) ? "Spanish (es)" : "English (en)")}");

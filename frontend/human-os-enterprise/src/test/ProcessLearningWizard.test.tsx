@@ -23,13 +23,25 @@ import type { TenantPersonDto } from '@/api/orgStructureApi';
 
 const mockStep: ProcessStepDto = {
   step_id: 'step-001',
+  step_code: '01-01',
   step_number: '1.1',
   step_name: 'Inspeccionar Equipo de Seguridad',
   objective: 'Verificar arnés y línea de vida antes de iniciar trabajos en altura.',
+  primary_responsible_role: 'Técnico de Mantenimiento',
+  supporting_roles: [],
+  systems_and_tools: [],
+  trigger: '',
+  required_inputs: [],
   required_activities: ['Revisar costuras del arnés', 'Validar fecha de vigencia'],
   required_skills: ['Inspección visual de EPP', 'Trabajo en alturas'],
   deliverables: ['Checklist de inspección firmado'],
+  decisions_and_human_judgment: [],
+  business_rules_and_controls: [],
+  exceptions_and_escalations: [],
+  evidence_produced_or_required: [],
   completion_condition: 'Arnés aprobado sin defectos visibles',
+  missing_information: [],
+  activities: [],
   substeps: [
     {
       substep_id: 'substep-1',
@@ -40,11 +52,23 @@ const mockStep: ProcessStepDto = {
   ],
   checklists: ['Verificar mosquetón de doble seguro'],
   source_pages: [1, 2],
+  source_content: '',
+  business_requirements_analyzed: false,
+  owner_role: '',
+  owner_status: 'ToBeConfirmed',
+  classified_inputs: [],
+  classified_systems: [],
+  classified_dependencies: [],
+  classified_business_rules: [],
+  classified_exceptions: [],
+  classified_outputs: [],
+  process_classified: false,
 };
 
 const mockStructure: ProcessDocumentStructureDto = {
   document_id: 'doc-123',
   process_name: 'Procedimiento de Mantenimiento Seguro',
+  process_code: 'PMS',
   document_title: 'SOP-MANT-002: Procedimiento de Mantenimiento',
   source_file: {
     file_name: 'sop-mantenimiento.pdf',
@@ -65,6 +89,22 @@ const mockStructure: ProcessDocumentStructureDto = {
   appendices: [],
   warnings: [],
   processing_status: 'completed',
+  executive_summary: '',
+  applies_to_all_departments: false,
+  department_ids: [],
+  job_role_ids: [],
+  purpose: '',
+  process_owner: '',
+  trigger: '',
+  scope: '',
+  inputs: [],
+  final_output: '',
+  participating_roles: [],
+  systems_used: [],
+  applicable_policies: [],
+  metrics: [],
+  version: '1.0',
+  status: 'Draft',
 };
 
 const mockRequirements: WorkStepRequirementsAnalysisResultDto = {

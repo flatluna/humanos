@@ -1,7 +1,9 @@
 using System.Net;
+using HumanOS.Data;
 using HumanOS.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.EntityFrameworkCore;
 
 namespace HumanOS.AzureFunctions.Api;
 
@@ -12,10 +14,12 @@ namespace HumanOS.AzureFunctions.Api;
 public sealed class DeleteVideoProductionFunction
 {
     private readonly VideoProductionOrchestrator _orchestrator;
+    private readonly HumanOsDbContext _dbContext;
 
-    public DeleteVideoProductionFunction(VideoProductionOrchestrator orchestrator)
+    public DeleteVideoProductionFunction(VideoProductionOrchestrator orchestrator, HumanOsDbContext dbContext)
     {
         _orchestrator = orchestrator;
+        _dbContext = dbContext;
     }
 
     [Function("DeleteVideoProduction")]
@@ -25,6 +29,37 @@ public sealed class DeleteVideoProductionFunction
         Guid videoProductionId,
         CancellationToken cancellationToken)
     {
+        // 2026-11-10 fix: previously anyone who knew/guessed a
+        // VideoProductionId could delete it regardless of which tenant or
+        // account created it. Now requires the caller's own tenant/oid
+        // (when the row actually has an owner recorded) to match before
+        // deleting — mirrors the same ownership check ListVideoProductions
+        // now applies.
+        var existing = await _dbContext.VideoProductions
+            .AsNoTracking()
+            .Where(p => p.VideoProductionId == videoProductionId)
+            .Select(p => new { p.TenantId, p.OwnerOid })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (existing is not null)
+        {
+            var callerTenantId = request.Headers.TryGetValues("X-Studio-Tenant-Id", out var tenantValues) &&
+                Guid.TryParse(tenantValues.FirstOrDefault(), out var parsedTenantId)
+                    ? parsedTenantId
+                    : (Guid?)null;
+            var callerOid = request.Headers.TryGetValues("X-Azure-OID", out var oidValues)
+                ? oidValues.FirstOrDefault()
+                : null;
+
+            var tenantMismatch = callerTenantId is not null && existing.TenantId != callerTenantId;
+            var ownerMismatch = !string.IsNullOrWhiteSpace(existing.OwnerOid) && existing.OwnerOid != callerOid;
+            if (tenantMismatch || ownerMismatch)
+            {
+                return await FunctionResponseFactory.ErrorResponseAsync(
+                    request, HttpStatusCode.Forbidden, "NotOwner", "You do not have permission to delete this video production.", cancellationToken);
+            }
+        }
+
         try
         {
             await _orchestrator.DeleteProductionAsync(videoProductionId, cancellationToken);

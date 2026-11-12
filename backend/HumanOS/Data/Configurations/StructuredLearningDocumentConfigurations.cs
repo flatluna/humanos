@@ -48,6 +48,9 @@ public sealed class StructuredLearningDocumentConfiguration
             .HasMaxLength(500)
             .IsRequired();
 
+        builder.Property(x => x.SourceCapabilityCode)
+            .HasMaxLength(200);
+
         builder.Property(x => x.TopicId);
 
         builder.Property(x => x.PedagogicalAudience)
@@ -55,6 +58,10 @@ public sealed class StructuredLearningDocumentConfiguration
 
         builder.Property(x => x.CourseLevel)
             .HasMaxLength(10);
+
+        builder.Property(x => x.UseScenedLecture)
+            .HasDefaultValue(true)
+            .IsRequired();
 
         builder.Property(x => x.PromptVersion)
             .HasMaxLength(200);

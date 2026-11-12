@@ -10,11 +10,13 @@ import {
   type StructuredLearningConnection,
   type StructuredLearningConnectionCategory,
   type StructuredLearningSectionDetail,
+  type StructuredLearningDocumentDetail,
   getStructuredLearningKnowledgeFacts,
   generateStructuredLearningKnowledgeFacts,
   generateStructuredLearningConnections,
   type StructuredLearningKnowledgeFactsResponse,
 } from '../lib/api/structuredLearningApi';
+import { CourseGalaxy3DGraph } from './CourseGalaxy3DGraph';
 
 interface EngramGraph {
   section: StructuredLearningSectionDetail;
@@ -217,6 +219,13 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
   const { t } = useTranslation();
   const [engramGraphs, setEngramGraphs] = useState<EngramGraph[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 3D Constellation view (2026-08-21 port from the employee "Grow" app) —
+  // document + the flat (ungrouped) entities list are kept separately from
+  // engramGraphs because CourseGalaxy3DGraph needs the whole document
+  // (for Sections) and the whole entity list at once, not grouped per engram.
+  const [documentDetail, setDocumentDetail] = useState<StructuredLearningDocumentDetail | null>(null);
+  const [allEntities, setAllEntities] = useState<StructuredLearningDocumentEntity[]>([]);
+  const [viewMode, setViewMode] = useState<'tree' | 'galaxy'>('tree');
   const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
   const [showEntitiesBySection, setShowEntitiesBySection] = useState<Record<string, boolean>>({});
   const [showSecondaryBySection, setShowSecondaryBySection] = useState<Record<string, boolean>>({});
@@ -294,6 +303,9 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
       getStructuredLearningDocumentConnections(documentId).catch(() => [] as StructuredLearningConnection[]),
     ]);
 
+    setDocumentDetail(document);
+    setAllEntities(entities);
+
     const sortedSections = [...document.Sections]
       .filter((section) => !sectionId || section.StructuredLearningDocumentSectionId === sectionId)
       .sort((a, b) => a.SortOrder - b.SortOrder);
@@ -338,6 +350,28 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
               {t('structuredLearningRunProgress.knowledgeGraphCount', { count: totalEntities })}
               {totalConnections > 0 && ` · ${totalConnections} ${t('structuredLearningRunProgress.knowledgeGraphConnectionsTitle').toLowerCase()}`}
             </span>
+            {!sectionId && documentDetail && (
+              <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.04] p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('tree')}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                    viewMode === 'tree' ? 'bg-brand-500/20 text-brand-200' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🌳 {t('courseMap.treeView')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('galaxy')}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                    viewMode === 'galaxy' ? 'bg-brand-500/20 text-brand-200' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🌌 {t('courseMap.galaxyView')}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => (showAllFacts ? setShowAllFacts(false) : loadAllFacts())}
@@ -352,8 +386,23 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
 
       {!engramGraphs && <p className="mt-3 text-xs text-slate-500">{t('structuredLearningRunProgress.knowledgeGraphLoading')}</p>}
 
-      {engramGraphs && totalEntities > 0 && (
-        <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-400">
+      {engramGraphs && totalEntities > 0 && viewMode === 'galaxy' && !sectionId && documentDetail && (
+        <div className="mt-4">
+          <CourseGalaxy3DGraph
+            document={documentDetail}
+            entities={allEntities}
+            connections={[]}
+            sectionRounds={{}}
+            onSelectSection={(section) => {
+              setViewMode('tree');
+              setExpandedSectionId(section.StructuredLearningDocumentSectionId);
+            }}
+          />
+        </div>
+      )}
+
+      {engramGraphs && totalEntities > 0 && viewMode === 'tree' && (
+      <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-400">
           {(['Document', 'Rule', 'Action', 'Value', 'Entity'] as const).map((kind) => (
             <span key={kind} className="flex items-center gap-1.5">
               <span className={`h-2.5 w-2.5 rounded-full border ${NODE_KIND_STYLES[kind]}`} />
@@ -363,6 +412,7 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
         </div>
       )}
 
+      {viewMode === 'tree' && (
       <div className="mt-4 space-y-2">
         {engramGraphs?.map(({ section, entities, connections }) => {
           const expanded = expandedSectionId === section.StructuredLearningDocumentSectionId;
@@ -687,6 +737,7 @@ export default function KnowledgeGraphSection({ documentId, sectionId, initialVi
           );
         })}
       </div>
+      )}
       {showAllFacts && engramGraphs && (
         <section className="mt-4 space-y-2 border-t border-white/10 pt-4" aria-label={t('structuredLearningRunProgress.knowledgeFactsViewAll')}>
           <div className="flex items-center gap-2">

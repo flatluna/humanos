@@ -124,8 +124,26 @@ public sealed class SkillService
         var matches = await GetMatchedCapabilitiesAsync(skills, cancellationToken);
         var courseVariants = await GetMatchedCourseVariantsAsync(skills, cancellationToken);
 
+        // For Skills saved from a whole process ("Guardar en Catálogo de Capabilities" —
+        // SourceProcessDocumentId set), resolve the authoring department's name so the catalog
+        // can show "Department: Finanzas" instead of the generic "No linked job roles".
+        var processDocIds = skills.Where(s => s.SourceProcessDocumentId.HasValue)
+            .Select(s => s.SourceProcessDocumentId!.Value).Distinct().ToList();
+        var authorDeptByProcessDoc = processDocIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _dbContext.ProcessDocuments
+                .AsNoTracking()
+                .Where(p => processDocIds.Contains(p.ProcessDocumentId) && p.DepartmentId != null)
+                .Select(p => new { p.ProcessDocumentId, DepartmentName = p.Department!.Name })
+                .ToDictionaryAsync(p => p.ProcessDocumentId, p => p.DepartmentName, cancellationToken);
+
         return skills
-            .Select(s => ToResponse(s, linksBySkill.GetValueOrDefault(s.SkillId, []), matches.GetValueOrDefault(s.SkillId), courseVariants.GetValueOrDefault(s.SkillId, [])))
+            .Select(s => ToResponse(
+                s,
+                linksBySkill.GetValueOrDefault(s.SkillId, []),
+                matches.GetValueOrDefault(s.SkillId),
+                courseVariants.GetValueOrDefault(s.SkillId, []),
+                s.SourceProcessDocumentId.HasValue ? authorDeptByProcessDoc.GetValueOrDefault(s.SourceProcessDocumentId.Value) : null))
             .ToList();
     }
 
@@ -528,7 +546,17 @@ public sealed class SkillService
 
         var matches = await GetMatchedCapabilitiesAsync([skill], cancellationToken);
 
-        return ToResponse(skill, links, matches.GetValueOrDefault(skill.SkillId));
+        string? authorDeptName = null;
+        if (skill.SourceProcessDocumentId.HasValue)
+        {
+            authorDeptName = await _dbContext.ProcessDocuments
+                .AsNoTracking()
+                .Where(p => p.ProcessDocumentId == skill.SourceProcessDocumentId.Value && p.DepartmentId != null)
+                .Select(p => p.Department!.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        return ToResponse(skill, links, matches.GetValueOrDefault(skill.SkillId), sourceProcessDepartmentName: authorDeptName);
     }
 
     private static List<SkillJobRoleLinkRequest> ResolveJobRoleLinks(SaveSkillRequest request)
@@ -630,7 +658,8 @@ public sealed class SkillService
         Skill skill,
         IReadOnlyList<SkillJobRoleLinkResponse> jobRoles,
         (Guid CourseId, string CourseName, string CourseType)? matchedCapability = null,
-        IReadOnlyList<SkillMatchedCourseResponse>? matchedCourses = null) => new()
+        IReadOnlyList<SkillMatchedCourseResponse>? matchedCourses = null,
+        string? sourceProcessDepartmentName = null) => new()
     {
         SkillId = skill.SkillId,
         TenantId = skill.TenantId,
@@ -650,11 +679,51 @@ public sealed class SkillService
         MatchedCapabilityName = matchedCapability?.CourseName,
         MatchedCourseType = matchedCapability?.CourseType,
         MatchedCourses = matchedCourses ?? [],
+        SourceCourseTitle = skill.SourceCourseTitle,
+        SourceCourseProvider = skill.SourceCourseProvider,
+        SourceCourseUrl = skill.SourceCourseUrl,
+        SourceOutlineModules = DeserializeOutlineModules(skill.SourceOutlineJson),
+        SourceOutlineSource = skill.SourceOutlineSource,
+        SourceProcessDocumentId = skill.SourceProcessDocumentId,
+        SourceProcessDepartmentName = sourceProcessDepartmentName,
     };
+
+    private static IReadOnlyList<HumanOS.Contracts.ProcessDocuments.CourseOutlineModule>? DeserializeOutlineModules(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        try { return JsonSerializer.Deserialize<List<HumanOS.Contracts.ProcessDocuments.CourseOutlineModule>>(value); }
+        catch (JsonException) { return null; }
+    }
 
     public async Task<Skill?> GetEntityByIdAsync(Guid skillId, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Skills.SingleOrDefaultAsync(s => s.SkillId == skillId, cancellationToken);
+    }
+
+    /// <summary>Reverse lookup of ProcessSkillRequirement.MatchedSkillId — lists every business
+    /// process that has linked this catalog skill via Step 4 "Link to Process", so HR can see the
+    /// impact before editing/deleting a Skill. See SkillLinkedProcessResponse for details.</summary>
+    public async Task<IReadOnlyList<HumanOS.Contracts.OrgStructure.SkillLinkedProcessResponse>> GetLinkedProcessesAsync(
+        Guid skillId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.ProcessSkillRequirements
+            .AsNoTracking()
+            .Where(r => r.MatchedSkillId == skillId)
+            .Include(r => r.ProcessDocument)
+            .Include(r => r.ScopedDepartments)
+            .Include(r => r.ScopedJobRoles)
+            .OrderBy(r => r.ProcessDocument!.Title)
+            .Select(r => new HumanOS.Contracts.OrgStructure.SkillLinkedProcessResponse
+            {
+                ProcessDocumentId = r.ProcessDocumentId,
+                ProcessSkillRequirementId = r.ProcessSkillRequirementId,
+                ProcessTitle = r.ProcessDocument!.Title,
+                IsRequired = r.IsRequired,
+                AppliesToAllDepartments = r.AppliesToAllDepartments,
+                DepartmentCount = r.ScopedDepartments.Count,
+                JobRoleCount = r.ScopedJobRoles.Count,
+            })
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<SkillResponse?> UpdateDocumentPathAsync(

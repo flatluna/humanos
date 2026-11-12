@@ -65,7 +65,7 @@ const STEP_ORDER: ExperienceStepType[] = ['Hypothesis', 'Teaching', 'DeepDive', 
 // Mirrors backend RecallLoopGate (Agentic/Runtime/RecallLoopGate.cs): each
 // Recall item gets up to this many attempts, and the student must master
 // this many DISTINCT items before the step advances to Production.
-const RECALL_MAX_ATTEMPTS = 5;
+const RECALL_MAX_ATTEMPTS = 3;
 const RECALL_ITEMS_REQUIRED = 3;
 
 interface NormalizedStep {

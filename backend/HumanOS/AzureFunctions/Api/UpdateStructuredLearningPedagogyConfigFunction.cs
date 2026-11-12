@@ -30,6 +30,8 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
 
         public int? MaxDeepDiveCardsPerNode { get; set; }
 
+        public bool UseScenedLecture { get; set; } = true;
+
         public bool IncludeProductionStep { get; set; } = true;
 
         public bool IncludeRecallStep { get; set; } = true;
@@ -51,6 +53,8 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
         public bool EnableDeepDiveAgentVoice { get; set; } = true;
 
         public bool IncludeWorkplaceApplicationStep { get; set; } = true;
+
+        public bool IncludeHypothesisStep { get; set; } = true;
 
         public StructuredLearningGenerationMode RecallGenerationMode { get; set; } = StructuredLearningGenerationMode.Dynamic;
 
@@ -114,6 +118,7 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
 
         document.PedagogicalAudience = string.IsNullOrWhiteSpace(body.PedagogicalAudience) ? null : body.PedagogicalAudience;
         document.MaxDeepDiveCardsPerNode = body.MaxDeepDiveCardsPerNode;
+        document.UseScenedLecture = body.UseScenedLecture;
         document.IncludeProductionStep = body.IncludeProductionStep;
         document.IncludeRecallStep = body.IncludeRecallStep;
         document.RecallItemsRequired = body.RecallItemsRequired;
@@ -125,6 +130,7 @@ public sealed class UpdateStructuredLearningPedagogyConfigFunction
         document.EnableQaProfessorVoice = body.EnableQaProfessorVoice;
         document.EnableDeepDiveAgentVoice = body.EnableDeepDiveAgentVoice;
         document.IncludeWorkplaceApplicationStep = body.IncludeWorkplaceApplicationStep;
+        document.IncludeHypothesisStep = body.IncludeHypothesisStep;
         document.RecallGenerationMode = body.RecallGenerationMode;
         document.AssessmentGenerationMode = body.AssessmentGenerationMode;
 

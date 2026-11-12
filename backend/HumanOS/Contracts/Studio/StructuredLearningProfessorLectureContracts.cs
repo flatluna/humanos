@@ -33,6 +33,13 @@ public sealed class StructuredLearningProfessorLectureContext
     /// </summary>
     public string? IllustrationDescription { get; set; }
 
+    /// <summary>Raw bytes of every REAL source-document image attached to this engram
+    /// (2026-11-03) — when present, the agent is sent these as actual vision input
+    /// (not just a pre-computed text description), so the professor genuinely "sees"
+    /// the real figure/diagram while writing the lecture, the same way a human
+    /// instructor would look at the slide before explaining it.</summary>
+    public List<(byte[] Bytes, string ContentType)> SourceImages { get; set; } = [];
+
     public string? DomainOrTopic { get; set; }
 
     // --- Student / Learner Context ---
@@ -128,6 +135,25 @@ public sealed class StructuredLearningProfessorLectureContext
     /// the lecture's register from a university-professor masterclass to a
     /// warm, simple, direct-to-the-child read-aloud story.</summary>
     public string? PedagogicalAudience { get; set; }
+
+    /// <summary>True when this Engram comes from the "New Learning From
+    /// Video" pipeline (document.SourceCapabilityCode == "video",
+    /// 2026-11-06) — switches the agent from "compose a new masterclass
+    /// lecture" to "preserve the real video transcript as close to verbatim
+    /// as possible", since TeachingContent here IS what the professor
+    /// actually said on camera (not source material to rewrite/expand).</summary>
+    public bool IsVideoSourced { get; set; }
+
+    /// <summary>Original video/course name shown in the mandatory opening
+    /// disclosure line for the FIRST Engram of a video-sourced course (see
+    /// <see cref="IsVideoSourced"/>) — e.g. the document's DocumentName.</summary>
+    public string? VideoSourceName { get; set; }
+
+    /// <summary>True only for the very first Engram (by SortOrder) of the
+    /// document — the one-time AI/video-source disclosure opening line is
+    /// only ever spoken once, at the very start of the course, never
+    /// repeated on every Engram.</summary>
+    public bool IsFirstEngram { get; set; }
 }
 
 /// <summary>One narrated "beat"/scene of the lecture (2026-10-08 — image+audio

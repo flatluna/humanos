@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ShieldAlert,
   CheckCircle2,
@@ -12,9 +12,13 @@ import {
   Table as TableIcon,
   List,
   Trash2,
+  Loader2,
+  Edit2,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { createSkill, getSkills, type SkillCategory, type SkillDto } from '@/api/skillsApi';
+import { getDepartments, type DepartmentDto } from '@/api/orgStructureApi';
+import { getProcessSkillRequirements, deleteProcessSkillRequirement, saveProcessAsCapability } from '@/api/processDocumentsApi';
 import type {
   ProcessStepDto,
   ProcessDocumentStructureDto,
@@ -51,6 +55,7 @@ export interface ContentGapReviewStepProps {
   onApproveAndContinue: () => void;
   onRemoveSkillFromStep?: (stepId: string, skillName: string) => void;
   isSavingProcess?: boolean;
+  onUpdateStructure?: (newStructure: ProcessDocumentStructureDto) => void;
 }
 
 export function ContentGapReviewStep({
@@ -65,19 +70,36 @@ export function ContentGapReviewStep({
   onEvaluateAllSteps: _onEvaluateAllSteps,
   isBatchEvaluating: _isBatchEvaluating,
   batchProgress: _batchProgress,
-  onSelectStep,
+  onSelectStep: _onSelectStep,
   onApproveAndContinue,
   onRemoveSkillFromStep,
   isSavingProcess,
+  onUpdateStructure,
 }: ContentGapReviewStepProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const effectiveTenantId = user?.tenantId || user?.tid;
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<'matrix' | 'stepDetail'>('matrix');
   const [registeringSkillName, setRegisteringSkillName] = useState<string | null>(null);
   const [registeredSkillNames, setRegisteredSkillNames] = useState<Set<string>>(new Set());
   const [isRegisteringAll, setIsRegisteringAll] = useState(false);
+  const [isEditingProcessName, setIsEditingProcessName] = useState(false);
+  const [editedProcessName, setEditedProcessName] = useState('');
+
+  function startEditingProcessName() {
+    setEditedProcessName(structure?.process_name || '');
+    setIsEditingProcessName(true);
+  }
+
+  function saveProcessName() {
+    const trimmed = editedProcessName.trim();
+    if (trimmed && structure && onUpdateStructure) {
+      onUpdateStructure({ ...structure, process_name: trimmed });
+    }
+    setIsEditingProcessName(false);
+  }
 
   // Load tenant skill catalog directly from database for instantaneous, ground-truth matching
   const { data: catalogSkills = [], refetch: refetchCatalog } = useQuery({
@@ -85,6 +107,63 @@ export function ContentGapReviewStep({
     queryFn: () => (effectiveTenantId ? getSkills(effectiveTenantId) : Promise.resolve([])),
     enabled: Boolean(effectiveTenantId),
   });
+
+  // The actual skills HR confirmed as training requirements for this process (saved via
+  // "Link to Process" in Step 4 — ProcessWideLearningReviewStep), as opposed to the raw
+  // per-step AI suggestions aggregated into the matrix below.
+  const { data: savedProcessSkills = [], refetch: refetchSavedProcessSkills } = useQuery({
+    queryKey: ['processSkillRequirements', structure?.document_id],
+    queryFn: () => getProcessSkillRequirements(structure!.document_id),
+    enabled: Boolean(structure?.document_id),
+  });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments', effectiveTenantId],
+    queryFn: () => getDepartments(effectiveTenantId!),
+    enabled: Boolean(effectiveTenantId),
+  });
+
+  const handleDeleteSavedProcessSkill = async (processSkillRequirementId: string) => {
+    if (!structure?.document_id) return;
+    try {
+      await deleteProcessSkillRequirement(structure.document_id, processSkillRequirementId);
+      await refetchSavedProcessSkills();
+    } catch (err) {
+      console.warn('Could not delete process skill requirement:', err);
+    }
+  };
+
+  // The department that authored this process, if it was already saved to the Capability
+  // Catalog ("Guardar en Catálogo de Capabilities" — see ProcessWideLearningReviewStep).
+  const processOwnerDepartment = useMemo(() => {
+    if (!structure?.document_id) return null;
+    return catalogSkills.find((s) => s.sourceProcessDocumentId === structure.document_id)?.sourceProcessDepartmentName ?? null;
+  }, [catalogSkills, structure?.document_id]);
+
+  // The process itself must become a Capability (a Skill the employee has to develop, carrying
+  // the source document + extracted index) so Studio can later generate a course from it. If
+  // this hasn't been done yet, force picking the authoring department before the final
+  // "Approve & Save Process to Database" so no process slips through unsaved as a capability.
+  const [showSaveCapabilityModal, setShowSaveCapabilityModal] = useState(false);
+  const [capabilityDepartmentId, setCapabilityDepartmentId] = useState('');
+
+  const saveCapabilityMutation = useMutation({
+    mutationFn: () => saveProcessAsCapability(structure!.document_id, capabilityDepartmentId),
+    onSuccess: async () => {
+      setShowSaveCapabilityModal(false);
+      await refetchCatalog();
+      queryClient.invalidateQueries({ queryKey: ['skills', effectiveTenantId] });
+      onApproveAndContinue();
+    },
+  });
+
+  const handleApproveClick = () => {
+    if (processOwnerDepartment) {
+      onApproveAndContinue();
+    } else {
+      setShowSaveCapabilityModal(true);
+    }
+  };
 
   // Fast normalization helper
   const normalizeKey = (str: string) =>
@@ -100,6 +179,14 @@ export function ContentGapReviewStep({
           map.set(norm, s);
         }
       }
+    }
+    return map;
+  }, [catalogSkills]);
+
+  const catalogSkillById = useMemo(() => {
+    const map = new Map<string, SkillDto>();
+    for (const s of catalogSkills) {
+      map.set(s.skillId.toLowerCase(), s);
     }
     return map;
   }, [catalogSkills]);
@@ -189,36 +276,74 @@ export function ContentGapReviewStep({
     });
   }, [allProcessSteps, allStepRequirements, allStepCoverages, catalogSkillMap, registeredSkillNames]);
 
-  // Global unique counts
+  // Build the "Process Training & Skill Matrix" table directly from the skills actually saved
+  // in Step 4 ("Link to Process" / savedProcessSkills), NOT from the raw per-step AI suggestions
+  // in matrixRows — those are independent automated guesses and don't reflect what HR approved.
+  const skillGroups = useMemo(() => {
+    type Bucket = 'soft' | 'technical' | 'processes' | 'ai';
+    type GroupedItem = {
+      name: string;
+      skillId?: string;
+      status: 'ready' | 'pending' | 'new';
+      course?: string;
+      gap?: ContentGapItemDto;
+      category: string;
+      isAi?: boolean;
+      processSkillRequirementId: string;
+      sourceSteps: Array<{ stepId: string; stepNumber: string; stepName: string }>;
+    };
+    const maps: Record<Bucket, GroupedItem[]> = { soft: [], technical: [], processes: [], ai: [] };
+
+    for (const req of savedProcessSkills) {
+      // Prefer the explicit matchedSkillId (set when "Link to process" matched an existing
+      // catalog skill under a different name, e.g. "Business Justification Writing" ->
+      // "Commercial Writing & Communication") over a name-based lookup, which fails whenever
+      // the AI-detected gap name differs from the catalog skill's actual name.
+      const matched =
+        (req.matchedSkillId ? catalogSkillById.get(req.matchedSkillId.toLowerCase()) : undefined) ??
+        catalogSkillMap.get(req.skillName.trim().toLowerCase()) ??
+        catalogSkillMap.get(normalizeKey(req.skillName));
+      const status: 'ready' | 'pending' | 'new' = matched?.matchedCapabilityId ? 'ready' : matched ? 'pending' : 'new';
+      const item: GroupedItem = {
+        // Show the catalog skill's real name when linked, so it matches what's visible on the
+        // Skills page, instead of the raw AI-detected gap name.
+        name: matched?.name ?? req.skillName,
+        skillId: req.matchedSkillId ?? matched?.skillId,
+        status,
+        course: matched?.matchedCapabilityName ?? undefined,
+        category: req.category,
+        isAi: req.isAiSkill,
+        processSkillRequirementId: req.processSkillRequirementId,
+        sourceSteps: [],
+      };
+      let bucket: Bucket = 'technical';
+      if (req.isAiSkill) bucket = 'ai';
+      else if (req.category === 'soft-skills') bucket = 'soft';
+      else if (req.category === 'department-processes' || req.category === 'hr-processes') bucket = 'processes';
+      else bucket = 'technical';
+      maps[bucket].push(item);
+    }
+
+    return maps;
+  }, [savedProcessSkills, catalogSkillMap, catalogSkillById]);
+
+  // Global unique counts — now based on the skills actually saved in Step 4 (skillGroups),
+  // not the raw per-step AI suggestions.
   const globalStats = useMemo(() => {
-    const readySet = new Set<string>();
-    const pendingSet = new Set<string>();
-    const newSet = new Set<string>();
-
-    for (const row of matrixRows) {
-      for (const item of [...row.soft, ...row.technical, ...row.processes, ...row.ai]) {
-        const key = item.name.toLowerCase().trim();
-        if (item.status === 'ready') readySet.add(key);
-        else if (item.status === 'pending') pendingSet.add(key);
-        else newSet.add(key);
-      }
-    }
-
-    // Remove duplicates from newSet if in pendingSet or readySet
-    for (const name of pendingSet) newSet.delete(name);
-    for (const name of readySet) {
-      pendingSet.delete(name);
-      newSet.delete(name);
-    }
+    const all = [...skillGroups.soft, ...skillGroups.technical, ...skillGroups.processes, ...skillGroups.ai];
+    const readyCount = all.filter((i) => i.status === 'ready').length;
+    const pendingCount = all.filter((i) => i.status === 'pending').length;
+    const newCount = all.filter((i) => i.status === 'new').length;
 
     return {
       totalSteps: allProcessSteps.length,
-      totalUniqueSkills: readySet.size + pendingSet.size + newSet.size,
-      readyCount: readySet.size,
-      pendingCount: pendingSet.size,
-      newCount: newSet.size,
+      totalUniqueSkills: all.length,
+      readyCount,
+      pendingCount,
+      newCount,
     };
-  }, [matrixRows, allProcessSteps.length]);
+  }, [skillGroups, allProcessSteps.length]);
+
 
   // Partition skills for focused active step breakdown view:
   const activeStepPartition = useMemo(() => {
@@ -303,8 +428,17 @@ export function ContentGapReviewStep({
   };
 
   const renderSkillPill = (
-    item: { name: string; skillId?: string; status: 'ready' | 'pending' | 'new'; course?: string; gap?: ContentGapItemDto; category: string },
-    stepId: string,
+    item: {
+      name: string;
+      skillId?: string;
+      status: 'ready' | 'pending' | 'new';
+      course?: string;
+      gap?: ContentGapItemDto;
+      category: string;
+      processSkillRequirementId?: string;
+      sourceSteps?: Array<{ stepId: string; stepNumber: string; stepName: string }>;
+    },
+    stepId: string | string[],
   ) => {
     const isRegistering = registeringSkillName === item.name;
     const isRegistered = registeredSkillNames.has(item.name) || registeredSkillNames.has(item.name.toLowerCase().trim()) || item.status === 'pending';
@@ -313,7 +447,7 @@ export function ContentGapReviewStep({
     return (
       <div
         key={item.name}
-        className={`group relative flex items-start justify-between gap-1.5 rounded-lg border p-2 text-xs transition-all ${
+        className={`group relative flex items-center justify-between gap-1.5 rounded-lg border p-2 text-xs transition-all ${
           effectiveStatus === 'ready'
             ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/20 dark:bg-emerald-500/5'
             : effectiveStatus === 'pending'
@@ -321,41 +455,19 @@ export function ContentGapReviewStep({
             : 'border-rose-200 bg-rose-50/50 dark:border-rose-500/20 dark:bg-rose-500/5'
         }`}
       >
-        <div className="space-y-1 min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={`h-2 w-2 rounded-full shrink-0 ${
-                effectiveStatus === 'ready'
-                  ? 'bg-emerald-500'
-                  : effectiveStatus === 'pending'
-                  ? 'bg-amber-500'
-                  : 'bg-rose-500'
-              }`}
-            />
-            <p className="font-bold text-slate-900 dark:text-white truncate" title={item.name}>
-              {item.name}
-            </p>
-          </div>
-          {item.skillId && (
-            <span className="inline-block rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.2 text-[8.5px] font-mono font-medium text-slate-500 dark:text-white/50">
-              {item.skillId}
-            </span>
-          )}
-          {effectiveStatus === 'ready' && item.course && (
-            <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium truncate">
-              ✓ {item.course}
-            </p>
-          )}
-          {effectiveStatus === 'pending' && (
-            <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-              {t('processLearning.coverageStep.partialBadge')}
-            </p>
-          )}
-          {effectiveStatus === 'new' && (
-            <p className="text-[10px] text-rose-700 dark:text-rose-400 font-medium">
-              {t('processLearning.coverageStep.uncoveredBadge')}
-            </p>
-          )}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span
+            className={`h-2 w-2 rounded-full shrink-0 ${
+              effectiveStatus === 'ready'
+                ? 'bg-emerald-500'
+                : effectiveStatus === 'pending'
+                ? 'bg-amber-500'
+                : 'bg-rose-500'
+            }`}
+          />
+          <p className="font-bold text-slate-900 dark:text-white truncate" title={item.name}>
+            {item.name}
+          </p>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -373,18 +485,33 @@ export function ContentGapReviewStep({
               {isRegistering ? '...' : '+ Add'}
             </button>
           )}
-          {onRemoveSkillFromStep && (
+          {item.processSkillRequirementId ? (
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onRemoveSkillFromStep(stepId, item.name);
+                handleDeleteSavedProcessSkill(item.processSkillRequirementId!);
               }}
               className="rounded p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:text-white/30 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 transition-colors"
               title="Eliminar habilidad del proceso"
             >
               <Trash2 className="h-3 w-3" />
             </button>
+          ) : (
+            onRemoveSkillFromStep && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const stepIds = Array.isArray(stepId) ? stepId : [stepId];
+                  stepIds.forEach((id) => onRemoveSkillFromStep(id, item.name));
+                }}
+                className="rounded p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:text-white/30 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 transition-colors"
+                title="Eliminar habilidad del proceso"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )
           )}
         </div>
       </div>
@@ -440,7 +567,7 @@ export function ContentGapReviewStep({
 
           <button
             type="button"
-            onClick={onApproveAndContinue}
+            onClick={handleApproveClick}
             disabled={isSavingProcess}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-brand-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:from-emerald-500 hover:to-brand-500 disabled:opacity-50 transition-all"
           >
@@ -462,6 +589,84 @@ export function ContentGapReviewStep({
       {/* Global Process Training Matrix View (Default) */}
       {activeTab === 'matrix' ? (
         <div className="space-y-6">
+          {/* Process Overview: description, owning department, skills already saved in Step 4 */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/40">
+            <div className="flex items-center justify-between gap-2">
+              {isEditingProcessName ? (
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    type="text"
+                    value={editedProcessName}
+                    onChange={(e) => setEditedProcessName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveProcessName();
+                      if (e.key === 'Escape') setIsEditingProcessName(false);
+                    }}
+                    autoFocus
+                    className="flex-1 rounded-lg border border-slate-300 px-2 py-1 text-sm font-bold text-slate-900 dark:border-white/20 dark:bg-slate-800 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveProcessName}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {structure?.process_name || t('processLearning.coverageStep.overviewTitle')}
+                  </h4>
+                  {onUpdateStructure && (
+                    <button
+                      type="button"
+                      onClick={startEditingProcessName}
+                      title="Renombrar proceso (útil si hay dos procesos con el mismo título)"
+                      className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            {(structure?.executive_summary || structure?.purpose) && (
+              <p className="mt-1.5 text-xs text-slate-600 dark:text-white/60">
+                {structure?.executive_summary || structure?.purpose}
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-white/40">{t('processLearning.coverageStep.ownerDepartmentLabel')}:</span>
+              {processOwnerDepartment ? (
+                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  {processOwnerDepartment}
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-400 dark:bg-white/10 dark:text-white/30">
+                  {t('processLearning.coverageStep.ownerDepartmentNotSet')}
+                </span>
+              )}
+            </div>
+            <div className="mt-3">
+              <span className="text-xs font-semibold text-slate-500 dark:text-white/40">{t('processLearning.coverageStep.savedStepSkillsLabel')}:</span>
+              {savedProcessSkills.length === 0 ? (
+                <p className="mt-1 text-xs text-slate-400 dark:text-white/30">{t('processLearning.coverageStep.savedStepSkillsEmpty')}</p>
+              ) : (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {savedProcessSkills.map((r) => (
+                    <span
+                      key={r.processSkillRequirementId}
+                      className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                    >
+                      {r.skillName}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Executive Summary Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/40 text-center">
@@ -536,7 +741,6 @@ export function ContentGapReviewStep({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-100/50 dark:border-white/5 dark:bg-white/[0.02] text-slate-500 dark:text-white/60 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="p-4 w-52">{t('processLearning.coverageStep.colStep')}</th>
                     <th className="p-4 min-w-[200px]">{t('processLearning.coverageStep.colSoftSkills')}</th>
                     <th className="p-4 min-w-[220px]">{t('processLearning.coverageStep.colTechnicalSkills')}</th>
                     <th className="p-4 min-w-[200px]">{t('processLearning.coverageStep.colProcesses')}</th>
@@ -544,73 +748,60 @@ export function ContentGapReviewStep({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {matrixRows.map((row) => {
-                    const isSelected = row.step.step_id === step.step_id;
+                  {/* Single consolidated row: one entry per unique skill across the whole process */}
+                  <tr>
+                    {/* Soft Skills */}
+                    <td className="p-4 align-top">
+                      <div className="space-y-1.5">
+                        {skillGroups.soft.length > 0 ? (
+                          skillGroups.soft.map((item) =>
+                            renderSkillPill(item, item.sourceSteps.map((s) => s.stepId)),
+                          )
+                        ) : (
+                          <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
+                        )}
+                      </div>
+                    </td>
 
-                    return (
-                      <tr
-                        key={row.step.step_id}
-                        onClick={() => onSelectStep?.(row.step.step_id)}
-                        className={`transition-colors cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/[0.02] ${
-                          isSelected ? 'bg-brand-50/40 dark:bg-brand-500/5' : ''
-                        }`}
-                      >
-                        {/* Step Column */}
-                        <td className="p-4 align-top">
-                          <div className="space-y-1">
-                            <span className="inline-block rounded bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800 dark:bg-brand-500/20 dark:text-brand-300">
-                              {t('processLearning.coverageStep.stepLabel', { number: row.step.step_number })}
-                            </span>
-                            <p className="font-bold text-slate-900 dark:text-white">{row.step.step_name}</p>
-                          </div>
-                        </td>
+                    {/* Technical / Job Skills */}
+                    <td className="p-4 align-top">
+                      <div className="space-y-1.5">
+                        {skillGroups.technical.length > 0 ? (
+                          skillGroups.technical.map((item) =>
+                            renderSkillPill(item, item.sourceSteps.map((s) => s.stepId)),
+                          )
+                        ) : (
+                          <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
+                        )}
+                      </div>
+                    </td>
 
-                        {/* Soft Skills */}
-                        <td className="p-4 align-top">
-                          <div className="space-y-1.5">
-                            {row.soft.length > 0 ? (
-                              row.soft.map((item) => renderSkillPill(item, row.step.step_id))
-                            ) : (
-                              <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
-                            )}
-                          </div>
-                        </td>
+                    {/* Processes (Dept / HR) */}
+                    <td className="p-4 align-top">
+                      <div className="space-y-1.5">
+                        {skillGroups.processes.length > 0 ? (
+                          skillGroups.processes.map((item) =>
+                            renderSkillPill(item, item.sourceSteps.map((s) => s.stepId)),
+                          )
+                        ) : (
+                          <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
+                        )}
+                      </div>
+                    </td>
 
-                        {/* Technical / Job Skills */}
-                        <td className="p-4 align-top">
-                          <div className="space-y-1.5">
-                            {row.technical.length > 0 ? (
-                              row.technical.map((item) => renderSkillPill(item, row.step.step_id))
-                            ) : (
-                              <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Processes (Dept / HR) */}
-                        <td className="p-4 align-top">
-                          <div className="space-y-1.5">
-                            {row.processes.length > 0 ? (
-                              row.processes.map((item) => renderSkillPill(item, row.step.step_id))
-                            ) : (
-                              <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* AI Skills (Mandatory) */}
-                        <td className="p-4 align-top">
-                          <div className="space-y-1.5">
-                            {row.ai.length > 0 ? (
-                              row.ai.map((item) => renderSkillPill(item, row.step.step_id))
-                            ) : (
-                              <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                    {/* AI Skills (Mandatory) */}
+                    <td className="p-4 align-top">
+                      <div className="space-y-1.5">
+                        {skillGroups.ai.length > 0 ? (
+                          skillGroups.ai.map((item) =>
+                            renderSkillPill(item, item.sourceSteps.map((s) => s.stepId)),
+                          )
+                        ) : (
+                          <span className="text-slate-400 dark:text-white/30 text-[11px]">—</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -627,7 +818,7 @@ export function ContentGapReviewStep({
               </div>
               <button
                 type="button"
-                onClick={onApproveAndContinue}
+                onClick={handleApproveClick}
                 disabled={isSavingProcess}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-brand-600 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:from-emerald-500 hover:to-brand-500 disabled:opacity-50 transition-all shrink-0"
               >
@@ -783,7 +974,7 @@ export function ContentGapReviewStep({
             </div>
             <button
               type="button"
-              onClick={onApproveAndContinue}
+              onClick={handleApproveClick}
               disabled={isSavingProcess}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-brand-600 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:from-emerald-500 hover:to-brand-500 disabled:opacity-50 transition-all shrink-0"
             >
@@ -799,6 +990,55 @@ export function ContentGapReviewStep({
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showSaveCapabilityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              {t('processLearning.coverageStep.saveAsCapabilityModalTitle')}
+            </h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-white/60">
+              {t('processLearning.coverageStep.saveAsCapabilityModalDescription')}
+            </p>
+            <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-white/70">
+              {t('processLearning.coverageStep.saveAsCapabilityDepartmentLabel')}
+            </label>
+            <select
+              value={capabilityDepartmentId}
+              onChange={(e) => setCapabilityDepartmentId(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-white"
+            >
+              <option value="">{t('processLearning.coverageStep.saveAsCapabilityDepartmentPlaceholder')}</option>
+              {departments.map((d: DepartmentDto) => (
+                <option key={d.departmentId} value={d.departmentId}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            {saveCapabilityMutation.isError && (
+              <p className="mt-2 text-sm text-red-600">{t('processLearning.coverageStep.saveAsCapabilityError')}</p>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveCapabilityModal(false)}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-white/70 dark:hover:bg-white/5"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={!capabilityDepartmentId || saveCapabilityMutation.isPending}
+                onClick={() => saveCapabilityMutation.mutate()}
+                className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saveCapabilityMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t('processLearning.coverageStep.saveAsCapabilityConfirmBtn')}
+              </button>
+            </div>
           </div>
         </div>
       )}

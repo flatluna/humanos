@@ -12,12 +12,33 @@ public sealed class SubmitStructuredLearningRecallAttemptRequest
     /// <summary>Leave null/empty ONLY on the very first call for a section
     /// (nothing to grade yet — just fetches the first question).</summary>
     public string? StudentResponse { get; set; }
+
+    /// <summary>Voice Recall verdict bypass (2026-10-27) — see
+    /// <see cref="StructuredLearningRecallEngine.SubmitAttemptAsync"/>'s doc
+    /// comment. Set by the Realtime voice session handler (never by a typed
+    /// answer) once the Agent itself has already judged correctness from
+    /// the actual audio it heard.</summary>
+    public bool? IsCorrectOverride { get; set; }
 }
 
 public sealed class SubmitStructuredLearningRecallAttemptResponse
 {
     public bool Started { get; set; }
     public string NextQuestion { get; set; } = string.Empty;
+    public string? VisualObjectsDescription { get; set; }
+
+    /// <summary>Static-mode card id (2026-10-26) — when non-null, fetch the
+    /// image from <c>GET /illustrations/structured-learning/{id}/image</c>
+    /// and show it alongside <see cref="NextQuestion"/>. Always null in
+    /// Dynamic mode.</summary>
+    public Guid? IllustrationId { get; set; }
+
+    /// <summary>Short, literal correct answer to <see cref="NextQuestion"/>
+    /// (2026-10-26) — when present, the Realtime voice Agent embeds this
+    /// into its own instructions so it can react to the student's spoken
+    /// answer INSTANTLY itself, instead of waiting on a server grading
+    /// round-trip. Null in Dynamic mode / for legacy Static items.</summary>
+    public string? CorrectAnswer { get; set; }
     public int? Score { get; set; }
     public int AttemptsUsedForItem { get; set; }
     public int ItemsMastered { get; set; }
@@ -81,11 +102,14 @@ public sealed class SubmitStructuredLearningRecallAttemptFunction
 
         try
         {
-            var result = await _engine.SubmitAttemptAsync(_dbContext, sectionId, body?.StudentResponse, personId, engramSessionId, cancellationToken);
+            var result = await _engine.SubmitAttemptAsync(_dbContext, sectionId, body?.StudentResponse, personId, engramSessionId, body?.IsCorrectOverride, cancellationToken);
             return await FunctionResponseFactory.SuccessResponseAsync(request, new SubmitStructuredLearningRecallAttemptResponse
             {
                 Started = result.Started,
                 NextQuestion = result.NextQuestion,
+                VisualObjectsDescription = result.VisualObjectsDescription,
+                IllustrationId = result.IllustrationId,
+                CorrectAnswer = result.CorrectAnswer,
                 Score = result.Score,
                 AttemptsUsedForItem = result.AttemptsUsedForItem,
                 ItemsMastered = result.ItemsMastered,

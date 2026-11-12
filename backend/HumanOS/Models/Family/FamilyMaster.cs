@@ -8,6 +8,8 @@ public sealed class FamilyMaster
 {
     public Guid FamilyId { get; set; } = Guid.NewGuid();
 
+    public Guid TenantId { get; set; }
+
     public string FamilyName { get; set; } = null!;
 
     public string FamilySlug { get; set; } = null!;
@@ -38,6 +40,12 @@ public sealed class FamilyMaster
     public string? PrimaryZipCode { get; set; }
 
     public string PrimaryCountry { get; set; } = "USA";
+
+    public string? PrimaryFullAddress { get; set; }
+
+    public decimal? Latitude { get; set; }
+
+    public decimal? Longitude { get; set; }
 
     // Secondary Location (e.g., Mexico City for bicultural/cross-border households)
     public string? SecondaryLocation { get; set; }

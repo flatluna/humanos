@@ -20,6 +20,14 @@ public sealed class StructuredLearningPersonSectionState
 
     public string? CurrentRecallPrompt { get; set; }
 
+    /// <summary>Ground-truth concrete scene description backing
+    /// <see cref="CurrentRecallPrompt"/> when it's a picture-grounded
+    /// question (e.g. "a round pizza cut into 6 equal slices") — carried
+    /// forward so the NEXT turn's grading call can verify the answer
+    /// against this exact fact instead of needing to actually see the
+    /// generated image. Null for non-visual questions.</summary>
+    public string? CurrentRecallVisualObjectsDescription { get; set; }
+
     public int CurrentDeepDiveCardIndex { get; set; }
 
     public string? CurrentDeepDivePrompt { get; set; }

@@ -10,19 +10,22 @@ import PreviewNodePage from './pages/PreviewNodePage';
 import ProgramsHomePage from './pages/ProgramsHomePage';
 import NewProgramPage from './pages/NewProgramPage';
 import ProgramDetailPage from './pages/ProgramDetailPage';
-import CostDashboardPage from './pages/CostDashboardPage';
 import NewTraditionalCoursePage from './pages/NewTraditionalCoursePage';
 import TraditionalRunProgressPage from './pages/TraditionalRunProgressPage';
 import TraditionalCoursePage from './pages/TraditionalCoursePage';
 import NewStructuredLearningPage from './pages/NewStructuredLearningPage';
+import NewLearningFromVideoPage from './pages/NewLearningFromVideoPage';
+import VideosInProgressPage from './pages/VideosInProgressPage';
 import NewAcademicLearningPage from './pages/NewAcademicLearningPage';
 import AcademicLearningCatalogPage from './pages/AcademicLearningCatalogPage';
 import StructuredLearningRunProgressPage from './pages/StructuredLearningRunProgressPage';
+import VideoStructuredLearningRunProgressPage from './pages/VideoStructuredLearningRunProgressPage';
 import StructuredLearningDocumentDetailPage from './pages/StructuredLearningDocumentDetailPage';
 import StructuredLearningCoursePage from './pages/StructuredLearningCoursePage';
 import StructuredLearningSectionPage from './pages/StructuredLearningSectionPage';
 import StructuredLearningTopicsAdminPage from './pages/StructuredLearningTopicsAdminPage';
 import StructuredLearningTopicCreatePage from './pages/StructuredLearningTopicCreatePage';
+import CostDashboardPage from './pages/CostDashboardPage';
 import AiAgentsPage from './pages/AiAgentsPage';
 import AiAgentsDomainPage from './pages/AiAgentsDomainPage';
 import AiAgentsTopicPage from './pages/AiAgentsTopicPage';
@@ -57,9 +60,12 @@ export default function App() {
           <Route path="/traditional-runs/:runId" element={<TraditionalRunProgressPage />} />
           <Route path="/capabilities/:capabilityId/traditional-course" element={<TraditionalCoursePage />} />
           <Route path="/new-structured-learning" element={<NewStructuredLearningPage />} />
+          <Route path="/new-learning-from-video" element={<NewLearningFromVideoPage />} />
+          <Route path="/videos-in-progress" element={<VideosInProgressPage />} />
           <Route path="/new-academic-learning" element={<NewAcademicLearningPage />} />
           <Route path="/academic-learning-catalog" element={<AcademicLearningCatalogPage />} />
           <Route path="/structured-learning-runs/:runId" element={<StructuredLearningRunProgressPage />} />
+          <Route path="/structured-learning-video-runs/:documentId" element={<VideoStructuredLearningRunProgressPage />} />
           <Route path="/structured-learning/:documentId" element={<StructuredLearningDocumentDetailPage />} />
           <Route path="/structured-learning/:documentId/course" element={<StructuredLearningCoursePage />} />
           <Route path="/structured-learning/:documentId/course/sections/:sectionId" element={<StructuredLearningSectionPage />} />

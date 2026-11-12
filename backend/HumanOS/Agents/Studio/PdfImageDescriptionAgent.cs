@@ -25,30 +25,39 @@ public sealed class PdfImageDescriptionAgent
 {
     private const string Instructions = """
         You describe images found embedded in pages of a source document
-        (a textbook, course material, scanned notes, a slide deck) so a
-        downstream TEXT-ONLY curation pipeline can use their content as if
-        it were plain text extracted from the page.
+        (a textbook, course material, scanned notes, a slide deck, an
+        infographic/slide) so a downstream curation pipeline can use their
+        content as real course material — not just a vague caption.
 
-        For each image, respond with:
-        1. VERBATIM TRANSCRIPTION: any text visible in the image (titles,
-           labels, captions, numbers, formulas, table contents, handwritten
-           notes) transcribed exactly as written. This is often the most
-           important part — for a scanned/photographed page, the "page
-           text" genuinely IS the image.
-        2. DETAILED DESCRIPTION: what the image visually depicts — the type
-           of image (diagram, chart, photo, illustration, table, map,
-           handwritten note, etc.), its structure/layout, and any
-           pedagogically relevant detail a student would need to
-           understand from it (what a diagram's parts/arrows represent,
-           what a chart's axes/data show, what a photo depicts and why it
-           matters in context).
+        Respond in Markdown, structured as:
+
+        # Título
+        The image's own title/heading if one is visible (e.g. a slide
+        title, a diagram's name). If no explicit title is visible, infer a
+        short, accurate one from the content — never leave this generic
+        ("Imagen 1", "Diagrama").
+
+        # Resumen Ejecutivo
+        A short paragraph (3-6 sentences) summarizing what the image is
+        about and why it matters, as if introducing it to a student.
+
+        # Índice de Contenidos
+        Transcribe the image's real content as nested Markdown headings and
+        bullet lists that mirror its actual structure (sections, numbered
+        parts, categories, steps). Use real headings (##, ###) for each
+        section/box/column you can identify, and bullet lists for the
+        items inside each one. Transcribe all legible text verbatim under
+        its matching heading — titles, labels, captions, numbers, table
+        contents, handwritten notes. Read every part of the image
+        carefully, including small text in boxes/columns/legends, before
+        concluding something is illegible; only state text is unreadable
+        if it genuinely cannot be made out at all.
 
         If the image is purely decorative (a logo, a divider line, a
         background pattern, a page-number stamp) with no real educational
-        content, say so briefly instead of inventing meaning for it.
+        content, say so briefly instead of inventing structure for it.
 
         Never invent information that is not actually visible in the image.
-        Respond in plain text only — no markdown formatting, no headers.
         """;
 
     private readonly AIAgent? _agent;
@@ -56,17 +65,19 @@ public sealed class PdfImageDescriptionAgent
 
     public PdfImageDescriptionAgent(IConfiguration configuration)
     {
-        var endpoint = configuration["AzureOpenAIEndpoint"];
-        // Defaults to 'AzureOpenAIVisionDeploymentName' (pinned to a
-        // 'gpt-5-mini' deployment, 2026-07-23, cost control) rather than
-        // the main gpt-5-chat deployment — combined with the "low" detail
-        // level forced in DescribeAsync, this is a per-request text/image
-        // description task (transcription + coarse layout description),
-        // not the kind of high-stakes reasoning the main deployment is
-        // reserved for. Falls back to 'AzureOpenAIDeploymentName' only if
-        // the vision-specific setting isn't configured.
-        var deploymentName = configuration["AzureOpenAIVisionDeploymentName"] ?? configuration["AzureOpenAIDeploymentName"];
-        var apiKey = configuration["AzureOpenAIApiKey"];
+        // Prefers the stronger 'Gpt61Sol*' deployment (2026-11-05): manual
+        // testing showed the previous cheap 'gpt-5-mini' + "low" detail
+        // combo produced vague, illegible-text excuses on dense
+        // infographics/slides, while this deployment (same family the user
+        // validated directly) reads small text and structure far better.
+        // Falls back to 'AzureOpenAIVisionDeploymentName'/
+        // 'AzureOpenAIDeploymentName' if the stronger deployment isn't
+        // configured.
+        var endpoint = configuration["Gpt61SolEndpoint"] ?? configuration["AzureOpenAIEndpoint"];
+        var deploymentName = configuration["Gpt61SolDeploymentName"]
+            ?? configuration["AzureOpenAIVisionDeploymentName"]
+            ?? configuration["AzureOpenAIDeploymentName"];
+        var apiKey = configuration["Gpt61SolApiKey"] ?? configuration["AzureOpenAIApiKey"];
 
         _modelName = deploymentName ?? string.Empty;
 
@@ -117,20 +128,18 @@ public sealed class PdfImageDescriptionAgent
                 ? string.Empty
                 : $" For context only (do not repeat it back), the rest of this page's own text reads:\n{pageContextText}");
 
-        // Pinned to "low" detail (2026-07-23, cost control): leaving this
-        // unset lets the OpenAI Chat Completions API fall back to "auto",
-        // which for any image above the low-res threshold resolves to the
-        // tiled "high" detail mode — 700-5000+ tokens PER IMAGE depending on
-        // resolution/complexity, vs a flat 85 tokens at "low". A page with
-        // many embedded images (slide decks routinely have 10-40) was
-        // costing $0.20+ just for image descriptions on that one page.
-        // "low" downsamples to a 512x512 preview before tokenizing — still
-        // enough to transcribe titles/labels and describe a diagram's
-        // layout, which is all this agent needs (it's a coarse text
-        // stand-in for downstream curation, not pixel-level analysis).
+        // Raised to "high" detail (2026-11-05): "low" downsampled every
+        // image to a 512x512 preview before tokenizing, which made dense
+        // infographics/slides with small text genuinely illegible to the
+        // model — it would (correctly, given what it was shown) report
+        // text as "too small to read". "high" uses the tiled encoding so
+        // small labels/body text in slide-style images stay legible. Costs
+        // more per image (roughly 700-1500+ tokens vs a flat 85 at "low"),
+        // but is required for this agent to produce real transcriptions
+        // instead of vague guesses.
         var imageContent = new DataContent(imageBytes, contentType)
         {
-            AdditionalProperties = new() { ["detail"] = "low" }
+            AdditionalProperties = new() { ["detail"] = "high" }
         };
 
         var message = new ChatMessage(ChatRole.User,

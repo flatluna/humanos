@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text.Json;
+using HumanOS.Contracts.Family;
 using HumanOS.Data;
+using HumanOS.Models.Capabilities.Studio;
+using HumanOS.Services.Family;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +60,17 @@ public sealed class StructuredLearningSectionDetailDto
 
     public int TotalTokens { get; set; }
 
+    /// <summary>Source-video clip range (seconds) this Engram covers —
+    /// null for documents not created from a video (2026-11-07).</summary>
+    public double? VideoStartSeconds { get; set; }
+
+    public double? VideoEndSeconds { get; set; }
+
+    /// <summary>When true, pedagogy generation only produces this Engram's
+    /// Teaching/Learn step (2026-11-07) — see matching doc comment on
+    /// StructuredLearningDocumentSection.</summary>
+    public bool IsInformationalOnly { get; set; }
+
     public string PromptVersion { get; set; } = string.Empty;
 
     public string ProcessVersion { get; set; } = string.Empty;
@@ -87,7 +101,32 @@ public sealed class StructuredLearningSectionDetailDto
     /// scaled by its real card count (2026-09-27).</summary>
     public int EstimatedMinutesToComplete { get; set; }
 
+    /// <summary>How many times this Engram's pedagogy content has been
+    /// (re)generated — 0 means never generated yet. Shown in Studio next to
+    /// <see cref="PedagogyGeneratedAt"/> so a designer can tell an Engram
+    /// apart from an older draft (2026-11-04).</summary>
+    public int PedagogyVersion { get; set; }
+
+    /// <summary>UTC timestamp of this Engram's most recent successful
+    /// pedagogy (re)generation (2026-11-04).</summary>
+    public DateTime? PedagogyGeneratedAt { get; set; }
+
     public List<StructuredLearningStepDetailDto> Steps { get; set; } = [];
+
+    /// <summary>Real images extracted from the section's source material
+    /// (e.g. synchronized video frames, Purpose=SourceDocument) — shown
+    /// separately from AI-generated step illustrations so a designer can
+    /// see the actual source alongside the generated content (2026-11-05).</summary>
+    public List<StructuredLearningSourceIllustrationDto> SourceIllustrations { get; set; } = [];
+}
+
+public sealed class StructuredLearningSourceIllustrationDto
+{
+    public Guid StructuredLearningIllustrationId { get; set; }
+
+    public string? Caption { get; set; }
+
+    public double? VideoTimestampSeconds { get; set; }
 }
 
 public sealed class StructuredLearningDocumentDetailResponse
@@ -95,6 +134,19 @@ public sealed class StructuredLearningDocumentDetailResponse
     public Guid StructuredLearningDocumentId { get; set; }
 
     public string DocumentName { get; set; } = string.Empty;
+
+    public DateTime CreatedDate { get; set; }
+
+    /// <summary>External code linking this document back to its origin
+    /// (e.g. "USA-PUBLIC-FIRST_GRADE-MATH-ELEM1-MATH-01") — lets the UI
+    /// show how/where a course with no SubjectId/CapabilityDomainId (e.g.
+    /// courses handed off from the Family app's academic recommender) was
+    /// actually created. Null for documents not created from such a flow.</summary>
+    public string? SourceCapabilityCode { get; set; }
+
+    /// <summary>Content depth/seniority ("L100"/"L200"/"L300") the
+    /// designer selected at Step 1 — orthogonal to PedagogicalAudience.</summary>
+    public string? CourseLevel { get; set; }
 
     public bool IsGlobal { get; set; }
 
@@ -112,7 +164,34 @@ public sealed class StructuredLearningDocumentDetailResponse
 
     public string? ExecutiveSummary { get; set; }
 
+    /// <summary>Azure AI Video Indexer id of the source video this course
+    /// was generated from (via Engrams) — null for documents authored from
+    /// a PDF/process document. Lets the employee app tell apart a
+    /// video-origin course and show its <see cref="ExecutiveSummary"/>
+    /// (the video's summary) prominently.</summary>
+    public string? SourceVideoId { get; set; }
+
     public string? LanguageCode { get; set; }
+
+    /// <summary>"SoftSkill" or "TechnicalSkill".</summary>
+    public string? SkillType { get; set; }
+
+    public string? AuthorName { get; set; }
+
+    public string? AuthorCourseName { get; set; }
+
+    public DateTime? PresentedDate { get; set; }
+
+    public string? PresentedEntityType { get; set; }
+
+    public string? PresentedEntityName { get; set; }
+
+    /// <summary>Language the course TEXT/pedagogy was/should be generated
+    /// in, chosen explicitly at creation time — distinct from
+    /// <see cref="LanguageCode"/> above (which only reflects the language
+    /// actually used by the LAST pedagogy run, derived from
+    /// ConfigSnapshotJson, and is null until a run has completed).</summary>
+    public string? CourseLanguageCode { get; set; }
 
     public Guid? CoverIllustrationId { get; set; }
 
@@ -129,6 +208,8 @@ public sealed class StructuredLearningDocumentDetailResponse
     public string? ConfigSnapshotJson { get; set; }
 
     public int? MaxDeepDiveCardsPerNode { get; set; }
+
+    public bool UseScenedLecture { get; set; }
 
     public bool IncludeProductionStep { get; set; }
 
@@ -167,9 +248,17 @@ public sealed class StructuredLearningDocumentDetailResponse
 
     public bool IncludeWorkplaceApplicationStep { get; set; }
 
+    public bool IncludeHypothesisStep { get; set; }
+
     public string RecallGenerationMode { get; set; } = string.Empty;
 
     public string AssessmentGenerationMode { get; set; } = string.Empty;
+
+    /// <summary>Original Family recommendation (country/education system/
+    /// grade/subject/age-range) this document was created from — looked up
+    /// via <see cref="SourceCapabilityCode"/>. Null when the document wasn't
+    /// handed off from Family, or no matching recommendation is found.</summary>
+    public FamilyCapabilityOriginResponse? FamilyOrigin { get; set; }
 
     public List<StructuredLearningSectionDetailDto> Sections { get; set; } = [];
 }
@@ -181,10 +270,12 @@ public sealed class StructuredLearningDocumentDetailResponse
 public sealed class GetStructuredLearningDocumentFunction
 {
     private readonly HumanOsDbContext _dbContext;
+    private readonly FamilyCapabilityService _familyCapabilityService;
 
-    public GetStructuredLearningDocumentFunction(HumanOsDbContext dbContext)
+    public GetStructuredLearningDocumentFunction(HumanOsDbContext dbContext, FamilyCapabilityService familyCapabilityService)
     {
         _dbContext = dbContext;
+        _familyCapabilityService = familyCapabilityService;
     }
 
     [Function("GetStructuredLearningDocument")]
@@ -204,6 +295,22 @@ public sealed class GetStructuredLearningDocumentFunction
                 request, HttpStatusCode.NotFound, "DocumentNotFound", $"No document found with id '{documentId}'.", cancellationToken);
         }
 
+        var sectionIds = document.Sections.Select(s => s.StructuredLearningDocumentSectionId).ToList();
+        var sourceIllustrationsBySectionId = (await _dbContext.StructuredLearningIllustrations
+            .Where(i => sectionIds.Contains(i.StructuredLearningDocumentSectionId) && i.Purpose == StructuredLearningIllustrationPurpose.SourceDocument && !i.IsExcludedFromGeneration)
+            .OrderBy(i => i.CreatedDate)
+            .Select(i => new { i.StructuredLearningDocumentSectionId, i.StructuredLearningIllustrationId, i.Caption, i.VideoTimestampSeconds })
+            .ToListAsync(cancellationToken))
+            .GroupBy(i => i.StructuredLearningDocumentSectionId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(i => new StructuredLearningSourceIllustrationDto
+                {
+                    StructuredLearningIllustrationId = i.StructuredLearningIllustrationId,
+                    Caption = i.Caption,
+                    VideoTimestampSeconds = i.VideoTimestampSeconds,
+                }).ToList());
+
         var firstSectionId = document.Sections.OrderBy(s => s.SortOrder).Select(s => s.StructuredLearningDocumentSectionId).FirstOrDefault();
         var coverIllustrationId = firstSectionId == default
             ? null
@@ -217,6 +324,9 @@ public sealed class GetStructuredLearningDocumentFunction
         {
             StructuredLearningDocumentId = document.StructuredLearningDocumentId,
             DocumentName = document.DocumentName,
+            CreatedDate = document.CreatedDate,
+            SourceCapabilityCode = document.SourceCapabilityCode,
+            CourseLevel = document.CourseLevel,
             IsGlobal = document.IsGlobal,
             IsPublished = document.IsPublished,
             SubjectId = document.SubjectId,
@@ -225,7 +335,15 @@ public sealed class GetStructuredLearningDocumentFunction
             Category = document.Category,
             TargetSkill = document.TargetSkill,
             ExecutiveSummary = document.ExecutiveSummary,
+            SourceVideoId = document.SourceVideoId,
             LanguageCode = ResolveLanguageCode(document.ConfigSnapshotJson),
+            SkillType = document.SkillType,
+            AuthorName = document.AuthorName,
+            AuthorCourseName = document.AuthorCourseName,
+            PresentedDate = document.PresentedDate,
+            PresentedEntityType = document.PresentedEntityType,
+            PresentedEntityName = document.PresentedEntityName,
+            CourseLanguageCode = document.CourseLanguageCode,
             CoverIllustrationId = coverIllustrationId,
             PedagogicalAudience = document.PedagogicalAudience,
             PromptVersion = document.PromptVersion,
@@ -234,6 +352,7 @@ public sealed class GetStructuredLearningDocumentFunction
             PromptHash = document.PromptHash,
             ConfigSnapshotJson = document.ConfigSnapshotJson,
             MaxDeepDiveCardsPerNode = document.MaxDeepDiveCardsPerNode,
+            UseScenedLecture = document.UseScenedLecture,
             IncludeProductionStep = document.IncludeProductionStep,
             IncludeRecallStep = document.IncludeRecallStep,
             RecallItemsRequired = document.RecallItemsRequired,
@@ -250,8 +369,10 @@ public sealed class GetStructuredLearningDocumentFunction
             EnableQaProfessorVoice = document.EnableQaProfessorVoice,
             EnableDeepDiveAgentVoice = document.EnableDeepDiveAgentVoice,
             IncludeWorkplaceApplicationStep = document.IncludeWorkplaceApplicationStep,
+            IncludeHypothesisStep = document.IncludeHypothesisStep,
             RecallGenerationMode = document.RecallGenerationMode.ToString(),
             AssessmentGenerationMode = document.AssessmentGenerationMode.ToString(),
+            FamilyOrigin = await _familyCapabilityService.GetRecommendationOriginByCodeAsync(document.SourceCapabilityCode, cancellationToken),
             Sections = document.Sections
                 .OrderBy(s => s.SortOrder)
                 .Select(s => new StructuredLearningSectionDetailDto
@@ -270,10 +391,18 @@ public sealed class GetStructuredLearningDocumentFunction
                     ConfigSnapshotJson = s.ConfigSnapshotJson,
                     PedagogyStatus = s.PedagogyStatus.ToString(),
                     PedagogyErrorMessage = s.PedagogyErrorMessage,
+                    PedagogyVersion = s.PedagogyVersion,
+                    PedagogyGeneratedAt = s.PedagogyGeneratedAt,
                     KnowledgeGraphRootEntityName = s.KnowledgeGraphRootEntityName,
+                    VideoStartSeconds = s.VideoStartSeconds,
+                    VideoEndSeconds = s.VideoEndSeconds,
+                    IsInformationalOnly = s.IsInformationalOnly,
                     WebSearchSources = ExtractSourcesFromConfigSnapshot(s.ConfigSnapshotJson),
                     HasApiData = CheckHasApiData(s.ConfigSnapshotJson),
                     EstimatedMinutesToComplete = EstimateMinutesToComplete(s.Steps, document.RecallItemsRequired, document.AssessmentQuestionsPerRound),
+                    SourceIllustrations = sourceIllustrationsBySectionId.TryGetValue(s.StructuredLearningDocumentSectionId, out var sourceIllustrations)
+                        ? sourceIllustrations
+                        : [],
                     Steps = s.Steps
                         .OrderBy(st => st.SortOrder)
                         .Select(st => new StructuredLearningStepDetailDto
@@ -466,5 +595,50 @@ public sealed class GetStructuredLearningDocumentFunction
         }
         catch { }
         return false;
+    }
+}
+
+/// <summary>Lets a designer remove a raw extracted video frame
+/// (Purpose=SourceDocument) from a section before re-running "Restart
+/// engrams" (2026-11-06) — trims the per-frame LLM narration/enhancement
+/// pipeline down to only the frames worth keeping, speeding up the run.
+/// Soft delete: sets IsExcludedFromGeneration instead of removing the row,
+/// so the blob/metadata is preserved and the action is easy to reason
+/// about if ever needed again.</summary>
+public sealed class DeleteStructuredLearningSourceFrameFunction
+{
+    private readonly HumanOsDbContext _dbContext;
+
+    public DeleteStructuredLearningSourceFrameFunction(HumanOsDbContext dbContext)
+    {
+        _dbContext = dbContext;
+    }
+
+    [Function("DeleteStructuredLearningSourceFrame")]
+    public async Task<HttpResponseData> RunAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "studio/structured-learning/sections/{sectionId:guid}/source-frames/{illustrationId:guid}")]
+        HttpRequestData request,
+        Guid sectionId,
+        Guid illustrationId,
+        CancellationToken cancellationToken)
+    {
+        var illustration = await _dbContext.StructuredLearningIllustrations
+            .FirstOrDefaultAsync(
+                i => i.StructuredLearningIllustrationId == illustrationId
+                    && i.StructuredLearningDocumentSectionId == sectionId
+                    && i.Purpose == StructuredLearningIllustrationPurpose.SourceDocument,
+                cancellationToken);
+
+        if (illustration is null)
+        {
+            return await FunctionResponseFactory.ErrorResponseAsync(
+                request, HttpStatusCode.NotFound, "SourceFrameNotFound",
+                $"No source frame found with id '{illustrationId}' in section '{sectionId}'.", cancellationToken);
+        }
+
+        illustration.IsExcludedFromGeneration = true;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await FunctionResponseFactory.SuccessResponseAsync(request, new { }, HttpStatusCode.OK, cancellationToken);
     }
 }

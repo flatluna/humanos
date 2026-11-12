@@ -69,7 +69,7 @@ import type { GamificationRewardBundleDto } from '@/features/gamification/types'
 
 const STEP_ORDER = ['Hypothesis', 'Teaching', 'DeepDive', 'Production', 'Recall', 'Assessment'];
 const GATED_STEP_TYPES = new Set(['DeepDive', 'Recall', 'Assessment']);
-const RECALL_MAX_ATTEMPTS = 5;
+const RECALL_MAX_ATTEMPTS = 3;
 
 const STEP_META: Record<string, { labelEn: string; labelEs: string; Icon: typeof Lightbulb }> = {
   Hypothesis: { labelEn: 'Before you start', labelEs: 'Antes de iniciar', Icon: Lightbulb },
@@ -1135,7 +1135,10 @@ function StepContent({
   showWorkplaceApplicationStep: boolean;
   onRegressToTeaching: () => void;
 }) {
-  const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('videos');
+  // Every Teaching step should open directly on the recorded lecture/scene
+  // player tab (2026-11-09) — it's the primary content; "Videos" (a separate,
+  // optional pre-lecture clip set) and "Q&A" are secondary, opt-in tabs.
+  const [teachingSubStep, setTeachingSubStep] = useState<'listen' | 'videos' | 'qa'>('listen');
   const [qaMode, setQaMode] = useState<'voice' | 'text'>(enableQaProfessorVoice ? 'voice' : 'text');
   const [isAudioFinished, setIsAudioFinished] = useState(false);
   const [audioProgressPercent, setAudioProgressPercent] = useState(0);
@@ -1176,7 +1179,7 @@ function StepContent({
     if (step.StepType !== 'Teaching' || !step.StepDataJson) return [];
     try {
       const parsed = JSON.parse(step.StepDataJson) as {
-        Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+        Scenes?: { SceneIndex: number; Text: string; IllustrationId: string | null; AlternateIllustrationId?: string | null; AudioStoragePath: string | null }[];
       };
       const scenes = parsed.Scenes ?? [];
       const hasRealMedia = scenes.some((s) => s.IllustrationId || s.AudioStoragePath);
@@ -1186,6 +1189,42 @@ function StepContent({
     }
   }, [step.StepType, step.StepDataJson]);
   const hasScenes = scenesForPlayer.length > 0;
+  // Tracks which real-frame scene is currently playing (2026-11-05) so the
+  // "Learn" text block below can show ONLY that scene's own narration chunk
+  // instead of always rendering the full step.Content — keeping image,
+  // audio, and visible text perfectly in sync as the learner moves through
+  // an Engram's multiple real video frames.
+  const [activeSceneIndex, setActiveSceneIndex] = useState(0);
+  const teachingDisplayContent = hasScenes
+    ? (scenesForPlayer[activeSceneIndex]?.Text || step.Content)
+    : step.Content;
+
+  // Real source-document image(s) (2026-11-03) — the actual figure(s) extracted
+  // from the HumanOS process document for this Engram, shown alongside the
+  // professor's own generated illustration/scenes (never replacing them).
+  const sourceImageIds = useMemo(() => {
+    if (step.StepType !== 'Teaching' || !step.StepDataJson) return [];
+    try {
+      const parsed = JSON.parse(step.StepDataJson) as { SourceImageIds?: string[] };
+      return parsed.SourceImageIds ?? [];
+    } catch {
+      return [];
+    }
+  }, [step.StepType, step.StepDataJson]);
+
+  // Mirrors the reachability of the ternary's final/"listen" branch below: the
+  // QA and Videos branches render their own full layouts, so the sticky-image
+  // + scrolling-text grid only applies when neither of those matches (this is
+  // also true whenever hasVideos is false, even if teachingSubStep is still
+  // its default 'videos' value — there's no Videos tab to show in that case).
+  const reachesListenFragment =
+    !(step.StepType === 'Teaching' && teachingSubStep === 'qa' && showQaProfessorStep) &&
+    !(step.StepType === 'Teaching' && teachingSubStep === 'videos' && hasVideos);
+  // Keeps the lesson illustration pinned in view (sticky, left column) while the
+  // lecture text scrolls independently on the right — only for the no-scenes
+  // "listen" reading experience; the scene player and other step types keep
+  // their existing single-column layout untouched.
+  const isListenLayout = step.StepType === 'Teaching' && !hasScenes && reachesListenFragment;
 
   const canGoToListen = areVideosFinished;
   // Q&A unlocks as soon as the recorded lecture tab is reached â€” no need
@@ -1206,7 +1245,7 @@ function StepContent({
 
   return (
     <div className="space-y-4">
-      {step.StepType === 'Teaching' && !hasScenes && (
+      {step.StepType === 'Teaching' && !hasScenes && !reachesListenFragment && (
         <StepIllustration stepDataJson={step.StepDataJson} />
       )}
       {step.StepType === 'Teaching' && (
@@ -1493,6 +1532,7 @@ function StepContent({
               scenes={scenesForPlayer}
               isAudioFinished={isAudioFinished}
               isEn={isEn}
+              onSceneChange={setActiveSceneIndex}
               onAllScenesFinished={() => {
                 setIsAudioFinished(true);
                 setAudioProgressPercent(100);
@@ -1502,6 +1542,34 @@ function StepContent({
             />
           )}
 
+          {step.StepType === 'Teaching' && !teachingShowsVideo && sourceImageIds.length > 0 && (
+            <div className="mt-4 space-y-2 rounded-2xl border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+              <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {isEn ? 'Real figure(s) from the source document' : 'Figura(s) real(es) del documento fuente'}
+              </span>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {sourceImageIds.map((id, i) => (
+                  <ZoomableIllustration
+                    key={id}
+                    illustrationId={id}
+                    alt={`${isEn ? 'Source figure' : 'Figura fuente'} ${i + 1}`}
+                    className="h-auto max-h-64 w-full rounded-xl object-contain bg-slate-100 dark:bg-black/20"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className={isListenLayout ? 'md:grid md:grid-cols-2 md:items-start md:gap-6' : undefined}>
+          {isListenLayout && (
+            <div className="md:sticky md:top-20 md:self-start">
+              <StepIllustration
+                stepDataJson={step.StepDataJson}
+                className="h-64 sm:h-80 md:h-[32rem] w-full rounded-xl bg-slate-950/50 object-contain object-center"
+              />
+            </div>
+          )}
+          <div className="min-w-0 space-y-4">
           {step.StepType === 'Teaching' && !teachingShowsVideo && hasAudio && !hasScenes && (
             <div className="flex flex-col gap-2 rounded-2xl border border-emerald-300 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
               <div className="flex items-center justify-between">
@@ -1586,7 +1654,10 @@ function StepContent({
 
               {step.StepType === 'Teaching' && (
                 <>
-                  <RichStepContent content={step.Content} />
+                  {/* Scene text is rendered inside SyncedLectureScenePlayer itself (next
+                      to its own image/audio) when there are Scenes — avoids showing the
+                      narration twice (2026-11-09, mirrors capabilitystudio's demo view). */}
+                  {!hasScenes && <RichStepContent content={teachingDisplayContent} />}
                   <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/5 dark:bg-white/[0.02]">
                     <span className="text-xs text-slate-500 dark:text-slate-400">
                       {isEn ? 'You can move on whenever you like' : 'Puedes avanzar cuando quieras'}
@@ -1649,6 +1720,8 @@ function StepContent({
                 />
               )}
             </div>
+          </div>
+          </div>
           </div>
         </>
       )}
@@ -1764,20 +1837,28 @@ interface DeepDiveCard {
  * each scene gets its OWN short audio clip + OWN illustration (see
  * StructuredLearningProfessorLectureService), so swapping the image exactly when
  * the current clip ends gives perfect sync with zero timestamp alignment needed.
- * Auto-advances to the next scene on `onEnded`; manual Prev/Next also available. */
+ * Auto-advances to the next scene on `onEnded`; manual Prev/Next also available.
+ * Two-column "big image / scrolling text" layout (2026-11-09) — ported from
+ * capabilitystudio's demo (read-only) view of this same player: the scene's
+ * illustration stays large and pinned on the left, while the narration text +
+ * audio controls live in a narrower, independently scrollable column on the
+ * right (editing-only affordances like "generate alternate illustration" /
+ * "delete scene" are Studio-only and intentionally not ported here). */
 function SyncedLectureScenePlayer({
   sectionId,
   scenes,
   isAudioFinished,
   isEn,
+  onSceneChange,
   onAllScenesFinished,
   onContinue,
   showContinue,
 }: {
   sectionId?: string;
-  scenes: { SceneIndex: number; Text: string; IllustrationId: string | null; AudioStoragePath: string | null }[];
+  scenes: { SceneIndex: number; Text: string; IllustrationId: string | null; AlternateIllustrationId?: string | null; AudioStoragePath: string | null }[];
   isAudioFinished: boolean;
   isEn: boolean;
+  onSceneChange?: (index: number) => void;
   onAllScenesFinished: () => void;
   onContinue: () => void;
   showContinue: boolean;
@@ -1785,6 +1866,11 @@ function SyncedLectureScenePlayer({
   const [sceneIndex, setSceneIndex] = useState(0);
   const scene = scenes[sceneIndex];
   const isLastScene = sceneIndex === scenes.length - 1;
+
+  useEffect(() => {
+    onSceneChange?.(sceneIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneIndex]);
 
   const audioUrl = `http://localhost:7071/api/studio/structured-learning/sections/${sectionId}/audio?scene=${sceneIndex}&v=${encodeURIComponent(scene?.AudioStoragePath ?? String(sceneIndex))}`;
 
@@ -1803,58 +1889,100 @@ function SyncedLectureScenePlayer({
   if (!scene) return null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-300 bg-emerald-50/70 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Volume2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-            {isEn ? 'Pre-recorded Neural Lecture' : 'Clase Magistral con Voz Neuronal'}
-          </span>
-        </div>
-        <span className="rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-500/20 dark:border-emerald-500/40 dark:text-emerald-300">
-          {sceneIndex + 1} / {scenes.length}
-        </span>
+    <div className="grid gap-4 lg:grid-cols-[3fr_2fr] lg:items-start rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4">
+      <div className="lg:sticky lg:top-20">
+        {(scene.IllustrationId || scene.AlternateIllustrationId) && (
+          // When there are two images (real video frame + AI-generated
+          // illustration), stack them one above the other — matching
+          // Studio's demo/edit scene player — instead of side by side, so
+          // each stays as large as possible.
+          <div className={scene.AlternateIllustrationId ? 'flex flex-col gap-2' : undefined}>
+            {scene.IllustrationId && (
+              <ZoomableIllustration
+                illustrationId={scene.IllustrationId}
+                alt=""
+                className={
+                  scene.AlternateIllustrationId
+                    ? 'h-[42vh] sm:h-[44vh] lg:h-[46vh] w-full rounded-xl bg-slate-950/50 object-contain object-center'
+                    : 'h-[60vh] sm:h-[70vh] lg:h-[82vh] w-full rounded-xl bg-slate-950/50 object-contain object-center'
+                }
+              />
+            )}
+            {scene.AlternateIllustrationId && (
+              <div className="relative">
+                <ZoomableIllustration
+                  illustrationId={scene.AlternateIllustrationId}
+                  alt=""
+                  className="h-[42vh] sm:h-[44vh] lg:h-[46vh] w-full rounded-xl bg-slate-950/50 object-contain object-center"
+                />
+                <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-violet-500/80 px-2 py-0.5 text-[10px] font-semibold text-white">
+                  <Sparkles className="h-3 w-3" /> {isEn ? 'AI-generated illustration' : 'Ilustración generada por IA'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {scene.IllustrationId && (
-        <ZoomableIllustration
-          illustrationId={scene.IllustrationId}
-          alt=""
-          className="h-72 w-full rounded-xl bg-slate-100 dark:bg-slate-950/50 object-contain object-center"
-        />
-      )}
+      <div className="flex flex-col gap-3 lg:h-[82vh]">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Volume2 className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+            <span className="text-sm font-semibold text-sky-800 dark:text-sky-300 truncate">
+              {isEn ? 'Pre-recorded Neural Lecture' : 'Clase Magistral con Voz Neuronal'}
+            </span>
+          </div>
+          <span className="shrink-0 rounded-full bg-sky-100 border border-sky-300 px-2.5 py-0.5 text-[11px] font-medium text-sky-800 dark:bg-sky-500/20 dark:border-sky-500/40 dark:text-sky-300">
+            {sceneIndex + 1} / {scenes.length}
+          </span>
+        </div>
 
-      <audio key={audioUrl} controls autoPlay className="w-full h-10 rounded-lg accent-emerald-500" src={audioUrl} onEnded={goNext}>
-        {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducción de audio.'}
-      </audio>
-
-      <div className="flex items-center justify-between pt-1 text-xs text-slate-500 dark:text-slate-400 border-t border-emerald-200 dark:border-emerald-500/20">
-        <div className="flex items-center gap-3">
+        {/* Prev/Next pinned right at the top of this column — immediately
+            visible without scrolling past the (potentially long) narration
+            text below. */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={goPrevious}
             disabled={sceneIndex === 0}
-            className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-700 dark:text-sky-200 hover:bg-sky-500/20 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ← {isEn ? 'Back' : 'Atrás'}
           </button>
-          <button type="button" onClick={goNext} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">
+          <button
+            type="button"
+            onClick={goNext}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/50 bg-sky-500/20 px-4 py-2.5 text-sm font-semibold text-sky-900 dark:text-sky-100 hover:bg-sky-500/30"
+          >
             {isLastScene ? (isEn ? 'Finish' : 'Terminar') : (isEn ? 'Next' : 'Siguiente')} →
           </button>
         </div>
+
+        {scene.Text && (
+          // Only the narration text scrolls (flex-1 + overflow-y-auto); the
+          // audio player and prev/next/continue controls stay pinned in
+          // view at all times, matching the fixed image on the left.
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+            <RichStepContent content={scene.Text} />
+          </div>
+        )}
+
+        <audio key={audioUrl} controls autoPlay className="w-full h-10 rounded-lg accent-sky-500" src={audioUrl} onEnded={goNext}>
+          {isEn ? 'Your browser does not support audio playback.' : 'Tu navegador no soporta reproducción de audio.'}
+        </audio>
 
         {isAudioFinished ? (
           showContinue ? (
             <button
               type="button"
               onClick={onContinue}
-              className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-500/30 hover:bg-sky-400 cursor-pointer transition-colors"
             >
               <span>{isEn ? 'Go to Q&A' : 'Ir a Q&A'}</span>
-              <ArrowRight className="h-3.5 w-3.5" />
+              <ArrowRight className="h-4 w-4" />
             </button>
           ) : (
-            <span className="text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-1">
+            <span className="text-sky-700 dark:text-sky-300 font-medium flex items-center gap-1 pt-1 text-xs border-t border-sky-500/20">
               <Check className="h-3.5 w-3.5" /> {isEn ? 'Lecture completed' : 'Clase terminada'}
             </span>
           )
@@ -1868,7 +1996,7 @@ function SyncedLectureScenePlayer({
   );
 }
 
-function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
+function StepIllustration({ stepDataJson, className }: { stepDataJson: string | null; className?: string }) {
   if (!stepDataJson) return null;
   let illustrationId: string | null = null;
   try {
@@ -1878,7 +2006,13 @@ function StepIllustration({ stepDataJson }: { stepDataJson: string | null }) {
   }
   if (!illustrationId) return null;
 
-  return <ZoomableIllustration illustrationId={illustrationId} alt="" className="h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center" />;
+  return (
+    <ZoomableIllustration
+      illustrationId={illustrationId}
+      alt=""
+      className={className ?? 'h-72 w-full rounded-xl bg-slate-950/50 object-contain object-center'}
+    />
+  );
 }
 
 async function downloadImageFile(url: string, filename = 'lesson-illustration.png') {

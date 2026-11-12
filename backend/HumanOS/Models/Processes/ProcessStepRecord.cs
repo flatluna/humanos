@@ -50,6 +50,18 @@ public sealed class ProcessStepRecord
     /// </summary>
     public string? SourcePagesJson { get; set; }
 
+    /// <summary>Verbatim (or near-verbatim) excerpt of the source document covering this step's
+    /// instructions — the ONLY input later used for per-step deep analysis and for Studio course
+    /// generation (NOT the raw PDF). Persisted here (2026-11-03) so it survives after "Approve &amp;
+    /// Save" — it used to live ONLY in blob storage and was lost once the process was saved to SQL.</summary>
+    public string? SourceContent { get; set; }
+
+    /// <summary>JSON-serialized list of <see cref="HumanOS.Contracts.ProcessDocuments.ProcessStepImage"/>
+    /// — the REAL images (screenshots/diagrams/forms) extracted from the source document's page(s)
+    /// covering this step (not AI-generated), so Studio can show the actual figure to learners.
+    /// Persisted here (2026-11-03) for the same reason as <see cref="SourceContent"/> above.</summary>
+    public string? StepImagesJson { get; set; }
+
     public bool IsExcluded { get; set; }
 
     public List<ProcessStepSkillRecord> Skills { get; set; } = [];

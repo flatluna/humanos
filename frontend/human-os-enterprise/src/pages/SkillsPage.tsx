@@ -70,6 +70,13 @@ function buildGenerateCourseUrl(skill: SkillDto, user: { oid: string; tid: strin
   if (skill.description) params.set('description', skill.description);
   params.set('category', skill.category);
   params.set('targetSkill', skill.name);
+  if (skill.sourceProcessDepartmentName) {
+    params.set('department', skill.sourceProcessDepartmentName);
+  }
+  if (skill.sourceProcessDocumentId) {
+    params.set('processDocumentId', skill.sourceProcessDocumentId);
+    params.set('organizationId', skill.tenantId);
+  }
   if (skill.documentStoragePath) {
     params.set('hasDoc', 'true');
     params.set('docFileName', skill.documentFileName || 'document.pdf');
@@ -135,6 +142,7 @@ export function SkillsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchAllCategories, setSearchAllCategories] = useState(false);
   const [courseFilter, setCourseFilter] = useState<CourseFilter>('all');
+  const [skillToDelete, setSkillToDelete] = useState<SkillDto | null>(null);
 
   const pathSegment = location.pathname.split('/').filter(Boolean).pop();
   const activeCategory: CategoryTabId = isCategoryTabId(pathSegment) ? pathSegment : 'job-skills';
@@ -177,10 +185,11 @@ export function SkillsPage() {
 
       // Course / Role links filter
       const roles = skill.jobRoles ?? [];
+      const isEffectivelyLinked = roles.length > 0 || skill.assignmentScope === 'COMPANY_WIDE_ESSENTIAL';
       if (courseFilter === 'with-course' && !skill.matchedCapabilityId) return false;
       if (courseFilter === 'no-course' && skill.matchedCapabilityId) return false;
-      if (courseFilter === 'linked' && roles.length === 0) return false;
-      if (courseFilter === 'unlinked' && roles.length > 0) return false;
+      if (courseFilter === 'linked' && !isEffectivelyLinked) return false;
+      if (courseFilter === 'unlinked' && isEffectivelyLinked) return false;
 
       // Text search matching
       if (!term) return true;
@@ -232,8 +241,13 @@ export function SkillsPage() {
   const ActiveIcon = activeTab.icon;
 
   const handleDelete = (skill: SkillDto) => {
-    if (window.confirm(t('common.confirmDelete', { name: skill.name }) || `Delete "${skill.name}"?`)) {
-      deleteMutation.mutate(skill.skillId);
+    setSkillToDelete(skill);
+  };
+
+  const confirmDelete = () => {
+    if (skillToDelete) {
+      deleteMutation.mutate(skillToDelete.skillId);
+      setSkillToDelete(null);
     }
   };
 
@@ -451,10 +465,21 @@ export function SkillsPage() {
                     )}
 
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {skill.jobRoles.length === 0 ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-400 dark:bg-white/10 dark:text-white/30">
-                          {t('skills.noLinkedRoles')}
+                      {skill.sourceProcessDepartmentName && (
+                        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                          {t('skills.sourceProcessDepartment', { department: skill.sourceProcessDepartmentName })}
                         </span>
+                      )}
+                      {skill.jobRoles.length === 0 ? (
+                        skill.assignmentScope === 'COMPANY_WIDE_ESSENTIAL' ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            {t('skills.appliesToAllEmployees')}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-400 dark:bg-white/10 dark:text-white/30">
+                            {t('skills.noLinkedRoles')}
+                          </span>
+                        )
                       ) : (
                         skill.jobRoles.map((role) => (
                           <span
@@ -559,6 +584,40 @@ export function SkillsPage() {
           </div>
         )}
       </section>
+
+      {skillToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl dark:bg-slate-800">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {t('common.confirmDelete', { name: skillToDelete.name })}
+                </h3>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSkillToDelete(null)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:text-white/80 dark:hover:bg-white/10"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleteMutation.isPending}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-red-500 disabled:opacity-60"
+              >
+                {deleteMutation.isPending ? t('common.saving') : t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

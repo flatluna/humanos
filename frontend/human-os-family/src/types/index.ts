@@ -6,11 +6,22 @@ export type FamilyRole = 'father' | 'mother' | 'teen_daughter' | 'son' | 'grandm
 export interface FamilyMember {
   id: string;
   name: string;
+  email?: string;
   preferredName: string;
   role: FamilyRole;
   roleTitleEs: string;
   roleTitleEn: string;
   age: number;
+  /** true si por regla de edad (12+) este integrante tiene/puede tener su propio user id y password en MSAL. */
+  requiresOwnAccount?: boolean;
+  /** true si ya existe una cuenta MSAL vinculada (AzureOid) para este integrante. */
+  hasLinkedAccount?: boolean;
+  /** Azure object id (OID) de la cuenta MSAL vinculada, si existe. */
+  azureOid?: string | null;
+  /** Email/UPN real con el que se creó la cuenta MSAL vinculada (puede diferir de `email`). */
+  azureLoginEmail?: string | null;
+  /** Rol de autorización de plataforma: "AdminEngrams" | "AdminFamily" | "User". */
+  platformRole?: 'AdminEngrams' | 'AdminFamily' | 'User';
   avatarBg: string;
   initial: string;
   educationLevelEs: string;

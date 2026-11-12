@@ -15,6 +15,10 @@ export interface StudioUser {
   /** Human-readable name of the app that launched Studio (e.g. "NGO
    *  Automate") — drives the dynamic "Back to X" label in Layout.tsx. */
   sourceApplication: string | null;
+  /** Which parent app launched Studio — "Enterprise" | "Family" | "Consumer"
+   *  (null for legacy sessions). See components/Layout.tsx for how this
+   *  hides app-type-specific CTAs. */
+  sourceAppType: string | null;
   /** URL of the parent app that launched Studio — drives the "back" button
    *  in Layout.tsx instead of a hardcoded Human OS URL. */
   returnUrl: string | null;
@@ -46,6 +50,7 @@ function toStudioUser(session: LaunchSession): StudioUser {
     tenantId: claims.tenantId,
     tenantName: claims.tenantName,
     sourceApplication: claims.sourceApplication || null,
+    sourceAppType: claims.sourceAppType || null,
     returnUrl: claims.returnUrl || null,
   };
 }

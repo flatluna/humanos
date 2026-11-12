@@ -47,6 +47,31 @@ public sealed class SkillResponse
     public string? MatchedCourseType { get; set; }
 
     public IReadOnlyList<SkillMatchedCourseResponse> MatchedCourses { get; set; } = [];
+
+    /// <summary>Set only for skills created from a real internet-sourced course
+    /// recommendation (Step 4 "Link to Process" on an internet gap) — the
+    /// original course title, provider and URL preserved for reference.</summary>
+    public string? SourceCourseTitle { get; set; }
+
+    public string? SourceCourseProvider { get; set; }
+
+    public string? SourceCourseUrl { get; set; }
+
+    /// <summary>"Index extracted from the course page" outline modules captured
+    /// at save time, if any were available (see Skill.SourceOutlineJson).</summary>
+    public IReadOnlyList<HumanOS.Contracts.ProcessDocuments.CourseOutlineModule>? SourceOutlineModules { get; set; }
+
+    public string? SourceOutlineSource { get; set; }
+
+    /// <summary>Set only when this Skill represents an ENTIRE business process saved as a
+    /// "department-processes" capability (Step 4 "Guardar en Catálogo de Capabilities"), not an
+    /// individual skill gap — points back at the ProcessDocument so Studio can read its original
+    /// PDF + chapter/step outline.</summary>
+    public Guid? SourceProcessDocumentId { get; set; }
+
+    /// <summary>The department that authored the source process (e.g. "Finanzas"), resolved from
+    /// ProcessDocument.DepartmentId — only set alongside <see cref="SourceProcessDocumentId"/>.</summary>
+    public string? SourceProcessDepartmentName { get; set; }
 }
 
 public sealed class SkillMatchedCourseResponse
@@ -85,6 +110,28 @@ public sealed class SkillSummaryResponse
     public Guid SkillId { get; set; }
 
     public string Name { get; set; } = null!;
+
+    public int JobRoleCount { get; set; }
+}
+
+/// <summary>One business process this Skill is linked to via a saved
+/// ProcessSkillRequirement (Step 4 "Link to Process" of the whole-process
+/// Learning Recommendation wizard) — the reverse of ProcessSkillRequirement's
+/// MatchedSkillId FK. Powers the Skill catalog's "Used in these processes"
+/// panel so HR can see the impact of editing/deleting a catalog skill.</summary>
+public sealed class SkillLinkedProcessResponse
+{
+    public Guid ProcessDocumentId { get; set; }
+
+    public Guid ProcessSkillRequirementId { get; set; }
+
+    public string ProcessTitle { get; set; } = null!;
+
+    public bool IsRequired { get; set; }
+
+    public bool AppliesToAllDepartments { get; set; }
+
+    public int DepartmentCount { get; set; }
 
     public int JobRoleCount { get; set; }
 }

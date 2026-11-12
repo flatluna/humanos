@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import {
   X,
   CheckCircle2,
-  ArrowRight,
   Bot,
   Database,
   Layers,
@@ -10,10 +9,13 @@ import {
   Heart,
   Briefcase,
   Building2,
-  TableIcon,
   Search,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import type { ProcessDocumentStructureDto, WorkStepRequirementsAnalysisResultDto } from '@/api/processDocumentsApi';
+import { getProcessSkillRequirements } from '@/api/processDocumentsApi';
+import { useAuth } from '@/auth/AuthContext';
+import { getSkills } from '@/api/skillsApi';
 
 export interface StepSummaryStats {
   stepId: string;
@@ -54,7 +56,7 @@ interface GroupedSkillItem {
   category: 'technical' | 'soft' | 'business' | 'dept' | 'hr' | 'ai';
   categoryLabel: string;
   isAi: boolean;
-  sourceSteps: Array<{ stepId: string; stepNumber: string; stepName: string }>;
+  inCatalog: boolean;
 }
 
 export function ProcessLearningSummaryModal({
@@ -62,87 +64,73 @@ export function ProcessLearningSummaryModal({
   onClose,
   structure,
   stepSummaries,
-  stepRequirements = {},
-  initialTab = 'byStep',
-  onOpenStep,
   isSaved = false,
 }: ProcessLearningSummaryModalProps) {
-  const [activeTab, setActiveTab] = useState<'byStep' | 'byType'>(initialTab);
+  const { user } = useAuth();
+  const effectiveTenantId = user?.tenantId || user?.tid;
+  const documentId = structure.document_id;
+
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'technical' | 'ai' | 'soft' | 'business' | 'processes'>('all');
   const [skillSearch, setSkillSearch] = useState('');
 
+  // Real skills actually saved to the Catalog for this process (Step 4), not the raw/stale AI analysis.
+  const { data: savedProcessSkills = [] } = useQuery({
+    queryKey: ['process-skill-requirements', documentId],
+    queryFn: () => (documentId ? getProcessSkillRequirements(documentId) : Promise.resolve([])),
+    enabled: Boolean(documentId) && isOpen,
+  });
+
+  const { data: catalogSkills = [] } = useQuery({
+    queryKey: ['skills', effectiveTenantId],
+    queryFn: () => (effectiveTenantId ? getSkills(effectiveTenantId) : Promise.resolve([])),
+    enabled: Boolean(effectiveTenantId) && isOpen,
+  });
+
+  const catalogSkillById = useMemo(() => {
+    const map = new Map<string, (typeof catalogSkills)[number]>();
+    for (const s of catalogSkills) {
+      if (s.skillId) map.set(s.skillId.toLowerCase(), s);
+    }
+    return map;
+  }, [catalogSkills]);
+
   const totalSteps = stepSummaries.length;
   const analyzedSteps = stepSummaries.filter((s) => s.hasRequirements).length;
-  const totalSkills = stepSummaries.reduce((acc, s) => acc + (s.totalSkillsCount || 0), 0);
-  const totalAiSkills = stepSummaries.reduce((acc, s) => acc + (s.aiCount || 0), 0);
-  const totalTools = stepSummaries.reduce((acc, s) => acc + (s.toolsCount || 0), 0);
 
-  // Group all skills across the whole process by type/category
+  const categoryMeta = (
+    category: string,
+    isAiSkill: boolean,
+  ): { category: GroupedSkillItem['category']; label: string } => {
+    if (isAiSkill || category === 'ai') return { category: 'ai', label: 'AI Skills (Habilidades de IA)' };
+    const normalized = category.toLowerCase();
+    if (normalized === 'technical' || normalized === 'job') return { category: 'technical', label: 'Technical Skills (Habilidades Técnicas)' };
+    if (normalized === 'soft') return { category: 'soft', label: 'Soft Skills (Habilidades Blandas)' };
+    if (normalized === 'business') return { category: 'business', label: 'Business Skills (Negocio y Estrategia)' };
+    if (normalized === 'hr') return { category: 'hr', label: 'HR Processes (Políticas y RRHH)' };
+    return { category: 'dept', label: 'Department Processes (Procesos Operativos)' };
+  };
+
+  // Group the actually-saved process skills by type/category (single source of truth, matches the main matrix).
   const groupedSkills = useMemo(() => {
-    const map = new Map<string, GroupedSkillItem>();
-
-    for (const [stepId, reqs] of Object.entries(stepRequirements)) {
-      if (!reqs?.requiredSkillAreas) continue;
-      const stepMeta = {
-        stepId,
-        stepNumber: reqs.stepNumber || '',
-        stepName: reqs.workStep || stepId,
-      };
-
-      const register = (
-        name: string,
-        reason: string,
-        category: 'technical' | 'soft' | 'business' | 'dept' | 'hr' | 'ai',
-        label: string,
-        isAi: boolean,
-      ) => {
-        if (!name?.trim()) return;
-        const key = `${category}:${name.trim().toLowerCase()}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            name: name.trim(),
-            reason: reason || 'Requerimiento identificado para la operación',
-            category,
-            categoryLabel: label,
-            isAi,
-            sourceSteps: [stepMeta],
-          });
-        } else {
-          const existing = map.get(key)!;
-          if (!existing.sourceSteps.some((s) => s.stepId === stepId)) {
-            existing.sourceSteps.push(stepMeta);
-          }
-        }
-      };
-
-      // Technical skills
-      for (const s of reqs.requiredSkillAreas.technicalSkills || []) {
-        register(s.name, s.reason, 'technical', 'Technical Skills (Habilidades Técnicas)', false);
-      }
-      // AI skills (Mandatory)
-      for (const s of reqs.requiredSkillAreas.aiSkills || []) {
-        register(s.name, s.reason, 'ai', 'AI Skills (Habilidades de IA)', true);
-      }
-      // Soft skills
-      for (const s of reqs.requiredSkillAreas.softSkills || []) {
-        register(s.name, s.reason, 'soft', 'Soft Skills (Habilidades Blandas)', false);
-      }
-      // Business skills
-      for (const s of reqs.requiredSkillAreas.businessSkills || []) {
-        register(s.name, s.reason, 'business', 'Business Skills (Negocio y Estrategia)', false);
-      }
-      // Department processes
-      for (const s of reqs.requiredSkillAreas.departmentProcesses || []) {
-        register(s.name, s.reason, 'dept', 'Department Processes (Procesos Operativos)', false);
-      }
-      // HR processes
-      for (const s of reqs.requiredSkillAreas.hrProcesses || []) {
-        register(s.name, s.reason, 'hr', 'HR Processes (Políticas y RRHH)', false);
-      }
+    const items: GroupedSkillItem[] = [];
+    for (const req of savedProcessSkills) {
+      const matched = req.matchedSkillId ? catalogSkillById.get(req.matchedSkillId.toLowerCase()) : undefined;
+      const { category, label } = categoryMeta(req.category, req.isAiSkill);
+      items.push({
+        name: matched?.name || req.skillName,
+        reason: req.reason || 'Requerimiento identificado para la operación',
+        category,
+        categoryLabel: label,
+        isAi: req.isAiSkill,
+        inCatalog: Boolean(matched),
+      });
     }
+    return items;
+  }, [savedProcessSkills, catalogSkillById]);
 
-    return Array.from(map.values());
-  }, [stepRequirements]);
+  const totalSkills = groupedSkills.length;
+  const totalAiSkills = groupedSkills.filter((s) => s.isAi).length;
+  const totalTools = stepSummaries.reduce((acc, s) => acc + (s.toolsCount || 0), 0);
 
   // Counts per category
   const categoryCounts = useMemo(() => {
@@ -169,11 +157,7 @@ export function ProcessLearningSummaryModal({
       // Text search
       if (skillSearch.trim()) {
         const q = skillSearch.toLowerCase();
-        return (
-          s.name.toLowerCase().includes(q) ||
-          s.reason.toLowerCase().includes(q) ||
-          s.sourceSteps.some((st) => st.stepName.toLowerCase().includes(q) || st.stepNumber.includes(q))
-        );
+        return s.name.toLowerCase().includes(q) || s.reason.toLowerCase().includes(q);
       }
 
       return true;
@@ -247,36 +231,14 @@ export function ProcessLearningSummaryModal({
           </div>
         </div>
 
-        {/* Navigation Tabs (Por Tipo de Skill vs Por Paso) */}
+        {/* Filters (category pills + search) */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/50 px-5 py-2.5 dark:border-white/10 dark:bg-white/[0.02]">
-          <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold shadow-xs dark:border-white/10 dark:bg-white/5">
-            <button
-              type="button"
-              onClick={() => setActiveTab('byType')}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 transition-colors ${
-                activeTab === 'byType'
-                  ? 'bg-brand-600 text-white font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white'
-              }`}
-            >
-              <GraduationCap className="h-4 w-4" />
-              <span>Por Tipo de Skill ({groupedSkills.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('byStep')}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 transition-colors ${
-                activeTab === 'byStep'
-                  ? 'bg-brand-600 text-white font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-white/70 dark:hover:text-white'
-              }`}
-            >
-              <TableIcon className="h-4 w-4" />
-              <span>Por Paso de Trabajo ({totalSteps})</span>
-            </button>
+          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold shadow-xs dark:border-white/10 dark:bg-white/5">
+            <GraduationCap className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+            <span>Skills Required ({groupedSkills.length})</span>
           </div>
 
-          {activeTab === 'byType' && (
+          {(
             <div className="flex flex-wrap items-center gap-2">
               {/* Category Pills Filter */}
               <div className="flex items-center gap-1 overflow-x-auto text-[11px]">
@@ -363,8 +325,8 @@ export function ProcessLearningSummaryModal({
           )}
         </div>
 
-        {/* Content View: Tab 1 (Por Tipo de Skill) */}
-        {activeTab === 'byType' && (
+        {/* Content: Skills Required (grouped by type) */}
+        {(
           <div className="flex-1 overflow-y-auto p-5 space-y-3">
             {filteredGroupedSkills.length === 0 ? (
               <div className="py-12 text-center">
@@ -418,10 +380,6 @@ export function ProcessLearningSummaryModal({
                             {isProc && <Building2 className="h-3 w-3" />}
                             {categoryShortLabel}
                           </span>
-
-                          <span className="text-[10px] font-medium text-slate-400">
-                            {sk.sourceSteps.length} {sk.sourceSteps.length === 1 ? 'paso' : 'pasos'}
-                          </span>
                         </div>
 
                         <h3 className="mt-2 text-xs font-bold text-slate-900 dark:text-white">
@@ -433,30 +391,14 @@ export function ProcessLearningSummaryModal({
                             {sk.reason}
                           </p>
                         )}
-                      </div>
 
-                      {/* Source steps tags */}
-                      <div className="mt-3 border-t border-slate-100 pt-2.5 dark:border-white/5">
-                        <p className="text-[10px] font-semibold uppercase text-slate-400 mb-1.5">
-                          Requerida en:
+                        <p className="mt-2 text-[10px] font-semibold uppercase text-slate-400">
+                          {sk.inCatalog ? (
+                            <span className="text-emerald-600 dark:text-emerald-400">En catálogo ✓</span>
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400">Nuevo (no en catálogo)</span>
+                          )}
                         </p>
-                        <div className="flex flex-wrap gap-1">
-                          {sk.sourceSteps.map((st) => (
-                            <button
-                              key={st.stepId}
-                              type="button"
-                              onClick={() => {
-                                onOpenStep(st.stepId, 4);
-                                onClose();
-                              }}
-                              title={`Ir al paso: ${st.stepName}`}
-                              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-brand-50 hover:text-brand-700 dark:bg-white/10 dark:text-white/80 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 transition-colors"
-                            >
-                              <span>{st.stepNumber ? `Paso ${st.stepNumber}` : st.stepName}</span>
-                              <ArrowRight className="h-2.5 w-2.5" />
-                            </button>
-                          ))}
-                        </div>
                       </div>
                     </div>
                   );
@@ -464,86 +406,6 @@ export function ProcessLearningSummaryModal({
               </div>
             )}
           </div>
-        )}
-
-        {/* Content View: Tab 2 (Por Paso de Trabajo) */}
-        {activeTab === 'byStep' && (
-        <div className="flex-1 overflow-y-auto p-5">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400 dark:border-white/10">
-              <tr>
-                <th className="pb-2.5">Paso de Trabajo</th>
-                <th className="pb-2.5">Análisis IA</th>
-                <th className="pb-2.5">Habilidades (Soft / Tech / Procesos)</th>
-                <th className="pb-2.5">IA (Mandatorio)</th>
-                <th className="pb-2.5 text-right">Acción</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-              {stepSummaries.map((s) => (
-                <tr key={s.stepId} className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02]">
-                  <td className="py-2.5 font-medium text-slate-800 dark:text-white max-w-xs truncate">
-                    {s.stepNumber}. {s.stepName}
-                    {s.isExcluded && (
-                      <span className="ml-2 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-bold text-slate-600 dark:bg-white/10 dark:text-white/50">
-                        Excluido
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2.5">
-                    {s.hasRequirements ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Analizado
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">Pendiente</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 text-slate-600 dark:text-white/70">
-                    {s.hasRequirements ? (
-                      <div className="flex items-center gap-2">
-                        <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
-                          {s.softCount} Soft
-                        </span>
-                        <span className="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 dark:bg-teal-500/20 dark:text-teal-300">
-                          {s.technicalCount} Tech
-                        </span>
-                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
-                          {s.processesCount} Proc
-                        </span>
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="py-2.5">
-                    {(s.aiCount || 0) > 0 ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                        <Bot className="h-3 w-3" />
-                        {s.aiCount} AI Skill
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onOpenStep(s.stepId, 4);
-                        onClose();
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                    >
-                      <span>Ver Paso</span>
-                      <ArrowRight className="h-3 w-3" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
         )}
 
         {/* Footer */}

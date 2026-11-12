@@ -1212,7 +1212,7 @@ export default function NewAcademicLearningPage() {
               <select
                 value={courseCode}
                 onChange={(e) => handleSelectSkill(e.target.value)}
-                className="rounded-lg border border-white/10 bg-slate-950 px-2.5 py-1 text-xs font-mono text-emerald-400 focus:outline-none"
+                className="max-w-[260px] truncate rounded-lg border border-white/10 bg-slate-950 px-2.5 py-1 text-xs font-mono text-emerald-400 focus:outline-none sm:max-w-[360px]"
               >
                 {KINDERGARTEN_OFFICIAL_SKILLS.map((s) => (
                   <option key={s.code} value={s.code}>

@@ -52,16 +52,26 @@ public sealed class StructuredLearningProfessorLectureAgent
              or legal claims that the source content does not support.
            - Connect the concepts to real-world industry practice, professional workflows, and practical relevance
              for people working in this domain generally.
-        5. VISUAL REFERENCE (WHITEBOARD / DIAGRAM):
-           - If an Illustration Description or Whiteboard note is provided, seamlessly refer to it in your spoken
-             delivery as if you are standing in front of a whiteboard in a lecture hall (e.g., "Como vemos en el pizarrón...",
-             "Fíjense en el diagrama en la pizarra...", "As you see on the board...", "Notice on this diagram...").
+        5. VISUAL REFERENCE (REAL IMAGE — DESCRIBE WHAT IS ACTUALLY SHOWN):
+           - If an Illustration Description/Visual Reference or attached source image(s) are provided, seamlessly
+             refer to what is ACTUALLY, LITERALLY visible in it (e.g., "Como vemos aquí...", "Fíjense en esta
+             imagen...", "As you see here...", "Notice in this view...").
+           - CRITICAL — never assume or default to a generic "whiteboard/pizarrón/lecture hall" scene. Some
+             source images ARE a literal whiteboard/diagram drawn for this course, but many others are real
+             photos or screen recordings (a code editor, a browser, a terminal, a slide, an exercise page, a
+             chart, a document) with no whiteboard or classroom at all. Look at what the image genuinely shows
+             and describe THAT — only call it a "pizarra"/"board" if a physical board is literally visible.
            - CRITICAL: explain the MEANING/CONTENT the image conveys, as a professor teaching a concept — NEVER
              describe rendering/typography details such as font, boldness, letter color, letter size, or layout
              mechanics (e.g. NEVER say things like "hay una letra amarilla en negritas" / "there's a bold yellow
              letter"). Those are image-generation instructions, not teaching content, and must be ignored if they
              appear in the Illustration Description. Only speak about the actual concept, object, or diagram being
              depicted.
+           - CRITICAL — NEVER narrate about the illustration-generation process itself: never mention a
+             "reference image", a brand mascot/logo (e.g. "PROFE"), a "badge", where a logo/character was
+             placed in the scene, or any other meta-commentary about how/why the image was produced. The
+             Illustration Description may contain leftover image-generation instructions about those things —
+             if so, silently ignore that part entirely and speak only about the real educational content.
         6. PROFESSORIAL WRAP-UP:
            - Conclude the class with an inspiring, coherent synthesis of the breakthrough idea and invite the students
              to proceed to the next step.
@@ -238,6 +248,105 @@ public sealed class StructuredLearningProfessorLectureAgent
         PersonalizedConnections, EstimatedDurationMinutes, WordCount, LanguageCode.
         """;
 
+    /// <summary>Alternate register EXCLUSIVE to video-sourced Engrams
+    /// (document.SourceCapabilityCode == "video", 2026-11-06) — the
+    /// Standard/Kids Instructions above both treat TeachingContent as RAW
+    /// SOURCE MATERIAL to compose a brand-new masterclass lecture from. For
+    /// a video-sourced Engram, TeachingContent IS the real professor's own
+    /// words from the original video transcript — composing a new lecture
+    /// from it (as Standard does) throws away the authentic voice/delivery
+    /// that makes it a real recorded class instead of an AI course. This
+    /// register instead PRESERVES the transcript nearly verbatim, only
+    /// allowing small connective/human touches (greetings, "gracias",
+    /// "soy el profesor X" if named in the content, natural bridging
+    /// phrases between frames) — never paraphrasing or inventing new
+    /// educational framing, analogies, or facts not already spoken.</summary>
+    private const string VideoSourceInstructions = """
+        You are preparing the spoken narration track for ONE Engram (lesson section) of a course
+        that was built directly from a REAL recorded video lecture — NOT a document to compose a
+        new masterclass lecture from. The "Authoritative Engram Teaching Content" you receive below
+        IS the actual, literal transcript of what the real professor said on camera for this exact
+        part of the video.
+
+        YOUR MISSION IS PRESERVATION, NOT COMPOSITION:
+        - Your output's SpokenLectureScript MUST stay AS CLOSE TO VERBATIM as possible to the
+          Authoritative Engram Teaching Content — same wording, same order, same level of detail.
+          This is the entire point: the course must sound and read like the real video, not like an
+          AI-generated class, to preserve its authenticity.
+        - NEVER paraphrase, rephrase, summarize, generalize, "polish", or academically reframe what
+          the content already says. NEVER invent a new teaching analogy, a new transition sentence
+          that adds meaning, a new real-world connection, or any fact/example/claim that is not
+          ALREADY literally present in the content.
+        - You MAY ONLY add small, purely connective/human touches that do not change the substance
+          at all — for example: a brief opening greeting, a short "gracias"/"thank you", a self
+          introduction using a name/title if one is literally present in the content (e.g. "soy el
+          profesor Smith" only if "professor Smith" is actually named in the content), or a tiny
+          natural bridge word between two frames/segments (e.g. "Y ahora," / "Now,"). These
+          additions must be minimal — a few words at most — never a new sentence that teaches or
+          explains something the original content didn't already say.
+        - Keep any filler, hesitations, or informal spoken phrasing from the content AS IS if
+          present — do not "clean up" the professor's real natural speech into formal academic
+          prose. Authenticity matters more than polish here.
+        - DO NOT OMIT, SKIP, SHORTEN, OR DROP ANY PART of the Authoritative Engram Teaching
+          Content — not a single sentence, clause, or detail, no matter how small, informal,
+          personal, or seemingly unimportant it looks (this includes self-introductions, names,
+          asides, administrivia, jokes, "um"/filler moments, etc.). The ENTIRE content must appear
+          in SpokenLectureScript, in the same order, with nothing missing. Only the small connective
+          additions described above may be added; you may NEVER remove or shorten any of the
+          original content to make room for them.
+
+        MANDATORY OPENING DISCLOSURE (ONLY WHEN IsFirstEngram=true IN THE PROMPT):
+        - If, and only if, the prompt tells you this is the FIRST Engram of the course, the very
+          first thing SpokenLectureScript says — before anything from the transcript — must be a
+          short disclosure sentence stating that this course was generated with AI from the
+          original video, naming the given VideoSourceName, e.g.:
+          Spanish: "Este curso fue generado con AI y generado del video {VideoSourceName}."
+          English: "This course was generated with AI from the video {VideoSourceName}."
+          Then continue immediately into the real transcript content for this Engram, unchanged.
+        - On every OTHER Engram (IsFirstEngram=false), do NOT repeat this disclosure — start
+          directly with the (lightly bridged, per above) transcript content for that Engram.
+
+        VISUAL REFERENCE (REAL VIDEO FRAME):
+        - If a Visual Reference Description or attached source image(s) are provided, you may
+          briefly acknowledge what is actually, literally visible (e.g., "Como vemos aquí...",
+          "As you can see here...") ONLY if the original transcript content itself already implies
+          looking at something at that moment — never invent a new visual description beyond what
+          the transcript already supports, and never describe rendering/typography details (font,
+          color, letter size).
+
+        HARD RULES:
+        - NEVER invent, add, or claim any fact, number, name, or detail not already present in the
+          Authoritative Engram Teaching Content.
+        - NEVER drop, skip, or summarize away any sentence or detail from the Authoritative Engram
+          Teaching Content — completeness is as important as wording accuracy. Before finishing,
+          mentally check that every sentence of the original content is represented in
+          SpokenLectureScript.
+        - NEVER include individual student names, and never address "the class" generically if the
+          original transcript already speaks directly ("you"/"tú") — preserve the original address
+          style as spoken.
+        - NEVER mention AI, prompts, or system/version details anywhere EXCEPT the one mandatory
+          opening disclosure line described above (and only on the first Engram).
+
+        LANGUAGE CONSISTENCY (HARD RULE):
+        - If TargetLanguage is 'es' (Spanish), keep/deliver the narration in Spanish as the original
+          transcript already is (or translate only if the transcript itself is already in Spanish).
+        - If TargetLanguage is 'en' (English), same principle in English.
+        - Never switch languages or mix languages mid-narration — preserve whatever language the
+          original transcript content is actually in.
+
+        SCENE BREAKDOWN FOR THE SYNCED IMAGE+AUDIO PLAYER — identical mechanical rule as always:
+        segment SpokenLectureScript (verbatim-preserved, per above) into 3 to 6 ordered Scenes
+        (never more), each one or more COMPLETE sentences covering a natural speaking "beat".
+        Concatenating every Scene's SceneText with a single space between them MUST reproduce
+        SpokenLectureScript exactly, with nothing added, removed, or reordered. Each scene's
+        ImagePrompt may simply restate what that scene's real frame already shows — never invent
+        new imagery beyond what the transcript/visual reference already supports.
+
+        OUTPUT REQUIREMENTS: identical shape as always —
+        SpokenLectureScript, Scenes (SceneText + ImagePrompt), PersonalizedHook, KeyConceptsTaught,
+        PersonalizedConnections, EstimatedDurationMinutes, WordCount, LanguageCode.
+        """;
+
     private readonly AIAgent? _agent;
     private readonly string _deploymentName;
     private readonly bool _isReasoningModel;
@@ -325,7 +434,9 @@ public sealed class StructuredLearningProfessorLectureAgent
             // narration register for YoungLearner courses instead of the
             // default university-professor Instructions baked in at agent
             // construction — see KidsInstructions' doc comment.
-            Instructions = context.PedagogicalAudience == "YoungLearner" ? KidsInstructions : Instructions
+            Instructions = context.IsVideoSourced
+                ? VideoSourceInstructions
+                : context.PedagogicalAudience == "YoungLearner" ? KidsInstructions : Instructions
         };
 
         if (!_isReasoningModel)
@@ -333,11 +444,78 @@ public sealed class StructuredLearningProfessorLectureAgent
             chatOptions.Temperature = 0.3f;
         }
 
-        var response = await _agent.RunAsync<StructuredLearningProfessorLectureResult>(
-            prompt,
-            cancellationToken: cancellationToken);
+        Microsoft.Agents.AI.AgentResponse<StructuredLearningProfessorLectureResult> response;
+        if (context.SourceImages.Count > 0)
+        {
+            // Real vision input (2026-11-03): send the actual source-document image(s)
+            // alongside the text prompt instead of relying only on a pre-computed text
+            // description, so the professor genuinely SEES every real figure/diagram
+            // (there can be more than one per Engram) while writing the lecture — same
+            // ChatMessage+DataContent pattern as OrgChartExtractionAgent/PdfImageDescriptionAgent.
+            //
+            // Raised to "high" detail (2026-11-06), same fix already proven on
+            // PdfImageDescriptionAgent (2026-11-05): "low" downsamples every image to a
+            // 512x512 preview, making small on-screen text (code, UI, slides, exercise
+            // text in real video frames) illegible — the model then hallucinates a
+            // generic scene (e.g. a whiteboard) instead of describing what's really there.
+            var contentParts = new List<Microsoft.Extensions.AI.AIContent> { new Microsoft.Extensions.AI.TextContent(prompt) };
+            foreach (var (bytes, contentType) in context.SourceImages)
+            {
+                contentParts.Add(new Microsoft.Extensions.AI.DataContent(bytes, contentType)
+                {
+                    AdditionalProperties = new() { ["detail"] = "high" }
+                });
+            }
+
+            var message = new Microsoft.Extensions.AI.ChatMessage(Microsoft.Extensions.AI.ChatRole.User, contentParts);
+            response = await _agent.RunAsync<StructuredLearningProfessorLectureResult>(
+                message,
+                cancellationToken: cancellationToken);
+        }
+        else
+        {
+            response = await _agent.RunAsync<StructuredLearningProfessorLectureResult>(
+                prompt,
+                cancellationToken: cancellationToken);
+        }
 
         var result = response.Result;
+
+        // HARD GUARANTEE (2026-11-07): the VideoSourceInstructions prompt above already
+        // tells the model, in multiple places, to never drop any part of the original
+        // transcript — but (exactly like the chapter-time-snapping issue fixed earlier)
+        // a prompt instruction alone is NOT reliable: on real runs this model still
+        // silently paraphrased/dropped roughly half of the real spoken content, because
+        // an LLM re-reads then rewrites rather than literally copying. Rather than
+        // detecting failures after the fact, make completeness structural: for a
+        // video-sourced Engram, SpokenLectureScript is ALWAYS the real transcript
+        // verbatim (plus the mandatory first-Engram disclosure line) — built here
+        // directly from context.TeachingContent, never from the model's own retelling.
+        // The model's own Scenes are kept ONLY if they are a faithful, lossless
+        // breakdown of that exact guaranteed script (same normalized word count);
+        // otherwise we segment the guaranteed script ourselves by sentence so nothing
+        // the model's Scenes might have reworded is used downstream at all.
+        if (context.IsVideoSourced && result is not null)
+        {
+            var disclosure = context.IsFirstEngram
+                ? (string.Equals(context.TargetLanguage, "es", StringComparison.OrdinalIgnoreCase)
+                    ? $"Este curso fue generado con AI y generado del video {context.VideoSourceName}."
+                    : $"This course was generated with AI from the video {context.VideoSourceName}.")
+                : null;
+
+            var guaranteedScript = string.IsNullOrWhiteSpace(disclosure)
+                ? context.TeachingContent.Trim()
+                : $"{disclosure} {context.TeachingContent.Trim()}";
+
+            var modelScenesCoverGuaranteedScript =
+                result.Scenes is { Count: > 0 } &&
+                CountWords(string.Join(" ", result.Scenes.Select(s => s.SceneText))) >= CountWords(guaranteedScript) * 0.98;
+
+            result.SpokenLectureScript = guaranteedScript;
+            result.Scenes = modelScenesCoverGuaranteedScript
+                ? result.Scenes
+                : SplitIntoScenesBySentence(guaranteedScript);
+        }
 
         // Ensure word count and duration are accurate if model didn't calculate them
         if (result is not null && !string.IsNullOrWhiteSpace(result.SpokenLectureScript))
@@ -412,6 +590,45 @@ public sealed class StructuredLearningProfessorLectureAgent
         };
     }
 
+    private static int CountWords(string text) =>
+        string.IsNullOrWhiteSpace(text)
+            ? 0
+            : text.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries).Length;
+
+    /// <summary>Deterministic, lossless sentence-based Scene split used as the
+    /// video-sourced fallback when the model's own Scenes don't faithfully
+    /// reproduce the guaranteed verbatim script (2026-11-07) — guarantees
+    /// concatenating every SceneText reproduces the input exactly.</summary>
+    private static List<LectureSceneDto> SplitIntoScenesBySentence(string script)
+    {
+        if (string.IsNullOrWhiteSpace(script))
+        {
+            return [new LectureSceneDto { SceneText = script ?? string.Empty, ImagePrompt = string.Empty }];
+        }
+
+        var sentences = System.Text.RegularExpressions.Regex
+            .Matches(script, @"[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$")
+            .Select(m => m.Value)
+            .Where(s => s.Trim().Length > 0)
+            .ToList();
+
+        if (sentences.Count == 0)
+        {
+            return [new LectureSceneDto { SceneText = script, ImagePrompt = string.Empty }];
+        }
+
+        const int maxScenes = 6;
+        var perScene = Math.Max(1, (int)Math.Ceiling(sentences.Count / (double)maxScenes));
+        var scenes = new List<LectureSceneDto>();
+        for (var i = 0; i < sentences.Count; i += perScene)
+        {
+            var chunk = string.Concat(sentences.Skip(i).Take(perScene)).TrimEnd();
+            scenes.Add(new LectureSceneDto { SceneText = chunk, ImagePrompt = string.Empty });
+        }
+
+        return scenes;
+    }
+
     public static string BuildPrompt(StructuredLearningProfessorLectureContext context)
     {
         var sb = new StringBuilder();
@@ -437,7 +654,7 @@ public sealed class StructuredLearningProfessorLectureAgent
 
         if (!string.IsNullOrWhiteSpace(context.IllustrationDescription))
         {
-            sb.AppendLine($"- Visual Illustration / Whiteboard Elements: {context.IllustrationDescription.Trim()}");
+            sb.AppendLine($"- Visual Reference Description: {context.IllustrationDescription.Trim()}");
         }
 
         sb.AppendLine();
@@ -449,7 +666,23 @@ public sealed class StructuredLearningProfessorLectureAgent
         sb.AppendLine("===========================================");
         sb.AppendLine();
         sb.AppendLine($"TARGET DELIVERY LANGUAGE: {(context.TargetLanguage.StartsWith("es", StringComparison.OrdinalIgnoreCase) ? "Spanish (es)" : "English (en)")}");
-        if (context.PedagogicalAudience == "YoungLearner")
+        if (context.IsVideoSourced)
+        {
+            sb.AppendLine($"IsFirstEngram: {(context.IsFirstEngram ? "true" : "false")}");
+            if (context.IsFirstEngram)
+            {
+                sb.AppendLine($"VideoSourceName: {context.VideoSourceName ?? context.CourseTitle}");
+            }
+            sb.AppendLine("Preserve the Authoritative Engram Teaching Content above as close to verbatim as possible. MANDATORY RULES:");
+            sb.AppendLine("1. DO NOT paraphrase, rewrite, summarize, or academically reframe the content — keep the same wording, order, and level of detail as the real video transcript.");
+            sb.AppendLine("2. You may ONLY add minimal connective/human touches (a short greeting, 'gracias'/'thank you', a self-introduction using a name literally present in the content, or a tiny bridge word between segments) — never a new sentence that teaches or explains anything beyond what the content already says.");
+            sb.AppendLine(context.IsFirstEngram
+                ? "3. Because IsFirstEngram=true, the FIRST sentence of SpokenLectureScript must be the mandatory AI/video-source disclosure naming VideoSourceName, then continue directly into the transcript content unchanged."
+                : "3. Because IsFirstEngram=false, do NOT add any disclosure — start directly with the (lightly bridged) transcript content for this Engram.");
+            sb.AppendLine("4. PRESERVE NAMED ENTITIES AND ORIGINAL ADDRESS STYLE EXACTLY: keep every name, term, and the original direct-address style of the transcript verbatim.");
+            sb.AppendLine("5. DO NOT OMIT ANYTHING: include EVERY sentence/clause of the Authoritative Engram Teaching Content in SpokenLectureScript, in the same order — self-introductions, names, asides, administrivia, and filler included. Dropping or shortening any part of the original content is forbidden, even if it seems minor.");
+        }
+        else if (context.PedagogicalAudience == "YoungLearner")
         {
             sb.AppendLine("Deliver the warm, direct-to-the-child narration now. MANDATORY RULES:");
             sb.AppendLine("1. DIRECT-TO-CHILD ADDRESS: Open with a warm greeting AND introduce yourself as 'Profe' (your fixed name, every single time — e.g. 'Hola, ¿cómo estás hoy? Soy Profe...'). Speak to them as 'tú'/'you', one on one — NEVER as a class, group, or 'los niños'/'the students'. NEVER mention any individual child's real name.");

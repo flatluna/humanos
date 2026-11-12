@@ -304,6 +304,10 @@ var host = new HostBuilder()
         // guarantee pixel-accurate coordinates for. See
         // Services/MathDiagramRenderService.cs's doc comment.
         services.AddSingleton<HumanOS.Services.MathDiagramRenderService>();
+        // Deterministic SkiaSharp "Powered by EngramsIQ™" brand-mark overlay
+        // stamped onto every Static Recall card illustration (2026-10-28) —
+        // see Services/RecallCardWatermarkService.cs's doc comment.
+        services.AddSingleton<HumanOS.Services.RecallCardWatermarkService>();
         services.AddSingleton<ExperienceDesignerAgent>();
         // Generates a real illustration per ExampleCard of the optional
         // Examples step (2026-07-29), upgrading the original emoji-only
@@ -341,11 +345,17 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Agents.Studio.IdeaToDocumentAgent>();
         services.AddSingleton<HumanOS.Agents.Family.FamilyCurriculumAgent>();
         services.AddSingleton<HumanOS.Agents.Family.ProfesorExpertAgent>();
+        services.AddSingleton<HumanOS.Agents.Family.SubjectCapabilityRecommenderAgent>();
         // Describes embedded page images (scanned pages, diagrams, photos)
         // in detailed text so image-only/image-heavy PDF pages still reach
         // Curador/GraphArchitect with real content (2026-07-23) — see
         // /memories/repo/pdf-to-capability-graph-v2-pipeline.md.
         services.AddSingleton<HumanOS.Agents.Studio.PdfImageDescriptionAgent>();
+        // Decides which process step(s) a page image genuinely illustrates when a page
+        // is shared by multiple steps (2026-11-02) — used by
+        // ProcessDocumentPipelineService.AttachStepImagesAsync to refine the page-level
+        // image-to-step association with real vision-based matching.
+        services.AddSingleton<HumanOS.Agents.Studio.ProcessImageStepMatcherAgent>();
         // Caches extraction (text + described images) by content hash so a
         // real run doesn't re-describe images already described during the
         // Paso 5 preview of the SAME upload (2026-08-05) — see
@@ -377,6 +387,8 @@ var host = new HostBuilder()
         // new persistence + its own separate in-memory run slot — never
         // touches the Graph or Traditional pipelines above.
         services.AddSingleton<StructuredLearningExtractionService>();
+        services.AddSingleton<HumanOS.Services.VideoLearning.VideoStructuredLearningIngestionService>();
+        services.AddSingleton<HumanOS.Services.VideoLearning.VideoStructuredLearningPedagogyOrchestrator>();
         services.AddSingleton<StructuredLearningExtractionOrchestrator>();
 
         // Work Step Learning Assignment (Step 1-8: Ingestion, Step Requirements, Catalog Search, Engram Selection, Coverage, Content Gap Drafts, Step Assignment & Employee Personalization)
@@ -385,6 +397,15 @@ var host = new HostBuilder()
         services.AddSingleton<HumanOS.Services.ProcessDocuments.ProcessDocumentPipelineService>();
         services.AddSingleton<HumanOS.Services.ProcessDocuments.ProcessDocumentOrchestrator>();
         services.AddSingleton<HumanOS.Services.ProcessDocuments.IWorkStepRequirementsAnalyzer, HumanOS.Services.ProcessDocuments.WorkStepRequirementsAnalyzer>();
+        // Phase B: lazy, one-step-at-a-time business-requirements analysis (role/systems/trigger/business rules/
+        // exceptions), fed by the SourceContent captured in Phase A's fast index extraction.
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IStepBusinessRequirementsAnalyzer, HumanOS.Services.ProcessDocuments.StepBusinessRequirementsAnalyzer>();
+        // Consolidated whole-process learning recommendation (2026-08-xx): replaces the per-step
+        // "Analyze All Steps" loop in Step 3 of the wizard with ONE call that analyzes every chapter/step
+        // together and returns one de-duplicated set of skill gaps with real internet courses
+        // (via WebGroundingService). See ProcessWideLearningRecommendationAnalyzer's doc comment.
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.IProcessWideLearningRecommendationAnalyzer, HumanOS.Services.ProcessDocuments.ProcessWideLearningRecommendationAnalyzer>();
+        services.AddSingleton<HumanOS.Services.ProcessDocuments.CourseOutlineService>();
         services.AddSingleton<HumanOS.Services.ProcessDocuments.IEngramStudioCatalogService, HumanOS.Services.ProcessDocuments.EngramStudioCatalogService>();
         services.AddSingleton<HumanOS.Services.ProcessDocuments.IEngramStudioClassCandidateFinder, HumanOS.Services.ProcessDocuments.EngramStudioClassCandidateFinder>();
         services.AddSingleton<HumanOS.Services.ProcessDocuments.IEngramStudioEngramSelector, HumanOS.Services.ProcessDocuments.EngramStudioEngramSelector>();
@@ -531,7 +552,17 @@ var host = new HostBuilder()
         // Professor Lecture Agent (2026-09-06) — generates a personalized, spoken-word
         // masterclass lecture delivered by a professor directly to the student for an Engram.
         services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningProfessorLectureAgent>();
+        // Lesson Narration Sync Agent (2026-11-11) — patches ONLY the scene-descriptive
+        // sentences of the Teaching narration after its illustration is regenerated, so
+        // text/audio and image stay in sync without ever touching pedagogical content.
+        services.AddSingleton<HumanOS.Agents.Studio.StructuredLearningLessonNarrationSyncAgent>();
         services.AddScoped<StructuredLearningProfessorLectureService>();
+
+        // Video Frame Narration Agent (2026-11-05) — EXCLUSIVE to video-sourced Structured
+        // Learning Engrams (see VideoStructuredLearningPedagogyOrchestrator). Explicitly aligns
+        // the already-approved lecture script to each real video frame image, in order, instead
+        // of a positional/arithmetic split. Never used by the traditional PDF pipeline.
+        services.AddSingleton<HumanOS.Agents.Studio.VideoFrameNarrationAgent>();
 
         // Engram Card Agent (2026-10-08) — YoungLearner-only "Aprende" sequential card
         // experience (one atomic concept per card, e.g. "Perro"/"Gato"), derived from the

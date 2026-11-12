@@ -18,9 +18,24 @@ public sealed class CapabilityOutlineNodeDto
     /// subsequent real run can locate this node's text via ordinal search
     /// WITHOUT re-running detection, guaranteeing the generation loop
     /// respects exactly the chapter/node names the designer approved. Not
-    /// meant to be shown in the UI.
+    /// meant to be shown in the UI. Empty when <see cref="Content"/> is
+    /// already set (2026-10-29 direct-extraction tier — no re-location is
+    /// needed in that case).
     /// </summary>
     public string StartMarker { get; set; } = string.Empty;
+
+    /// <summary>One-sentence capability this node/engram builds in the
+    /// learner — populated only by the 2026-10-29 direct-extraction tier
+    /// (see <see cref="HumanOS.Agents.Studio.DirectEngram.Capability"/>).</summary>
+    public string? Capability { get; set; }
+
+    /// <summary>Already-sliced, verbatim engram content — populated ONLY
+    /// by the 2026-10-29 direct-extraction tier (see
+    /// <see cref="HumanOS.Agents.Studio.TocExtractionAgent.ExtractDirectAsync"/>).
+    /// When set, downstream code (<see cref="HumanOS.Agents.Studio.DocumentChapterSplitter"/>)
+    /// uses this text AS-IS instead of re-locating <see cref="StartMarker"/>
+    /// via ordinal search — this tier never produces a StartMarker at all.</summary>
+    public string? Content { get; set; }
 
     /// <summary>Size estimate (2026-08-17, cost/scope preview) — the
     /// verbatim character count of THIS node's own slice of the source
@@ -47,6 +62,19 @@ public sealed class CapabilityOutlineNodeDto
     /// (see SectionContentExpansionAgent) instead of running the normal
     /// pipeline on an almost-empty source.</summary>
     public bool HasSparseContent { get; set; }
+
+    /// <summary>Real images (base64 data URLs, e.g. "data:image/png;base64,...")
+    /// embedded in the source document's page(s) covering this node. Populated
+    /// either when the outline was seeded from an already-extracted
+    /// ProcessDocument's <see cref="HumanOS.Contracts.ProcessDocuments.ProcessStep.StepImages"/>
+    /// (HumanOS Enterprise "Save as Capability" flow, 2026-11-03), OR
+    /// post-detection for a direct PDF upload (see
+    /// <see cref="AzureFunctions.Api.PreviewCapabilityOutlineFunction.AttachRealImages"/>)
+    /// from <see cref="HumanOS.Services.PdfContentExtractionService.ExtractionResult.PageImageDataUrls"/>
+    /// — so either course-creation path can show the designer real
+    /// thumbnails per section, not just the AI-written text description
+    /// already folded into <see cref="Content"/>.</summary>
+    public List<string>? ImageDataUrls { get; set; }
 }
 
 /// <summary>One proposed CHAPTER (becomes a graph "level") in a
@@ -55,8 +83,14 @@ public sealed class CapabilityOutlineChapterDto
 {
     public string Title { get; set; } = string.Empty;
 
+    /// <summary>Short (1-2 sentence) generic description — populated only
+    /// by the 2026-10-29 direct-extraction tier.</summary>
+    public string? Description { get; set; }
+
     /// <summary>See <see cref="CapabilityOutlineNodeDto.StartMarker"/> —
-    /// same contract, for the chapter/level's own boundary.</summary>
+    /// same contract, for the chapter/level's own boundary. Empty when
+    /// every node under this chapter already carries its own
+    /// <see cref="CapabilityOutlineNodeDto.Content"/>.</summary>
     public string StartMarker { get; set; } = string.Empty;
 
     public List<CapabilityOutlineNodeDto> Nodes { get; set; } = [];
@@ -84,6 +118,14 @@ public enum CapabilityOutlineSource
     /// scratch. Higher cost, and the designer should review more carefully
     /// before approving.</summary>
     InferredByAI,
+
+    /// <summary>(2026-10-29) The document is small enough to fit in a
+    /// single context window — the model read the WHOLE document and
+    /// returned the Chapter/Engram structure WITH each engram's own
+    /// verbatim content already attached in one call, instead of just a
+    /// short marker for code to re-locate afterwards. See
+    /// <see cref="HumanOS.Agents.Studio.TocExtractionAgent.ExtractDirectAsync"/>.</summary>
+    DirectGenerated,
 
     /// <summary>No usable structure could be detected or inferred at all
     /// (e.g. empty/near-empty document).</summary>
@@ -152,6 +194,32 @@ public static class CapabilityOutlinePreviewService
     /// than falling through to Tier 2 (AI inference from scratch).</summary>
     private const int MinChaptersForDetected = 2;
 
+    /// <summary>(2026-10-29) Max source document size for the single-call
+    /// "Direct" tier (see <see cref="CapabilityOutlineSource.DirectGenerated"/>)
+    /// — above this, the model would have to reproduce most of the
+    /// document's own text verbatim in its OUTPUT too (not just read it),
+    /// risking truncated/invalid JSON; falls back to the older detect-
+    /// marker-then-slice tiers instead.</summary>
+    private const int DirectGenerationMaxCharacters = 75_000;
+
+    /// <summary>(2026-11-10) Above <see cref="DirectGenerationMaxCharacters"/>
+    /// but under this size (~60-70 pages, assuming ~3,500 characters/page
+    /// once embedded-image descriptions are folded into the text), the LLM
+    /// is STILL capable of reading the whole document in one Tier 1 call
+    /// (<see cref="TocExtractionAgent.ExtractAsync"/>) to decide chapter/
+    /// engram BOUNDARIES itself — so Tier 0's purely deterministic regex
+    /// splitter (<see cref="SyllabusOutlineParser"/>) is skipped entirely
+    /// in that range and Tier 1 runs instead, even when Tier 0 would
+    /// otherwise report a confident structure. Per-course decision: the
+    /// deterministic splitter never reliably tells real teachable content
+    /// apart from scaffolding/assessment sections (it already produced the
+    /// "Knowledge Check"/"Applied Challenge" standalone-engram bug fixed
+    /// alongside this change), so the LLM should always be the one
+    /// deciding engram boundaries up to this size; only beyond it (a
+    /// genuinely huge document) does the regex tier remain as a fallback,
+    /// for cost/latency reasons.</summary>
+    private const int MaxCharactersForLlmOnlyDetection = 260_000;
+
     /// <summary>Below this token count, a node's own text slice is treated
     /// as a bare outline/index entry rather than real developed content
     /// (2026-08-17) — see CapabilityOutlineNodeDto.HasSparseContent's own
@@ -216,6 +284,19 @@ public static class CapabilityOutlinePreviewService
             node.TotalCharacters = slice.Length;
             node.TotalTokens = TokenEncoding.Encode(slice).Count;
             node.HasSparseContent = node.TotalTokens < SparseContentTokenThreshold;
+
+            // Surface the node's own verbatim text slice for the preview UI
+            // (2026-11-10 "Module 0 shows an empty source-text box instead
+            // of its real text" fix) — the Direct-extraction tier already
+            // sets Content itself, but Tier 0/0.5/1/2 (the regex/marker-
+            // based detections that reach this method) previously left
+            // Content null, so the designer's "Ver texto fuente" review box
+            // rendered empty next to the page's real image, looking as if
+            // the text itself had been replaced by an image.
+            if (string.IsNullOrEmpty(node.Content))
+            {
+                node.Content = slice;
+            }
         }
 
         var documentCharacters = 0;
@@ -261,6 +342,64 @@ public static class CapabilityOutlinePreviewService
         var classification = documentType is null ? ClassificationEngine.Classify(documentText) : null;
         var effectiveType = documentType ?? classification!.PrimaryType;
 
+        // ---- Tier "Direct" (2026-10-29): small enough to fit one context
+        // window — skip ALL deterministic/regex-based detection below and
+        // have the model read the whole document itself, directly handing
+        // back chapters/engrams WITH their own verbatim content already
+        // attached. This tier now runs FIRST (ahead of Tier 0.5/Tier 0)
+        // because those regex tiers are a brittle false-positive source —
+        // e.g. a numbered "Step 1:/Step 2:..." list in the body matches
+        // SyllabusOutlineParser's module-heading heuristic and returns an
+        // instant but low-fidelity structure, silently pre-empting the
+        // higher-quality LLM pass this tier exists to provide. Only
+        // attempted for documents under DirectGenerationMaxCharacters (the
+        // model must reproduce ~all source text in its OUTPUT too); falls
+        // through to the regex tiers and older Tier 1/Tier 2
+        // (detect-marker-then-slice) tiers below if this returns nothing
+        // usable (e.g. every engram failed the verbatim check) or isn't
+        // configured.
+        if (documentText.Length <= DirectGenerationMaxCharacters && tocExtraction.IsDirectExtractionConfigured)
+        {
+            var direct = await tocExtraction.ExtractDirectAsync(documentText, cancellationToken);
+            var directChapters = direct.Chapters
+                .Where(c => c.Engrams.Count > 0)
+                .Select(c => new CapabilityOutlineChapterDto
+                {
+                    Title = c.Title,
+                    Description = c.Description,
+                    Nodes = c.Engrams.ConvertAll(e => new CapabilityOutlineNodeDto
+                    {
+                        Title = e.Title,
+                        Capability = e.Capability,
+                        Content = e.Content,
+                        TotalCharacters = e.Content.Length,
+                        TotalTokens = TokenEncoding.Encode(e.Content).Count
+                    })
+                })
+                .ToList();
+
+            if (directChapters.Count > 0)
+            {
+                var directTotalCharacters = directChapters.Sum(c => c.Nodes.Sum(n => n.TotalCharacters));
+                var directTotalTokens = directChapters.Sum(c => c.Nodes.Sum(n => n.TotalTokens));
+                foreach (var chapter in directChapters)
+                {
+                    chapter.TotalCharacters = chapter.Nodes.Sum(n => n.TotalCharacters);
+                    chapter.TotalTokens = chapter.Nodes.Sum(n => n.TotalTokens);
+                }
+
+                return new CapabilityOutlinePreviewResult
+                {
+                    Source = CapabilityOutlineSource.DirectGenerated,
+                    Chapters = directChapters,
+                    DetectedDocumentType = effectiveType.ToString(),
+                    DetectedDocumentTypeConfidence = classification?.Confidence,
+                    TotalCharacters = directTotalCharacters,
+                    TotalTokens = directTotalTokens
+                };
+            }
+        }
+
         // ---- Tier 0.5: DocumentType-aware marker detection (no LLM) ----
         // Only Law/Contract/Procedure/ResearchPaper have a reliable enough
         // marker to trust here — see DocumentTypeOutlineParser's own doc
@@ -292,21 +431,63 @@ public static class CapabilityOutlinePreviewService
         }
 
         // ---- Tier 0: deterministic regex-based detection (no LLM) ----
+        // Skipped (even when confident) for any document within the LLM's
+        // own capacity (see MaxCharactersForLlmOnlyDetection) whenever an
+        // LLM tier is actually available — the regex splitter only ever
+        // looks at heading NUMBERS/keywords, so it can't tell a real
+        // teachable subsection from a numbered review-question block like
+        // "Knowledge Check 26. ..."; only past that size (or with no LLM
+        // configured at all) does it remain as the fallback.
         var tier0 = SyllabusOutlineParser.Parse(documentText);
-        if (tier0.IsConfidentStructure)
+        var allowDeterministicTier0 = documentText.Length > MaxCharactersForLlmOnlyDetection || !tocExtraction.IsConfigured;
+        if (tier0.IsConfidentStructure && allowDeterministicTier0)
         {
-            var chapters = tier0.Modules.ConvertAll(module => new CapabilityOutlineChapterDto
+            var chapters = new List<CapabilityOutlineChapterDto>();
+            foreach (var module in tier0.Modules)
             {
-                Title = BuildModuleTitle(module),
-                StartMarker = MarkerAt(documentText, module.StartOffset),
-                Nodes = module.Subsections.Count > 0
-                    ? module.Subsections.ConvertAll(subsection => new CapabilityOutlineNodeDto
+                List<CapabilityOutlineNodeDto> nodes;
+                if (module.Subsections.Count > 0)
+                {
+                    // A regex-numbered subsection is still just a raw
+                    // heading match — nothing here stops a "Knowledge
+                    // Check 26." or "Applied Challenge" subsection
+                    // (numbered because of ITS OWN review-question
+                    // numbering, not real module structure) from being
+                    // treated as a distinct engram. Apply the same
+                    // assessment-title guardrail used on the LLM-split
+                    // path (2026-11-10) before building nodes.
+                    var located = module.Subsections.ConvertAll(subsection =>
+                        (Title: BuildSubsectionTitle(subsection), Offset: subsection.StartOffset - module.StartOffset));
+                    located = MergeAssessmentEngrams(located);
+                    nodes = located.ConvertAll(e => new CapabilityOutlineNodeDto
                     {
-                        Title = BuildSubsectionTitle(subsection),
-                        StartMarker = MarkerAt(documentText, subsection.StartOffset)
-                    })
-                    : [new CapabilityOutlineNodeDto { Title = BuildModuleTitle(module), StartMarker = MarkerAt(documentText, module.StartOffset) }]
-            });
+                        Title = e.Title,
+                        StartMarker = MarkerAt(documentText, module.StartOffset + e.Offset)
+                    });
+                }
+                else
+                {
+                    // No numbered/keyworded subsections for this module
+                    // (the common case for a prose module whose own
+                    // internal headings are just plain named topics, e.g.
+                    // "The Problem That Forced Computing Forward") — try
+                    // an LLM pass over JUST this module's own text to split
+                    // it into real engram-level sub-topics instead of
+                    // lumping the whole module (including throwaway
+                    // "Learning Objectives"/"Opening Conversation"
+                    // scaffolding) into one oversized single node (2026-11-10).
+                    nodes = await SplitModuleIntoEngramNodesAsync(documentText, module, tier0.Modules, tocExtraction, cancellationToken)
+                        ?? [new CapabilityOutlineNodeDto { Title = BuildModuleTitle(module), StartMarker = MarkerAt(documentText, module.StartOffset) }];
+                }
+
+                chapters.Add(new CapabilityOutlineChapterDto
+                {
+                    Title = BuildModuleTitle(module),
+                    StartMarker = MarkerAt(documentText, module.StartOffset),
+                    Nodes = nodes
+                });
+            }
+
             var tier0Sizes = AnnotateSizes(documentText, chapters);
 
             return new CapabilityOutlinePreviewResult
@@ -532,6 +713,17 @@ public static class CapabilityOutlinePreviewService
             {
                 dto.Nodes.Add(new CapabilityOutlineNodeDto { Title = dto.Title, StartMarker = dto.StartMarker });
             }
+            else
+            {
+                // Deterministic backstop (2026-11-10) — the LLM is
+                // instructed not to give an assessment/practice/review
+                // heading its own subsection (see
+                // StrictSyllabusModeAddendum), but is not perfectly
+                // reliable; drop any that slipped through so it folds
+                // into the PRECEDING real subsection's span instead (see
+                // MergeAssessmentEngrams, same keyword list).
+                dto.Nodes = MergeAssessmentEngramNodes(dto.Nodes);
+            }
             result.Add(dto);
         }
 
@@ -568,5 +760,249 @@ public static class CapabilityOutlinePreviewService
         const int MarkerLength = 60;
         var length = Math.Min(MarkerLength, documentText.Length - offset);
         return documentText.Substring(offset, length).Trim();
+    }
+
+    /// <summary>Below this character count, a module with no detected
+    /// subsections is treated as already a single coherent idea — not
+    /// worth an extra LLM call to (at best) confirm it's one engram.</summary>
+    private const int MinModuleCharactersForEngramSplit = 2000;
+
+    /// <summary>A proposed engram span shorter than this many characters is
+    /// scaffolding/framing text, not a real teachable idea on its own (see
+    /// <see cref="MergeSparseEngramSpans"/>) — matches the spirit of
+    /// <see cref="SparseContentTokenThreshold"/> (40 tokens, ~160
+    /// characters) but a bit more generous since a short-but-real
+    /// single-paragraph engram should still survive.</summary>
+    private const int MinEngramSpanCharacters = 500;
+
+    /// <summary>Titles that identify an ASSESSMENT/PRACTICE/REVIEW section
+    /// — content whose job is to VERIFY or REINFORCE knowledge the learner
+    /// is assumed to already have from an earlier engram, never to teach
+    /// something new — and so must NEVER survive as its own standalone
+    /// engram node, no matter how long its own span is (a long list of
+    /// quiz questions is still not new content). <see cref="EngramTitleLooksLikeAssessment"/>
+    /// is a deterministic, title-based guardrail layered on top of the
+    /// LLM's own instruction to the same effect (see
+    /// <see cref="TocExtractionAgent"/>'s EngramSplitInstructions) and on
+    /// top of <see cref="MergeSparseEngramSpans"/>'s span-length check —
+    /// a short "Knowledge Check" heading followed by several review
+    /// questions can easily exceed <see cref="MinEngramSpanCharacters"/>
+    /// and would otherwise slip through as its own (confusing) engram
+    /// (2026-11-10).</summary>
+    private static readonly string[] AssessmentEngramTitleKeywords =
+    [
+        "knowledge check",
+        "in-class learning activity",
+        "in class learning activity",
+        "applied challenge",
+        "profe recap",
+        "recap",
+        "oral defense question",
+        "practice activity",
+        "review question",
+        "quiz",
+        "self-check",
+        "self check",
+        "pause and explain",
+        "diagnostic activity"
+    ];
+
+    private static bool EngramTitleLooksLikeAssessment(string title) =>
+        AssessmentEngramTitleKeywords.Any(keyword => title.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Tier 1 (<see cref="TocExtractionAgent.ExtractAsync"/>)
+    /// counterpart to <see cref="MergeAssessmentEngrams"/> — operates on
+    /// already-built <see cref="CapabilityOutlineNodeDto"/> instances
+    /// (Tier 1 has no local offsets to work with; order in the list IS
+    /// document order already) instead of raw (Title, Offset) tuples.
+    /// Same rule: drop any node whose title matches
+    /// <see cref="AssessmentEngramTitleKeywords"/> so its span is absorbed
+    /// by the PRECEDING node — except the very first node, which is never
+    /// dropped (the second is removed instead if that one is the
+    /// assessment section) — and never remove the chapter's only
+    /// node.</summary>
+    private static List<CapabilityOutlineNodeDto> MergeAssessmentEngramNodes(List<CapabilityOutlineNodeDto> nodes)
+    {
+        var result = new List<CapabilityOutlineNodeDto>(nodes);
+        for (var i = result.Count - 1; i >= 0; i--)
+        {
+            if (result.Count <= 1 || !EngramTitleLooksLikeAssessment(result[i].Title))
+            {
+                continue;
+            }
+
+            result.RemoveAt(i == 0 ? 1 : i);
+        }
+
+        return result;
+    }
+
+    /// <summary>Tier 0 (<see cref="SyllabusOutlineParser"/>) only detects
+    /// NUMBERED/keyworded subsections — a module whose own internal
+    /// headings are just plain named topics (e.g. "The Problem That Forced
+    /// Computing Forward") gets zero subsections there and previously fell
+    /// back to ONE node covering the whole module, lumping every distinct
+    /// idea inside it (including throwaway "Learning Objectives"/"Opening
+    /// Conversation" scaffolding) into one oversized engram (2026-11-10).
+    /// This runs a cheap, module-scoped LLM pass (see
+    /// <see cref="TocExtractionAgent.SplitModuleIntoEngramsAsync"/>) to
+    /// propose real engram-level nodes for just THIS module's own text
+    /// instead — returns null (caller falls back to the single-node
+    /// result) when the agent isn't configured, the module is too short to
+    /// bother, or the model's proposed engrams can't be re-located
+    /// verbatim in the source.</summary>
+    private static async Task<List<CapabilityOutlineNodeDto>?> SplitModuleIntoEngramNodesAsync(
+        string documentText,
+        SyllabusModule module,
+        List<SyllabusModule> allModules,
+        TocExtractionAgent tocExtraction,
+        CancellationToken cancellationToken)
+    {
+        if (!tocExtraction.IsEngramSplitConfigured)
+        {
+            return null;
+        }
+
+        var moduleIndex = allModules.IndexOf(module);
+        var moduleEnd = moduleIndex >= 0 && moduleIndex + 1 < allModules.Count
+            ? allModules[moduleIndex + 1].StartOffset
+            : documentText.Length;
+        var moduleStart = module.StartOffset;
+        if (moduleEnd <= moduleStart || moduleEnd - moduleStart < MinModuleCharactersForEngramSplit)
+        {
+            return null;
+        }
+
+        var moduleText = documentText.Substring(moduleStart, moduleEnd - moduleStart);
+
+        List<InferredOutlineNode> engrams;
+        try
+        {
+            engrams = await tocExtraction.SplitModuleIntoEngramsAsync(moduleText, cancellationToken);
+        }
+        catch
+        {
+            // Best-effort — a transient model/API failure here must never
+            // break the whole outline preview; fall back to one node.
+            return null;
+        }
+
+        if (engrams.Count < 2)
+        {
+            return null;
+        }
+
+        var located = new List<(string Title, int Offset)>();
+        var searchFrom = 0;
+        foreach (var engram in engrams)
+        {
+            if (string.IsNullOrWhiteSpace(engram.Title) || string.IsNullOrWhiteSpace(engram.StartMarker))
+            {
+                continue;
+            }
+
+            var offsetInModule = moduleText.IndexOf(engram.StartMarker, searchFrom, StringComparison.Ordinal);
+            if (offsetInModule < 0)
+            {
+                offsetInModule = moduleText.IndexOf(engram.StartMarker, StringComparison.Ordinal);
+            }
+            if (offsetInModule < 0)
+            {
+                continue;
+            }
+
+            searchFrom = offsetInModule + 1;
+            located.Add((engram.Title, offsetInModule));
+        }
+
+        located = MergeAssessmentEngrams(located);
+        located = MergeSparseEngramSpans(located, moduleText.Length);
+
+        if (located.Count < 2)
+        {
+            return null;
+        }
+
+        var nodes = located.ConvertAll(e => new CapabilityOutlineNodeDto
+        {
+            Title = e.Title,
+            StartMarker = MarkerAt(documentText, moduleStart + e.Offset)
+        });
+
+        return nodes;
+    }
+
+    /// <summary>Deterministic, title-based companion to
+    /// <see cref="MergeSparseEngramSpans"/> (2026-11-10) — an assessment/
+    /// practice/review section (see <see cref="AssessmentEngramTitleKeywords"/>)
+    /// must NEVER become its own engram regardless of how long its own
+    /// span is (a "Knowledge Check" with several review questions can
+    /// easily clear the span-length guardrail below). Folds every
+    /// boundary whose title matches into the PRECEDING boundary (it
+    /// checks/reinforces content already taught earlier, never content
+    /// yet to come) — except the very first boundary, which can never be
+    /// dropped, and instead absorbs the SECOND boundary into itself if
+    /// that one is the assessment section.</summary>
+    private static List<(string Title, int Offset)> MergeAssessmentEngrams(List<(string Title, int Offset)> located)
+    {
+        var result = new List<(string Title, int Offset)>(located);
+        result.Sort((a, b) => a.Offset.CompareTo(b.Offset));
+
+        for (var i = result.Count - 1; i >= 0; i--)
+        {
+            if (result.Count <= 1 || !EngramTitleLooksLikeAssessment(result[i].Title))
+            {
+                continue;
+            }
+
+            result.RemoveAt(i == 0 ? 1 : i);
+        }
+
+        return result;
+    }
+
+    /// <summary>The model is only lightly instructed not to make a
+    /// standalone engram out of pure scaffolding (e.g. "Learning
+    /// Objectives", "Opening Conversation") — this is a deterministic
+    /// code-level guardrail that drops any boundary whose own span (up to
+    /// the NEXT remaining boundary, or the module's end for the last one)
+    /// is below <see cref="MinEngramSpanCharacters"/>, folding its text
+    /// into the adjacent engram instead (into the PREVIOUS one, except the
+    /// very first boundary — which can never be dropped — folds the
+    /// SECOND one into itself instead). Repeats until every remaining span
+    /// is large enough or only one boundary is left.</summary>
+    private static List<(string Title, int Offset)> MergeSparseEngramSpans(List<(string Title, int Offset)> located, int moduleTextLength)
+    {
+        var result = new List<(string Title, int Offset)>(located);
+        result.Sort((a, b) => a.Offset.CompareTo(b.Offset));
+
+        while (result.Count > 1)
+        {
+            var mergedAny = false;
+            for (var i = 0; i < result.Count; i++)
+            {
+                var end = i + 1 < result.Count ? result[i + 1].Offset : moduleTextLength;
+                var span = end - result[i].Offset;
+                if (span >= MinEngramSpanCharacters)
+                {
+                    continue;
+                }
+
+                // Drop whichever boundary keeps the first engram covering
+                // the module's very start: the span at index 0 can never
+                // be removed, so a too-short FIRST span instead absorbs
+                // index 1 into it.
+                result.RemoveAt(i == 0 ? 1 : i);
+                mergedAny = true;
+                break;
+            }
+
+            if (!mergedAny)
+            {
+                break;
+            }
+        }
+
+        return result;
     }
 }

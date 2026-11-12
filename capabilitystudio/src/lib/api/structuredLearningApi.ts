@@ -47,6 +47,9 @@ export interface StartStructuredLearningExtractionRequest {
   targetSkill?: string | null;
   pedagogicalAudience?: string | null;
   maxDeepDiveCardsPerNode?: number | null;
+  /** Designer-controlled toggle (2026-10-30) — see backend
+   * StructuredLearningDocument.UseScenedLecture's own doc comment. */
+  useScenedLecture?: boolean;
   includeProductionStep?: boolean;
   includeHypothesisStep?: boolean;
   includeRecallStep?: boolean;
@@ -257,6 +260,7 @@ export type StructuredLearningGenerationMode = 'Static' | 'Dynamic';
 export interface StructuredLearningPedagogyConfig {
   pedagogicalAudience?: string | null;
   maxDeepDiveCardsPerNode?: number | null;
+  useScenedLecture?: boolean;
   includeProductionStep: boolean;
   includeRecallStep: boolean;
   recallItemsRequired?: number | null;
@@ -413,6 +417,56 @@ export function editStructuredLearningDeepDiveCard(
 
 export function deleteStructuredLearningDeepDiveCard(sectionId: string, cardIndex: number): Promise<StructuredLearningStepDetail> {
   return apiDelete<StructuredLearningStepDetail>(`/studio/structured-learning/sections/${sectionId}/deepdive/cards/${cardIndex}`);
+}
+
+// ==================== Source-text editing + versioning (2026-11-11) ====================
+// Edits the section's own canonical SOURCE text (the verbatim PDF/text
+// extraction shown read-only in the "Original PDF/text for this Engram"
+// panel) and fully REGENERATES this one Engram (Hypothesis/Teaching/
+// DeepDive/Recall/Production/Assessment, illustrations, audio, Knowledge
+// Graph/Facts) from the new text, exactly as if it were newly created.
+// Three independent reviewer inputs steer this: the new/edited text
+// itself, general AI instructions for this Engram, and instructions
+// specifically for the Teaching/"Learn" illustration. Every edit to the
+// source text is versioned: the ORIGINAL text is preserved forever as
+// version 0, and only the latest AI-generated Content/illustration/audio
+// are kept (not versioned).
+
+export interface StructuredLearningSourceTextEditResult {
+  Text: string;
+  VersionNumber: number;
+  UpdatedTeachingStep: StructuredLearningStepDetail | null;
+  /// EVERY step of this Engram after the full regeneration — replace the
+  /// section's entire Steps array with this list; every step got a
+  /// brand-new id (the old ones were deleted, not updated in place).
+  AllSteps: StructuredLearningStepDetail[];
+  WebSearchCitations: string[];
+}
+
+export interface StructuredLearningSourceTextVersion {
+  VersionNumber: number;
+  Text: string;
+  Instruction: string | null;
+  CreatedDate: string;
+}
+
+export function editStructuredLearningSourceText(
+  sectionId: string,
+  newText: string | null,
+  instruction: string | null,
+  imageInstruction: string | null,
+  usePerplexitySearch = false
+): Promise<StructuredLearningSourceTextEditResult> {
+  return apiPost<StructuredLearningSourceTextEditResult>(`/studio/structured-learning/sections/${sectionId}/source-text/edit`, {
+    newText,
+    instruction,
+    imageInstruction,
+    usePerplexitySearch,
+  });
+}
+
+export function getStructuredLearningSourceTextVersions(sectionId: string): Promise<StructuredLearningSourceTextVersion[]> {
+  return apiGet<StructuredLearningSourceTextVersion[]>(`/studio/structured-learning/sections/${sectionId}/source-text/versions`);
 }
 
 // ==================== Video generation (Google Veo, 2026-08-21) ====================
@@ -619,6 +673,52 @@ export function regenerateStructuredLearningVideo(
   });
 }
 
+/** Per-scene "change image/voice" escape hatch (2026-11-07) for the Synced
+ * Teaching scene player — regenerates ONLY the requested media (image
+ * and/or voice) for ONE scene, reusing that scene's own stored Text/
+ * ImagePrompt. See backend's RegenerateStructuredLearningLectureSceneFunction. */
+export function regenerateStructuredLearningLectureScene(
+  sectionId: string,
+  sceneIndex: number,
+  options: { regenerateImage?: boolean; regenerateVoice?: boolean } = {}
+): Promise<{ SectionId: string; SceneIndex: number; IllustrationId: string | null; AlternateIllustrationId: string | null; AudioStoragePath: string | null }> {
+  return apiPost(`/studio/structured-learning/sections/${sectionId}/professor-lecture/scenes/${sceneIndex}/regenerate`, {
+    regenerateImage: options.regenerateImage ?? true,
+    regenerateVoice: options.regenerateVoice ?? true,
+  });
+}
+
+/** "Regenerate this image" escape hatch (2026-11-11) for the Teaching step's
+ * single lesson illustration (the "Learn" image shown when there are no
+ * Scenes/Cards) — the caller only supplies free-text instructions; the
+ * backend always combines them with the Engram's own original lesson
+ * illustration prompt (full class text included) before generating, so a
+ * quick tweak can never discard what the image was supposed to depict. See
+ * backend's RegenerateStructuredLearningLessonIllustrationFunction. */
+export function regenerateStructuredLearningLessonIllustration(
+  sectionId: string,
+  instructions: string,
+  logoImageBase64?: string,
+  referenceSourceIllustrationId?: string | null
+): Promise<{ SectionId: string; IllustrationId: string; Content: string }> {
+  return apiPost(`/studio/structured-learning/sections/${sectionId}/professor-lecture/illustration/regenerate`, {
+    instructions,
+    logoImageBase64: logoImageBase64 ?? null,
+    referenceSourceIllustrationId: referenceSourceIllustrationId ?? null,
+  });
+}
+
+/** Hard-deletes ONE scene (its own audio + illustration + text) from the Synced
+ * Teaching scene player's lecture (2026-11-07) — edit-mode only. Remaining scenes
+ * are renumbered server-side so they stay consecutive. See backend's
+ * DeleteStructuredLearningLectureSceneFunction. */
+export function deleteStructuredLearningLectureScene(
+  sectionId: string,
+  sceneIndex: number
+): Promise<{ SectionId: string; DeletedSceneIndex: number; RemainingSceneCount: number }> {
+  return apiDelete(`/studio/structured-learning/sections/${sectionId}/professor-lecture/scenes/${sceneIndex}`);
+}
+
 /** Merges 2+ already-generated videos, in the given order, into one new
  * video (ffmpeg concat, local/unbilled, 2026-08-22). */
 export function mergeStructuredLearningVideos(
@@ -684,7 +784,8 @@ export function addStructuredLearningSection(
   illustrationMode: string = 'AiGenerated',
   uploadedImageBase64?: string | null,
   uploadedImageContentType?: string | null,
-  referenceImageUsageInstruction?: string | null
+  referenceImageUsageInstruction?: string | null,
+  usePerplexitySearch?: boolean | null
 ): Promise<StructuredLearningSectionDetail> {
   return apiPost<StructuredLearningSectionDetail>(`/studio/structured-learning/${documentId}/sections/add`, {
     chapterTitle,
@@ -696,6 +797,7 @@ export function addStructuredLearningSection(
     uploadedImageBase64,
     uploadedImageContentType,
     referenceImageUsageInstruction,
+    usePerplexitySearch,
   });
 }
 
@@ -716,6 +818,11 @@ export interface StructuredLearningSectionDetail {
   Text: string;
   TotalCharacters: number;
   TotalTokens: number;
+  /** Source-video clip range (seconds) this Engram covers — present only
+   * for documents created from a video. */
+  VideoStartSeconds?: number | null;
+  VideoEndSeconds?: number | null;
+  IsInformationalOnly?: boolean;
   PromptVersion?: string | null;
   ProcessVersion?: string | null;
   ModelName?: string | null;
@@ -726,7 +833,18 @@ export interface StructuredLearningSectionDetail {
   KnowledgeGraphRootEntityName?: string | null;
   WebSearchSources?: string[] | null;
   HasApiData?: boolean;
+  EstimatedMinutesToComplete?: number;
   Steps: StructuredLearningStepDetail[];
+  /** Real images extracted from the section's source material (e.g.
+   * synchronized video frames, Purpose=SourceDocument) — shown separately
+   * from AI-generated step illustrations (2026-11-05). */
+  SourceIllustrations?: StructuredLearningSourceIllustration[];
+}
+
+export interface StructuredLearningSourceIllustration {
+  StructuredLearningIllustrationId: string;
+  Caption?: string | null;
+  VideoTimestampSeconds?: number | null;
 }
 
 export interface StructuredLearningDocumentDetail {
@@ -748,6 +866,20 @@ export interface StructuredLearningDocumentDetail {
   Category?: string | null;
   TargetSkill?: string | null;
   ExecutiveSummary?: string | null;
+  /** Azure AI Video Indexer id of the source video this course was
+   * generated from (via Engrams) — null for PDF/process-document courses. */
+  SourceVideoId?: string | null;
+  /** "SoftSkill" or "TechnicalSkill". */
+  SkillType?: string | null;
+  AuthorName?: string | null;
+  AuthorCourseName?: string | null;
+  PresentedDate?: string | null;
+  PresentedEntityType?: string | null;
+  PresentedEntityName?: string | null;
+  /** Language the course TEXT/pedagogy was/should be generated in, chosen
+   * explicitly at creation time — distinct from LanguageCode above (which
+   * only reflects the language actually used by the last pedagogy run). */
+  CourseLanguageCode?: string | null;
   CoverIllustrationId?: string | null;
   PedagogicalAudience: string | null;
   PromptVersion?: string | null;
@@ -756,6 +888,7 @@ export interface StructuredLearningDocumentDetail {
   PromptHash?: string | null;
   ConfigSnapshotJson?: string | null;
   MaxDeepDiveCardsPerNode: number | null;
+  UseScenedLecture?: boolean;
   IncludeProductionStep: boolean;
   IncludeRecallStep: boolean;
   RecallItemsRequired: number | null;
@@ -846,12 +979,23 @@ export function updateStructuredLearningDocumentName(
  * these as cards without the full Capability-model integration. */
 export interface StructuredLearningDocumentSummary {
   StructuredLearningDocumentId: string;
+  TenantId?: string;
   DocumentName: string;
   SectionCount: number;
   CreatedDate: string;
   CoverIllustrationId: string | null;
   Category?: string | null;
   TargetSkill?: string | null;
+  PedagogicalAudience?: string | null;
+  Language?: 'es' | 'en';
+  IsGlobal?: boolean;
+  /** Azure AD OID of the author — used by the catalog's "My courses" filter
+   * to show only the signed-in person's own documents (2026-11-10). */
+  CreatedByOid?: string | null;
+  /** Display name of the author, resolved server-side — shown on the
+   * catalog card for "My organization" courses so it's clear who created
+   * them, not just "mine" (2026-11-10). */
+  CreatedByName?: string | null;
 }
 
 export function getStructuredLearningDocuments(): Promise<StructuredLearningDocumentSummary[]> {
@@ -996,6 +1140,18 @@ export function resetStructuredLearningRecallState(sectionId: string): Promise<{
   return apiPost<{ deletedCount: number }>(`/studio/structured-learning/sections/${sectionId}/recall/reset`, {});
 }
 
+/** Wipes the section's entire static Recall question bank AND any
+ * in-progress/current question, then regenerates it from scratch using the
+ * CURRENT (fixed) authoring instructions (2026-11-07, "boton para
+ * regenerar el recall" — needed when an older stale question, generated
+ * before a Recall prompt/instructions fix, is still showing). Unlike
+ * {@link resetStructuredLearningRecallState} (free, keeps the same
+ * questions), this re-runs real AI generation — use when the QUESTIONS
+ * themselves need to change, not just the mastery counters. */
+export function regenerateStructuredLearningRecallItems(sectionId: string): Promise<{ ItemCount: number }> {
+  return apiPost<{ ItemCount: number }>(`/studio/structured-learning/sections/${sectionId}/recall/regenerate-items`, {});
+}
+
 // ==================== Hypothesis pre-check answers (2026-08-13) ====================
 // Fixes a real gap: these answers used to only be saved in the browser's
 // localStorage, never reaching the backend, never visible to an instructor,
@@ -1061,5 +1217,4 @@ export function submitStructuredLearningDeepDiveAttempt(
     { studentResponse, tutorPromptShown: tutorPromptShown ?? null }
   );
 }
-
 

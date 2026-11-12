@@ -11,17 +11,34 @@ public static class HumanOsStudioSsoToken
     public const string Issuer = "humanos";
     public const string Audience = "capability-studio";
 
-    public static string Issue(IConfiguration configuration, string oid, string email, Guid tenantId, string tenantName, Guid personId, string orgRole, string returnUrl)
+    /// <param name="sourceAppType">Which parent app launched Studio —
+    /// "Enterprise" (HR console, corporate employees), "University" (an
+    /// Enterprise-tenant Student opening Studio to author academic content,
+    /// 2026-11-08 — same corporate launch flow, but with the tenant's
+    /// academic options unlocked), "Family" (parents/caregivers), or
+    /// "Consumer" (default, individual learners). Studio's Layout.tsx uses
+    /// this to hide app-type-specific CTAs, e.g. the "New Academic
+    /// Learning" (K-12/university) button must not show for Enterprise
+    /// corporate-employee courses (2026-11-04) but MUST show for
+    /// "University" (2026-11-08).</param>
+    /// <param name="azureTid">The Azure AD tenant id of the signed-in person (as recorded on
+    /// their Person row), if known. Round-tripped into the JWT purely so Studio can silently
+    /// re-request a fresh launch code from the same parent app when this session expires or is
+    /// missing (e.g. a new tab) instead of dead-ending on "go back to your app" — see
+    /// StudioAuthGate.tsx's auto-relaunch and docs/STUDIO_LAUNCH_INTEGRATION.md.</param>
+    public static string Issue(IConfiguration configuration, string oid, string email, Guid tenantId, string tenantName, Guid personId, string orgRole, string returnUrl, string sourceAppType = "Consumer", string? azureTid = null)
     {
         var claims = new[]
         {
             new Claim("oid", oid),
+            new Claim("azureTid", azureTid ?? string.Empty),
             new Claim("email", email),
             new Claim("tenantId", tenantId.ToString()),
             new Claim("tenantName", tenantName),
             new Claim("memberId", personId.ToString()),
             new Claim("memberType", orgRole),
             new Claim("sourceApplication", "HumanOS"),
+            new Claim("sourceAppType", sourceAppType),
             new Claim("returnUrl", returnUrl),
             new Claim("studioView", "True"),
             new Claim("studioCreate", "True"),

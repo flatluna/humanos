@@ -53,6 +53,48 @@ public static class DocumentChapterSplitter
         var keptTitles = new HashSet<(string Chapter, string Node)>(
             approvedOutline.SelectMany(c => c.Nodes.Select(n => (c.Title, n.Title))));
 
+        // (2026-11-05) Real document images the designer already saw per
+        // node in the preview step — carried through so the pipeline can
+        // attach them to the resulting graph node(s) too (see
+        // RawMaterialItem.ImageDataUrls), not just show them in preview.
+        var imagesByKey = new Dictionary<(string Chapter, string Node), List<string>?>();
+        foreach (var chapter in approvedOutline)
+        {
+            foreach (var node in chapter.Nodes)
+            {
+                if (node.ImageDataUrls is { Count: > 0 })
+                {
+                    imagesByKey[(chapter.Title, node.Title)] = node.ImageDataUrls;
+                }
+            }
+        }
+
+        // (2026-10-29) Direct-extraction tier nodes already carry their own
+        // verbatim Content — emit them straight away, no StartMarker/
+        // ordinal-search boundary math needed (and none exists for them:
+        // ExtractDirectAsync never sets StartMarker).
+        var result = new List<RawMaterialItem>();
+        foreach (var chapter in approvedOutline)
+        {
+            foreach (var node in chapter.Nodes)
+            {
+                if (string.IsNullOrEmpty(node.Content))
+                {
+                    continue;
+                }
+
+                result.Add(new RawMaterialItem
+                {
+                    Type = source.Type,
+                    Label = $"{source.Label} — {chapter.Title} — {node.Title}",
+                    ChapterTitle = node.Title,
+                    LevelTitle = chapter.Title,
+                    ImageDataUrls = node.ImageDataUrls,
+                    Content = node.Content
+                });
+            }
+        }
+
         var boundarySourceOutline = fullOutlineForBoundaries ?? approvedOutline;
 
         var boundaries = new List<(string NodeTitle, string ChapterTitle, int Index)>();
@@ -75,13 +117,17 @@ public static class DocumentChapterSplitter
 
         if (boundaries.Count == 0)
         {
+            if (result.Count > 0)
+            {
+                return result;
+            }
+
             throw new SyllabusStructureNotFoundException(
                 "No se pudo localizar el contenido aprobado dentro del texto del documento (es posible que el documento haya cambiado).");
         }
 
         boundaries = [.. boundaries.OrderBy(b => b.Index)];
 
-        var result = new List<RawMaterialItem>();
         for (var i = 0; i < boundaries.Count; i++)
         {
             // Only emit a RawMaterialItem for nodes the caller actually kept —
@@ -102,12 +148,15 @@ public static class DocumentChapterSplitter
                 continue;
             }
 
+            imagesByKey.TryGetValue((boundaries[i].ChapterTitle, boundaries[i].NodeTitle), out var boundaryNodeImages);
+
             result.Add(new RawMaterialItem
             {
                 Type = source.Type,
                 Label = $"{source.Label} — {boundaries[i].ChapterTitle} — {boundaries[i].NodeTitle}",
                 ChapterTitle = boundaries[i].NodeTitle,
                 LevelTitle = boundaries[i].ChapterTitle,
+                ImageDataUrls = boundaryNodeImages,
                 Content = nodeText
             });
         }

@@ -102,6 +102,7 @@ export function submitStructuredLearningHypothesisResponses(
 export interface SubmitStructuredLearningRecallAttemptResult {
   Started: boolean;
   NextQuestion: string;
+  IllustrationId: string | null;
   Score: number | null;
   AttemptsUsedForItem: number;
   ItemsMastered: number;

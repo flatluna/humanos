@@ -27,18 +27,21 @@ import { ProcessDocumentsListView } from '@/components/wizard/ProcessDocumentsLi
 
 import { ProcessUploadStep } from '@/components/wizard/steps/ProcessUploadStep';
 import { ProcessStructureReviewStep } from '@/components/wizard/steps/ProcessStructureReviewStep';
-import { WorkRequirementsReviewStep } from '@/components/wizard/steps/WorkRequirementsReviewStep';
+import { ProcessClassificationStep } from '@/components/wizard/steps/ProcessClassificationStep';
+import { ProcessWideLearningReviewStep } from '@/components/wizard/steps/ProcessWideLearningReviewStep';
 import { ContentGapReviewStep } from '@/components/wizard/steps/ContentGapReviewStep';
 
 import {
-  analyzeWorkStepRequirements,
+  analyzeProcessLearningNeeds,
   analyzeLearningContentCoverage,
   generateContentGapDraft,
   saveProcessAnalysis,
+  saveProcessWideLearningRecommendation,
   getProcessDocumentDetail,
   type ProcessDocumentUploadResponse,
   type ProcessDocumentStructureDto,
   type WorkStepRequirementsAnalysisResultDto,
+  type ProcessWideLearningRecommendationResultDto,
   type LearningContentCoverageResponseDto,
   type LearningContentGapDraftResponseDto,
   type SkillItemDto,
@@ -77,10 +80,11 @@ export function ProcessLearningWizardPage() {
   const [stepCoverages, setStepCoverages] = useState<Record<string, LearningContentCoverageResponseDto>>({});
   const [stepGapDrafts, setStepGapDrafts] = useState<Record<string, LearningContentGapDraftResponseDto>>({});
 
+  // Step 3: single consolidated whole-process learning recommendation (replaces the old per-step loop)
+  const [processWideRecommendation, setProcessWideRecommendation] = useState<ProcessWideLearningRecommendationResultDto | null>(null);
+  const [isAnalyzingProcessWide, setIsAnalyzingProcessWide] = useState(false);
+
   // Loading states
-  const [isAnalyzingReqs, setIsAnalyzingReqs] = useState(false);
-  const [isBatchAnalyzing, setIsBatchAnalyzing] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [isEvaluatingCoverage, setIsEvaluatingCoverage] = useState(false);
   const [isBatchEvaluating, setIsBatchEvaluating] = useState(false);
   const [batchEvalProgress, setBatchEvalProgress] = useState<{ current: number; total: number } | null>(null);
@@ -94,15 +98,16 @@ export function ProcessLearningWizardPage() {
       setStructure(detail.structure);
       setStepRequirements(detail.stepRequirements || {});
       setStepCoverages(detail.stepCoverages || {});
+      setProcessWideRecommendation(detail.processWideLearningRecommendation || null);
       setHasUnsavedChanges(false);
 
-      // Pick first step
-      const firstStep = detail.structure.chapters[0]?.steps[0];
+      // Pick first step (skip overview chapters with no steps of their own, e.g. "BPMN Process Flow")
+      const firstStep = detail.structure.chapters.find((ch) => ch.steps[0])?.steps[0];
       if (firstStep) {
         setSelectedStepId(firstStep.step_id);
       }
 
-      setMaxStepReached(4);
+      setMaxStepReached(5);
       setSearchParams({ id: documentId });
 
       if (openSummaryDirectly) {
@@ -137,6 +142,7 @@ export function ProcessLearningWizardPage() {
     setStepRequirements({});
     setStepCoverages({});
     setStepGapDrafts({});
+    setProcessWideRecommendation(null);
     setHasUnsavedChanges(false);
     setIsProcessSaved(false);
     setCurrentStep(1);
@@ -162,7 +168,13 @@ export function ProcessLearningWizardPage() {
       const match = ch.steps.find((s) => s.step_id === selectedStepId);
       if (match) return match;
     }
-    return structure.chapters[0]?.steps[0] || null;
+    // Fallback: some chapters (e.g. a "BPMN Process Flow" overview chapter) have no steps of
+    // their own, so find the first chapter that actually contains at least one step instead of
+    // blindly using chapters[0], which could leave activeStep null and blank out steps 4/5.
+    for (const ch of structure.chapters) {
+      if (ch.steps[0]) return ch.steps[0];
+    }
+    return null;
   }, [structure, selectedStepId]);
 
   // Handle structure loaded after upload
@@ -172,12 +184,18 @@ export function ProcessLearningWizardPage() {
   ) => {
     setUploadResult(result);
     setStructure(newStructure);
-    if (newStructure.chapters[0]?.steps[0]) {
-      setSelectedStepId(newStructure.chapters[0].steps[0].step_id);
+    const firstStep = newStructure.chapters.find((ch) => ch.steps[0])?.steps[0];
+    if (firstStep) {
+      setSelectedStepId(firstStep.step_id);
     }
     setMaxStepReached(Math.max(maxStepReached, 2));
     setCurrentStep(2);
   };
+
+  // NOTE: Per-step business-requirements classification (owner/inputs/systems/dependencies/rules/
+  // exceptions/outputs) is kept as a backend capability (analyzeStepBusinessRequirements) for reuse in a
+  // later Skills Identification / Mapping step, but Step 3 "Resumen del Proceso" no longer triggers it —
+  // it only renders data already captured during upload/extraction, so it stays fast and lightweight.
 
   // Toggle exclusion of a step from the learning workflow
   const handleToggleExcludeStep = (stepId: string) => {
@@ -192,95 +210,33 @@ export function ProcessLearningWizardPage() {
     });
   };
 
-  // Helper: collect cumulative skills already identified across all analyzed steps to prevent duplicate synonyms
-  const getCumulativeIdentifiedSkills = (): SkillItemDto[] => {
-    const map = new Map<string, SkillItemDto>();
-    for (const reqs of Object.values(stepRequirements)) {
-      if (!reqs.requiredSkillAreas) continue;
-      const all: SkillItemDto[] = [
-        ...(reqs.requiredSkillAreas.softSkills || []),
-        ...(reqs.requiredSkillAreas.technicalSkills || []),
-        ...(reqs.requiredSkillAreas.businessSkills || []),
-        ...(reqs.requiredSkillAreas.departmentProcesses || []),
-        ...(reqs.requiredSkillAreas.hrProcesses || []),
-        ...(reqs.requiredSkillAreas.aiSkills || []),
-      ];
-      for (const sk of all) {
-        const key = sk.skillId || sk.name.toLowerCase().trim();
-        if (!map.has(key)) {
-          map.set(key, sk);
-        }
-      }
-    }
-    return Array.from(map.values());
-  };
-
-  // Step 3: Analyze Requirements for one step (feeds previous skills to prevent synonym duplication)
-  const handleAnalyzeStepRequirements = async (stepId: string) => {
+  // Step 3: Analyze the ENTIRE process in a single call (replaces the old per-step loop).
+  const handleAnalyzeProcessWide = async () => {
     if (!structure?.document_id) return;
-    setIsAnalyzingReqs(true);
+    setIsAnalyzingProcessWide(true);
     try {
-      const priorSkills = getCumulativeIdentifiedSkills();
-      const reqs = await analyzeWorkStepRequirements(structure.document_id, stepId, effectiveTenantId, priorSkills);
-      setStepRequirements((prev) => ({ ...prev, [stepId]: reqs }));
+      const result = await analyzeProcessLearningNeeds(structure.document_id, effectiveTenantId);
+      setProcessWideRecommendation(result);
+      setMaxStepReached((prev) => Math.max(prev, 5));
     } catch (err) {
-      console.error('Error analyzing work step requirements:', err);
-      alert('Error al analizar los requisitos del paso. Verifica la conexión con Azure OpenAI.');
+      console.error('Error analyzing process-wide learning needs:', err);
+      alert('Error al analizar las necesidades de aprendizaje del proceso completo.');
     } finally {
-      setIsAnalyzingReqs(false);
+      setIsAnalyzingProcessWide(false);
     }
   };
 
-  // Step 3 Batch: Analyze all non-excluded steps in order, passing accumulated skills along
-  const handleAnalyzeAllSteps = async () => {
-    if (!structure?.document_id) return;
-    const allSteps = structure.chapters
-      .flatMap((c) => c.steps)
-      .filter((s) => !excludedStepIds.has(s.step_id));
-
-    setIsBatchAnalyzing(true);
-    setBatchProgress({ current: 0, total: allSteps.length });
-
-    let runningMap = { ...stepRequirements };
-
-    for (let i = 0; i < allSteps.length; i++) {
-      const s = allSteps[i];
-      setBatchProgress({ current: i + 1, total: allSteps.length });
-      if (!runningMap[s.step_id]) {
-        try {
-          // Accumulate from runningMap
-          const priorMap = new Map<string, SkillItemDto>();
-          for (const reqs of Object.values(runningMap)) {
-            if (!reqs.requiredSkillAreas) continue;
-            const all: SkillItemDto[] = [
-              ...(reqs.requiredSkillAreas.softSkills || []),
-              ...(reqs.requiredSkillAreas.technicalSkills || []),
-              ...(reqs.requiredSkillAreas.businessSkills || []),
-              ...(reqs.requiredSkillAreas.departmentProcesses || []),
-              ...(reqs.requiredSkillAreas.hrProcesses || []),
-              ...(reqs.requiredSkillAreas.aiSkills || []),
-            ];
-            for (const sk of all) {
-              const key = sk.skillId || sk.name.toLowerCase().trim();
-              if (!priorMap.has(key)) priorMap.set(key, sk);
-            }
-          }
-          const priorSkills = Array.from(priorMap.values());
-
-          const reqs = await analyzeWorkStepRequirements(structure.document_id, s.step_id, effectiveTenantId, priorSkills);
-          runningMap = { ...runningMap, [s.step_id]: reqs };
-          setStepRequirements(runningMap);
-        } catch (err) {
-          console.warn(`Could not analyze step ${s.step_id}`, err);
-        }
-      }
+  // Called whenever the user manually adds/removes a catalog skill on the Skills Identification step;
+  // persists the updated gap list immediately so it's never lost to navigation or future sessions.
+  const handleSkillGapsChanged = async (skillGaps: ProcessWideLearningRecommendationResultDto['skillGaps']) => {
+    if (!structure?.document_id || !processWideRecommendation) return;
+    const updated = { ...processWideRecommendation, skillGaps };
+    setProcessWideRecommendation(updated);
+    try {
+      await saveProcessWideLearningRecommendation(structure.document_id, updated, effectiveTenantId);
+    } catch (err) {
+      console.error('Error saving manually-assigned skill:', err);
     }
-
-    setIsBatchAnalyzing(false);
-    setBatchProgress(null);
-
-    // After all steps analyzed in batch, advance and unlock Step 4 (Skills Gap Analysis)
-    setMaxStepReached((prev) => Math.max(prev, 4));
   };
 
   // Step 4: Evaluate Coverage and Gaps
@@ -342,7 +298,7 @@ export function ProcessLearningWizardPage() {
 
     setIsBatchEvaluating(false);
     setBatchEvalProgress(null);
-    setMaxStepReached(4);
+    setMaxStepReached(5);
   };
 
   // Remove skill from a step (user curation)
@@ -429,9 +385,9 @@ export function ProcessLearningWizardPage() {
     }
   };
 
-  // Navigate forward in the wizard (capped at Step 4)
+  // Navigate forward in the wizard (capped at Step 5)
   const advanceToStep = (targetStepNumber: number) => {
-    const capped = Math.min(targetStepNumber, 4);
+    const capped = Math.min(targetStepNumber, 5);
     setMaxStepReached((prev) => Math.max(prev, capped));
     setCurrentStep(capped);
   };
@@ -462,18 +418,10 @@ export function ProcessLearningWizardPage() {
     stepRequirements,
   ]);
 
-  // Check if all non-excluded steps in the process have been analyzed
-  const allNonExcludedSteps = useMemo(() => {
-    if (!structure) return [];
-    return structure.chapters
-      .flatMap((c) => c.steps)
-      .filter((s) => !excludedStepIds.has(s.step_id));
-  }, [structure, excludedStepIds]);
 
   const areAllStepsAnalyzed = useMemo(() => {
-    if (allNonExcludedSteps.length === 0) return false;
-    return allNonExcludedSteps.every((s) => !!stepRequirements[s.step_id]);
-  }, [allNonExcludedSteps, stepRequirements]);
+    return !!processWideRecommendation;
+  }, [processWideRecommendation]);
 
   // Stepper state map (for the active step and global process readiness)
   const stepStates: Record<number, WizardStepState> = useMemo(() => {
@@ -482,14 +430,19 @@ export function ProcessLearningWizardPage() {
       2: structure ? 'completed' : 'not_started',
       3: 'not_started',
       4: 'not_started',
+      5: 'not_started',
     };
 
+    // Step 3 "Resumen del Proceso" is a read-only review screen (no async analysis), so it's simply
+    // "completed" once the user has moved past it, or "needs_review" while it's the active step.
+    if (structure) {
+      states[3] = currentStep === 3 ? 'needs_review' : 'completed';
+    }
+
     if (areAllStepsAnalyzed) {
-      states[3] = 'completed';
-    } else if (currentStep === 3) {
-      states[3] = isBatchAnalyzing || isAnalyzingReqs ? 'in_progress' : 'needs_review';
-    } else if (Object.keys(stepRequirements).length > 0) {
-      states[3] = 'in_progress';
+      states[4] = 'completed';
+    } else if (currentStep === 4) {
+      states[4] = isAnalyzingProcessWide ? 'in_progress' : 'needs_review';
     }
 
     if (!activeStep) return states;
@@ -497,9 +450,9 @@ export function ProcessLearningWizardPage() {
     const sId = activeStep.step_id;
 
     if (stepCoverages[sId]) {
-      states[4] = stepCoverages[sId].overallCoverageStatus === 'covered' ? 'completed' : 'content_gap';
-    } else if (currentStep === 4) {
-      states[4] = isEvaluatingCoverage ? 'in_progress' : 'needs_review';
+      states[5] = stepCoverages[sId].overallCoverageStatus === 'covered' ? 'completed' : 'content_gap';
+    } else if (currentStep === 5) {
+      states[5] = isEvaluatingCoverage ? 'in_progress' : 'needs_review';
     }
 
     return states;
@@ -508,12 +461,11 @@ export function ProcessLearningWizardPage() {
     areAllStepsAnalyzed,
     activeStep,
     currentStep,
-    stepRequirements,
     stepCoverages,
-    isAnalyzingReqs,
-    isBatchAnalyzing,
+    isAnalyzingProcessWide,
     isEvaluatingCoverage,
   ]);
+
 
   // Step summaries list for Global Summary Modal
   const stepSummaries: StepSummaryStats[] = useMemo(() => {
@@ -579,7 +531,7 @@ export function ProcessLearningWizardPage() {
             isSaved={isProcessSaved}
             onOpenStep={(stepId, targetStep) => {
               setSelectedStepId(stepId);
-              setCurrentStep(targetStep || 4);
+              setCurrentStep(targetStep || 5);
               setViewMode('wizard');
             }}
           />
@@ -705,6 +657,7 @@ export function ProcessLearningWizardPage() {
               structure={structure}
               selectedStepId={selectedStepId}
               excludedStepIds={excludedStepIds}
+              tenantId={effectiveTenantId}
               onSelectStep={(sId) => setSelectedStepId(sId)}
               onUpdateStructure={(newStruct) => {
                 setStructure(newStruct);
@@ -720,31 +673,16 @@ export function ProcessLearningWizardPage() {
             />
           )}
 
-          {currentStep === 3 && activeStep && (
-            <WorkRequirementsReviewStep
-              documentId={structure?.document_id || ''}
-              step={activeStep}
-              requirements={stepRequirements[activeStep.step_id] || null}
-              isLoading={isAnalyzingReqs}
-              onAnalyzeStep={handleAnalyzeStepRequirements}
-              onAnalyzeAllSteps={handleAnalyzeAllSteps}
-              isBatchAnalyzing={isBatchAnalyzing}
-              batchProgress={batchProgress}
-              isEditMode={!!structure?.document_id && !!searchParams.get('id')}
-              hasUnsavedChanges={hasUnsavedChanges}
-              isSavingProcess={isSavingProcess}
-              onSave={() => handleFinalizeAndSaveProcess(false)}
-              onUpdateRequirements={(updated) => {
-                setStepRequirements((prev) => ({ ...prev, [activeStep.step_id]: updated }));
+          {currentStep === 3 && structure && (
+            <ProcessClassificationStep
+              structure={structure}
+              excludedStepIds={excludedStepIds}
+              selectedStepId={selectedStepId}
+              tenantId={effectiveTenantId}
+              onSelectStep={(sId) => setSelectedStepId(sId)}
+              onUpdateStructure={(newStruct) => {
+                setStructure(newStruct);
                 setHasUnsavedChanges(true);
-              }}
-              onRemoveSkill={(catKey, skillIdx) => {
-                const currentReqs = stepRequirements[activeStep.step_id];
-                if (!currentReqs) return;
-                const skillToRemove = currentReqs.requiredSkillAreas[catKey]?.[skillIdx];
-                if (skillToRemove) {
-                  handleRemoveSkillFromStep(activeStep.step_id, skillToRemove.name);
-                }
               }}
               onApproveAndContinue={() => {
                 advanceToStep(4);
@@ -753,6 +691,21 @@ export function ProcessLearningWizardPage() {
           )}
 
           {currentStep === 4 && activeStep && (
+            <ProcessWideLearningReviewStep
+              processName={structure?.process_name || ''}
+              documentId={structure?.document_id || searchParams.get('id') || undefined}
+              tenantId={effectiveTenantId}
+              recommendation={processWideRecommendation}
+              isAnalyzing={isAnalyzingProcessWide}
+              onAnalyze={handleAnalyzeProcessWide}
+              onSkillGapsChanged={handleSkillGapsChanged}
+              onApproveAndContinue={() => {
+                advanceToStep(5);
+              }}
+            />
+          )}
+
+          {currentStep === 5 && activeStep && (
             <ContentGapReviewStep
               step={activeStep}
               structure={structure}
@@ -766,6 +719,10 @@ export function ProcessLearningWizardPage() {
               isBatchEvaluating={isBatchEvaluating}
               batchProgress={batchEvalProgress}
               onSelectStep={(sId) => setSelectedStepId(sId)}
+              onUpdateStructure={(newStruct) => {
+                setStructure(newStruct);
+                setHasUnsavedChanges(true);
+              }}
               onApproveAndContinue={handleFinalizeAndSaveProcess}
               onRemoveSkillFromStep={handleRemoveSkillFromStep}
               isSavingProcess={isSavingProcess}
@@ -786,7 +743,7 @@ export function ProcessLearningWizardPage() {
           isSaved={isProcessSaved}
           onOpenStep={(stepId, targetStep) => {
             setSelectedStepId(stepId);
-            setCurrentStep(targetStep || 4);
+            setCurrentStep(targetStep || 5);
           }}
         />
       )}

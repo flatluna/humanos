@@ -50,7 +50,16 @@ public sealed class CreateVideoProductionFunction
                 request, HttpStatusCode.BadRequest, "MissingFields", "Title is required.", cancellationToken);
         }
 
-        var production = new VideoProduction { TenantId = body.TenantId, Title = body.Title };
+        // Captures the creator's identity so later list/delete calls can be
+        // scoped per-owner, not just per-tenant (2026-11-10 fix — see
+        // VideoProduction.OwnerOid doc comment). Best-effort: still allowed
+        // without the header (legacy/unauthenticated callers), it's just
+        // then only ever visible via a direct link, never in the gallery.
+        var ownerOid = request.Headers.TryGetValues("X-Azure-OID", out var oidValues)
+            ? oidValues.FirstOrDefault()
+            : null;
+
+        var production = new VideoProduction { TenantId = body.TenantId, OwnerOid = ownerOid, Title = body.Title };
         _dbContext.VideoProductions.Add(production);
         await _dbContext.SaveChangesAsync(cancellationToken);
 

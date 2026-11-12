@@ -297,4 +297,17 @@ public sealed class RawMaterialItem
     /// that case, so callers should fall back to ChapterTitle).
     /// </summary>
     public string? LevelTitle { get; set; }
+
+    /// <summary>
+    /// Real images (base64 data URLs) extracted from the source document
+    /// for THIS chapter/node — round-tripped from
+    /// <see cref="HumanOS.Services.CapabilityOutlineNodeDto.ImageDataUrls"/>
+    /// by <see cref="HumanOS.Agents.Studio.DocumentChapterSplitter.BuildMaterialsFromApprovedOutline"/>
+    /// (2026-11-05) so the PDF→CapabilityGraph pipeline can attach the
+    /// ACTUAL document images (not just AI-generated illustrations) to the
+    /// resulting node(s), the same images the designer already saw in the
+    /// "Learning path design" preview step — otherwise they'd be shown
+    /// only during preview and never reach the student-facing course.
+    /// </summary>
+    public List<string>? ImageDataUrls { get; set; }
 }

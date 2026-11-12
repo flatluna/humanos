@@ -48,6 +48,30 @@ public sealed class Skill
 
     public string? DocumentFileName { get; set; }
 
+    /// <summary>When this Skill was auto-created from a real internet course found during the
+    /// Step 4 Process Learning Wizard flow (instead of authored by HR), these fields keep the
+    /// provenance so Studio can later generate the actual Capability/course content from it.
+    /// Null for HR-authored catalog skills.</summary>
+    public string? SourceCourseTitle { get; set; }
+
+    public string? SourceCourseProvider { get; set; }
+
+    public string? SourceCourseUrl { get; set; }
+
+    /// <summary>Serialized <c>CourseOutlineResult.Modules</c> JSON (title + lessons per module),
+    /// extracted/generated at save time so it isn't lost before Studio builds the course.</summary>
+    public string? SourceOutlineJson { get; set; }
+
+    /// <summary>"scraped" | "ai-suggested" — matches <c>CourseOutlineResult.Source</c>.</summary>
+    public string? SourceOutlineSource { get; set; }
+
+    /// <summary>Set when this Skill represents an entire business process saved as a
+    /// Department/HR Process capability from Step 4 ("Guardar en Catálogo de Capabilities")
+    /// instead of an individual skill gap — points back at the full ProcessDocument so Studio
+    /// can read its original PDF + chapter/step outline to draft the course. Null for all other
+    /// skills (individual gaps, HR-authored catalog entries, etc.).</summary>
+    public Guid? SourceProcessDocumentId { get; set; }
+
     public DateTime CreatedDate { get; set; }
 
     public DateTime UpdatedDate { get; set; }

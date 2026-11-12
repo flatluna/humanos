@@ -42,6 +42,54 @@ public sealed class ProcessDocumentRecordConfiguration : IEntityTypeConfiguratio
             .WithOne(s => s.ProcessDocument)
             .HasForeignKey(s => s.ProcessDocumentId)
             .OnDelete(DeleteBehavior.NoAction);
+
+        builder.HasMany(x => x.ScopedDepartments)
+            .WithOne(d => d.ProcessDocument)
+            .HasForeignKey(d => d.ProcessDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.ScopedJobRoles)
+            .WithOne(r => r.ProcessDocument)
+            .HasForeignKey(r => r.ProcessDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.SkillRequirements)
+            .WithOne(r => r.ProcessDocument)
+            .HasForeignKey(r => r.ProcessDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<HumanOS.Models.OrgStructure.Skill>()
+            .WithMany()
+            .HasForeignKey(x => x.CapabilitySkillId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+public sealed class ProcessDocumentDepartmentConfiguration : IEntityTypeConfiguration<ProcessDocumentDepartment>
+{
+    public void Configure(EntityTypeBuilder<ProcessDocumentDepartment> builder)
+    {
+        builder.ToTable("ProcessDocumentDepartment", "dbo");
+        builder.HasKey(x => new { x.ProcessDocumentId, x.DepartmentId });
+
+        builder.HasOne(x => x.Department)
+            .WithMany()
+            .HasForeignKey(x => x.DepartmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class ProcessDocumentJobRoleConfiguration : IEntityTypeConfiguration<ProcessDocumentJobRole>
+{
+    public void Configure(EntityTypeBuilder<ProcessDocumentJobRole> builder)
+    {
+        builder.ToTable("ProcessDocumentJobRole", "dbo");
+        builder.HasKey(x => new { x.ProcessDocumentId, x.JobRoleId });
+
+        builder.HasOne(x => x.JobRole)
+            .WithMany()
+            .HasForeignKey(x => x.JobRoleId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -75,6 +123,62 @@ public sealed class ProcessStepRecordConfiguration : IEntityTypeConfiguration<Pr
         builder.HasMany(x => x.Skills)
             .WithOne(s => s.ProcessStep)
             .HasForeignKey(s => s.ProcessStepId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class ProcessSkillRequirementConfiguration : IEntityTypeConfiguration<ProcessSkillRequirement>
+{
+    public void Configure(EntityTypeBuilder<ProcessSkillRequirement> builder)
+    {
+        builder.ToTable("ProcessSkillRequirement", "dbo");
+        builder.HasKey(x => x.ProcessSkillRequirementId);
+
+        builder.Property(x => x.SkillName).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.Category).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.Reason).HasMaxLength(1000);
+
+        builder.HasOne(x => x.MatchedSkill)
+            .WithMany()
+            .HasForeignKey(x => x.MatchedSkillId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasMany(x => x.ScopedDepartments)
+            .WithOne(d => d.ProcessSkillRequirement)
+            .HasForeignKey(d => d.ProcessSkillRequirementId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.ScopedJobRoles)
+            .WithOne(r => r.ProcessSkillRequirement)
+            .HasForeignKey(r => r.ProcessSkillRequirementId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class ProcessSkillRequirementDepartmentConfiguration : IEntityTypeConfiguration<ProcessSkillRequirementDepartment>
+{
+    public void Configure(EntityTypeBuilder<ProcessSkillRequirementDepartment> builder)
+    {
+        builder.ToTable("ProcessSkillRequirementDepartment", "dbo");
+        builder.HasKey(x => new { x.ProcessSkillRequirementId, x.DepartmentId });
+
+        builder.HasOne(x => x.Department)
+            .WithMany()
+            .HasForeignKey(x => x.DepartmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class ProcessSkillRequirementJobRoleConfiguration : IEntityTypeConfiguration<ProcessSkillRequirementJobRole>
+{
+    public void Configure(EntityTypeBuilder<ProcessSkillRequirementJobRole> builder)
+    {
+        builder.ToTable("ProcessSkillRequirementJobRole", "dbo");
+        builder.HasKey(x => new { x.ProcessSkillRequirementId, x.JobRoleId });
+
+        builder.HasOne(x => x.JobRole)
+            .WithMany()
+            .HasForeignKey(x => x.JobRoleId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

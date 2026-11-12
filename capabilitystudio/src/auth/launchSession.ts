@@ -22,6 +22,53 @@ function clearInheritedTenant(): void {
   sessionStorage.removeItem(INHERITED_TENANT_NAME_KEY);
 }
 
+// Auto-relaunch (2026-11-09): when the launch session JWT expires, or
+// Studio is opened in a fresh tab that never got one, StudioAuthGate used
+// to dead-end on "go back to your app and click Studio" — annoying for an
+// identity the parent app (Enterprise/Family/etc.) already knows about via
+// its own persistent login (MSAL). We persist just enough to silently
+// re-request a fresh launch code from that same parent app's backend
+// in localStorage (survives new tabs/reloads, unlike the sessionStorage
+// launch session itself) and clear it on explicit logout so a signed-out
+// user isn't silently signed back in.
+const RELAUNCH_KEY = 'humanos.studio.relaunch';
+
+export interface RelaunchInfo {
+  /** Parent app's "create launch" endpoint, e.g.
+   *  "http://localhost:7071/api/humanos/studio-launch" — derived from the
+   *  exchangeUrl LaunchPage used (same path, minus the trailing "/exchange"). */
+  base: string;
+  oid: string | null;
+  tid: string | null;
+  email: string;
+  /** Optional launch role override, e.g. "University" — see
+   *  HumanOsStudioLaunchFunctions.CreateAsync's `asRole` query param. */
+  asRole?: string;
+}
+
+export function saveRelaunchInfo(info: RelaunchInfo): void {
+  try {
+    localStorage.setItem(RELAUNCH_KEY, JSON.stringify(info));
+  } catch {
+    // Best-effort — storage can be unavailable (private mode, quota); the
+    // user just falls back to the manual "go back to your app" screen.
+  }
+}
+
+export function getRelaunchInfo(): RelaunchInfo | null {
+  try {
+    const raw = localStorage.getItem(RELAUNCH_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as RelaunchInfo;
+  } catch {
+    return null;
+  }
+}
+
+export function clearRelaunchInfo(): void {
+  localStorage.removeItem(RELAUNCH_KEY);
+}
+
 export interface LaunchSession {
   token: string;
   claims: StudioLaunchClaims;
@@ -70,6 +117,7 @@ export function hasValidLaunchSession(): boolean {
 export function clearLaunchSession(): void {
   sessionStorage.removeItem(STORAGE_KEY);
   clearInheritedTenant();
+  clearRelaunchInfo();
   notifySessionChange();
 }
 

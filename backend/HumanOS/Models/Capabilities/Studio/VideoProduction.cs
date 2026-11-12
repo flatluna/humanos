@@ -22,6 +22,15 @@ public sealed class VideoProduction
 
     public Guid TenantId { get; set; }
 
+    /// <summary>Azure AD object ID of the person who created this project
+    /// (2026-11-10) — without this, ListVideoProductions/DeleteVideoProduction
+    /// had no way to tell projects apart from each other once TenantId
+    /// matched, so every employee/student in the same tenant could see and
+    /// delete every other employee's/student's generated videos. Captured
+    /// from the X-Azure-OID header at creation time; null for
+    /// pre-2026-11-10 rows (those remain tenant-only scoped).</summary>
+    public string? OwnerOid { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     /// <summary>Blob path of the final merged video (all clips concatenated

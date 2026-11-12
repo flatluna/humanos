@@ -77,6 +77,73 @@ public sealed class InferredOutline
     public List<InferredOutlineChapter> Chapters { get; set; } = [];
 }
 
+/// <summary>One ENGRAM (fine-grained, self-contained teachable chunk) under
+/// a <see cref="DirectChapter"/> — produced ONLY by
+/// <see cref="TocExtractionAgent.ExtractDirectAsync"/>. Unlike
+/// <see cref="TocChapter"/>/<see cref="InferredOutlineNode"/>, this carries
+/// its OWN verbatim <see cref="Content"/> directly — no separate
+/// StartMarker + ordinal-search slicing step is needed downstream.</summary>
+public sealed class DirectEngram
+{
+    /// <summary>Short (2-6 word), human/knowledge-centered title.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>One-sentence capability this engram builds in the learner
+    /// — same role as <see cref="HumanOS.Models.Capabilities.Studio.StructuredLearningDocumentSection.Capability"/>.</summary>
+    public string Capability { get; set; } = string.Empty;
+
+    /// <summary>EXACT, VERBATIM text copied from the source document for
+    /// this engram — never paraphrased, never summarized, never invented.
+    /// Only the BOUNDARIES (where one engram ends and the next begins) are
+    /// the model's own judgment; the characters inside must be an exact
+    /// substring of the source.</summary>
+    public string Content { get; set; } = string.Empty;
+}
+
+/// <summary>One top-level CHAPTER produced by
+/// <see cref="TocExtractionAgent.ExtractDirectAsync"/> — groups 2+ engrams
+/// that together cover one real topic/section of the source document.</summary>
+public sealed class DirectChapter
+{
+    /// <summary>The chapter's REAL heading, copied as literally as
+    /// possible from the source (never shortened/paraphrased) when the
+    /// document has an explicit heading at that point. Only a genuinely
+    /// descriptive title of your own may be used when NO explicit heading
+    /// exists in the source at all (pure topic-shift inference).</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>One or two sentence generic description of what this
+    /// chapter covers — shown to the designer in the approval UI.</summary>
+    public string Description { get; set; } = string.Empty;
+
+    public List<DirectEngram> Engrams { get; set; } = [];
+}
+
+/// <summary>Result of <see cref="TocExtractionAgent.ExtractDirectAsync"/> —
+/// a FULL Chapter -&gt; Engram breakdown WITH each engram's own verbatim
+/// content already attached, produced in a SINGLE call (2026-10-29 design:
+/// replaces the detect-boundary-then-slice-by-StartMarker approach for
+/// documents small enough to fit in one context window — see
+/// /memories/repo/structuredlearning-direct-chunking.md). Eliminates the
+/// StartMarker/ordinal-search step entirely (and the class of bugs where a
+/// misidentified "heading" — e.g. a bolded lead-in sentence to a bullet
+/// list — silently produces a valid-but-wrong chapter boundary) by having
+/// the model hand back the already-sliced content directly instead of
+/// just a short marker for code to re-locate later.</summary>
+public sealed class DirectExtraction
+{
+    /// <summary>The document's own cover/title heading, copied VERBATIM —
+    /// null/empty if the source has no distinct title line of its own
+    /// (e.g. it starts directly with body content).</summary>
+    public string? DocumentTitle { get; set; }
+
+    /// <summary>The document's own subtitle/tagline immediately under its
+    /// title, copied VERBATIM — null/empty if none exists.</summary>
+    public string? DocumentSubtitle { get; set; }
+
+    public List<DirectChapter> Chapters { get; set; } = [];
+}
+
 /// <summary>
 /// Detects a source document's own chapter/section structure (e.g. a
 /// textbook's table of contents) from its raw extracted text, BEFORE the
@@ -149,7 +216,11 @@ public sealed class TocExtractionAgent
         For each returned chapter, provide:
         - Title: the chapter's real title as it appears in the source (or
           a short descriptive title if the document has no explicit
-          titles).
+          titles). NEVER use a "[Descripción de imagen — página N]"
+          marker (internal scaffolding inserted by the extraction
+          pipeline, not real document text) as or inside a Title, even
+          when it is the very first text of that chapter — write your own
+          short descriptive title for that chapter instead.
         - StartMarker: a short (8-15 words), EXACT, VERBATIM copy of text
           taken directly from the source, copied character-for-character
           from the point where that chapter begins. This is used to
@@ -250,11 +321,24 @@ public sealed class TocExtractionAgent
         models" are each their own subsection, not filler text):
         - One chapter entry per subsection/topic heading, never one entry
           per top-level unit covering several subsections at once.
-        - Include every subsection, even short/procedural ones that might
-          otherwise seem like scaffolding (e.g. "Introducción, competencias
-          y objetivos", "Actividad complementaria", "Criterios de
-          evaluación") — each one is its own mandatory chapter, never
-          merged into a neighboring subsection or dropped.
+        - Include every subsection that teaches something, even short/
+          procedural ones that might otherwise seem like scaffolding (e.g.
+          "Introducción, competencias y objetivos") — each one is its own
+          mandatory chapter, never merged into a neighboring subsection or
+          dropped.
+        - EXCEPTION — NEVER A SUBSECTION OF ITS OWN: an
+          assessment/practice/review heading whose job is to VERIFY or
+          REINFORCE knowledge the learner is assumed to already have from
+          the subsection right before it, rather than teach anything new
+          — e.g. "Knowledge Check", "Pause and Explain", "Diagnostic
+          Activity", "In-Class Learning Activity", "Applied Challenge",
+          "PROFE recap", "Oral Defense Questions", "Practice Activity",
+          "Review Questions", "Quiz", "Self-Check", "Criterios de
+          evaluación", "Actividad complementaria". This rule applies even
+          in strict syllabus mode and even when such a heading is numbered
+          like a real subsection — fold its text into the PRECEDING real,
+          substantive subsection instead of giving it its own chapter
+          entry. A long list of review questions is still not new content.
         - Title each detected chapter after that subsection's own heading
           text (numbering may be included or dropped, your choice, but the
           Title must clearly correspond to exactly that one subsection).
@@ -310,6 +394,29 @@ public sealed class TocExtractionAgent
         - Under EACH chapter, propose 2-6 NODES — concrete, learnable
           sub-topics that together cover that chapter's content. Never
           propose a chapter with zero nodes.
+        - IMAGE-ONLY INPUT: if the source text consists entirely (or
+          almost entirely) of blocks marked "[Descripción de imagen —
+          página N]" with no real surrounding body text of its own — i.e.
+          the document is just scanned/pasted images with no actual
+          prose — treat EACH distinct image-description block as exactly
+          ONE chapter (never split a single image's own description
+          across several chapters, and never merge two different images'
+          blocks into one chapter). Title that chapter after what the
+          image actually depicts (its own title/heading, e.g. from a
+          "# Título" line in its description) — never a generic label
+          like "Page 1" or "Image 1". WITHIN that one chapter, propose one
+          node per real section of the image's own index/structure (e.g.
+          its "# Índice de Contenidos" headings/numbered items such as
+          "1. Change Narrative", "2. Culture", etc.) — each such node's
+          content is that section's own transcribed text (title + body),
+          not the whole image description repeated. If the image's
+          description has an executive-summary section (e.g. "# Resumen
+          Ejecutivo"), make that the chapter's own first node/intro
+          instead of a separate index item. This overrides the general
+          "3-8 chapters total" guidance below (one image = one chapter,
+          however many chapters that makes), but the normal "2-6 nodes
+          per chapter" guidance still applies to how that chapter's own
+          index sections are split into nodes.
         - Do NOT propose one node per item of a single enumerated
           model/framework/process (e.g. each letter of an acronym like
           Awareness/Desire/Knowledge/Ability/Reinforcement, or each
@@ -338,10 +445,238 @@ public sealed class TocExtractionAgent
           chapter.
         """;
 
+    /// <summary>Instructions for <see cref="ExtractDirectAsync"/> (2026-10-29)
+    /// — used only for documents small enough to fit entirely in one call
+    /// (see <see cref="HumanOS.Services.CapabilityOutlinePreviewService"/>'s
+    /// own size threshold). Unlike <see cref="Instructions"/>/
+    /// <see cref="InferOutlineInstructions"/>, which only locate/propose a
+    /// SHORT StartMarker for code to re-locate and slice afterwards, this
+    /// has the model hand back each engram's own full VERBATIM content
+    /// directly — removing the separate "locate this short marker again,
+    /// exactly, inside the raw text" step entirely, which is where subtle
+    /// misclassifications (e.g. a bolded lead-in sentence to a bullet list
+    /// mistaken for a new heading) used to silently produce a wrong-but-
+    /// valid boundary instead of a visible failure.</summary>
+    /// <summary>Instructions for <see cref="SplitModuleIntoEngramsAsync"/>
+    /// (2026-11-10) — unlike <see cref="InferOutlineInstructions"/> (whole
+    /// document -> chapters+nodes) or <see cref="DirectExtractionInstructions"/>
+    /// (whole document -> chapters+engrams WITH content), this call is
+    /// scoped to just ONE already-identified module/chapter's own text
+    /// (from <see cref="HumanOS.Agents.Studio.SyllabusOutlineParser"/>'s
+    /// Tier 0, when that module had no numbered/keyworded subsections of
+    /// its own) — used to propose real engram-level sub-topic boundaries
+    /// INSIDE it instead of leaving the whole module as one oversized
+    /// single node.</summary>
+    private const string EngramSplitInstructions = """
+        You are given the full text of ONE module/chapter of a training
+        course (its own heading already removed/implied — do not propose
+        an engram for the module's own title). Your job is to split THIS
+        module's own text into ENGRAMS: small, self-contained teachable
+        ideas a learner can absorb and be quizzed on as one unit.
+
+        - Only split where it genuinely makes sense: if the module already
+          reads as ONE coherent idea, return exactly one engram covering
+          the whole text — never force a split just to produce more than
+          one result.
+        - Break at genuine topic/idea boundaries — typically the module's
+          own named sub-headings (e.g. "The Problem That Forced Computing
+          Forward", "Were These Machines Intelligent?", "The First
+          Artificial Neuron" each becoming their own engram when they are
+          substantial, self-contained ideas).
+        - NEVER make a standalone engram out of pure scaffolding/framing
+          text with no teachable content of its own — e.g. an opening
+          hook/scenario question, a "Learning Objectives" bullet list, an
+          "Opening Conversation" prompt, a "Diagnostic Activity"
+          instructions block, or an "Ask PROFE: ..." prompt. Fold each of
+          these into the very next (or, if there is none after it, the
+          previous) real content engram instead — they set up or reinforce
+          that engram's idea, they are not their own idea.
+        - NEVER make a standalone engram out of an ASSESSMENT/PRACTICE/
+          REVIEW section either — e.g. "Knowledge Check", "In-Class
+          Learning Activity", "Applied Challenge", "PROFE recap",
+          "PROFE Oral Defense Questions", a quiz, a set of review
+          questions, or any other block whose job is to VERIFY or
+          REINFORCE knowledge the learner is assumed to already have from
+          an earlier engram. An engram is a NEW, self-contained piece of
+          knowledge the learner has not yet seen — a question that only
+          makes sense once that knowledge already exists is not a new
+          engram, no matter how long the list of questions is. Fold this
+          text into the PRECEDING real content engram it checks/practices
+          (never into the next one, and never on its own) — a learner
+          encountering it as its own standalone unit would be confused,
+          since there is nothing new being taught there.
+        - Do NOT propose one engram per item of a single enumerated
+          list/model/process — keep that whole list/model together as
+          part of ONE engram.
+        - Every word of the module's own text must end up inside exactly
+          one engram's span — do not silently drop any part of it (the
+          scaffolding text above still belongs somewhere, just not alone).
+        - Each engram needs a Title (2-6 words, human/knowledge-centered)
+          and a StartMarker: a short (8-15 words), EXACT, VERBATIM copy of
+          text from the point in THIS module's text where that engram
+          begins (same spelling/spacing/punctuation as the source — never
+          paraphrased). The very first engram's StartMarker must be the
+          module's own very first line of real text.
+        - Return engrams in reading order.
+        """;
+
+    private const string DirectExtractionInstructions = """
+        You split a source document (e.g. a textbook chapter, an online
+        article, a course/tutorial page) into a Chapter -> Engram
+        structure for a training course, reading the ENTIRE document
+        yourself and returning the real content inline — not just where
+        to cut it.
+
+        FIRST, check for a cover/title heading and subtitle/tagline at the
+        very start of the document (e.g. a whitepaper's own title line
+        followed by a one-line tagline) and copy BOTH verbatim into
+        DocumentTitle/DocumentSubtitle if present — these are NEVER
+        returned as their own chapter.
+
+        An "Engram" is ONE small, self-contained teachable idea: a single
+        concept, fact, procedure step, or closely-related small group of
+        facts that a learner can absorb and be quizzed on as one unit.
+        Getting engram SIZE right matters as much as getting the topic
+        boundaries right:
+        - Target roughly 900-2000 characters (about 200-450 words) of
+          verbatim source text per engram. This is a GUIDELINE, not a hard
+          rule — never split one coherent idea into two pieces just to
+          hit this range, and never force two genuinely different ideas
+          together just to pad a short one up to it.
+        - TOO SMALL is a real failure mode: a single bullet point, a bare
+          definition with no elaboration, or one sentence fragment is not
+          its own engram — fold it into the engram covering the topic it
+          belongs to.
+        - TOO LARGE is an equally real failure mode: if a chapter's whole
+          topic is one giant wall of text, you MUST split it into several
+          engrams by its own internal sub-topics/steps/examples rather
+          than returning it as one oversized engram — a single engram
+          holding most of the document's content is ALWAYS wrong.
+
+        STEP 1 — DETECT TOP-LEVEL CHAPTERS.
+        Identify the document's own real topic/section boundaries, same
+        as detecting a table of contents: look first for the document's
+        own explicit index/agenda/table of contents if it has one and use
+        it as the authoritative chapter list; otherwise infer chapters
+        from the document's own visible topic shifts. Prefer 3-8 chapters
+        for a typical document.
+
+        IMAGE-ONLY INPUT AT THE CHAPTER LEVEL: a block marked
+        "[Descripción de imagen — página N]" with no real surrounding
+        prose of its own is a whole distinct source image, not a topic to
+        be merged with any other image or with nearby real text. Each
+        such block is its OWN chapter — never group two different
+        images' blocks into one chapter, and never fold an image's block
+        into the chapter covering the real prose text around it.
+
+        NEVER USE THE "[Descripción de imagen — página N]" MARKER ITSELF
+        AS A TITLE: that bracketed line is internal scaffolding inserted
+        by the extraction pipeline, NOT a heading written by the
+        document's own author — it must NEVER be copied (whole or
+        partial, with or without the brackets) into any chapter's or
+        engram's Title, even for an image-only chapter whose content
+        starts right after that marker. For an image-only chapter, derive
+        the Title from the image description's OWN content instead: its
+        own "# Título"/"# Resumen Ejecutivo" heading if present, or
+        otherwise a short descriptive title you write yourself that
+        reflects what the image actually depicts.
+
+        CHAPTER TITLES MUST BE LITERAL, NEVER SHORTENED OR PARAPHRASED:
+        if the document has a real, visible heading at a chapter's start
+        (even a long one, e.g. "Decision framework: Choosing agentic vs.
+        traditional automation"), copy that heading VERBATIM as the
+        Title — in FULL, including any subtitle/colon clause after it.
+        Do NOT compress it down to just its first few words. Only write a
+        short descriptive title of your own when the source genuinely has
+        NO explicit heading at that boundary at all (pure topic-shift
+        inference with nothing to copy).
+
+        STEP 2 — BREAK EACH CHAPTER INTO ENGRAMS.
+        Within each chapter, in reading order, produce 2 or more engrams
+        that together cover ALL of that chapter's substantive content
+        (never skip or drop any body text — only navigational/
+        administrative scaffolding like "Knowledge Check", "Summary",
+        "References", "Module Agenda" may be omitted if it adds nothing
+        pedagogically).
+
+        IMAGE-DESCRIPTION CHAPTERS: when a chapter's own content is a
+        single block marked "[Descripción de imagen — página N]" (i.e.
+        this chapter IS one described image), split it into engrams by
+        the image's OWN internal structure, same as any other chapter:
+        - If the image description has a "# Resumen Ejecutivo" section,
+          that becomes the chapter's first engram (its intro/summary).
+        - Each real section of the image's own "# Índice de Contenidos"
+          (its own numbered/named headings, e.g. "1. Change Narrative",
+          "2. Culture") becomes its own engram, with Content equal to
+          that section's own transcribed heading + body text verbatim
+          — never the whole image description repeated per engram.
+        - Never split ONE such section into multiple engrams, and never
+          merge two different sections together into one engram.
+        - Never let an engram's Content span across TWO different
+        "[Descripción de imagen — página N]" blocks (whether from the
+        same or different pages) — each image's own block, and all its
+        engrams, must stay wholly inside its own single chapter, never
+        merged with another image's block or with surrounding real prose.
+        - If the image description has no internal structure at all (no
+          executive summary, no index sections — just a flat
+          transcription/description), fall back to exactly one engram
+          for the whole chapter rather than forcing an artificial split.
+
+        A COMMON TRAP TO AVOID: a short bolded/emphasized sentence that
+        INTRODUCES a bullet list (e.g. "Key components of X include:")
+        is NOT a new topic heading and NOT the start of a new engram —
+        it is the opening sentence of the SAME engram as the list that
+        follows it. Never treat a list's own lead-in sentence as a
+        chapter/engram boundary; keep the lead-in sentence and its list
+        together in one engram.
+
+        ENGRAM TITLE IS A WARNING SIGN CHECK: if the title you're about to
+        write for an engram joins two different topic names together
+        (e.g. with "&", "and", "/") or ends in a word like "Start",
+        "cont.", "continued", or "(cont'd)", that is a strong signal your
+        slice boundary landed in the MIDDLE of a real sub-topic instead of
+        at its edges. When this happens, move the boundary to the actual
+        edge between the two sub-topics (even if it makes this engram or
+        its neighbor smaller/larger than the usual target size) and
+        rewrite the title to name the ONE coherent idea the engram
+        actually covers — never ship a title that is really two topic
+        names stitched together.
+
+        PRESERVE THE DOCUMENT'S OWN ORDER EXACTLY: chapters and engrams
+        must be returned in the exact same order their content appears in
+        the source, start to finish — never reorder a chapter/engram to
+        group similar topics together or for any other reason.
+
+        For each engram, provide:
+        - Title: short (2-6 words), human/knowledge-centered label
+          naming the ONE idea this engram covers — never a literal copy
+          of a long sentence, and never two topic names joined together
+          (see the warning-sign check above).
+        - Capability: one short sentence naming the concrete capability/
+          skill this engram builds in the learner (not a restatement of
+          the title).
+        - Content: the VERBATIM text for this engram, copied EXACTLY
+          character-for-character from the source (same spelling,
+          spacing, punctuation — never paraphrase, summarize, reorder, or
+          invent). You may choose where to START and STOP each slice, but
+          every character you return inside it must genuinely appear in
+          the source text in that order. Every character of the source's
+          substantive content must end up inside EXACTLY ONE engram —
+          never duplicated across two engrams, never dropped entirely.
+
+        For each chapter, also provide a short (1-2 sentence) Description
+        summarizing what it covers, for a human reviewer — this one field
+        may be your own words, not verbatim.
+        """;
+
     private readonly AIAgent? _agent;
     private readonly AIAgent? _inferOutlineAgent;
+    private readonly AIAgent? _directExtractionAgent;
+    private readonly AIAgent? _engramSplitAgent;
     private readonly ChatClientAgentRunOptions? _extractRunOptions;
     private readonly ChatClientAgentRunOptions? _inferOutlineRunOptions;
+    private readonly ChatClientAgentRunOptions? _directExtractionRunOptions;
+    private readonly ChatClientAgentRunOptions? _engramSplitRunOptions;
 
     public TocExtractionAgent(IConfiguration configuration)
     {
@@ -375,6 +710,22 @@ public sealed class TocExtractionAgent
             ? null
             : client.GetChatClient(inferDeploymentName).AsAIAgent(instructions: InferOutlineInstructions, name: "TocInferOutlineAgent");
         _inferOutlineRunOptions = string.IsNullOrWhiteSpace(inferDeploymentName) ? null : BuildDeterministicRunOptions(inferDeploymentName);
+
+        // Same main (non-economy) deployment as inference — generating the
+        // actual engram content/boundaries in one pass is a genuine reading-
+        // comprehension task, not mechanical marker-finding.
+        _directExtractionAgent = string.IsNullOrWhiteSpace(inferDeploymentName)
+            ? null
+            : client.GetChatClient(inferDeploymentName).AsAIAgent(instructions: DirectExtractionInstructions, name: "TocDirectExtractionAgent");
+        _directExtractionRunOptions = string.IsNullOrWhiteSpace(inferDeploymentName) ? null : BuildDeterministicRunOptions(inferDeploymentName);
+
+        // Same main deployment — splitting one module's own text into
+        // engrams still needs genuine reading comprehension (telling apart
+        // scaffolding from real content), not mechanical marker-finding.
+        _engramSplitAgent = string.IsNullOrWhiteSpace(inferDeploymentName)
+            ? null
+            : client.GetChatClient(inferDeploymentName).AsAIAgent(instructions: EngramSplitInstructions, name: "TocEngramSplitAgent");
+        _engramSplitRunOptions = string.IsNullOrWhiteSpace(inferDeploymentName) ? null : BuildDeterministicRunOptions(inferDeploymentName);
     }
 
     // Boundary detection is a reading-comprehension/pattern-matching task with
@@ -407,6 +758,12 @@ public sealed class TocExtractionAgent
     /// the main, non-economy Azure OpenAI deployment configured).</summary>
     public bool IsInferenceConfigured => _inferOutlineAgent is not null;
 
+    /// <summary>Whether <see cref="ExtractDirectAsync"/> can be called.</summary>
+    public bool IsDirectExtractionConfigured => _directExtractionAgent is not null;
+
+    /// <summary>Whether <see cref="SplitModuleIntoEngramsAsync"/> can be called.</summary>
+    public bool IsEngramSplitConfigured => _engramSplitAgent is not null;
+
     /// <summary>
     /// "Modo B" / Tier 2 (2026-08-04): proposes a full two-level chapter/
     /// level -> node outline for a document that has NO explicit numbered
@@ -432,6 +789,40 @@ public sealed class TocExtractionAgent
         return response.Result;
     }
 
+    /// <summary>Result wrapper for <see cref="SplitModuleIntoEngramsAsync"/>
+    /// — structured-output schemas need an object, not a bare array.</summary>
+    public sealed class ModuleEngramSplit
+    {
+        public List<InferredOutlineNode> Engrams { get; set; } = [];
+    }
+
+    /// <summary>
+    /// 2026-11-10: splits ONE already-identified module/chapter's own text
+    /// (see <see cref="EngramSplitInstructions"/>) into real engram-level
+    /// nodes — used by <see cref="HumanOS.Services.CapabilityOutlinePreviewService"/>
+    /// Tier 0 when <see cref="HumanOS.Agents.Studio.SyllabusOutlineParser"/>
+    /// found that module's own heading but no numbered/keyworded
+    /// subsections under it, so it would otherwise become a single
+    /// oversized node covering the module's ENTIRE text. Unlike
+    /// <see cref="ExtractAsync"/>/<see cref="InferOutlineAsync"/> (whole
+    /// document), this is scoped to just one module's own text — small
+    /// enough to always fit in one call regardless of overall document
+    /// size.
+    /// </summary>
+    public async Task<List<InferredOutlineNode>> SplitModuleIntoEngramsAsync(string moduleText, CancellationToken cancellationToken = default)
+    {
+        if (_engramSplitAgent is null)
+        {
+            throw new InvalidOperationException(
+                "The TocExtraction engram-split agent is not configured. Set the 'AzureOpenAIEndpoint' and " +
+                "'AzureOpenAIDeploymentName' application settings.");
+        }
+
+        var prompt = "Split this module's text into engrams:\n\n" + moduleText;
+        var response = await _engramSplitAgent.RunAsync<ModuleEngramSplit>(prompt, options: _engramSplitRunOptions, cancellationToken: cancellationToken);
+        return response.Result.Engrams;
+    }
+
     public async Task<TableOfContents> ExtractAsync(
         string documentText,
         bool strictSyllabusMode = false,
@@ -448,6 +839,45 @@ public sealed class TocExtractionAgent
             (strictSyllabusMode ? StrictSyllabusModeAddendum : string.Empty);
 
         var response = await _agent.RunAsync<TableOfContents>(prompt, options: _extractRunOptions, cancellationToken: cancellationToken);
+
+        return response.Result;
+    }
+
+    /// <summary>
+    /// Single-call Chapter -&gt; Engram extraction WITH each engram's own
+    /// verbatim content already attached (see <see cref="DirectExtractionInstructions"/>
+    /// and <see cref="DirectExtraction"/>) — only used for documents small
+    /// enough to fit in one context window (caller's own size threshold;
+    /// see <see cref="HumanOS.Services.CapabilityOutlinePreviewService"/>).
+    /// Since the model is explicitly allowed to choose engram content
+    /// freely (not re-located via a short marker), every returned engram is
+    /// verified here to be a genuine, ordinal, verbatim substring of
+    /// <paramref name="documentText"/> — an engram that fails this check
+    /// (the model paraphrased/invented instead of copying) is DROPPED
+    /// rather than silently accepted with wrong/hallucinated content, so a
+    /// caller can detect and fall back to the slower tiers if too much was
+    /// dropped.
+    /// </summary>
+    public async Task<DirectExtraction> ExtractDirectAsync(string documentText, CancellationToken cancellationToken = default)
+    {
+        if (_directExtractionAgent is null)
+        {
+            throw new InvalidOperationException(
+                "The TocExtraction direct-extraction agent is not configured. Set the 'AzureOpenAIEndpoint' and " +
+                "'AzureOpenAIDeploymentName' application settings.");
+        }
+
+        var prompt = "Split the following document into a Chapter -> Engram structure, with each engram's own verbatim content:\n\n" + documentText;
+        var response = await _directExtractionAgent.RunAsync<DirectExtraction>(prompt, options: _directExtractionRunOptions, cancellationToken: cancellationToken);
+
+        foreach (var chapter in response.Result.Chapters)
+        {
+            chapter.Engrams = chapter.Engrams
+                .Where(engram => !string.IsNullOrWhiteSpace(engram.Content)
+                    && documentText.Contains(engram.Content, StringComparison.Ordinal))
+                .ToList();
+        }
+        response.Result.Chapters = response.Result.Chapters.Where(c => c.Engrams.Count > 0).ToList();
 
         return response.Result;
     }

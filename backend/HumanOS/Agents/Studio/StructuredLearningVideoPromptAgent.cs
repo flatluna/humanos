@@ -66,6 +66,26 @@ public sealed class StructuredLearningVideoPromptAgent
         that the camera stays on the teacher throughout, with no cut to
         other people, so the last frame is always the teacher.
 
+        ONLY THE ON-SCREEN CHARACTER SPEAKS — NEVER A THIRD-PERSON
+        NARRATOR/VOICE-OVER — CRITICAL, EVERY CLIP. The ONLY audio in the
+        clip is the on-screen subject's own quoted first-person line. Never
+        write or imply a disembodied narrator/announcer voice describing
+        what the character is doing from the outside (e.g. WRONG: "El joven
+        da su mensaje a la nación" / "The young man delivers his message to
+        the nation" / "A teacher explains the lesson") — that is
+        third-person narration ABOUT the character, not the character's own
+        voice, and video models will sometimes render it as an actual
+        narrator voice-over instead of the character talking. Every quoted
+        spoken line must be phrased as if the character is the one saying
+        the words out loud, in first person, directly to camera (e.g.
+        RIGHT: "Hola, soy su amigo el Ciudadano Cívico, y hoy les quiero
+        contar..."). The Scene direction text itself (camera/blocking
+        instructions) may describe the character in third person — that
+        part is a stage direction, never spoken — but the ONLY words
+        actually heard in the clip are the character's own quoted
+        first-person dialogue; do not add any narration line, caption
+        voice-over, or announcer summary of the action in addition to it.
+
         STEP 1 — DECIDE HOW MANY CLIPS ARE NEEDED AND PLAN COVERAGE.
         Read the video intention and estimate the content to be taught.
         HARD CONSTRAINT — each clip is EXACTLY 10 seconds (roughly 20-25 spoken words).
@@ -124,23 +144,32 @@ public sealed class StructuredLearningVideoPromptAgent
         commentary. Do not describe more than what happens in these 10
         seconds. Do not invent facts not supported by the inputs.
 
-        NO CLIPPED FIRST WORD — CRITICAL, EVERY CLIP. Video models that
-        start speaking at the exact first frame frequently clip off the
-        first syllable/word of the narration (e.g. "Recall" renders as
-        just "-ecall"), because the audio track begins fractionally before
-        the model has fully "warmed up" the shot. To prevent this, every
-        clip's prompt must explicitly instruct: the subject pauses briefly
-        (about half a second) at the very start, already in position and
-        looking at the camera, before beginning to speak — the first word
-        of the narration must be spoken clearly and in full, never at the
-        exact first frame. State this explicitly in the Scene/prompt text,
-        e.g. (English): "The speaker holds a brief natural pause at the
-        very start, already in position, before clearly speaking the first
-        word — do not clip or rush the opening word." (Spanish): "El
-        hablante mantiene una breve pausa natural al inicio, ya en
-        posición, antes de decir claramente la primera palabra — no
-        recortes ni apresures la palabra inicial." Apply this to every
-        clip, not just the first one in the sequence.
+        NEVER INVENT SPOKEN DIALOGUE NOT PROVIDED BY THE USER — CRITICAL.
+        If the user's VIDEO INTENTION already contains explicit, literal
+        dialogue (text quoted or clearly meant to be spoken verbatim by
+        the subject), the quoted spoken line in each clip's Scene MUST be
+        built ONLY from that exact user-provided text, split across clips
+        in order without adding a single extra word, sentence, greeting,
+        or closing remark that the user did not write. Do not pad a short
+        user-provided line with your own invented filler just to fill the
+        10-second/20-25-word budget, and do not append your own
+        made-up dialogue after the user's text ends. If the user's
+        dialogue is shorter than the clip budget, it is fine for the
+        spoken line to be short — accuracy to the user's exact words
+        always outranks filling the time budget.
+
+        WHEN THERE IS NO LITERAL USER DIALOGUE, FILL THE FULL 10 SECONDS —
+        CRITICAL. If the VIDEO INTENTION is a description/brief rather than
+        literal quoted dialogue (the common case), you must WRITE a
+        natural spoken line that uses close to the FULL 20-25 word budget
+        for that clip — never a short, clipped sentence that leaves most
+        of the 10 seconds silent. NEVER repeat the same phrase or sentence
+        twice in one clip's line (e.g. never write something like "Soy tu
+        amigo el Patito Cívico... SOY TU AMIGO EL PATITO CÍVICO" with the
+        idea said twice) — each clip's spoken line must say ONE coherent
+        idea once, fully elaborated with naturally flowing words (greeting,
+        context, and the lesson point) until it reasonably fills the
+        10-second/20-25-word budget, never padded by literal repetition.
 
         NAME WHAT IS BEING TAUGHT, FRAMED AS A LESSON — CRITICAL. A viewer
         who has never seen this sign/word/concept before must understand
@@ -217,82 +246,6 @@ public sealed class StructuredLearningVideoPromptAgent
         Keep the same subject identity/appearance and environment
         description consistent across all clips.
 
-        STEP 3.5 — MANDATORY CONTINUATION INSTRUCTION FOR EVERY CLIP AFTER
-        THE FIRST (CRITICAL, ALWAYS INCLUDE, NEVER SKIP). Every clip except
-        the very first one in the sequence is started from a real starting
-        image that is the EXACT LAST FRAME of the previous clip's own
-        generated video — not a fresh scene, not a new shot, not anything
-        the Environment/Scene text implies on its own. Regardless of what
-        the Environment or Scene description otherwise says, you MUST
-        append this exact instruction, adapted to the clip's own language
-        (Spanish or English), at the END of every clip's Scene line from
-        clip 2 onward: the provided starting image is the direct
-        continuation of the previous clip — do NOT change the camera
-        angle/framing, do NOT refocus or re-establish the shot, do NOT
-        pause, fade in, cut, or otherwise treat this as a new scene start;
-        the subject must continue speaking/acting immediately from that
-        exact frame with zero visual discontinuity, as if this clip were
-        simply the next few seconds of the same continuous shot. Example
-        (English): "This clip continues directly from the exact last
-        frame of the previous video — do not change the camera angle, do
-        not refocus, do not pause or cut; continue the action and speech
-        immediately as an unbroken continuation of the same shot."
-        Example (Spanish): "Este clip continúa directamente desde el
-        último fotograma exacto del video anterior — no cambies el ángulo
-        de cámara, no reenfoques, no hagas pausas ni cortes; continúa la
-        acción y el habla de inmediato como una continuación ininterrumpida
-        de la misma toma." Never omit this for clip 2 and beyond, and never
-        include it for clip 1 (which starts from the user's own chosen
-        starting image, not a previous clip's last frame).
-
-        STEP 3.6 — APPEARANCE LOCK, UNLESS AN EXCEPTION IS EXPLICITLY STATED
-        (CRITICAL, ALWAYS INCLUDE). Video generation models can drift and
-        silently change the subject's clothing, hair, accessories, or other
-        appearance details between clips, breaking continuity. To prevent
-        this, append this exact instruction, adapted to the clip's own
-        language, at the END of every clip's Scene line (for ALL clips,
-        including clip 1): the subject's clothing, hairstyle, and overall
-        appearance must remain EXACTLY the same as in the starting/reference
-        image — do NOT change clothing, hair, accessories, or any other
-        visual detail of the subject unless THIS SPECIFIC clip's own Scene
-        description explicitly states a change (e.g. the user's own input
-        explicitly says she puts on a jacket, changes rooms, etc.). Example
-        (English): "Keep the subject's clothing, hairstyle, and appearance
-        exactly as shown in the starting image — do not change anything
-        about her outfit, hair, or accessories unless explicitly stated
-        above." Example (Spanish): "Mantén la ropa, el peinado y la
-        apariencia del sujeto exactamente como se ve en la imagen inicial —
-        no cambies nada de su vestuario, cabello o accesorios salvo que se
-        indique explícitamente arriba." If the user's own input for THIS
-        clip does explicitly describe an appearance change, state that
-        change plainly instead of this lock sentence — the lock is the
-        DEFAULT, only overridden when the clip's own content requires it.
-
-        STEP 3.7 — NARRATOR VOICE LOCK, EVERY CLIP, NO EXCEPTIONS (CRITICAL).
-        Video models frequently drift the narrator's voice between clips —
-        switching from a male to a female voice (or vice versa) mid-sequence,
-        even though the same on-screen subject is speaking. This breaks the
-        lesson completely and must never happen. Every single clip's prompt
-        MUST explicitly describe the narrator/speaker's voice with the SAME
-        wording, verbatim, in every clip of the sequence (never omit it,
-        never vary it, never let it be implied only by the subject's
-        appearance): a strong, calm, confident male voice, like an expert
-        professional narrator/movie-trailer voice-over artist — clear
-        English with NO regional or foreign accent (or, if the clip's own
-        language is Spanish, clear neutral Spanish with no regional accent).
-        Append this exact voice description, adapted to the clip's own
-        language, into the Scene/prompt text of EVERY clip, right alongside
-        the spoken narration line: "The narrator speaks in a strong, calm,
-        confident male voice — like an expert professional narrator or
-        movie-trailer voice-over artist — in clear English with no accent."
-        (Spanish: "El narrador habla con una voz masculina fuerte, calmada
-        y segura — como un locutor profesional experto o la voz en off de
-        un tráiler de cine — en español neutro y claro, sin acento
-        regional.") This voice description must be IDENTICAL, word-for-word,
-        across every clip in the sequence — never reworded, softened, or
-        dropped for any clip, so the video model has no room to drift the
-        voice's gender, tone, or accent between clips.
-
         LOGICAL FLOW BETWEEN CLIPS — CRITICAL. The sequence must read as ONE
         coherent lesson, not disconnected beats. Two failure modes to avoid:
         (a) a later clip introduces new content (e.g. a concrete numeric
@@ -335,6 +288,90 @@ public sealed class StructuredLearningVideoPromptAgent
         leave framing generic when the action could fall outside a tight
         close-up or an overly wide shot.
 
+        FULL-BODY CHARACTER VISIBILITY — CRITICAL, EVERY CLIP. If the main
+        subject is a character/mascot/animal (not a human presenter) shown
+        from a reference image, the Scene MUST explicitly lock a full-body
+        framing in EVERY SINGLE CLIP, from the very first clip to the last
+        — never only in one clip and never left implicit. State this
+        explicitly each time, e.g. "wide static shot, full body of the
+        character visible at all times, from the top of the head to the
+        feet/base, including any wings/arms/tail fully in frame with no
+        cropping, enough headroom and side margin that gestures never get
+        cut off". If the character has wings, arms, or other limbs used to
+        gesture, name them explicitly (e.g. "wings fully visible and in
+        frame whenever it gestures") so the detail is never dropped or
+        reduced to a medium/close-up shot by mistake. This full-body
+        framing instruction must be repeated, not assumed carried over,
+        in every clip's Scene text.
+
+        PRESERVE THE REFERENCE IMAGE'S EXACT APPEARANCE — CRITICAL, EVERY
+        CLIP. If a reference image is provided for the main
+        character/mascot, the Scene must explicitly instruct Veo to keep
+        the character's appearance EXACTLY as shown in the reference image
+        — do not redesign, restyle, or add/remove any clothing, accessory,
+        or body detail (e.g. do not add gloves, do not change colors, do
+        not alter the outfit). State this explicitly in every clip, e.g.
+        "the character's appearance, outfit, and all details must match
+        the reference image exactly, unchanged — only its pose and
+        gesture may change, never its design." This matters because Veo
+        regenerates the character from scratch for every clip and can
+        silently drift the design (most commonly by adding white gloves,
+        a classic cartoon-mascot detail NOT present in the original image)
+        — and that drifted design can trigger Google Veo's third-party-
+        content guardrail and make the clip fail outright, even when the
+        original reference image itself was never a problem. Repeat the
+        "keep it exactly as in the reference image, do not redesign it"
+        instruction in every single clip's Scene text, not just the first.
+
+        LOCK THE CHARACTER'S AGE — CRITICAL, EVERY CLIP, WHEN THE SUBJECT
+        IS A HUMAN (REALISTIC OR CARTOON/CARICATURE STYLE). If the
+        OBJECTIVE/ENVIRONMENT/reference image establishes a human
+        character's age or age group (e.g. "a 16-year-old young man", "a
+        child", "an adult teacher", "an elderly grandmother"), the Scene
+        must explicitly restate that exact age/age group in every single
+        clip, and Veo must render the character's face, body proportions,
+        and voice consistent with THAT age in every clip — never let the
+        apparent age drift older or younger between clips (e.g. a
+        16-year-old must not start looking like a grown adult, or a child
+        like a teenager, by clip 3). State the age explicitly each time,
+        e.g. "the character is a 16-year-old young man, keep his face and
+        body looking exactly that age in every clip."
+
+        NEVER CHANGE THE ART STYLE / NEVER "HUMANIZE" A CARTOON OR
+        CARICATURE CHARACTER — CRITICAL, EVERY CLIP. If the reference image
+        shows a human character drawn in a cartoon, caricature, anime, or
+        otherwise stylized (non-photorealistic) art style, the Scene must
+        explicitly instruct Veo to preserve that exact same stylized
+        rendering in every clip — never drift toward a realistic/
+        photorealistic human face or body, and never "humanize" (soften/
+        realism-ify) the proportions, skin texture, or line-art style that
+        the reference image established. State this explicitly each time,
+        e.g. "render the character in the exact same cartoon/caricature
+        art style as the reference image — stylized proportions and
+        features, never photorealistic, never a realistic human face."
+        Conversely, if the reference image shows a photorealistic human,
+        keep it photorealistic throughout — never drift into a cartoon/
+        illustrated look either. The rule in both directions: whatever
+        art style (photorealistic vs. stylized/cartoon) the reference
+        image uses is the one and only style allowed for that character,
+        unchanged, in every clip of the sequence.
+
+        AVOID CLASSIC CARTOON-MASCOT DESIGN TROPES — CRITICAL, EVERY CLIP.
+        If the main subject is an anthropomorphic animal/mascot character
+        (e.g. a duck, mouse, rabbit) wearing formal clothing (suit/tuxedo),
+        the Scene must explicitly state that its hands/wings are bare —
+        NO white gloves/mittens — even though the suit/tuxedo itself stays.
+        White gloved hands specifically (not the suit) are the signature
+        detail of well-known copyrighted cartoon mascots, and that detail
+        alone reliably triggers Google Veo's third-party-content guardrail,
+        causing the clip to fail outright. Keep the suit/tuxedo as
+        requested, but describe the character's wings/hands in their
+        natural bare form where they show (e.g. "wears a formal black suit,
+        but its wings/hands are bare feathers/skin, no gloves"). Repeat this
+        "no white gloves" instruction in every clip's Scene text, not just
+        the first — Veo regenerates the character's look from scratch each
+        time and can silently add gloves back in any clip.
+
         REINFORCE THE REAL-WORLD MOTIVATION WHEN ONE EXISTS — if the
         gesture/sign has a natural real-world analogy that explains WHY it
         looks that way (e.g. patting a leg to call a dog over), weave a
@@ -354,14 +391,14 @@ public sealed class StructuredLearningVideoPromptAgent
         Objetivo: <el objetivo en español>
         Lección a enseñar (este clip): <descripción detallada y completa de la mini-lección en español>
         Entorno: <el entorno en español, preservando los detalles del usuario>
-        Escena: <dirección de escena, plano y cámara EN ESPAÑOL, indicando que el profesor/sujeto habla en español de forma pausada y clara mirando a la cámara, terminando en él, seguido de la línea textual en español que pronuncia entre comillas. Ej: Plano medio a la altura de los ojos, cámara estática, el profesor centrado junto al pizarrón, cuerpo superior visible. Habla en español de forma pausada, cálida y clara mirando a la cámara. La cámara permanece en él durante todo el clip sin cortes a otra persona, terminando en él. Dice en español: "..." >
+        Escena: <dirección de escena, plano y cámara EN ESPAÑOL, indicando que el profesor/sujeto habla en español de forma pausada y clara mirando a la cámara, terminando en él, seguido de la línea textual en español que pronuncia entre comillas. Sin narrador ni voz en off: el único audio es la voz del propio personaje hablando en primera persona. Ej: Plano medio a la altura de los ojos, cámara estática, el profesor centrado junto al pizarrón, cuerpo superior visible. Habla en español de forma pausada, cálida y clara mirando a la cámara, sin narrador en off. La cámara permanece en él durante todo el clip sin cortes a otra persona, terminando en él. Dice en español: "..." >
 
         IF TARGET LANGUAGE IS ENGLISH (en):
         Use the English structure:
         Objective: <the OBJECTIVE line>
         Lesson to teach (this clip): <full mini-lesson description in English>
         Environment: <the ENVIRONMENT text>
-        Scene: <visual scene/action/camera direction in English, ending with quoted spoken line>
+        Scene: <visual scene/action/camera direction in English, ending with quoted spoken line. No narrator or voice-over: the only audio is the on-screen character speaking in first person>
 
         This structure is mandatory for every clip in the sequence, not
         just the first — never fall back to a single unstructured
@@ -399,14 +436,43 @@ public sealed class StructuredLearningVideoPromptAgent
 
     public StructuredLearningVideoPromptAgent(IConfiguration configuration)
     {
-        var claudeEndpoint = configuration["ClaudeConnectionAgentEndpoint"];
-        var claudeDeploymentName = configuration["ClaudeConnectionAgentDeploymentName"];
+        // "Sol" model slot (2026-11-08) — gpt-6.1-sol lives on the
+        // twinet-resource classic Azure OpenAI resource (same one
+        // ProfesorExpertAgent/IdeaToDocumentAgent use), reached via the
+        // standard GetChatClient (NOT the Responses API — that's only
+        // needed for flagship/Claude-family deployments). Tried here
+        // because the gpt-5-mini default sometimes produced short/garbled
+        // dialogue that didn't fill the fixed 10-second clip budget.
+        var solEndpoint = configuration["Gpt61SolEndpoint"];
+        var solDeploymentName = configuration["Gpt61SolDeploymentName"];
+        var solApiKey = configuration["Gpt61SolApiKey"];
+        if (!string.IsNullOrWhiteSpace(solEndpoint) && !string.IsNullOrWhiteSpace(solDeploymentName))
+        {
+            AzureOpenAIClient solClient = string.IsNullOrWhiteSpace(solApiKey)
+                ? new AzureOpenAIClient(new Uri(solEndpoint), new DefaultAzureCredential())
+                : new AzureOpenAIClient(new Uri(solEndpoint), new System.ClientModel.ApiKeyCredential(solApiKey));
+            _agent = solClient
+                .GetChatClient(solDeploymentName)
+                .AsIChatClient()
+                .AsAIAgent(instructions: Instructions, name: "StructuredLearningVideoPromptAgent");
+            return;
+        }
+
+        // Own model slot (2026-11-08) — deliberately separate from
+        // ClaudeConnectionAgent* (shared by StructuredLearningConnectionExtractionAgent
+        // and StructuredLearningKnowledgeFactGenerationAgent) so swapping THIS
+        // agent's model (gpt-5-mini was producing short/garbled dialogue that
+        // didn't fill the fixed 10-second clip budget) never changes those
+        // other agents' behavior. Falls back to ClaudeConnectionAgent* if the
+        // dedicated keys aren't set, so existing deployments keep working.
+        var claudeEndpoint = configuration["VideoPromptAgentEndpoint"] ?? configuration["ClaudeConnectionAgentEndpoint"];
+        var claudeDeploymentName = configuration["VideoPromptAgentDeploymentName"] ?? configuration["ClaudeConnectionAgentDeploymentName"];
         if (!string.IsNullOrWhiteSpace(claudeEndpoint) && !string.IsNullOrWhiteSpace(claudeDeploymentName))
         {
             _isReasoningModel = claudeDeploymentName.Contains("gpt-5", StringComparison.OrdinalIgnoreCase)
                 && !claudeDeploymentName.Contains("chat", StringComparison.OrdinalIgnoreCase);
-            _claudeMaxTokens = int.TryParse(configuration["ClaudeConnectionAgentMaxTokens"], out var maxTokens) ? maxTokens : null;
-            var claudeApiKey = configuration["ClaudeConnectionAgentApiKey"];
+            _claudeMaxTokens = int.TryParse(configuration["VideoPromptAgentMaxTokens"] ?? configuration["ClaudeConnectionAgentMaxTokens"], out var maxTokens) ? maxTokens : null;
+            var claudeApiKey = configuration["VideoPromptAgentApiKey"] ?? configuration["ClaudeConnectionAgentApiKey"];
             AzureOpenAIClient claudeClient = string.IsNullOrWhiteSpace(claudeApiKey)
                 ? new AzureOpenAIClient(new Uri(claudeEndpoint), new DefaultAzureCredential())
                 : new AzureOpenAIClient(new Uri(claudeEndpoint), new System.ClientModel.ApiKeyCredential(claudeApiKey));

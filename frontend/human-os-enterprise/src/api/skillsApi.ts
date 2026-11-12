@@ -49,6 +49,20 @@ export interface SkillDto {
     courseType: 'structured-learning' | 'graph';
     languageCode: 'es' | 'en';
   }>;
+  /** Set only for skills created from a real internet-sourced course
+   * recommendation (Step 4 "Link to Process" on an internet gap). */
+  sourceCourseTitle?: string | null;
+  sourceCourseProvider?: string | null;
+  sourceCourseUrl?: string | null;
+  sourceOutlineModules?: Array<{ title: string; lessons: string[] }> | null;
+  /** "scraped" | "ai-suggested" */
+  sourceOutlineSource?: string | null;
+  /** Set only when this Skill represents an ENTIRE business process saved as a
+   * "department-processes" capability ("Guardar en Catálogo de Capabilities"), not an
+   * individual skill gap. */
+  sourceProcessDocumentId?: string | null;
+  /** The department that authored the source process (e.g. "Finanzas"). */
+  sourceProcessDepartmentName?: string | null;
 }
 
 export interface SkillJobRoleLinkRequest {
@@ -101,6 +115,24 @@ export async function uploadSkillDocument(skillId: string, file: File): Promise<
 
 export async function deleteSkillDocument(skillId: string): Promise<SkillDto> {
   const { data } = await apiClient.delete<SkillDto>(`/skills/${skillId}/document`);
+  return data;
+}
+
+/// One process this Skill is linked to via a saved ProcessSkillRequirement
+/// (Step 4 "Link to Process" of the whole-process Learning Recommendation
+/// wizard) — the reverse of MatchedSkillId. See GetSkillLinkedProcessesFunction.
+export interface SkillLinkedProcessDto {
+  processDocumentId: string;
+  processSkillRequirementId: string;
+  processTitle: string;
+  isRequired: boolean;
+  appliesToAllDepartments: boolean;
+  departmentCount: number;
+  jobRoleCount: number;
+}
+
+export async function getSkillLinkedProcesses(skillId: string): Promise<SkillLinkedProcessDto[]> {
+  const { data } = await apiClient.get<SkillLinkedProcessDto[]>(`/skills/${skillId}/linked-processes`);
   return data;
 }
 

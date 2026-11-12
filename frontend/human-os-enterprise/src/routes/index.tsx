@@ -7,6 +7,58 @@ export const router = createBrowserRouter([
     children: [
       { index: true, lazy: () => import('@/pages/OverviewPage').then((m) => ({ Component: m.OverviewPage })) },
       {
+        path: 'enterprise-evolution',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/EnterpriseEvolutionPage').then((m) => ({
+            Component: m.EnterpriseEvolutionPage,
+          })),
+      },
+      {
+        path: 'enterprise-evolution/foundations',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/FoundationsPage').then((m) => ({ Component: m.FoundationsPage })),
+      },
+      {
+        path: 'enterprise-evolution/foundations/business-processes',
+        lazy: () =>
+          import('@/pages/ProcessLearningWizardPage').then((m) => ({ Component: m.ProcessLearningWizardPage })),
+      },
+      {
+        path: 'enterprise-evolution/foundations/culture-principles',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/CulturePrinciplesPage').then((m) => ({
+            Component: m.CulturePrinciplesPage,
+          })),
+      },
+      {
+        path: 'enterprise-evolution/foundations/culture-principles/nuevo',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/CulturePrincipleDetailPage').then((m) => ({
+            Component: m.CulturePrincipleDetailPage,
+          })),
+      },
+      {
+        path: 'enterprise-evolution/foundations/culture-principles/:principleId/edit',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/CulturePrincipleDetailPage').then((m) => ({
+            Component: m.CulturePrincipleDetailPage,
+          })),
+      },
+      {
+        path: 'enterprise-evolution/initiatives',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/EvolutionInitiativesPage').then((m) => ({
+            Component: m.EvolutionInitiativesPage,
+          })),
+      },
+      {
+        path: 'enterprise-evolution/human-evolution',
+        lazy: () =>
+          import('@/pages/enterprise-evolution/HumanEvolutionPage').then((m) => ({
+            Component: m.HumanEvolutionPage,
+          })),
+      },
+      {
         path: 'organizacion',
         lazy: () => import('@/pages/OrganizationPage').then((m) => ({ Component: m.OrganizationPage })),
       },

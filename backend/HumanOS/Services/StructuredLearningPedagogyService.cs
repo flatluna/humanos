@@ -66,6 +66,20 @@ public sealed class StructuredLearningPedagogyService
         "A clean, professional educational illustration for an adult/professional learning app. " +
         "Photorealistic or clean diagrammatic style as appropriate to the subject, single clear focal composition.";
 
+    /// <summary>Prompt for "EnhanceVideoFrame" mode (2026-11-06): the ONLY goal is a
+    /// higher-quality RENDER of the exact same real video frame — never a reinterpreted
+    /// or generic scene. Explicitly the opposite of the usual Teaching illustration
+    /// prompts (which forbid on-screen text) because a real frame's on-screen text
+    /// (code, UI labels, exercise text) IS the real content and must be preserved.</summary>
+    private const string VideoFrameEnhancementPrompt =
+        "This image is a real frame captured from an educational video. Produce a higher-quality, " +
+        "sharper, cleaner render of this EXACT SAME frame — same composition, same subject(s), same " +
+        "on-screen text/UI/code/diagrams, same layout, same colors. Do NOT invent, add, remove, move, " +
+        "or reinterpret anything: no new characters, no mascots, no whiteboards, no classroom scenery " +
+        "that isn't already in the frame. Preserve all visible text exactly as shown (it is real content, " +
+        "not decoration) — only improve resolution/clarity/sharpness as if re-rendering the same shot " +
+        "at higher fidelity.";
+
     private readonly StructuredLearningSectionDesignerAgent _designer;
     private readonly IDbContextFactory<HumanOsDbContext> _dbContextFactory;
     private readonly IConfiguration _configuration;
@@ -78,6 +92,93 @@ public sealed class StructuredLearningPedagogyService
     private readonly AzureSpeechService _speechService;
     private readonly PerplexitySearchService _perplexityService;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly HumanOS.Storage.IProcessDocumentStorageService _processDocumentStorage;
+
+    /// <summary>Dedicated blob-index range for per-scene ENHANCED video frames
+    /// (2026-11-06 multi-frame fix) — distinct from the raw real-frame range
+    /// (500+) and the single-legacy-Teaching-image index (1), so enhancing
+    /// scene N never collides with/overwrites any other illustration's blob.</summary>
+    private const int EnhancedFrameSceneIndexOffset = 700;
+
+    /// <summary>Takes ONE real video frame plus its own synced transcript slice,
+    /// wraps both into a single prompt envelope (frame-enhancement instructions +
+    /// best-effort vision caption + the transcript text spoken at that moment),
+    /// produces a higher-quality img2img render of that exact frame, uploads it
+    /// as a new "Teaching" illustration, and returns its Id. Used by
+    /// <see cref="HumanOS.Services.VideoLearning.VideoStructuredLearningPedagogyOrchestrator"/>
+    /// to enhance EVERY real frame of a multi-frame Engram (not just the first
+    /// one). Best-effort: returns null (never throws) on any failure, so the
+    /// caller can fall back to the raw, unenhanced frame illustration.</summary>
+    public async Task<Guid?> EnhanceVideoFrameForSceneAsync(
+        Guid tenantId,
+        Guid sectionId,
+        int sceneIndex,
+        byte[] frameBytes,
+        string frameContentType,
+        string? transcriptText,
+        CancellationToken cancellationToken)
+    {
+        if (!_imageService.IsConfigured)
+        {
+            return null;
+        }
+
+        try
+        {
+            string? caption = null;
+            if (_imageDescriptionAgent.IsConfigured)
+            {
+                try
+                {
+                    var described = await _imageDescriptionAgent.DescribeAsync(
+                        frameBytes, frameContentType, transcriptText, cancellationToken);
+                    caption = described.Description;
+                }
+                catch
+                {
+                    // Best-effort: proceed without a caption.
+                }
+            }
+
+            // Envelope: enhancement instructions + what the frame shows (vision
+            // caption) + what was being said at that exact moment (transcript) —
+            // all three grounded in the SAME real frame, never a generic scene.
+            var promptEnvelope = VideoFrameEnhancementPrompt
+                + (string.IsNullOrWhiteSpace(caption) ? string.Empty : $"\n\nWhat this frame shows: {caption}")
+                + (string.IsNullOrWhiteSpace(transcriptText) ? string.Empty : $"\n\nWhat the instructor was saying at this moment: {transcriptText}");
+
+            var enhanced = await _imageService.GenerateFromReferenceAsync(promptEnvelope, frameBytes, cancellationToken);
+
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            using var uploadStream = new MemoryStream(enhanced.ImageBytes.ToArray());
+            var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                tenantId, capabilityId: sectionId, nodeId: sectionId,
+                EnhancedFrameSceneIndexOffset + sceneIndex, uploadStream,
+                contentType: "image/png", cancellationToken: cancellationToken);
+
+            var illustration = new StructuredLearningIllustration
+            {
+                StructuredLearningIllustrationId = Guid.NewGuid(),
+                StructuredLearningDocumentSectionId = sectionId,
+                StoragePath = storagePath,
+                Prompt = promptEnvelope,
+                Caption = caption,
+                Purpose = StructuredLearningIllustrationPurpose.Teaching,
+                ImageModel = enhanced.ImageModel,
+                Width = enhanced.Width,
+                Height = enhanced.Height,
+                CreatedDate = DateTime.UtcNow
+            };
+            dbContext.StructuredLearningIllustrations.Add(illustration);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return illustration.StructuredLearningIllustrationId;
+        }
+        catch
+        {
+            // Best-effort: caller falls back to the raw, unenhanced frame illustration.
+            return null;
+        }
+    }
 
     public StructuredLearningPedagogyService(
         StructuredLearningSectionDesignerAgent designer,
@@ -90,7 +191,8 @@ public sealed class StructuredLearningPedagogyService
         StructuredLearningProfessorLectureAgent professorLectureAgent,
         AzureSpeechService speechService,
         PerplexitySearchService perplexityService,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        HumanOS.Storage.IProcessDocumentStorageService processDocumentStorage)
     {
         _designer = designer;
         _dbContextFactory = dbContextFactory;
@@ -103,6 +205,7 @@ public sealed class StructuredLearningPedagogyService
         _speechService = speechService;
         _perplexityService = perplexityService;
         _scopeFactory = scopeFactory;
+        _processDocumentStorage = processDocumentStorage;
         // Same rationale as TraditionalCoursePipelineService: this service
         // only needs IConfiguration, so it's constructed directly rather
         // than injected (it's registered Scoped in DI, incompatible with
@@ -145,7 +248,9 @@ public sealed class StructuredLearningPedagogyService
         SectionIllustrationOverride? illustrationOverride = null,
         bool? usePerplexitySearch = null,
         int? fromEngramNumber = null,
-        int? toEngramNumber = null)
+        int? toEngramNumber = null,
+        string? additionalInstruction = null,
+        string? imageInstruction = null)
     {
         StructuredLearningDocument document;
         List<StructuredLearningDocumentSection> pendingSections;
@@ -241,7 +346,18 @@ public sealed class StructuredLearningPedagogyService
         var tasks = pendingSections.Select(async section =>
         {
             await semaphore.WaitAsync(cancellationToken);
-            lock (progressLock) { activeTitles.Add(section.SubchapterTitle); }
+            lock (progressLock)
+            {
+                activeTitles.Add(section.SubchapterTitle);
+                // Report progress immediately when a section STARTS, not only
+                // when one finishes — otherwise a single-engram "Restart
+                // engrams…" run never emits a status update containing that
+                // engram's title before it completes, leaving the UI stuck on
+                // its empty-list fallback the whole time (2026-11-04).
+                reportProgress(
+                    $"Generating: {section.SubchapterTitle}",
+                    completedCount + failedCount, totalSections, [.. activeTitles]);
+            }
             try
             {
                 SectionIllustrationOverride? perSectionOverride = illustrationOverride;
@@ -258,7 +374,7 @@ public sealed class StructuredLearningPedagogyService
                 }
 
                 var (succeeded, inputTokens, outputTokens) = await ProcessSectionAsync(
-                    document, section, languageCode, perSectionOverride, effectiveUsePerplexitySearch, cancellationToken);
+                    document, section, languageCode, perSectionOverride, effectiveUsePerplexitySearch, cancellationToken, additionalInstruction, imageInstruction);
                 lock (progressLock)
                 {
                     activeTitles.Remove(section.SubchapterTitle);
@@ -294,7 +410,9 @@ public sealed class StructuredLearningPedagogyService
         string languageCode,
         SectionIllustrationOverride? illustrationOverride,
         bool usePerplexitySearch,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? additionalInstruction = null,
+        string? imageInstruction = null)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -320,6 +438,20 @@ public sealed class StructuredLearningPedagogyService
             && document.PedagogicalAudience != "YoungLearner";
         var includeHypothesisStep = ReadIncludeHypothesisStep(document.ConfigSnapshotJson);
 
+        // Informational-only Engram override (2026-11-07) — e.g. a course
+        // welcome/orientation Engram: generate ONLY its Teaching/Learn step,
+        // regardless of the document's own Hypothesis/Recall/Production/
+        // Assessment toggles, since there's nothing to practice or be
+        // quizzed on. DeepDive is likewise skipped (same reasoning).
+        if (section.IsInformationalOnly)
+        {
+            includeDeepDiveStep = false;
+            includeHypothesisStep = false;
+        }
+        var includeRecallStep = !section.IsInformationalOnly && document.IncludeRecallStep;
+        var includeProductionStep = !section.IsInformationalOnly && document.IncludeProductionStep;
+        var includeAssessmentStep = !section.IsInformationalOnly && document.IncludeAssessmentStep;
+
         // Snapshot every existing engram artifact BEFORE regenerating
         // anything (2026-09-19 "atomic restart" fix) — a restart must wipe
         // ALL of a section's prior generated content (cards/steps,
@@ -328,8 +460,16 @@ public sealed class StructuredLearningPedagogyService
         // captured now (not deleted yet) so old content stays intact if the
         // AI generation below fails — the actual delete-old+insert-new swap
         // happens together, atomically, in one transaction near the end.
+        // Exclude Purpose=SourceDocument illustrations from the wipe (2026-11-xx fix):
+        // those are the original, already-extracted source images (process-document
+        // uploads, or real video frames for video-sourced engrams) — never
+        // AI-generated, never reproduced by this method, so deleting them on every
+        // regenerate/retry permanently destroys irreplaceable source material
+        // instead of just clearing out the regenerated Hypothesis/Teaching/DeepDive
+        // illustrations this run is about to recreate.
         var oldIllustrationIds = await dbContext.StructuredLearningIllustrations
-            .Where(i => i.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+            .Where(i => i.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId
+                && i.Purpose != StructuredLearningIllustrationPurpose.SourceDocument)
             .Select(i => i.StructuredLearningIllustrationId)
             .ToListAsync(cancellationToken);
         var oldHypothesisResponseIds = await dbContext.StructuredLearningHypothesisResponses
@@ -346,7 +486,70 @@ public sealed class StructuredLearningPedagogyService
             .ToListAsync(cancellationToken);
 
         var sectionOverride = illustrationOverride?.SectionId == section.StructuredLearningDocumentSectionId ? illustrationOverride : null;
-        var illustrationGuidance = sectionOverride?.Mode == "AiGeneratedFromUpload" ? sectionOverride.ReferenceImageUsageInstruction : null;
+
+        // Auto-fallback to the section's own real video frame (2026-11-06): the generic
+        // "Restart engrams" entry point (StartStructuredLearningPedagogyFunction) has no
+        // concept of per-section overrides and always calls this with illustrationOverride
+        // null, which previously made video-sourced sections silently fall back to a
+        // generic AI-generated illustration (ignoring the real frame entirely) whenever a
+        // designer restarted engrams from the normal Studio UI instead of the dedicated
+        // video pedagogy endpoint. If this section has a real SourceDocument illustration
+        // (a video frame, or a backfilled process-document image) and no override was
+        // explicitly supplied, build one here so EVERY restart path — video or generic —
+        // honors the real source image.
+        if (sectionOverride is null)
+        {
+            // 2026-11-11 fix: must match BOTH the filter and ordering that
+            // GetStructuredLearningDocumentFunction uses to build the "Images from the
+            // original source file" strip Studio shows the reviewer (OrderBy CreatedDate,
+            // excluding IsExcludedFromGeneration=true) — otherwise this fallback could pick
+            // a DIFFERENT source image than the one visibly shown/kept (e.g. an image the
+            // reviewer explicitly removed with the "✕" button, since that previously had no
+            // effect here), or simply the wrong one when a section has more than one.
+            var sourceFrame = await dbContext.StructuredLearningIllustrations
+                .Where(i => i.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId
+                    && i.Purpose == StructuredLearningIllustrationPurpose.SourceDocument
+                    && !i.IsExcludedFromGeneration)
+                .OrderBy(i => i.CreatedDate)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (sourceFrame is not null)
+            {
+                try
+                {
+                    var frameBytes = await _illustrationStorage.DownloadIllustrationBytesAsync(sourceFrame.StoragePath, cancellationToken);
+                    sectionOverride = new SectionIllustrationOverride
+                    {
+                        SectionId = section.StructuredLearningDocumentSectionId,
+                        Mode = "EnhanceVideoFrame",
+                        UploadedImageBytes = frameBytes.ToArray(),
+                        UploadedImageContentType = "image/jpeg",
+                    };
+                }
+                catch (Exception ex)
+                {
+                    // Best-effort: fall through with no override — the section still gets
+                    // its pedagogical text, same as before this fix.
+                    Console.Error.WriteLine($"[VideoFrameFallback] DownloadIllustrationBytesAsync failed for {sourceFrame.StoragePath}: {ex}");
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine($"[VideoFrameFallback] No SourceDocument illustration found for section {section.StructuredLearningDocumentSectionId}");
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine($"[VideoFrameFallback] sectionOverride already set to Mode={sectionOverride.Mode} before fallback check.");
+        }
+
+        // 2026-11-11: an explicit imageInstruction (e.g. from Studio's
+        // "Edit source text with AI" box, no uploaded reference image
+        // involved) always wins over any upload-derived guidance — it's a
+        // direct reviewer request for how THIS regeneration's illustrations
+        // should look.
+        var illustrationGuidance = imageInstruction
+            ?? (sectionOverride?.Mode == "AiGeneratedFromUpload" ? sectionOverride.ReferenceImageUsageInstruction : null);
 
         string? perplexityFindings = null;
         List<string> perplexityCitations = [];
@@ -464,15 +667,17 @@ public sealed class StructuredLearningPedagogyService
                         includeDeepDiveStep,
                         document.MaxDeepDiveCardsPerNode,
                         includeHypothesisStep,
-                        document.IncludeRecallStep,
-                        document.IncludeProductionStep,
-                        document.IncludeAssessmentStep,
+                        includeRecallStep,
+                        includeProductionStep,
+                        includeAssessmentStep,
                         cancellationToken,
                         illustrationGuidance,
                         knowledgeFacts,
                         perplexityFindings,
-                        document.CourseLevel);
-                    return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, includeHypothesisStep, section.Text, attemptDesign.Response.Capability));
+                        document.CourseLevel,
+                        document.SourceCapabilityCode == "video",
+                        additionalInstruction);
+                    return (attemptDesign, ValidateGeneratedSteps(attemptDesign.Response.Steps, document, includeDeepDiveStep, includeHypothesisStep, includeRecallStep, includeProductionStep, includeAssessmentStep, section.Text, attemptDesign.Response.Capability));
                 }
                 catch (JsonException ex)
                 {
@@ -522,6 +727,68 @@ public sealed class StructuredLearningPedagogyService
                 return (false, 0, 0);
             }
 
+            // Deterministic fallback for the recurring "DeepDive returned
+            // zero ExampleCards" failure (2026-11-04): the designer prompt
+            // already explicitly says "AT LEAST ONE card — never zero", yet
+            // the model still occasionally omits them (especially under
+            // concurrent load across several sections at once), and the 3
+            // retries above don't always fix it either. Rather than losing
+            // the WHOLE Engram over just this one guardrail when every other
+            // step generated fine, synthesize one card directly from this
+            // section's own source text (never invented content) so the
+            // section can still complete.
+            if (failures is [StructuredLearningSectionEvaluator.ZeroExampleCardsFailure])
+            {
+                var deepDiveStep = steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.DeepDive);
+                if (deepDiveStep is not null)
+                {
+                    var fallbackText = section.Text.Trim();
+                    if (fallbackText.Length > 1500)
+                    {
+                        fallbackText = fallbackText[..1500].TrimEnd() + "…";
+                    }
+                    deepDiveStep.ExampleCards =
+                    [
+                        new StructuredLearningExampleCardDto
+                        {
+                            Title = section.SubchapterTitle,
+                            Text = fallbackText,
+                        },
+                    ];
+                    Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: model returned zero DeepDive ExampleCards after {maxAttempts} attempts — injected a fallback card built from the section's own source text instead of failing the section.");
+                    failures = [];
+                }
+            }
+
+            // Deterministic fallback for a Capability statement that's only
+            // slightly over the atomicity length guardrail (2026-11-11):
+            // observed on a rich, multi-step source text ("The Training
+            // Loop...") where the designer's capability statement was 287
+            // chars vs the 280 max — genuinely still ONE atomic idea, just a
+            // few words too long to phrase concisely. Rather than losing the
+            // whole Engram (and silently discarding the reviewer's new text
+            // and image instruction) over a handful of characters, truncate
+            // at the last word boundary that fits, mirroring the
+            // ZeroExampleCards fallback above.
+            if (design is not null && failures.Count == 1
+                && failures[0].StartsWith("Capability statement is ", StringComparison.Ordinal)
+                && failures[0].Contains("likely bundles more than one teachable idea", StringComparison.Ordinal))
+            {
+                var trimmed = design.Response.Capability.Trim();
+                if (trimmed.Length > StructuredLearningSectionEvaluator.MaxAtomicCapabilityLength)
+                {
+                    var cut = trimmed[..StructuredLearningSectionEvaluator.MaxAtomicCapabilityLength];
+                    var lastSpace = cut.LastIndexOf(' ');
+                    if (lastSpace > 0)
+                    {
+                        cut = cut[..lastSpace];
+                    }
+                    design.Response.Capability = cut.TrimEnd(',', ';', ':', ' ') + ".";
+                    Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: Capability statement was {trimmed.Length} chars (max {StructuredLearningSectionEvaluator.MaxAtomicCapabilityLength}) — truncated at a word boundary instead of failing the section.");
+                    failures = [];
+                }
+            }
+
             designStopwatch.Stop();
             try
             {
@@ -541,13 +808,13 @@ public sealed class StructuredLearningPedagogyService
                 return (false, design.TokenUsage.InputTokens, design.TokenUsage.OutputTokens);
             }
 
-            await GenerateIllustrationsAsync(dbContext, section.TenantId, section.StructuredLearningDocumentSectionId, steps, sectionOverride, cancellationToken);
+            await GenerateIllustrationsAsync(dbContext, section.TenantId, section.StructuredLearningDocumentSectionId, steps, sectionOverride, section.Text, illustrationGuidance, cancellationToken);
 
             // Professor Lecture & Spoken Audio Generation (2026-09-06)
             // Creates the oral class script directly from the engram and synthesizes
             // the professor's speech to Azure Data Lake.
             await GenerateProfessorLectureAndSpeechAsync(
-                dbContext, document, section, steps, languageCode, cancellationToken);
+                dbContext, document, section, steps, languageCode, sectionOverride, cancellationToken);
 
             // ATOMIC SWAP (2026-09-19): a "retry"/regenerate on a section that
             // already has old content persisted (steps/cards, illustrations,
@@ -598,6 +865,26 @@ public sealed class StructuredLearningPedagogyService
                         .Where(i => oldIllustrationIds.Contains(i.StructuredLearningIllustrationId))
                         .ExecuteDeleteAsync(cancellationToken);
                 }
+                // Reset any per-student "question currently in progress" state too
+                // (2026-10-27 fix) — StructuredLearningPersonSectionState is NOT
+                // part of the section's own rows deleted below, so without this a
+                // student/preview who had already started this section's Recall
+                // kept their OLD, stale CurrentRecallPrompt text (e.g. "how many
+                // red blocks?") persisted from before the restart, while the
+                // illustration id shown next to it got re-derived fresh from the
+                // BRAND NEW regenerated bank (since the recall attempts above ARE
+                // wiped, item index resets to 0) — pairing an old question with a
+                // completely different new picture. Mirrors the same reset already
+                // done by the single-section "Regenerate with Static Recall" flow
+                // (RegenerateStructuredLearningRecallItemsFunction).
+                await dbContext.StructuredLearningPersonSectionStates
+                    .Where(p => p.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+                    .ExecuteUpdateAsync(
+                        p => p.SetProperty(x => x.CurrentRecallPrompt, (string?)null)
+                              .SetProperty(x => x.CurrentRecallVisualObjectsDescription, (string?)null)
+                              .SetProperty(x => x.CurrentDeepDiveCardIndex, 0)
+                              .SetProperty(x => x.CurrentDeepDivePrompt, (string?)null),
+                        cancellationToken);
                 await dbContext.StructuredLearningSectionSteps
                     .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
                     .ExecuteDeleteAsync(cancellationToken);
@@ -610,9 +897,10 @@ public sealed class StructuredLearningPedagogyService
                 includeDeepDiveStep,
                 includeHypothesisStep,
                 maxDeepDiveCards = document.MaxDeepDiveCardsPerNode,
-                includeRecallStep = document.IncludeRecallStep,
-                includeProductionStep = document.IncludeProductionStep,
-                includeAssessmentStep = document.IncludeAssessmentStep,
+                includeRecallStep,
+                includeProductionStep,
+                includeAssessmentStep,
+                isInformationalOnly = section.IsInformationalOnly,
                 usePerplexitySearch,
                 hasApiData = perplexityCitations.Count > 0,
                 webSearchSources = perplexityCitations,
@@ -653,7 +941,9 @@ public sealed class StructuredLearningPedagogyService
                           .SetProperty(x => x.ModelName, modelName)
                           .SetProperty(x => x.ConfigSnapshotJson, configSnapshot)
                           .SetProperty(x => x.PromptHash, HashString(configSnapshot))
-                          .SetProperty(x => x.Statements, statements),
+                          .SetProperty(x => x.Statements, statements)
+                          .SetProperty(x => x.PedagogyVersion, x => x.PedagogyVersion + 1)
+                          .SetProperty(x => x.PedagogyGeneratedAt, DateTime.UtcNow),
                     cancellationToken);
 
             for (var i = 0; i < steps.Count; i++)
@@ -671,7 +961,7 @@ public sealed class StructuredLearningPedagogyService
                     TenantId = section.TenantId,
                     StepType = step.StepType,
                     SortOrder = i,
-                    Content = step.Content,
+                    Content = step.Content ?? string.Empty,
                     StepDataJson = BuildStepDataJson(step),
                     PromptVersion = promptVersion,
                     ProcessVersion = processVersion,
@@ -681,13 +971,6 @@ public sealed class StructuredLearningPedagogyService
                     CreatedDate = DateTime.UtcNow
                 });
             }
-
-            await dbContext.StructuredLearningDocumentSections
-                .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
-                .ExecuteUpdateAsync(
-                    s => s.SetProperty(x => x.PedagogyStatus, StructuredLearningPedagogyStatus.Completed)
-                          .SetProperty(x => x.PedagogyErrorMessage, (string?)null),
-                    cancellationToken);
 
                 await dbContext.SaveChangesAsync(cancellationToken);
                 await swapTransaction.CommitAsync(cancellationToken);
@@ -699,21 +982,27 @@ public sealed class StructuredLearningPedagogyService
             // student ever triggers an LLM call for them at runtime (same
             // question persisted in SQL and served to everyone). No-op for
             // sections whose step isn't included, or whose mode is Dynamic.
-            if ((document.IncludeRecallStep && document.RecallGenerationMode == StructuredLearningGenerationMode.Static)
-                || (document.IncludeAssessmentStep && document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static))
+            if ((includeRecallStep && document.RecallGenerationMode == StructuredLearningGenerationMode.Static)
+                || (includeAssessmentStep && document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static))
             {
                 try
                 {
                     using var staticScope = _scopeFactory.CreateScope();
                     await using var staticDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-                    if (document.IncludeRecallStep && document.RecallGenerationMode == StructuredLearningGenerationMode.Static)
+                    if (includeRecallStep && document.RecallGenerationMode == StructuredLearningGenerationMode.Static)
                     {
                         var recallEngine = staticScope.ServiceProvider.GetRequiredService<StructuredLearningRecallEngine>();
-                        await recallEngine.EnsureStaticItemsAsync(staticDbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
+                        var recallReferenceBytes = sectionOverride?.Mode == "AiGeneratedFromUpload" ? sectionOverride.UploadedImageBytes : null;
+                        await recallEngine.EnsureStaticItemsAsync(
+                            staticDbContext,
+                            section.StructuredLearningDocumentSectionId,
+                            cancellationToken,
+                            recallReferenceBytes,
+                            illustrationGuidance);
                     }
 
-                    if (document.IncludeAssessmentStep && document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static)
+                    if (includeAssessmentStep && document.AssessmentGenerationMode == StructuredLearningGenerationMode.Static)
                     {
                         var assessmentEngine = staticScope.ServiceProvider.GetRequiredService<StructuredLearningAssessmentEngine>();
                         await assessmentEngine.EnsureStaticQuestionsAsync(staticDbContext, section.StructuredLearningDocumentSectionId, cancellationToken);
@@ -727,6 +1016,20 @@ public sealed class StructuredLearningPedagogyService
                     Console.WriteLine($"[Pedagogy] Engram {section.StructuredLearningDocumentSectionId}: static Recall/Assessment generation failed, will fall back to Dynamic at runtime: {ex.Message}");
                 }
             }
+
+            // PedagogyStatus flips to Completed only now, AFTER the static
+            // Recall/Assessment bank is pre-generated (2026-10-26 fix) —
+            // previously this was set before the static-bank block above,
+            // so any student/API call to .../recall/state that landed in
+            // that window saw an empty bank and permanently fell back to a
+            // Dynamic-generated first question/card, defeating Static mode
+            // for that section.
+            await dbContext.StructuredLearningDocumentSections
+                .Where(s => s.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(x => x.PedagogyStatus, StructuredLearningPedagogyStatus.Completed)
+                          .SetProperty(x => x.PedagogyErrorMessage, (string?)null),
+                    cancellationToken);
 
             return (true, design.TokenUsage.InputTokens, design.TokenUsage.OutputTokens);
         }
@@ -849,18 +1152,136 @@ public sealed class StructuredLearningPedagogyService
         return Convert.ToHexString(hash)[..32];
     }
 
+    /// <summary>Decodes a <c>"data:&lt;contentType&gt;;base64,&lt;data&gt;"</c> URL — same format
+    /// (and same parsing logic) as <see cref="StructuredLearningExtractionService"/>'s own
+    /// TryDecodeDataUrl, duplicated locally rather than shared to avoid coupling these two
+    /// otherwise-independent services together over one small static helper.</summary>
+    private static (byte[] Bytes, string ContentType)? TryDecodeStepImageDataUrl(string dataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(dataUrl) || !dataUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var commaIndex = dataUrl.IndexOf(',');
+        if (commaIndex < 0)
+        {
+            return null;
+        }
+
+        var header = dataUrl[5..commaIndex];
+        var contentType = header.Split(';')[0];
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            contentType = "image/png";
+        }
+
+        try
+        {
+            var bytes = Convert.FromBase64String(dataUrl[(commaIndex + 1)..]);
+            return (bytes, contentType);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
     private async Task GenerateProfessorLectureAndSpeechAsync(
         HumanOsDbContext dbContext,
         StructuredLearningDocument document,
         StructuredLearningDocumentSection section,
         List<StructuredLearningSectionStepDto> steps,
         string languageCode,
+        SectionIllustrationOverride? illustrationOverride,
         CancellationToken cancellationToken)
     {
         var teachingStep = steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching);
         if (teachingStep is null)
         {
             return;
+        }
+
+        // 0. Real source-document image(s) for this step (2026-11-03) — self-healing: if no
+        // SourceDocument illustration rows exist yet for this section (e.g. the course was
+        // created before this pipeline existed, or extraction found none), look up the original
+        // HumanOS process document via the linked Skill and backfill them now, so "Restart
+        // engrams" behaves identically regardless of when the section was first extracted.
+        var sourceImages = new List<(byte[] Bytes, string ContentType)>();
+        var sourceImageIds = new List<Guid>();
+        try
+        {
+            var sourceImageRows = await dbContext.StructuredLearningIllustrations
+                .Where(i => i.StructuredLearningDocumentSectionId == section.StructuredLearningDocumentSectionId
+                    && i.Purpose == StructuredLearningIllustrationPurpose.SourceDocument
+                    && !i.IsExcludedFromGeneration)
+                .OrderBy(i => i.CreatedDate)
+                .ToListAsync(cancellationToken);
+
+            if (sourceImageRows.Count == 0 && !string.IsNullOrWhiteSpace(document.TargetSkill))
+            {
+                var skill = await dbContext.Skills
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.TenantId == section.TenantId
+                        && s.Name == document.TargetSkill
+                        && s.SourceProcessDocumentId != null, cancellationToken);
+
+                if (skill?.SourceProcessDocumentId is Guid processDocumentId)
+                {
+                    var structure = await _processDocumentStorage.GetStructuredResultAsync(
+                        section.TenantId.ToString("D").ToLowerInvariant(), processDocumentId.ToString(), cancellationToken);
+
+                    var matchedStep = structure?.Chapters
+                        .FirstOrDefault(c => c.Title == section.ChapterTitle)?.Steps
+                        .FirstOrDefault(st => st.StepName == section.SubchapterTitle);
+
+                    if (matchedStep is { StepImages.Count: > 0 })
+                    {
+                        for (var imgIndex = 0; imgIndex < matchedStep.StepImages.Count; imgIndex++)
+                        {
+                            var decoded = TryDecodeStepImageDataUrl(matchedStep.StepImages[imgIndex].DataUrl);
+                            if (decoded is null) continue;
+
+                            await using var imgStream = new MemoryStream(decoded.Value.Bytes);
+                            var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                                section.TenantId, section.StructuredLearningDocumentSectionId, section.StructuredLearningDocumentSectionId,
+                                200 + imgIndex, imgStream, decoded.Value.ContentType, cancellationToken);
+
+                            var newRow = new StructuredLearningIllustration
+                            {
+                                StructuredLearningDocumentSectionId = section.StructuredLearningDocumentSectionId,
+                                StoragePath = storagePath,
+                                Prompt = "Real source-document image (HumanOS process step) — backfilled",
+                                Caption = section.SubchapterTitle,
+                                Purpose = StructuredLearningIllustrationPurpose.SourceDocument,
+                                ImageModel = "source-document",
+                                CreatedDate = DateTime.UtcNow
+                            };
+                            dbContext.StructuredLearningIllustrations.Add(newRow);
+                            sourceImageRows.Add(newRow);
+                        }
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+                }
+            }
+
+            foreach (var row in sourceImageRows)
+            {
+                try
+                {
+                    var bytes = await _illustrationStorage.DownloadIllustrationBytesAsync(row.StoragePath, cancellationToken);
+                    sourceImages.Add((bytes.ToArray(), "image/png"));
+                    sourceImageIds.Add(row.StructuredLearningIllustrationId);
+                }
+                catch
+                {
+                    // Best-effort: a missing/unreachable blob should never block lecture generation.
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort: a missing/unreachable process document should never block pedagogy generation.
         }
 
         // 1. Generate generic professor spoken lecture for all students
@@ -870,6 +1291,13 @@ public sealed class StructuredLearningPedagogyService
             var lectureStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
+                var isVideoSourced = document.SourceCapabilityCode == "video";
+                var isFirstEngram = isVideoSourced && await dbContext.StructuredLearningDocumentSections
+                    .Where(s => s.StructuredLearningDocumentId == document.StructuredLearningDocumentId)
+                    .OrderBy(s => s.SortOrder)
+                    .Select(s => s.StructuredLearningDocumentSectionId)
+                    .FirstOrDefaultAsync(cancellationToken) == section.StructuredLearningDocumentSectionId;
+
                 var context = new HumanOS.Contracts.Studio.StructuredLearningProfessorLectureContext
                 {
                     CourseId = document.StructuredLearningDocumentId,
@@ -882,8 +1310,17 @@ public sealed class StructuredLearningPedagogyService
                     IllustrationDescription = teachingStep.IllustrationPrompt,
                     DomainOrTopic = document.Category ?? document.TargetSkill,
                     TargetLanguage = languageCode,
-                    PedagogicalAudience = document.PedagogicalAudience
+                    PedagogicalAudience = document.PedagogicalAudience,
+                    SourceImages = sourceImages,
+                    // Video-sourced Engrams (2026-11-06): preserve the real transcript
+                    // near-verbatim instead of composing a new masterclass lecture — see
+                    // StructuredLearningProfessorLectureAgent.VideoSourceInstructions.
+                    IsVideoSourced = isVideoSourced,
+                    VideoSourceName = document.DocumentName,
+                    IsFirstEngram = isFirstEngram
                 };
+
+                teachingStep.SourceImageIds = sourceImageIds.Count > 0 ? sourceImageIds : null;
 
                 var lectureGeneration = await _professorLectureAgent.GenerateLectureAsync(context, cancellationToken);
                 lectureStopwatch.Stop();
@@ -968,13 +1405,39 @@ public sealed class StructuredLearningPedagogyService
                     // generated through THIS pedagogy pipeline now gets the same treatment,
                     // instead of only courses generated through the separate manual
                     // "/professor-lecture" endpoint.
-                    var hasRealScenes = lecture is not null && (lecture.Scenes.Count > 1 ||
+                    // Designer-controlled toggle (2026-10-30, StructuredLearningDocument.
+                    // UseScenedLecture) — the scene breakdown above is still requested from
+                    // the lecture agent either way (keeps SpokenLectureScript/TTS identical),
+                    // but when the designer turned scened illustrations OFF, skip the
+                    // per-scene image+audio loop entirely and fall back to the single
+                    // Teaching illustration (see below), avoiding up to 6 sequential
+                    // image+TTS calls per section.
+                    // Never AI-generate (and thereby overwrite) a Teaching illustration for a
+                    // section whose real source image was forced via "UploadDirect" (2026-11-06)
+                    // — e.g. every video-sourced Engram, which already has a real frame set as
+                    // teachingStep.IllustrationId by GenerateIllustrationsAsync above. Without this
+                    // guard, the per-scene AI illustration loop below would still run (it only
+                    // checked document.UseScenedLecture) and silently replace that real frame with
+                    // a generated "PROFE"-style illustration that doesn't match the real screen.
+                    var hasRealScenes = document.UseScenedLecture &&
+                        illustrationOverride?.Mode != "UploadDirect" && illustrationOverride?.Mode != "EnhanceVideoFrame" &&
+                        lecture is not null && (lecture.Scenes.Count > 1 ||
                         (lecture.Scenes.Count == 1 && !string.IsNullOrWhiteSpace(lecture.Scenes[0].ImagePrompt)));
                     if (hasRealScenes && _imageService.IsConfigured)
                     {
                         var styleGuidance = document.PedagogicalAudience == "YoungLearner"
                             ? ProfessorLectureKidsSceneIllustrationStyle
                             : ProfessorLectureStandardSceneIllustrationStyle;
+                        // Honor the designer's uploaded reference/logo image (2026-10-26
+                        // fix) — this was previously ONLY passed into
+                        // GenerateIllustrationsAsync's Hypothesis/DeepDive illustrations,
+                        // never into these per-Scene Teaching illustrations, so a
+                        // YoungLearner course's "Learn" images (the only ones a kid ever
+                        // sees) silently ignored any reference image uploaded via the
+                        // "Restart from first engram" modal.
+                        var sceneReferenceImageBytes = illustrationOverride?.Mode == "AiGeneratedFromUpload"
+                            ? illustrationOverride.UploadedImageBytes
+                            : null;
                         var scenes = new List<StructuredLearningLectureSceneDto>();
 
                         for (var i = 0; i < lecture!.Scenes.Count; i++)
@@ -1006,7 +1469,7 @@ public sealed class StructuredLearningPedagogyService
                                 try
                                 {
                                     var fullPrompt = $"{styleGuidance} Scene: {scene.ImagePrompt}. No text, no letters, no numbers, no words in the image.";
-                                    var generated = await _imageService.GenerateAsync(fullPrompt, null, cancellationToken);
+                                    var generated = await _imageService.GenerateAsync(fullPrompt, sceneReferenceImageBytes, cancellationToken);
                                     using var imageStream = generated.ImageBytes.ToStream();
                                     var imagePath = await _illustrationStorage.UploadIllustrationAsync(
                                         section.TenantId,
@@ -1095,6 +1558,8 @@ public sealed class StructuredLearningPedagogyService
         Guid sectionId,
         List<StructuredLearningSectionStepDto> steps,
         SectionIllustrationOverride? illustrationOverride,
+        string lessonSourceText,
+        string? illustrationGuidance,
         CancellationToken cancellationToken)
     {
         if (!_illustrationStorage.IsConfigured)
@@ -1108,7 +1573,7 @@ public sealed class StructuredLearningPedagogyService
             return;
         }
 
-        if (mode == "UploadDirect" && illustrationOverride?.UploadedImageBytes is { Length: > 0 } uploadedBytes)
+        if ((mode == "UploadDirect" || mode == "EnhanceVideoFrame") && illustrationOverride?.UploadedImageBytes is { Length: > 0 } uploadedBytes)
         {
             var teachingStep = steps.FirstOrDefault(s => s.StepType == StructuredLearningStepType.Teaching);
             if (teachingStep is null)
@@ -1124,6 +1589,18 @@ public sealed class StructuredLearningPedagogyService
                     var described = await _imageDescriptionAgent.DescribeAsync(
                         uploadedBytes, illustrationOverride.UploadedImageContentType ?? "image/png", teachingStep.Content, cancellationToken);
                     caption = described.Description;
+                    // 2026-11-11 fix: the Caption column is nvarchar(2000) — occasionally
+                    // the description agent returns far more than a short caption (observed:
+                    // a full Markdown document dump), which throws a SqlException ("String
+                    // or binary data would be truncated") and silently aborts the ENTIRE
+                    // illustration save (via the outer best-effort catch below this block),
+                    // leaving the OLD image in place even though the reviewer asked for a
+                    // new one. Truncate defensively so a verbose caption never blocks saving
+                    // the new illustration.
+                    if (caption is { Length: > 2000 })
+                    {
+                        caption = caption[..2000];
+                    }
                 }
                 catch
                 {
@@ -1131,22 +1608,58 @@ public sealed class StructuredLearningPedagogyService
                 }
             }
 
+            // "EnhanceVideoFrame" (2026-11-06): instead of showing the real, often
+            // low-resolution/compressed video frame as-is, ask the image model to
+            // produce a HIGHER-QUALITY render using that real frame as the base
+            // reference (img2img via GenerateFromReferenceAsync) — sharper, cleaner,
+            // but depicting the EXACT same real content/composition, never a
+            // reinterpreted/generic scene. Falls back to the raw frame bytes
+            // (same as "UploadDirect") if enhancement isn't configured or fails,
+          // so the real illustration is never lost.
+            var finalBytes = uploadedBytes;
+            var finalContentType = illustrationOverride.UploadedImageContentType ?? "image/png";
+            var imageModelLabel = "user-upload";
+            if (mode == "EnhanceVideoFrame" && _imageService.IsConfigured)
+            {
+                try
+                {
+                    // 2026-11-11: a reviewer-supplied imageInstruction (e.g. "put a woman in
+                    // the image") must still be honored even for video-sourced Engrams —
+                    // previously it was silently dropped here because this prompt only ever
+                    // described enhancing the real frame's quality, never anything the
+                    // reviewer explicitly asked to change about the depicted scene.
+                    var enhancementPrompt = VideoFrameEnhancementPrompt
+                        + (string.IsNullOrWhiteSpace(caption) ? string.Empty : $"\n\nWhat this frame shows: {caption}")
+                        + (string.IsNullOrWhiteSpace(illustrationGuidance) ? string.Empty : $"\n\nREVIEWER-REQUESTED CHANGE TO THIS IMAGE: {illustrationGuidance.Trim()}");
+                    var enhanced = await _imageService.GenerateFromReferenceAsync(
+                        enhancementPrompt,
+                        uploadedBytes, cancellationToken);
+                    finalBytes = enhanced.ImageBytes.ToArray();
+                    finalContentType = "image/png";
+                    imageModelLabel = enhanced.ImageModel;
+                }
+                catch
+                {
+                    // Best-effort: keep the raw real frame if enhancement fails.
+                }
+            }
+
             try
             {
-                using var uploadStream = new MemoryStream(uploadedBytes);
+                using var uploadStream = new MemoryStream(finalBytes);
                 var storagePath = await _illustrationStorage.UploadIllustrationAsync(
                     tenantId, capabilityId: sectionId, nodeId: sectionId, 1, uploadStream,
-                    contentType: illustrationOverride.UploadedImageContentType ?? "image/png", cancellationToken: cancellationToken);
+                    contentType: finalContentType, cancellationToken: cancellationToken);
 
                 var illustration = new StructuredLearningIllustration
                 {
                     StructuredLearningIllustrationId = Guid.NewGuid(),
                     StructuredLearningDocumentSectionId = sectionId,
                     StoragePath = storagePath,
-                    Prompt = "Imagen proporcionada por el profesor.",
+                    Prompt = mode == "EnhanceVideoFrame" ? VideoFrameEnhancementPrompt : "Imagen proporcionada por el profesor.",
                     Caption = caption,
                     Purpose = StructuredLearningIllustrationPurpose.Teaching,
-                    ImageModel = "user-upload",
+                    ImageModel = imageModelLabel,
                     Width = 0,
                     Height = 0,
                     CreatedDate = DateTime.UtcNow
@@ -1203,6 +1716,21 @@ public sealed class StructuredLearningPedagogyService
 
         foreach (var card in cards)
         {
+            // 2026-11-11: the designer model occasionally omits
+            // IllustrationPrompt/IllustrationPrompts for a DeepDive card
+            // even though its own schema doc says "always non-null" —
+            // DeepDive cards are the concrete worked-example someone learns
+            // from, so unlike Hypothesis/Teaching (which simply go imageless
+            // when the model skips the prompt) a card must never silently
+            // end up without an illustration. Synthesize one grounded 100%
+            // in the card's own Title+Text (never invented content),
+            // matching the same "never leave the section incomplete"
+            // philosophy as the zero-ExampleCards fallback above.
+            if (string.IsNullOrWhiteSpace(card.IllustrationPrompt) && card.IllustrationPrompts is not { Count: > 0 })
+            {
+                card.IllustrationPrompt = BuildFallbackCardIllustrationPrompt(card, lessonSourceText);
+            }
+
             if (card.IllustrationPrompts is { Count: > 0 } stepPrompts)
             {
                 var ids = new List<Guid>();
@@ -1239,6 +1767,60 @@ public sealed class StructuredLearningPedagogyService
             card.IllustrationId = await GenerateAndPersistIllustrationAsync(
                 dbContext, tenantId, sectionId, imageIndex, card.IllustrationPrompt, card.Title, StructuredLearningIllustrationPurpose.DeepDiveCard, referenceImageBytes, cancellationToken);
         }
+    }
+
+    /// <summary>Builds a plain illustration prompt straight from a DeepDive
+    /// card's own Title+Text when the designer model didn't supply one —
+    /// deliberately simple (no invented details) since this only exists to
+    /// guarantee every card gets SOME real illustration instead of none.</summary>
+    private static string BuildFallbackCardIllustrationPrompt(StructuredLearningExampleCardDto card, string lessonSourceText)
+    {
+        var text = card.Text.Trim();
+        if (text.Length > 900)
+        {
+            text = text[..900].TrimEnd() + "…";
+        }
+
+        var lessonText = (lessonSourceText ?? string.Empty).Trim();
+        if (lessonText.Length > 4000)
+        {
+            lessonText = lessonText[..4000].TrimEnd() + "…";
+        }
+
+        // 2026-11-11: a one-line generic prompt ("a simple illustration of
+        // this example") was consistently producing images that dropped
+        // every concrete concept/step the card's own Text actually talks
+        // about. This fallback must carry the SAME source-faithful,
+        // concrete-visual-subject decision the main designer prompt uses
+        // (see SourceFaithfulContractVersion above): if the text is a
+        // process/sequence of steps, draw it as a real flow/process diagram
+        // with labeled boxes and arrows in that exact order; if it's an
+        // equation/formula, depict the mathematical object itself; if it's
+        // a list of distinct, named concepts, draw a labeled
+        // hub-and-spoke/relationship diagram connecting exactly those
+        // concepts (no invented ones); otherwise depict the concrete
+        // scene/object the text describes. Pass BOTH the card's FULL text
+        // AND the whole lesson's source text (not just the card) so every
+        // concept the LESSON talks about — not just the one worked
+        // example — has a chance to actually show up in the image.
+        return $"""
+            Create an educational illustration for this worked example titled "{card.Title}". Base it ENTIRELY on the card text and the full lesson text below — every concept, step, equation, or named item mentioned must be represented, nothing invented and nothing omitted.
+
+            Decide the visual form from the text's own structure:
+            - If it describes a sequence of steps/a process/a workflow: draw a labeled flow diagram (boxes + directional arrows) showing that exact order.
+            - If it describes an equation/formula/mathematical object: depict the equation/object itself, clearly labeled.
+            - If it lists several distinct named concepts/items: draw a labeled hub-and-spoke or relationship diagram connecting exactly those items (use their own names as labels).
+            - If it describes a measurable comparison (before/after, data, categories): draw a simple labeled chart with the real values/categories from the text.
+            - Otherwise: depict the concrete scene or object the text is actually about.
+
+            Card text (the primary worked example to depict):
+            {text}
+
+            Full lesson text (for context — make sure the image stays consistent with and, where it fits the card's own subject, reflects these concepts too):
+            {lessonText}
+
+            Style: clean, polished, textbook-quality educational diagram or scene — no watermark, no logo, minimal decorative filler.
+            """;
     }
 
     private async Task<Guid?> GenerateAndPersistIllustrationAsync(
@@ -1303,6 +1885,9 @@ public sealed class StructuredLearningPedagogyService
         StructuredLearningDocument document,
         bool includeDeepDiveStep,
         bool includeHypothesisStep,
+        bool includeRecallStep,
+        bool includeProductionStep,
+        bool includeAssessmentStep,
         string sectionSourceText,
         string capabilityStatement)
     {
@@ -1311,9 +1896,9 @@ public sealed class StructuredLearningPedagogyService
         var structural = StructuredLearningSectionEvaluator.ValidateStructure(
             steps.Select(s => (s.StepType, ContentForStructuralCheck(s))).ToList(),
             includeDeepDiveStep,
-            document.IncludeRecallStep,
-            document.IncludeProductionStep,
-            document.IncludeAssessmentStep,
+            includeRecallStep,
+            includeProductionStep,
+            includeAssessmentStep,
             includeHypothesisStep);
         if (!structural.Passed)
         {

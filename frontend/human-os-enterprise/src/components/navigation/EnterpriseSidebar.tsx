@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth/AuthContext';
+import { useSidebarStore } from '@/store/useSidebarStore';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard,
@@ -16,9 +17,9 @@ import {
   Users,
   UserCircle,
   Target,
-  ListTree,
   BookOpen,
   Heart,
+  Rocket,
 } from 'lucide-react';
 
 const NAV_ITEMS_DEF = [
@@ -31,7 +32,6 @@ const NAV_ITEMS_DEF = [
   { to: '/responsibilities', end: false, icon: ListChecks, labelKey: 'nav.responsibilities', color: 'blue' },
   { to: '/certifications', end: false, icon: Award, labelKey: 'nav.certifications', color: 'orange' },
   { to: '/skills', end: false, icon: GraduationCap, labelKey: 'nav.skills', color: 'teal' },
-  { to: '/proceso-aprendizaje', end: false, icon: ListTree, labelKey: 'nav.processLearning', color: 'violet' },
   { to: '/programar-cursos', end: false, icon: BookOpen, labelKey: 'nav.learningPrograms', color: 'violet' },
   { to: '/roadmaps', end: false, icon: GitBranch, labelKey: 'nav.roadmaps', color: 'emerald' },
   { to: '/reportes', end: false, icon: BarChart3, labelKey: 'nav.reports', color: 'rose' },
@@ -82,6 +82,10 @@ const COLOR_STYLES: Record<string, { chip: string; active: string }> = {
     chip: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
     active: 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-500/30',
   },
+  evolution: {
+    chip: 'bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-300',
+    active: 'bg-gradient-to-r from-indigo-600 via-fuchsia-600 to-rose-500 text-white shadow-md shadow-fuchsia-500/30',
+  },
 };
 
 const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
@@ -89,6 +93,7 @@ const CAPABILITY_STUDIO_URL = 'http://localhost:3010';
 export function EnterpriseSidebar() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { isOpen } = useSidebarStore();
   const profileUrl = user?.personId ? `/personal/${user.personId}` : '/perfil';
   const interestsUrl = user?.personId ? `/personal/${user.personId}/intereses` : '/personal';
   const studioUrl = user
@@ -99,9 +104,40 @@ export function EnterpriseSidebar() {
     ? t(`roles.${user.orgRole}` as const, { defaultValue: user.orgRole })
     : t('roles.unknown');
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
     <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 flex-col justify-between overflow-y-auto border-r border-slate-200 bg-white px-3 py-6 md:flex dark:border-white/10 dark:bg-[#05060a]">
       <nav className="space-y-1">
+        <NavLink
+          to="/enterprise-evolution"
+          className={({ isActive }) =>
+            clsx(
+              'group relative mb-3 flex items-center gap-3 overflow-hidden rounded-xl px-2.5 py-2.5 text-sm font-semibold transition',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500',
+              isActive
+                ? COLOR_STYLES.evolution.active
+                : 'bg-gradient-to-r from-indigo-50 via-fuchsia-50 to-rose-50 text-slate-700 ring-1 ring-inset ring-fuchsia-200/70 hover:brightness-95 dark:from-indigo-500/10 dark:via-fuchsia-500/10 dark:to-rose-500/10 dark:text-white/80 dark:ring-fuchsia-500/20',
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <span
+                className={clsx(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition',
+                  isActive ? 'bg-white/20 text-white' : COLOR_STYLES.evolution.chip,
+                )}
+              >
+                <Rocket className="h-4 w-4" />
+              </span>
+              <span className="flex-1">{t('nav.enterpriseEvolution')}</span>
+            </>
+          )}
+        </NavLink>
+
         <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-white/30">
           {t('nav.hrConsole')}
         </p>

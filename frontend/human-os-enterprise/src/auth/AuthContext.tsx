@@ -18,6 +18,14 @@ export interface EnterpriseUser {
   /** Person.OrgRole from /api/me — gates the whole enterprise console.
    *  'Employee' cannot use this app at all (see AccessDenied). */
   orgRole: OrgRole;
+  /** Person.JobRole.Title from /api/me (2026-11-08) — the "business role"/
+   *  job title (e.g. "Student", "Ingeniero Senior"), distinct from the
+   *  permission-level orgRole. Used to detect university students so the
+   *  "Open Studio as University" button can show for them. */
+  jobRoleTitle: string | null;
+  /** True when this tenant is an academic institution (Tenant.OrgType ==
+   *  "Academic") rather than a corporate employer (2026-11-08). */
+  isAcademicTenant: boolean;
 }
 
 interface AuthContextValue {
@@ -68,6 +76,8 @@ interface MeResponse {
   email: string | null;
   preferredLanguage: string | null;
   orgRole: string;
+  jobRoleTitle: string | null;
+  isAcademicTenant: boolean;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -156,6 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tenantId: data.tenantId,
           tenantName: data.tenantName,
           orgRole: (data.orgRole as OrgRole) ?? 'Employee',
+          jobRoleTitle: data.jobRoleTitle ?? null,
+          isAcademicTenant: data.isAcademicTenant ?? false,
         });
       } else if (res.status === 404) {
         // No Human OS account at all yet — must onboard via human-os-web

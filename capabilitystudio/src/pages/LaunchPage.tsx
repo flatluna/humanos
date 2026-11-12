@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { saveLaunchSession } from '../auth/launchSession';
+import { saveLaunchSession, saveRelaunchInfo } from '../auth/launchSession';
 
 interface ExchangeResponse {
   token: string;
@@ -57,6 +57,18 @@ export default function LaunchPage() {
           setError(t('launchPage.invalidToken'));
           return;
         }
+        // Remember how to silently re-request a fresh launch from this same
+        // parent app later (see auth/launchSession.ts) — derived from the
+        // exchangeUrl we were just given, since the "create launch" and
+        // "exchange" endpoints are always the same base path by convention.
+        const relaunchBase = exchangeUrl.replace(/\/exchange\/?$/, '');
+        saveRelaunchInfo({
+          base: relaunchBase,
+          oid: session.claims.oid,
+          tid: session.claims.azureTid,
+          email: session.claims.email,
+          ...(session.claims.sourceAppType === 'University' ? { asRole: 'University' } : {}),
+        });
         navigate(returnTo, { replace: true });
       } catch {
         setError(t('launchPage.validationFailed'));

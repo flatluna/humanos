@@ -26,6 +26,9 @@ public sealed class VideoProductionConfiguration : IEntityTypeConfiguration<Vide
         builder.Property(x => x.FinalVideoStoragePath)
             .HasMaxLength(1000);
 
+        builder.Property(x => x.OwnerOid)
+            .HasMaxLength(200);
+
         builder.HasIndex(x => x.TenantId)
             .HasDatabaseName("IX_VideoProduction_TenantId");
     }

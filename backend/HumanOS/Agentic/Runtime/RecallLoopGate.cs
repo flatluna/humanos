@@ -27,7 +27,7 @@ public static class RecallLoopGate
 
     /// <summary>Maximum number of attempts allowed per item before that
     /// item counts as failed (triggers regression back to Teaching).</summary>
-    public const int MaxAttemptsPerItem = 5;
+    public const int MaxAttemptsPerItem = 3;
 
     /// <summary>How many distinct items the student must master before the
     /// Recall step advances to Production — this is the DEFAULT used when
@@ -66,7 +66,14 @@ public static class RecallLoopGate
     /// <see cref="DefaultItemsRequiredToAdvance"/> — caller is responsible
     /// for clamping to [<see cref="MinItemsRequiredToAdvance"/>,
     /// <see cref="MaxItemsRequiredToAdvance"/>].</param>
-    public static Verdict Evaluate(IReadOnlyList<int> priorScoresThisActivation, int latestScore, int itemsRequiredToAdvance = DefaultItemsRequiredToAdvance)
+    /// <param name="maxAttemptsPerItem">Per-audience override of
+    /// <see cref="MaxAttemptsPerItem"/> (2026-10-27) — product decision:
+    /// young children (PedagogicalAudience=YoungLearner) must NEVER be cut
+    /// off or regressed back to Teaching for "running out of attempts" on
+    /// one item; caller passes <see cref="int.MaxValue"/> for that
+    /// audience so <see cref="Verdict.ItemFailed"/> can never trigger —
+    /// they simply keep retrying the same item until they master it.</param>
+    public static Verdict Evaluate(IReadOnlyList<int> priorScoresThisActivation, int latestScore, int itemsRequiredToAdvance = DefaultItemsRequiredToAdvance, int maxAttemptsPerItem = MaxAttemptsPerItem)
     {
         var itemsMastered = 0;
         var attemptsForCurrentItem = 0;
@@ -90,7 +97,7 @@ public static class RecallLoopGate
         }
 
         var stepComplete = itemsMastered >= itemsRequiredToAdvance;
-        var itemFailed = !stepComplete && !masteredThisAttempt && attemptsForCurrentItem >= MaxAttemptsPerItem;
+        var itemFailed = !stepComplete && !masteredThisAttempt && attemptsForCurrentItem >= maxAttemptsPerItem;
 
         return new Verdict(masteredThisAttempt, itemsMastered, attemptsForCurrentItem, stepComplete, itemFailed);
     }

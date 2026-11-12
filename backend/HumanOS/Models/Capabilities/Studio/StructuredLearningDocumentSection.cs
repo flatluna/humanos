@@ -46,6 +46,24 @@ public sealed class StructuredLearningDocumentSection
 
     public int? PageTo { get; set; }
 
+    /// <summary>Source-video timestamps (seconds) this Engram's clip spans,
+    /// only populated for video-origin documents (null for PDF-origin
+    /// documents) — lets Studio show the designer exactly what portion of
+    /// the original video each Engram covers (2026-11-07).</summary>
+    public double? VideoStartSeconds { get; set; }
+
+    public double? VideoEndSeconds { get; set; }
+
+    /// <summary>When true (2026-11-07), this Engram is purely informational
+    /// (e.g. a course-orientation/welcome Engram) — pedagogy generation only
+    /// produces its Teaching/Learn step, skipping Hypothesis/Recall/
+    /// Production/Assessment entirely, since there's nothing to practice or
+    /// be quizzed on. Currently only settable from the "New Learning From
+    /// Video" flow (one checkbox per Engram), but the flag itself is not
+    /// video-specific and any future authoring flow could set it too.
+    /// Defaults false (existing behavior unchanged).</summary>
+    public bool IsInformationalOnly { get; set; }
+
     /// <summary>Step 3 progress tracking — lets a resumed run skip sections
     /// already Completed instead of reprocessing (and re-paying for) them.</summary>
     public StructuredLearningPedagogyStatus PedagogyStatus { get; set; } = StructuredLearningPedagogyStatus.NotStarted;
@@ -68,6 +86,20 @@ public sealed class StructuredLearningDocumentSection
     public string? ConfigSnapshotJson { get; set; }
 
     public DateTime CreatedDate { get; set; }
+
+    /// <summary>How many times this section's pedagogy content has been
+    /// (re)generated — starts at 0 (never generated), becomes 1 on the
+    /// first successful generation, and increments by 1 every time it's
+    /// regenerated (initial pedagogy run, "Continue generating", or
+    /// "Restart engrams…" all funnel through the same update) so designers
+    /// can tell an Engram apart from an older draft (2026-11-04).</summary>
+    public int PedagogyVersion { get; set; }
+
+    /// <summary>UTC timestamp of this section's most recent successful
+    /// pedagogy (re)generation — shown next to <see cref="PedagogyVersion"/>
+    /// in Studio so a designer can see exactly when an Engram was last
+    /// regenerated (2026-11-04).</summary>
+    public DateTime? PedagogyGeneratedAt { get; set; }
 
     /// <summary>JSON array (max 3 items) of the Recall questions generated
     /// once for this section/engram when the document's

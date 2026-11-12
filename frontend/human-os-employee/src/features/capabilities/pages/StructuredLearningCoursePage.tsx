@@ -376,6 +376,26 @@ export default function StructuredLearningCoursePage() {
         </div>
       </div>
 
+      {/* Video-origin executive summary (2026-11-09) — this course was generated
+          from a recorded video (SourceVideoId != null) instead of a PDF/process
+          document; surface the video's own ExecutiveSummary prominently as an
+          introductory section so learners know what the course is based on
+          before diving into the chapters below. PDF-sourced courses (no
+          SourceVideoId) render exactly as before — this block is skipped. */}
+      {document.SourceVideoId && document.ExecutiveSummary && (
+        <div className="mt-6 rounded-2xl border border-sky-200 dark:border-sky-500/20 bg-sky-50/70 dark:bg-sky-950/20 p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <PlayCircle className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+              {isEn ? 'Based on a recorded video' : 'Basado en un video grabado'}
+            </h2>
+          </div>
+          <p className="mt-2 whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">
+            {document.ExecutiveSummary}
+          </p>
+        </div>
+      )}
+
       {/* Personalized Impact Analysis Banner */}
       {impactStats && (
         <div className="mt-6 overflow-hidden rounded-2xl border border-indigo-200/80 dark:border-indigo-500/20 bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-indigo-950/30 dark:via-slate-900/60 dark:to-purple-950/20 p-5 shadow-sm">

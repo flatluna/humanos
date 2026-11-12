@@ -44,6 +44,9 @@ public sealed class StructuredLearningCreationOptions
     public string? LanguageCode { get; set; }
     public Guid? SubjectId { get; set; }
 
+    /// <summary>See StructuredLearningDocument.SourceCapabilityCode's own doc comment.</summary>
+    public string? SourceCapabilityCode { get; set; }
+
     /// <summary>Azure AD Object ID of the person creating this document —
     /// see StructuredLearningDocument.CreatedByOid's own doc comment.</summary>
     public string? CreatedByOid { get; set; }
@@ -72,6 +75,10 @@ public sealed class StructuredLearningCreationOptions
     public string? CourseLevel { get; set; }
 
     public int? MaxDeepDiveCardsPerNode { get; set; }
+
+    /// <summary>Designer-controlled toggle (2026-10-30) — see
+    /// StructuredLearningDocument.UseScenedLecture's own doc comment.</summary>
+    public bool? UseScenedLecture { get; set; }
 
     public bool? IncludeProductionStep { get; set; }
 
@@ -164,7 +171,7 @@ public sealed class StructuredLearningExtractionService
 {
     private const int DefaultMaxPages = 100;
     private const int DefaultMaxImagesToDescribe = 60;
-    private const int DefaultMaxImagesPerPage = 8;
+    private const int DefaultMaxImagesPerPage = 5;
     private const int DefaultMaxConcurrentKnowledgeGraphSections = 5;
 
     /// <summary>How many leading characters of a section's own Content are
@@ -362,6 +369,58 @@ public sealed class StructuredLearningExtractionService
 
         reportProgress("Localizando secciones aprobadas");
 
+        // Describe any real step images attached to approved-outline nodes (2026-11-03
+        // "process images reach the engram agent" fix) BEFORE splitting into section
+        // materials — appending the description directly into node.Content is what lets
+        // the downstream TEXT-ONLY pipeline (Curador/GraphArchitect/section designer)
+        // actually account for what the real figure shows, instead of silently dropping
+        // every image that came from the HumanOS Enterprise process document.
+        // Keyed the same way as sparseNodeTitles below (chapter.Title, node.Title) so the
+        // real decoded image bytes can be re-attached, by that same key, to whichever
+        // persisted section ends up matching this node — see the Source Document
+        // StructuredLearningIllustration rows created in the section-persist loop below.
+        var nodeRealImages = new Dictionary<(string ChapterTitle, string NodeTitle), List<(byte[] Bytes, string ContentType)>>();
+
+        foreach (var chapter in approvedOutline)
+        {
+            foreach (var node in chapter.Nodes)
+            {
+                if (node.ImageDataUrls is not { Count: > 0 } || string.IsNullOrEmpty(node.Content))
+                {
+                    continue;
+                }
+
+                foreach (var dataUrl in node.ImageDataUrls)
+                {
+                    var decoded = TryDecodeDataUrl(dataUrl);
+                    if (decoded is null)
+                    {
+                        continue;
+                    }
+
+                    var key = (chapter.Title, node.Title);
+                    if (!nodeRealImages.TryGetValue(key, out var list))
+                    {
+                        list = [];
+                        nodeRealImages[key] = list;
+                    }
+                    list.Add((decoded.Value.Bytes, decoded.Value.ContentType));
+
+                    try
+                    {
+                        var described = await _pdfImageDescription.DescribeAsync(
+                            decoded.Value.Bytes, decoded.Value.ContentType, node.Content, cancellationToken);
+                        node.Content += $"\n\n[Imagen real adjunta a esta sección — descripción visual]:\n{described.Description}";
+                    }
+                    catch
+                    {
+                        // Best-effort: a failed/unconfigured vision call should never block
+                        // course generation — the node's own text content still goes through.
+                    }
+                }
+            }
+        }
+
         var source = new RawMaterialItem { Type = RawMaterialType.Pdf, Label = documentName, Content = documentText };
         var sectionItems = DocumentChapterSplitter.BuildMaterialsFromApprovedOutline(source, approvedOutline, fullOutlineForBoundaries);
 
@@ -420,6 +479,7 @@ public sealed class StructuredLearningExtractionService
             IsGlobal = creationOptions?.IsGlobal ?? false,
             SessionId = sessionId,
             DocumentName = documentName,
+            SourceCapabilityCode = creationOptions?.SourceCapabilityCode,
             CreatedDate = DateTime.UtcNow,
             DetectedDocumentType = detectedDocumentType,
             DetectedDocumentTypeConfidence = detectedDocumentTypeConfidence,
@@ -433,6 +493,7 @@ public sealed class StructuredLearningExtractionService
             PedagogicalAudience = creationOptions?.PedagogicalAudience,
             CourseLevel = creationOptions?.CourseLevel,
             MaxDeepDiveCardsPerNode = creationOptions?.MaxDeepDiveCardsPerNode,
+            UseScenedLecture = creationOptions?.UseScenedLecture ?? true,
             IncludeProductionStep = creationOptions?.IncludeProductionStep ?? true,
             IncludeRecallStep = creationOptions?.IncludeRecallStep ?? true,
             RecallItemsRequired = creationOptions?.RecallItemsRequired,
@@ -446,6 +507,7 @@ public sealed class StructuredLearningExtractionService
             EnableQaProfessorVoice = creationOptions?.EnableQaProfessorVoice ?? true,
             EnableDeepDiveAgentVoice = creationOptions?.EnableDeepDiveAgentVoice ?? true,
             IncludeWorkplaceApplicationStep = creationOptions?.IncludeWorkplaceApplicationStep ?? true,
+            IncludeHypothesisStep = creationOptions?.IncludeHypothesisStep ?? true,
             RecallGenerationMode = creationOptions?.RecallGenerationMode ?? StructuredLearningGenerationMode.Dynamic,
             AssessmentGenerationMode = creationOptions?.AssessmentGenerationMode ?? StructuredLearningGenerationMode.Dynamic
         };
@@ -475,7 +537,7 @@ public sealed class StructuredLearningExtractionService
             // instead of using the almost-empty original text.
             if (creationOptions?.ExpandSparseContent == true
                 && _contentExpansion.IsConfigured
-                && sparseNodeTitles.Contains((item.LevelTitle ?? string.Empty, item.ChapterTitle ?? string.Empty)))
+                && sparseNodeTitles.Contains((item.LevelTitle ?? item.ChapterTitle ?? string.Empty, item.ChapterTitle ?? string.Empty)))
             {
                 item.Content = await ExpandSparseSectionContentAsync(
                     item, document, creationOptions, reportProgress, cancellationToken);
@@ -514,6 +576,44 @@ public sealed class StructuredLearningExtractionService
             // Persisted immediately per section (not batched at the end) so
             // an interrupted run never loses already-paid-for embedding calls.
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            // Attach every REAL source-document image belonging to this node (2026-11-03) as
+            // its own StructuredLearningIllustration row (Purpose=SourceDocument) — a section
+            // can have more than one figure, so each one gets uploaded and persisted as a
+            // separate numbered row, exactly like multi-scene Teaching illustrations, so the
+            // student-facing player can show every real figure alongside the professor's own
+            // generated illustration/narration instead of only ever surfacing one image.
+            var sourceImageKey = (section.ChapterTitle, section.SubchapterTitle);
+            if (nodeRealImages.TryGetValue(sourceImageKey, out var realImages) && _illustrationStorage.IsConfigured)
+            {
+                for (var imgIndex = 0; imgIndex < realImages.Count; imgIndex++)
+                {
+                    try
+                    {
+                        var (imgBytes, imgContentType) = realImages[imgIndex];
+                        await using var imgStream = new MemoryStream(imgBytes);
+                        var storagePath = await _illustrationStorage.UploadIllustrationAsync(
+                            tenantId, section.StructuredLearningDocumentSectionId, section.StructuredLearningDocumentSectionId,
+                            100 + imgIndex, imgStream, imgContentType, cancellationToken);
+
+                        dbContext.StructuredLearningIllustrations.Add(new StructuredLearningIllustration
+                        {
+                            StructuredLearningDocumentSectionId = section.StructuredLearningDocumentSectionId,
+                            StoragePath = storagePath,
+                            Prompt = "Real source-document image (HumanOS process step)",
+                            Caption = section.SubchapterTitle,
+                            Purpose = StructuredLearningIllustrationPurpose.SourceDocument,
+                            ImageModel = "source-document",
+                            CreatedDate = DateTime.UtcNow
+                        });
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+                    catch
+                    {
+                        // Best-effort: never let a failed image upload block course generation.
+                    }
+                }
+            }
 
             try
             {
@@ -881,6 +981,40 @@ public sealed class StructuredLearningExtractionService
         {
             reportProgress($"No se pudo generar contenido con IA para '{item.ChapterTitle}'; se usa el texto original");
             return item.Content;
+        }
+    }
+
+    /// <summary>Decodes a "data:&lt;content-type&gt;;base64,&lt;...&gt;" URL (the format
+    /// <see cref="HumanOS.Contracts.ProcessDocuments.ProcessStepImage.DataUrl"/> uses) into raw
+    /// bytes + content type, or null if the string isn't a well-formed data URL.</summary>
+    private static (byte[] Bytes, string ContentType)? TryDecodeDataUrl(string dataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(dataUrl) || !dataUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var commaIndex = dataUrl.IndexOf(',');
+        if (commaIndex < 0)
+        {
+            return null;
+        }
+
+        var header = dataUrl[5..commaIndex];
+        var contentType = header.Split(';')[0];
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            contentType = "image/png";
+        }
+
+        try
+        {
+            var bytes = Convert.FromBase64String(dataUrl[(commaIndex + 1)..]);
+            return (bytes, contentType);
+        }
+        catch (FormatException)
+        {
+            return null;
         }
     }
 

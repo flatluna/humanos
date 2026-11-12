@@ -34,8 +34,67 @@ public sealed class StructuredLearningDocument
     /// <summary>Original uploaded file name (use case 1: PDF upload).</summary>
     public string DocumentName { get; set; } = string.Empty;
 
+    /// <summary>Optional external code linking this document back to its origin
+    /// (2026-10-25) — e.g. the Family app's AI capability recommendation code
+    /// ("USA-PUBLIC-FIRST_GRADE-MATH-G1-MATH-07"). Lets a parent app find the
+    /// Studio document it spawned without any cross-service callback, since
+    /// both share the same database — see FamilyCapabilityService's
+    /// studio-status sync. Null for documents not created from such a flow.</summary>
+    public string? SourceCapabilityCode { get; set; }
+
     /// <summary>Short document-wide orientation generated from the source material.</summary>
     public string? ExecutiveSummary { get; set; }
+
+    /// <summary>Azure AI Video Indexer VideoId this document was created from
+    /// (2026-11-07) — null for PDF-sourced documents. Lets Studio's
+    /// "Clases en Proceso" list tell a plain "indexed" video apart from one
+    /// whose Engrams/course were actually generated, by matching against this
+    /// field instead of relying on frontend-only (easily lost) state.</summary>
+    public string? SourceVideoId { get; set; }
+
+    // ---- Course origin metadata (2026-11-09) — essential authorship/source
+    // info the designer fills in at Step 1 of "New Learning From Video"
+    // (and, going forward, any new document). Orthogonal to the catalog
+    // fields below (SubjectId/Category/TargetSkill etc. classify the course
+    // for students browsing it; these describe who actually created/
+    // presented the source content and in what language the course TEXT
+    // itself should be generated). ----
+
+    /// <summary>"SoftSkill" or "TechnicalSkill" — the designer's own
+    /// classification of the course, distinct from <see cref="Category"/>/
+    /// <see cref="TargetSkill"/> (which drive catalog browsing). Null for
+    /// documents created before this field existed.</summary>
+    public string? SkillType { get; set; }
+
+    /// <summary>Name of the person who authored/presented the source
+    /// material (e.g. the professor in the video), as free text.</summary>
+    public string? AuthorName { get; set; }
+
+    /// <summary>Course name as given by the author/presenter — distinct
+    /// from <see cref="DocumentName"/> (the Studio-internal document title,
+    /// which may be edited/defaulted independently).</summary>
+    public string? AuthorCourseName { get; set; }
+
+    /// <summary>Date the source video/lecture was actually presented/
+    /// recorded (not the date the Structured Learning document was
+    /// created — see <see cref="CreatedDate"/> for that).</summary>
+    public DateTime? PresentedDate { get; set; }
+
+    /// <summary>Kind of entity where the source content was presented —
+    /// e.g. "Universidad"/"Salon de clases"/"Empresa"/"Conferencia"/
+    /// "Online"/"Otro" (combo box in the UI, also accepts free text).</summary>
+    public string? PresentedEntityType { get; set; }
+
+    /// <summary>Specific name of the entity from <see cref="PresentedEntityType"/>
+    /// (e.g. "MIT", "Acme Corp") — free text, optional.</summary>
+    public string? PresentedEntityName { get; set; }
+
+    /// <summary>Language the course TEXT/pedagogy should be generated in
+    /// (e.g. "es"/"en") — set once at course creation so Step 3 (pedagogy)
+    /// never has to silently default to Spanish. Distinct from any video
+    /// transcription language, which is a separate upstream concern (Azure
+    /// AI Video Indexer's own language setting).</summary>
+    public string? CourseLanguageCode { get; set; }
 
     // ---- Catalog/skill linking (2026-08-14) — same taxonomy as
     // Capability's own SubjectId/CapabilityDomainId/Category/target skill,
@@ -117,6 +176,18 @@ public sealed class StructuredLearningDocument
     /// <see cref="PedagogicalAudience"/> (that's tone/age; this is depth).</summary>
     public string? CourseLevel { get; set; }
 
+    /// <summary>Designer-controlled toggle (2026-10-30) for the Learn step's
+    /// lecture illustrations/audio — independent of <see cref="PedagogicalAudience"/>.
+    /// When true, the lecture is split into 3-6 ordered scenes, each with its
+    /// own short audio clip + its own illustration (synced image/audio
+    /// player), which is visually richer but generates up to 6 images + 6 TTS
+    /// clips sequentially per section (much slower). When false, the Learn
+    /// step generates ONE illustration + ONE full-lecture audio clip (fast).
+    /// Defaults to true so documents created before this field existed keep
+    /// their current (scened) behavior unchanged; new documents created via
+    /// the Studio UI explicitly default this to false (single illustration).</summary>
+    public bool UseScenedLecture { get; set; } = true;
+
     /// <summary>Version of the prompt/contract under which this document's
     /// structured-learning run was generated.</summary>
     public string? PromptVersion { get; set; }
@@ -192,6 +263,16 @@ public sealed class StructuredLearningDocument
     /// generated/shown at all for this course. Defaults true (existing
     /// behavior unchanged).</summary>
     public bool IncludeWorkplaceApplicationStep { get; set; } = true;
+
+    /// <summary>Whether the "Hypothesis" (prediction prompt before
+    /// Teaching) step is shown to students at all (2026-10-27) — lets a
+    /// designer turn it off for pre-reader grades (Kindergarten/1st, where
+    /// a written hypothesis prompt doesn't make pedagogical sense) without
+    /// having to regenerate the course. Still always extracted/stored per
+    /// section; this only controls learner-facing visibility, same
+    /// convention as <see cref="IncludeWorkplaceApplicationStep"/>.
+    /// Defaults true (existing behavior unchanged).</summary>
+    public bool IncludeHypothesisStep { get; set; } = true;
 
     /// <summary>Static (fixed at course-creation time, same for every
     /// student, max 3 items per engram, cheaper) vs. Dynamic (generated on

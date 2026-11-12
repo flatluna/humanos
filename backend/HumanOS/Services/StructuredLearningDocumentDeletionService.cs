@@ -51,6 +51,16 @@ public sealed class StructuredLearningDocumentDeletionService
             await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocumentEnrollment WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
             await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocumentProgramMembership WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
             await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocumentSection WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
+            // Family handoff cleanup: if this document was created from a Family
+            // CapabilityRecommendation (SourceCapabilityCode), reset that row back
+            // to pending so the Family app's "View Course"/"Reopen in Studio"
+            // button correctly reverts to "Send to Studio" instead of pointing at
+            // a now-deleted document (family.* schema isn't EF-mapped here, so a
+            // raw statement is used, same as the deletes above).
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE family.CapabilityRecommendations
+                SET GenerationStatus = 'PendingEngramGeneration', StudioDocumentId = NULL, UpdatedDate = SYSUTCDATETIME()
+                WHERE StudioDocumentId = {documentId}", cancellationToken);
             await dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.StructuredLearningDocument WHERE StructuredLearningDocumentId = {documentId}", cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         });

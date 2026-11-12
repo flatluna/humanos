@@ -79,6 +79,21 @@ export default function StructuredLearningDocumentCard({
             </span>
           )}
         </div>
+
+        {!document.IsGlobal && (document.TenantId || document.CreatedByName) && (
+          <div className="flex items-center justify-between gap-2 pt-1 text-[10px] text-slate-500">
+            {document.CreatedByName && (
+              <span className="truncate" title={document.CreatedByName}>
+                {t('capabilityCard.createdBy')} {document.CreatedByName}
+              </span>
+            )}
+            {document.TenantId && (
+              <span className="shrink-0 font-mono" title={document.TenantId}>
+                {document.TenantId.slice(0, 8)}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );

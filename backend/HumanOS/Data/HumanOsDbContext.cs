@@ -2,6 +2,7 @@ using HumanOS.Models.Agents;
 using HumanOS.Models.Assessments;
 using HumanOS.Models.Capabilities;
 using HumanOS.Models.Capabilities.Graph;
+using HumanOS.Models.Culture;
 using HumanOS.Models.Evidence;
 using HumanOS.Models.Gamification;
 using HumanOS.Models.Goals;
@@ -30,6 +31,15 @@ public sealed class HumanOsDbContext : DbContext
     }
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
+
+    public DbSet<Models.Family.FamilyMaster> FamilyMasters =>
+        Set<Models.Family.FamilyMaster>();
+
+    public DbSet<Models.Family.FamilyMember> FamilyMembers =>
+        Set<Models.Family.FamilyMember>();
+
+    public DbSet<Models.Family.FamilyMemberEducation> FamilyMemberEducations =>
+        Set<Models.Family.FamilyMemberEducation>();
 
     /// <summary>Per-tenant quota/limit overrides (Azure-style service
     /// limits, 2026-10-04) — see <see cref="HumanOS.Models.Tenancy.TenantServiceQuota"/>
@@ -400,11 +410,19 @@ public sealed class HumanOsDbContext : DbContext
     public DbSet<Models.Capabilities.Studio.StructuredLearningDocument> StructuredLearningDocuments =>
         Set<Models.Capabilities.Studio.StructuredLearningDocument>();
 
+    public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentVisibilityAudit> StructuredLearningDocumentVisibilityAudits =>
+        Set<Models.Capabilities.Studio.StructuredLearningDocumentVisibilityAudit>();
+
     public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentProgramMembership> StructuredLearningDocumentProgramMemberships =>
         Set<Models.Capabilities.Studio.StructuredLearningDocumentProgramMembership>();
 
     public DbSet<Models.Capabilities.Studio.StructuredLearningDocumentSection> StructuredLearningDocumentSections =>
         Set<Models.Capabilities.Studio.StructuredLearningDocumentSection>();
+
+    /// <summary>Source-text edit history (2026-11-11) — see
+    /// <see cref="Models.Capabilities.Studio.StructuredLearningSectionTextVersion"/>.</summary>
+    public DbSet<Models.Capabilities.Studio.StructuredLearningSectionTextVersion> StructuredLearningSectionTextVersions =>
+        Set<Models.Capabilities.Studio.StructuredLearningSectionTextVersion>();
 
     public DbSet<Models.Capabilities.Studio.StructuredLearningKnowledgeFact> StructuredLearningKnowledgeFacts =>
         Set<Models.Capabilities.Studio.StructuredLearningKnowledgeFact>();
@@ -565,6 +583,42 @@ public sealed class HumanOsDbContext : DbContext
     /// see <see cref="Models.Processes.ProcessStepSkillRecord"/>.</summary>
     public DbSet<Models.Processes.ProcessStepSkillRecord> ProcessStepSkills =>
         Set<Models.Processes.ProcessStepSkillRecord>();
+
+    /// <summary>Process-to-Learning: Departments that must follow a process —
+    /// see <see cref="Models.Processes.ProcessDocumentDepartment"/>.</summary>
+    public DbSet<Models.Processes.ProcessDocumentDepartment> ProcessDocumentDepartments =>
+        Set<Models.Processes.ProcessDocumentDepartment>();
+
+    /// <summary>Process-to-Learning: Job Roles that must follow a process —
+    /// see <see cref="Models.Processes.ProcessDocumentJobRole"/>.</summary>
+    public DbSet<Models.Processes.ProcessDocumentJobRole> ProcessDocumentJobRoles =>
+        Set<Models.Processes.ProcessDocumentJobRole>();
+
+    /// <summary>Process-to-Learning: Skill gaps from Step 4 saved as actual process training
+    /// requirements, scoped to Departments/Job Roles/company — see
+    /// <see cref="Models.Processes.ProcessSkillRequirement"/>.</summary>
+    public DbSet<Models.Processes.ProcessSkillRequirement> ProcessSkillRequirements =>
+        Set<Models.Processes.ProcessSkillRequirement>();
+
+    /// <summary>Departments scoped to a ProcessSkillRequirement —
+    /// see <see cref="Models.Processes.ProcessSkillRequirementDepartment"/>.</summary>
+    public DbSet<Models.Processes.ProcessSkillRequirementDepartment> ProcessSkillRequirementDepartments =>
+        Set<Models.Processes.ProcessSkillRequirementDepartment>();
+
+    /// <summary>Job Roles scoped to a ProcessSkillRequirement —
+    /// see <see cref="Models.Processes.ProcessSkillRequirementJobRole"/>.</summary>
+    public DbSet<Models.Processes.ProcessSkillRequirementJobRole> ProcessSkillRequirementJobRoles =>
+        Set<Models.Processes.ProcessSkillRequirementJobRole>();
+
+    /// <summary>Culture Library: Reusable organizational culture principles —
+    /// see <see cref="CulturePrinciple"/>.</summary>
+    public DbSet<CulturePrinciple> CulturePrinciples =>
+        Set<CulturePrinciple>();
+
+    /// <summary>Culture Library: Observable behaviors and expectations for culture principles —
+    /// see <see cref="CulturePrincipleBehavior"/>.</summary>
+    public DbSet<CulturePrincipleBehavior> CulturePrincipleBehaviors =>
+        Set<CulturePrincipleBehavior>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

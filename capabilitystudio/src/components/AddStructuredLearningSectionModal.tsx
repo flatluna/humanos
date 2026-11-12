@@ -19,15 +19,15 @@ const STEP_DURATION_MS = 3200;
 type IllustrationMode = 'None' | 'AiGenerated' | 'UploadDirect' | 'AiGeneratedFromUpload';
 
 /**
- * "Edit mode" add-section modal (2026-08-11) — Structured Learning's
- * counterpart to AddGraphNodeModal, adapted to this pipeline's own LINEAR
- * chapter sequencing: "Requires"/"Is required by" checklists (built from
- * the chapter's own existing sections) control WHERE the new section lands
- * instead of wiring a prerequisite graph, and the same 4-way illustration
- * mode choice (AI automatic / upload directly / AI using upload as
- * reference / none) is offered. Generation (section text + all 6
- * pedagogical steps, plus illustrations) happens synchronously in ONE
- * backend call.
+ * "Edit mode" add-section modal (2026-08-11, simplified 2026-11-11) —
+ * Structured Learning's counterpart to AddGraphNodeModal, adapted to this
+ * pipeline's own LINEAR chapter sequencing: a single "insert after"
+ * selector (not a full prerequisite checklist) picks WHERE the new
+ * section lands among the chapter's existing sections, and the same
+ * 4-way illustration mode choice (AI automatic / upload directly / AI
+ * using upload as reference / none) is offered. Generation (section text
+ * + all 6 pedagogical steps, plus illustrations) happens synchronously in
+ * ONE backend call.
  */
 export default function AddStructuredLearningSectionModal({
   documentId,
@@ -40,7 +40,7 @@ export default function AddStructuredLearningSectionModal({
   documentId: string;
   chapterTitle: string;
   /** Every existing section already in this chapter, in document order —
-   * used to build the Requires/Is required by checklists. */
+   * used to build the "insert after" position selector. */
   chapterSections: StructuredLearningSectionDetail[];
   languageCode: 'es' | 'en';
   onClose: () => void;
@@ -48,14 +48,14 @@ export default function AddStructuredLearningSectionModal({
 }) {
   const { t } = useTranslation();
   const [instruction, setInstruction] = useState('');
-  // Default: every existing section in the chapter is a "prerequisite" —
-  // i.e. the new section lands at the end of the chapter, same default as
-  // before this feature existed. Mirrors AddGraphNodeModal's own default of
-  // pre-checking every node in the level below.
-  const [requiresIds, setRequiresIds] = useState<Set<string>>(
-    new Set(chapterSections.map((s) => s.StructuredLearningDocumentSectionId))
+  // Single "insert after" choice replaces the old Requires/Is-required-by
+  // checklists (2026-11-11) — null means "at the very beginning of the
+  // chapter", otherwise the id of the existing section the new one goes
+  // right after. Defaults to the last existing section, i.e. "at the end",
+  // same default behavior as before this simplification.
+  const [insertAfterId, setInsertAfterId] = useState<string | null>(
+    chapterSections.length > 0 ? chapterSections[chapterSections.length - 1].StructuredLearningDocumentSectionId : null
   );
-  const [requiredByIds, setRequiredByIds] = useState<Set<string>>(new Set());
   const [illustrationMode, setIllustrationMode] = useState<IllustrationMode>('AiGenerated');
   const [uploadedImageFile, setUploadedImageFile] = useState<File | null>(null);
   const [uploadedImagePreviewUrl, setUploadedImagePreviewUrl] = useState<string | null>(null);
@@ -78,13 +78,6 @@ export default function AddStructuredLearningSectionModal({
       if (prev) URL.revokeObjectURL(prev);
       return file ? URL.createObjectURL(file) : null;
     });
-  }
-
-  function toggle(set: Set<string>, setSet: (s: Set<string>) => void, id: string) {
-    const next = new Set(set);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSet(next);
   }
 
   const steps = useMemo(() => {
@@ -128,13 +121,21 @@ export default function AddStructuredLearningSectionModal({
     setError(null);
     try {
       const uploadedImageBase64 = uploadedImageFile ? await readFileAsBase64(uploadedImageFile) : null;
+      // insertAfterId === null means "at the very beginning": pin the new
+      // section right before the chapter's current first section instead
+      // (requiresSectionIds stays empty). Otherwise just requiring the
+      // chosen section is enough — the backend bumps every later
+      // section's SortOrder by 1, so it naturally lands right after it.
+      const requiresSectionIds = insertAfterId ? [insertAfterId] : [];
+      const requiredBySectionIds =
+        !insertAfterId && chapterSections.length > 0 ? [chapterSections[0].StructuredLearningDocumentSectionId] : [];
       const section = await addStructuredLearningSection(
         documentId,
         chapterTitle,
         instruction.trim(),
         languageCode,
-        Array.from(requiresIds),
-        Array.from(requiredByIds),
+        requiresSectionIds,
+        requiredBySectionIds,
         illustrationMode,
         uploadedImageBase64,
         uploadedImageFile?.type ?? null,
@@ -190,21 +191,22 @@ export default function AddStructuredLearningSectionModal({
               className="input w-full"
             />
 
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <SectionChecklist
-                title={t('addStructuredLearningSectionModal.requiresTitle')}
-                hint={t('addStructuredLearningSectionModal.requiresHint')}
-                sections={chapterSections}
-                selected={requiresIds}
-                onToggle={(id) => toggle(requiresIds, setRequiresIds, id)}
-              />
-              <SectionChecklist
-                title={t('addStructuredLearningSectionModal.requiredByTitle')}
-                hint={t('addStructuredLearningSectionModal.requiredByHint')}
-                sections={chapterSections}
-                selected={requiredByIds}
-                onToggle={(id) => toggle(requiredByIds, setRequiredByIds, id)}
-              />
+            <div className="mt-5">
+              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+                {t('addStructuredLearningSectionModal.insertPositionLabel')}
+              </p>
+              <select
+                value={insertAfterId ?? ''}
+                onChange={(e) => setInsertAfterId(e.target.value || null)}
+                className="input w-full"
+              >
+                <option value="">{t('addStructuredLearningSectionModal.insertAtBeginning')}</option>
+                {chapterSections.map((section) => (
+                  <option key={section.StructuredLearningDocumentSectionId} value={section.StructuredLearningDocumentSectionId}>
+                    {t('addStructuredLearningSectionModal.insertAfter', { title: section.SubchapterTitle })}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="mt-5">
@@ -461,47 +463,6 @@ function ProgressView({ steps, currentIndex }: { steps: string[]; currentIndex: 
       <p className="mt-6 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
         {t('addStructuredLearningSectionModal.progressWarning')}
       </p>
-    </div>
-  );
-}
-
-function SectionChecklist({
-  title,
-  hint,
-  sections,
-  selected,
-  onToggle,
-}: {
-  title: string;
-  hint: string;
-  sections: StructuredLearningSectionDetail[];
-  selected: Set<string>;
-  onToggle: (id: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">{title}</p>
-      <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>
-      <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-        {sections.length === 0 && (
-          <p className="py-2 text-xs text-slate-600">{t('addStructuredLearningSectionModal.noSectionsAvailable')}</p>
-        )}
-        {sections.map((section) => (
-          <label
-            key={section.StructuredLearningDocumentSectionId}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-white/[0.05]"
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(section.StructuredLearningDocumentSectionId)}
-              onChange={() => onToggle(section.StructuredLearningDocumentSectionId)}
-              className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.03] text-brand-500"
-            />
-            <span className="truncate">{section.SubchapterTitle}</span>
-          </label>
-        ))}
-      </div>
     </div>
   );
 }

@@ -7,12 +7,22 @@
  *  reading claims to render the UI (tenant name, expiry, etc). */
 export interface StudioLaunchClaims {
   oid: string | null;
+  /** Azure AD tenant id (distinct from `tenantId`, the HumanOS business
+   *  tenant) — round-tripped only so Studio can silently re-request a
+   *  fresh launch code from the same parent app (auto-relaunch, see
+   *  auth/launchSession.ts) without the user manually going back. */
+  azureTid: string | null;
   email: string;
   tenantId: string;
   tenantName: string;
   memberId: string;
   memberType: string;
   sourceApplication: string;
+  /** Which parent app launched Studio — "Enterprise" | "Family" | "Consumer".
+   *  Used to hide app-type-specific CTAs, e.g. the "New Academic Learning"
+   *  button must not show for Enterprise corporate-employee courses
+   *  (2026-11-04). */
+  sourceAppType: string | null;
   returnUrl: string;
   studioView: boolean;
   studioCreate: boolean;
@@ -37,12 +47,14 @@ export function decodeJwtPayload(token: string): StudioLaunchClaims | null {
     const raw = JSON.parse(json) as Record<string, string | number | boolean>;
     return {
       oid: (raw.oid as string) || null,
+      azureTid: (raw.azureTid as string) || null,
       email: raw.email as string,
       tenantId: raw.tenantId as string,
       tenantName: raw.tenantName as string,
       memberId: raw.memberId as string,
       memberType: raw.memberType as string,
       sourceApplication: raw.sourceApplication as string,
+      sourceAppType: (raw.sourceAppType as string) || null,
       returnUrl: raw.returnUrl as string,
       studioView: raw.studioView === 'True' || raw.studioView === true,
       studioCreate: raw.studioCreate === 'True' || raw.studioCreate === true,

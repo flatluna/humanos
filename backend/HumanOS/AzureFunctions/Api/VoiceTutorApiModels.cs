@@ -40,6 +40,23 @@ public sealed class VoiceTutorSessionRequest
     /// to read aloud — it grants no grading authority.</summary>
     public string? CurrentPromptText { get; set; }
 
+    /// <summary>Structured Learning Recall ONLY (2026-10-26, explicit
+    /// product requirement: the voice Agent should already know the answer
+    /// and affirm/correct the student INSTANTLY itself, instead of going
+    /// silent waiting on a server grading round-trip). The short, literal
+    /// ground-truth answer to <see cref="CurrentPromptText"/> (e.g. "8",
+    /// "round", "the red pencil") — when present, embedded directly into
+    /// the Agent's own instructions so it can compare the student's spoken
+    /// answer to it itself and react immediately, THEN call
+    /// `submit_recall_answer` purely to persist the result/advance the UI
+    /// (the backend still grades authoritatively and deterministically
+    /// against this exact same answer — the Agent's own live reaction is
+    /// never trusted as the system of record). Null for Dynamic-mode
+    /// sections/legacy items with no persisted ground truth — the Agent
+    /// then falls back to NOT pre-announcing a verdict and waiting for the
+    /// tool's result as before.</summary>
+    public string? RecallCorrectAnswer { get; set; }
+
     /// <summary>Optional (2026-07-25). The student's display name, used
     /// ONLY for Hypothesis/Teaching's opening greeting ("Bienvenido,
     /// {PersonName}. ¿Listo para comenzar?"). Never used for anything
@@ -145,6 +162,18 @@ public sealed class VoiceTutorSessionResponseDto
 
     public long? ExpiresAtUnixSeconds { get; set; }
 
+    /// <summary>Whole-session voice Recall redesign (2026-10-27) — only
+    /// populated for Static-mode Recall sessions: the full ordered list of
+    /// this section's pre-generated items (question text never needed by
+    /// the browser, so omitted; the correct answer is NEVER sent here
+    /// either — it only ever lives inside the Realtime session's own
+    /// private server-side instructions). Lets the frontend render all of
+    /// the section's picture cards up front (so the student can see "we
+    /// have N pictures, let's go one by one") instead of only ever
+    /// showing one question/image at a time with a brand new voice
+    /// session reconnecting after each one.</summary>
+    public List<VoiceTutorRecallItemDto>? RecallItems { get; set; }
+
     /// <summary>Only populated by "Reactivar Engrama" (EngramReviewSessionFunction),
     /// null for the plain Voice Tutor. This node's ALREADY-GENERATED
     /// illustrations, sent straight back in the HTTP response so the
@@ -155,6 +184,12 @@ public sealed class VoiceTutorSessionResponseDto
     /// sometimes claims a visual was shown when the frontend never
     /// received/rendered the corresponding tool call).</summary>
     public List<IllustrationRefDto>? Illustrations { get; set; }
+}
+
+/// <summary>See <see cref="VoiceTutorSessionResponseDto.RecallItems"/>.</summary>
+public sealed class VoiceTutorRecallItemDto
+{
+    public Guid? IllustrationId { get; set; }
 }
 
 /// <summary>Minimal illustration reference for <see cref="VoiceTutorSessionResponseDto.Illustrations"/> — just enough for the frontend to build a GetIllustrationImageFunction URL and a caption, no image bytes.</summary>

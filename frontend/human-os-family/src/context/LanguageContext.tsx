@@ -26,6 +26,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     // Nav
     'nav.sectionTitle': 'Ecosistema Familiar',
     'nav.overview': 'Overview',
+    'nav.familyMasterData': 'Family Master Data',
     'nav.family': 'Family',
     'nav.personalDev': 'Personal Development',
     'nav.capabilities': 'Capabilities / Skills',
@@ -38,8 +39,8 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     'nav.allMembers': 'Toda la Familia',
 
     // Overview Page
-    'overview.greeting': '¡Hola, Carlos! 👋',
-    'overview.subgreeting': 'Panel de crecimiento integral y balance para la Familia Mendoza-Ríos.',
+    'overview.greeting': '¡Hola! 👋',
+    'overview.subgreeting': 'Panel de crecimiento integral y balance familiar.',
     'overview.kpi.familyBalance': 'Índice de Armonía Familiar',
     'overview.kpi.familyBalanceSub': '9.4 / 10 · Excelente equilibrio vida-estudio',
     'overview.kpi.activeGoals': 'Metas de Crecimiento Activas',
@@ -57,9 +58,9 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     'overview.viewProfile': 'Ver Perfil Completo',
 
     // Family Page
-    'family.title': 'Núcleo Familiar & Proyecto de Vida',
-    'family.subtitle': 'Miembros, fortalezas, acuerdos de convivencia y proyectos que unen nuestras generaciones en EE.UU. y América Latina.',
-    'family.addMember': 'Invitar Familiar / Tutor',
+    'family.title': 'Integrantes de la Familia',
+    'family.subtitle': 'Información de los integrantes registrados en la base de datos SQL.',
+    'family.addMember': 'Nuevo Integrante',
     'family.valuesTitle': 'Valores & Acuerdos del Hogar',
     'family.value1.title': 'Bilingüismo & Orgullo por Nuestras Raíces',
     'family.value1.desc': 'Honramos nuestras raíces hispanas con el mismo rigor que dominamos el inglés académico y profesional global.',
@@ -68,7 +69,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     'family.value3.title': 'Solidaridad Intergeneracional',
     'family.value3.desc': 'La sabiduría de los abuelos guía a los jóvenes; la energía y destreza tecnológica de los hijos empodera a los mayores.',
     'family.projectsTitle': 'Proyectos Familiares Colectivos',
-    'family.membersList': 'Integrantes de la Familia Mendoza-Ríos',
+    'family.membersList': 'Integrantes Registrados',
 
     // Personal Development Page
     'pdev.title': 'Personal Development & Bienestar',
@@ -109,18 +110,19 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     // Header
     'header.brand': 'EngramsIQ Family',
     'header.tagline': 'Human intelligence and harmony for professional families (USA / LATAM)',
-    'header.household': 'Mendoza-Ríos Family',
-    'header.location': 'Austin, TX · Mexico City',
+    'header.household': 'EngramsIQ Family',
+    'header.location': 'Austin, TX',
     'header.plan': 'Family Enterprise Plan',
     'header.themeLight': 'Light Mode',
     'header.themeDark': 'Dark Mode',
     'header.profile': 'Family Portal',
-    'header.role': 'Household Co-Administrator',
-    'header.bilingualBadge': 'Bilingual Bicultural Household',
+    'header.role': 'Household Administrator',
+    'header.bilingualBadge': 'Bilingual Household',
 
     // Nav
     'nav.sectionTitle': 'Family Ecosystem',
     'nav.overview': 'Overview',
+    'nav.familyMasterData': 'Datos maestros de la familia',
     'nav.family': 'Family',
     'nav.personalDev': 'Personal Development',
     'nav.capabilities': 'Capabilities / Skills',
@@ -133,8 +135,8 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     'nav.allMembers': 'All Family Members',
 
     // Overview Page
-    'overview.greeting': 'Welcome back, Carlos! 👋',
-    'overview.subgreeting': 'Holistic growth, wellness, and learning dashboard for the Mendoza-Ríos Family.',
+    'overview.greeting': 'Welcome! 👋',
+    'overview.subgreeting': 'Holistic growth, wellness, and learning dashboard for the family.',
     'overview.kpi.familyBalance': 'Family Harmony Index',
     'overview.kpi.familyBalanceSub': '9.4 / 10 · Outstanding work-study-life balance',
     'overview.kpi.activeGoals': 'Active Strategic Growth Goals',
@@ -152,9 +154,9 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     'overview.viewProfile': 'View Full Profile',
 
     // Family Page
-    'family.title': 'Family Core & Life Vision',
-    'family.subtitle': 'Members, Gallup/VIA strengths, household agreements, and shared initiatives bridging our generations in the US and Latin America.',
-    'family.addMember': 'Invite Member / Tutor',
+    'family.title': 'Family Members',
+    'family.subtitle': 'Registered family members in the SQL database.',
+    'family.addMember': 'New Member',
     'family.valuesTitle': 'Household Values & Agreements',
     'family.value1.title': 'Academic Bilingualism & Heritage Pride',
     'family.value1.desc': 'We honor our Latin American roots with the same intellectual rigor with which we master global professional English.',
@@ -163,7 +165,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     'family.value3.title': 'Intergenerational Solidarity',
     'family.value3.desc': 'Grandparents wisdom illuminates the youth; our childrens technological agility empowers the elder generation.',
     'family.projectsTitle': 'Collective Family Projects',
-    'family.membersList': 'Mendoza-Ríos Family Members',
+    'family.membersList': 'Registered Members',
 
     // Personal Development Page
     'pdev.title': 'Personal Development & Well-being',
